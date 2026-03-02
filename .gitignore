@@ -1,0 +1,4 @@
+slox
+*.o
+*.d
+examples
