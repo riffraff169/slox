@@ -170,7 +170,13 @@ static void endScope() {
         n++;
         current->localCount--;
     }
-    emitBytes(OP_POPN, n);
+    
+    if (n > 1) {
+        emitBytes(OP_POPN, n);
+    } else if (n == 1) {
+        emitByte(OP_POP);
+    }
+    
 }
 
 static void expression();
@@ -345,9 +351,9 @@ static void namedVariable(Token name, bool canAssign) {
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
-        emitBytes(getOp, (uint8_t)arg);
-    } else {
         emitBytes(setOp, (uint8_t)arg);
+    } else {
+        emitBytes(getOp, (uint8_t)arg);
     }
 }
 
