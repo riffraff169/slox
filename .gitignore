@@ -2,3 +2,4 @@ slox
 *.o
 *.d
 examples
+.*_history

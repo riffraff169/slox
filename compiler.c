@@ -577,6 +577,53 @@ static void forStatement() {
     endScope();
 }
 
+static void switchStatement() {
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'switch'.");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before cases.");
+
+    int endJumps[255];
+    int jumpCount = 0;
+
+    while (match(TOKEN_CASE)) {
+        if (jumpCount > 255) {
+            error("Too many cases in switch statement.");
+        }
+
+        emitByte(OP_DUP);
+        expression();
+        consume(TOKEN_COLON, "Expect ':' after case.");
+        emitByte(OP_EQUAL);
+
+        int skipCaseJump = emitJump(OP_JUMP_IF_FALSE);
+        emitByte(OP_POP);
+
+        while (!check(TOKEN_CASE) && !check(TOKEN_EOF) && !check(TOKEN_DEFAULT) && !check(TOKEN_RIGHT_BRACE)) {
+            statement();
+        }
+
+        endJumps[jumpCount++] = emitJump(OP_JUMP);
+
+        patchJump(skipCaseJump);
+
+        emitByte(OP_POP);
+    }
+
+    if (match(TOKEN_DEFAULT)) {
+        consume(TOKEN_COLON, "Expect ':' after 'default'.");
+
+        while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+            statement();
+        }
+    }
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after last case or default.");
+    emitByte(OP_POP);
+    for (int i = 0; i < jumpCount; i++) {
+        patchJump(endJumps[i]);
+    }
+}
+
 static void ifStatement() {
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
     expression();
@@ -657,6 +704,8 @@ static void statement() {
         forStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
+    } else if (match(TOKEN_SWITCH)) {
+        switchStatement();
     } else if (match(TOKEN_WHILE)) {
         whileStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
