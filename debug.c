@@ -3,7 +3,7 @@
 #include "debug.h"
 #include "value.h"
 
-int getLine(Chunk* chunk, int index) {
+int getLine(Chunk* chunk, size_t index) {
     int offset = 0;
     for (int i = 0; i < chunk->lineCount; i++) {
         offset += chunk->lines[i].count;
@@ -115,6 +115,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return jumpInstruction("OP_JUMP_IF_TRUE", 1, chunk, offset);
         case OP_LOOP:
             return jumpInstruction("OP_LOOP", -1, chunk, offset);
+        case OP_CALL:
+            return byteInstruction("OP_CALL", chunk, offset);
         case OP_RETURN:
             return simpleInstruction("OP_RETURN", offset);
         case OP_DUP:
