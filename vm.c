@@ -603,6 +603,73 @@ static InterpretResult run() {
             case OP_METHOD:
                 defineMethod(READ_STRING());
                 break;
+            case OP_ARRAY:
+                {
+                    uint8_t count = READ_BYTE();
+                    
+                    ObjArray* array = newArray(count);
+                    printValue(OBJ_VAL(array));
+
+                    for (int i = count - 1; i >= 0; i--) {
+                        array->values[i] = pop();
+                    }
+
+                    push(OBJ_VAL(array));
+                }
+                break;
+            case OP_ARRAY_FILL:
+                {
+                    Value sizeVal = peek(0);
+                    Value element = peek(1);
+
+                    if (!IS_NUMBER(sizeVal)) {
+                        runtimeError("Array size must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    int count = (int)AS_NUMBER(sizeVal);
+                    ObjArray* array = newArray(count);
+                    for (int i = 0; i < count; i++) {
+                        array->values[i] = element;
+                    }
+                    popn(2);
+                    //push(NIL_VAL);
+                    push(OBJ_VAL(array));
+                }
+                break;
+            case OP_SET_SUBSCRIPT:
+                {
+                    Value newValue = peek(0);
+                    Value indexValue = peek(1);
+                    Value targetValue = peek(2);
+
+                    /*
+                    if (!IS_ARRAY(targetValue)) {
+                        runtimeError("Only arrays support subscript assignment.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjArray* array = AS_ARRAY(targetValue);
+
+                    if (!IS_NUMBER(indexValue)) {
+                        runtimeError("Array index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    int index = (int)AS_NUMBER(indexValue);
+                    if (index < 0 || index >= array->count) {
+                        runtimeError("Array index out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    array->values[index] = newValue;
+                    */
+                    // pop args
+                    popn(3);
+                    // push result
+                    //push(array->values[index]);
+                }
+                break;
         }
     }
 

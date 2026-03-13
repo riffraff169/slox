@@ -132,6 +132,22 @@ ObjUpvalue* newUpvalue(Value* slot) {
     return upvalue;
 }
 
+ObjArray* newArray(int count) {
+    ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
+
+    array->count = count;
+    array->capacity = count;
+    array->values = NULL;
+
+    if (count > 0) {
+        array->values = ALLOCATE(Value, count);
+        for (int i = 0; i < count; i++) {
+            array->values[i] = NIL_VAL;
+        }
+    }
+    return array;
+}
+
 static void printFunction(ObjFunction* function) {
     if (function->name == NULL) {
         printf("<script>");
@@ -140,8 +156,20 @@ static void printFunction(ObjFunction* function) {
     printf("<fn %s>", function->name->chars);
 }
 
+static void printArray(ObjArray* array) {
+    printf("[");
+    for (int i = 0; i < array->count; i++) {
+        printValue(array->values[i]);
+        if (i < array->count - 1) printf(", ");
+    }
+    printf("]");
+}
+
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_ARRAY:
+            printArray(AS_ARRAY(value));
+            break;
         case OBJ_BOUND_METHOD:
             printFunction(AS_BOUND_METHOD(value)->method->function);
             break;

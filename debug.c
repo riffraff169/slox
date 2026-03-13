@@ -63,6 +63,25 @@ static int jumpInstruction(const char* name, int sign,
     return offset + 3;
 }
 
+static int arrayInstruction(const char* name, Chunk* chunk,
+        int offset) {
+    int count = (int)(chunk->code[offset + 1]);
+    printf("%-16s %4d\n", name, offset);
+    return offset + 4;
+}
+
+static int arrayFillInstruction(const char* name, Chunk* chunk,
+        int offset) {
+    uint8_t count = chunk->code[offset + 1];
+    uint8_t value = chunk->code[offset + 2];
+    printf("%-16s %4d - [", name, offset);
+    printValue(chunk->constants.values[count]);
+    printf("; ");
+    printValue(chunk->constants.values[value]);
+    printf("]\n");
+    return offset + 4;
+}
+
 int disassembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
     int line = getLine(chunk, offset);
@@ -173,6 +192,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return constantInstruction("OP_METHOD", chunk, offset);
         case OP_DUP:
             return simpleInstruction("OP_DUP", offset);
+        case OP_ARRAY:
+            return byteInstruction("OP_ARRAY", chunk, offset);
+        case OP_ARRAY_FILL:
+            return simpleInstruction("OP_ARRAY_FILL", offset);
         default:
             printf("Unknown opcode %d\n", instruction);
             return offset + 1;
