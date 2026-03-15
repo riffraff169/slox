@@ -112,6 +112,7 @@ typedef struct {
     Table table;
 } ObjMap;
 
+void arrayAppend(ObjArray* array, Value value);
 ObjArray* newArray(int count);
 ObjBoundMethod* newBoundMethod(Value receiver,
         ObjClosure* method);
@@ -123,6 +124,7 @@ ObjNative* newNative(NativeFn function);
 ObjString* takeString(char* chars, int length);
 ObjString* copyString(const char* chars, int length);
 ObjUpvalue* newUpvalue(Value* slot);
+void printArray(ObjArray *array);
 void printObject(Value value);
 
 static inline bool isObjType(Value value, ObjType type) {

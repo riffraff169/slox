@@ -148,6 +148,17 @@ ObjArray* newArray(int count) {
     return array;
 }
 
+void arrayAppend(ObjArray* array, Value value) {
+    if (array->capacity < array->count + 1) {
+        int oldCapacity = array->capacity;
+        array->capacity = GROW_CAPACITY(oldCapacity);
+        array->values = GROW_ARRAY(Value, array->values, oldCapacity, array->capacity);
+    }
+
+    array->values[array->count] = value;
+    array->count++;
+}
+
 static void printFunction(ObjFunction* function) {
     if (function->name == NULL) {
         printf("<script>");
@@ -156,7 +167,7 @@ static void printFunction(ObjFunction* function) {
     printf("<fn %s>", function->name->chars);
 }
 
-static void printArray(ObjArray* array) {
+void printArray(ObjArray* array) {
     printf("[");
     for (int i = 0; i < array->count; i++) {
         printValue(array->values[i]);

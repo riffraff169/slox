@@ -12,9 +12,42 @@
 #include "vm.h"
 
 VM vm;
+static InterpretResult run();
+void initArrayMethods();
 
 static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
+static bool callNative(ObjNative* native, int argCount) {
+    Value* argsStart = vm.stackTop - argCount - 1;
+    Value result = native->function(argCount, argsStart);
+
+    //vm.stackTop -= argCount + 1;
+    vm.stackTop = argsStart;
+    printValue(result);
+    push(result);
+    return true;
+}
+
+static Value appendNative(int argCount, Value* args) {
+    if (argCount < 1) return NIL_VAL;
+    if (!IS_ARRAY(args[0])) return NIL_VAL;
+
+    ObjArray* array = AS_ARRAY(args[0]);
+
+    for (int i = 1; i <= argCount; i++) {
+        arrayAppend(array, args[i]);
+    }
+
+    return OBJ_VAL(array);
+}
+
+static Value lengthNative(int argCount, Value* args) {
+    if (!IS_ARRAY(args[0])) return NUMBER_VAL(0);
+
+    ObjArray* array = AS_ARRAY(args[0]);
+    return NUMBER_VAL(array->count);
 }
 
 static void resetStack() {
@@ -56,6 +89,15 @@ static void defineNative(const char* name, NativeFn function) {
     pop();
 }
 
+static void defineNativeInTable(Table* table, const char* name, NativeFn function) {
+    push(OBJ_VAL(copyString(name, (int)strlen(name))));
+    push(OBJ_VAL(newNative(function)));
+    tableSet(table, AS_STRING(vm.stack[0]), vm.stack[1]);
+    pop();
+    pop();
+}
+
+
 void initVM() {
     resetStack();
     vm.objects = NULL;
@@ -73,6 +115,7 @@ void initVM() {
     vm.initString = copyString("init", 4);
 
     defineNative("clock", clockNative);
+    initArrayMethods();
 }
 
 void freeVM() {
@@ -161,6 +204,51 @@ static bool callValue(Value callee, int argCount) {
     return false;
 }
 
+static bool isFalsey(Value value) {
+    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+static Value selectNative(int argCount, Value* args) {
+    if (argCount < 1) return NIL_VAL;
+    if (!IS_ARRAY(args[0])) return NIL_VAL;;
+
+    ObjArray* original = AS_ARRAY(args[0]);
+    Value callback = args[1];
+
+    ObjArray* resultList = newArray(0);
+    push(OBJ_VAL(resultList));
+
+    for (int i = 0; i < original->count; i++) {
+        push(callback);
+        push(original->values[i]);
+
+        if (callValue(callback, 1)) {
+            vm.nativeExitDepth = vm.frameCount - 1;
+
+            InterpretResult result = run();
+
+
+            Value testResult = pop();
+
+            if (!isFalsey(testResult)) {
+                arrayAppend(resultList, original->values[i]);
+            }
+        }
+
+    }
+
+    pop();
+    return OBJ_VAL(resultList);
+}
+
+void initArrayMethods() {
+    initTable(&vm.arrayMethods);
+
+    defineNativeInTable(&vm.arrayMethods, "len", lengthNative);
+    defineNativeInTable(&vm.arrayMethods, "append", appendNative);
+    defineNativeInTable(&vm.arrayMethods, "select", selectNative);
+}
+
 static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     Value method;
@@ -245,9 +333,6 @@ static void defineMethod(ObjString* name) {
     pop();
 }
 
-static bool isFalsey(Value value) {
-    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
-}
 
 static void concatenate() {
     ObjString* b = AS_STRING(peek(0));
@@ -370,6 +455,19 @@ static InterpretResult run() {
                 break;
             case OP_GET_PROPERTY:
                 {
+                    Value receiver = peek(0);
+                    if (IS_ARRAY(receiver)) {
+                        ObjString* name = READ_STRING();
+                        Value method;
+                        if (tableGet(&vm.arrayMethods, name, &method)) {
+                            pop();
+                            push(method);
+                            break;
+                        }
+                        runtimeError("Array has no method '%s'.", name->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
                     if (!IS_INSTANCE(peek(0))) {
                         runtimeError("Only instances have properties.");
                         return INTERPRET_RUNTIME_ERROR;
@@ -530,6 +628,21 @@ static InterpretResult run() {
                 {
                     ObjString* method = READ_STRING();
                     int argCount = READ_BYTE();
+
+                    Value receiver = peek(argCount);
+
+                    if (IS_ARRAY(receiver)) {
+                        Value function;
+                        if (tableGet(&vm.arrayMethods, method, &function)) {
+                            if (callNative((ObjNative*)AS_OBJ(function), argCount)) {
+                                break;
+                            }
+                            break;
+                        }
+                        runtimeError("Array has no method '%s'.", method->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
                     if (!invoke(method, argCount)) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
@@ -580,6 +693,12 @@ static InterpretResult run() {
 
                     vm.stackTop = frame->slots;
                     push(result);
+
+                    if  (vm.frameCount == vm.nativeExitDepth) {
+                        vm.nativeExitDepth = -1;
+                        return INTERPRET_OK;
+                    }
+
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;
@@ -637,13 +756,39 @@ static InterpretResult run() {
                     push(OBJ_VAL(array));
                 }
                 break;
+            case OP_GET_SUBSCRIPT:
+                {
+                    Value indexValue = pop();
+                    Value targetValue = pop();
+
+                    if (!IS_ARRAY(targetValue)) {
+                        runtimeError("Only arrays support subscripting.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjArray* array = AS_ARRAY(targetValue);
+
+                    if (!IS_NUMBER(indexValue)) {
+                        runtimeError("Array index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    int index = (int)AS_NUMBER(indexValue);
+                    if (index < 0 || index >= array->count) {
+                        runtimeError("Array index out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    push(array->values[index]);
+
+                }
+                break;
             case OP_SET_SUBSCRIPT:
                 {
                     Value newValue = peek(0);
                     Value indexValue = peek(1);
                     Value targetValue = peek(2);
 
-                    /*
                     if (!IS_ARRAY(targetValue)) {
                         runtimeError("Only arrays support subscript assignment.");
                         return INTERPRET_RUNTIME_ERROR;
@@ -663,11 +808,10 @@ static InterpretResult run() {
                     }
 
                     array->values[index] = newValue;
-                    */
                     // pop args
                     popn(3);
                     // push result
-                    //push(array->values[index]);
+                    push(newValue);
                 }
                 break;
         }
