@@ -124,6 +124,7 @@ ObjNative* newNative(NativeFn function);
 ObjString* takeString(char* chars, int length);
 ObjString* copyString(const char* chars, int length);
 ObjUpvalue* newUpvalue(Value* slot);
+ObjArray* duplicateArray(ObjArray* original);
 void printArray(ObjArray *array);
 void printObject(Value value);
 

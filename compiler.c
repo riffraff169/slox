@@ -645,6 +645,12 @@ static void unary(bool canAssign) {
     }
 }
 
+static void lambda(bool canAssign) {
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun'.");
+
+    //compileFunction(TYPE_FUNCTION);
+}
+
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN]       = {grouping, call,   PREC_CALL},
     [TOKEN_RIGHT_PAREN]      = {NULL,     NULL,   PREC_NONE},
@@ -678,7 +684,7 @@ ParseRule rules[] = {
     [TOKEN_ELSE]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]            = {literal,  NULL,   PREC_NONE},
     [TOKEN_FOR]              = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FUN]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_FUN]              = {lambda,     NULL, PREC_NONE},
     [TOKEN_IF]               = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]              = {literal,  NULL,   PREC_NONE},
     [TOKEN_OR]               = {NULL,     or_,    PREC_OR},

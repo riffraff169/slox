@@ -159,6 +159,14 @@ void arrayAppend(ObjArray* array, Value value) {
     array->count++;
 }
 
+ObjArray* duplicateArray(ObjArray* original) {
+    ObjArray* copy = newArray(original->count);
+
+    memcpy(copy->values, original->values, sizeof(Value) * original->count);
+
+    return copy;
+}
+
 static void printFunction(ObjFunction* function) {
     if (function->name == NULL) {
         printf("<script>");

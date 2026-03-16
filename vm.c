@@ -208,9 +208,18 @@ static bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
-static Value selectNative(int argCount, Value* args) {
+static Value dupNative(int argCount, Value* args) {
+    if (!IS_ARRAY(args[0])) return NIL_VAL;
+
+    ObjArray* original = AS_ARRAY(args[0]);
+    ObjArray* copy = duplicateArray(original);
+
+    return OBJ_VAL(copy);
+}
+
+static Value mapNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
-    if (!IS_ARRAY(args[0])) return NIL_VAL;;
+    if (!IS_ARRAY(args[0])) return NIL_VAL;
 
     ObjArray* original = AS_ARRAY(args[0]);
     Value callback = args[1];
@@ -227,6 +236,33 @@ static Value selectNative(int argCount, Value* args) {
 
             InterpretResult result = run();
 
+            Value testResult = peek(0);
+            arrayAppend(resultList, testResult);
+            pop();
+        }
+    }
+    pop();
+    return OBJ_VAL(resultList);
+}
+
+static Value selectNative(int argCount, Value* args) {
+    if (argCount < 1) return NIL_VAL;
+    if (!IS_ARRAY(args[0])) return NIL_VAL;
+
+    ObjArray* original = AS_ARRAY(args[0]);
+    Value callback = args[1];
+
+    ObjArray* resultList = newArray(0);
+    push(OBJ_VAL(resultList));
+
+    for (int i = 0; i < original->count; i++) {
+        push(callback);
+        push(original->values[i]);
+
+        if (callValue(callback, 1)) {
+            vm.nativeExitDepth = vm.frameCount - 1;
+
+            InterpretResult result = run();
 
             Value testResult = pop();
 
@@ -247,6 +283,8 @@ void initArrayMethods() {
     defineNativeInTable(&vm.arrayMethods, "len", lengthNative);
     defineNativeInTable(&vm.arrayMethods, "append", appendNative);
     defineNativeInTable(&vm.arrayMethods, "select", selectNative);
+    defineNativeInTable(&vm.arrayMethods, "map", mapNative);
+    defineNativeInTable(&vm.arrayMethods, "dup", dupNative);
 }
 
 static bool invokeFromClass(ObjClass* klass, ObjString* name,
