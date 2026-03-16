@@ -560,8 +560,34 @@ static void or_(bool canAssign) {
 }
 
 static void string(bool canAssign) {
+    const char* source = parser.previous.start + 1;
+    int length = parser.previous.length - 2;
+
+    char* buffer = malloc(length + 1);
+    int j = 0;
+
+    for (int i = 0; i < length; i++) {
+        if (source[i] == '\\' && i + 1 < length) {
+            switch(source[++i]) {
+                case 'n': buffer[j++] = '\n'; break;
+                case 'r': buffer[j++] = '\r'; break;
+                case 't': buffer[j++] = '\t'; break;
+                case '\\': buffer[j++] = '\\'; break;
+                case '"': buffer[j++] = '"'; break;
+                default: buffer[j++] = source[i]; break;
+            }
+        } else {
+            buffer[j++] = source[i];
+        }
+    }
+    buffer[j] = '\0';
+
+    /*
     emitConstant(OBJ_VAL(copyString(parser.previous.start + 1,
                     parser.previous.length - 2)));
+                    */
+    emitConstant(OBJ_VAL(copyString(buffer, j)));
+    free(buffer);
 }
 
 static void namedVariable(Token name, bool canAssign) {
@@ -999,9 +1025,14 @@ static void ifStatement() {
 }
 
 static void printStatement() {
-    expression();
+    int argCount = 0;
+    do {
+        expression();
+        argCount++;
+    } while (match(TOKEN_COMMA));
+
     consume(TOKEN_SEMICOLON, "Expect ';' after value.");
-    emitByte(OP_PRINT);
+    emitBytes(OP_PRINT, argCount);
 }
 
 static void returnStatement() {

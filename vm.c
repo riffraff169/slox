@@ -675,7 +675,14 @@ static InterpretResult run() {
                 break;
             case OP_PRINT:
                 {
-                    printValue(pop());
+                    int argCount = READ_BYTE();
+
+                    for (int i = argCount - 1; i >= 0; i--) {
+                        printValue(peek(i));
+                        if (i > 0) printf(" ");
+                    }
+                    popn(argCount);
+                    //printValue(pop());
                     printf("\n");
                 }
                 break;
