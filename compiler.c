@@ -591,6 +591,11 @@ static void string(bool canAssign) {
     }
 
     char* buffer = malloc(length + 1);
+    if (buffer == NULL) {
+        error("Unable to allocate memory.");
+        exit(1);
+    }
+
     int j = 0;
 
     for (int i = 0; i < length; i++) {

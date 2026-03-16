@@ -34,6 +34,9 @@ typedef struct {
     int grayCapacity;
     Obj** grayStack;
 
+    ObjClass* arrayClass;
+    ObjClass* mapClass;
+    ObjClass* stringClass;
     int nativeExitDepth;
 } VM;
 

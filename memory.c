@@ -220,6 +220,9 @@ static void markRoots() {
     markTable(&vm.globals);
     markCompilerRoots();
     markObject((Obj*)vm.initString);
+    markObject((Obj*)vm.arrayClass);
+    markObject((Obj*)vm.mapClass);
+    markObject((Obj*)vm.stringClass);
 }
 
 static void traceReferences() {

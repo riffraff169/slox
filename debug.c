@@ -63,13 +63,16 @@ static int jumpInstruction(const char* name, int sign,
     return offset + 3;
 }
 
+/*
 static int arrayInstruction(const char* name, Chunk* chunk,
         int offset) {
     int count = (int)(chunk->code[offset + 1]);
     printf("%-16s %4d\n", name, offset);
     return offset + 4;
 }
+*/
 
+/*
 static int arrayFillInstruction(const char* name, Chunk* chunk,
         int offset) {
     uint8_t count = chunk->code[offset + 1];
@@ -81,6 +84,7 @@ static int arrayFillInstruction(const char* name, Chunk* chunk,
     printf("]\n");
     return offset + 4;
 }
+*/
 
 int disassembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
