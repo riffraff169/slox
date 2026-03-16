@@ -132,6 +132,14 @@ ObjUpvalue* newUpvalue(Value* slot) {
     return upvalue;
 }
 
+ObjMap* newMap() {
+    ObjMap* map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
+
+    initTable(&map->items);
+
+    return map;
+}
+
 ObjArray* newArray(int count) {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
 
@@ -184,8 +192,28 @@ void printArray(ObjArray* array) {
     printf("]");
 }
 
+void printMap(ObjMap* map) {
+    printf("{");
+    bool first = true;
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry* entry = &map->items.entries[i];
+        if (entry->key == NULL) continue;
+
+        if (!first) printf(",");
+
+        printf("\"%s\": ", entry->key->chars);
+        printValueSafe(entry->value);
+        first = false;
+    }
+    printf("}\n");
+}
+
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_MAP:
+            printMap(AS_MAP(value));
+            break;
         case OBJ_ARRAY:
             printArray(AS_ARRAY(value));
             break;

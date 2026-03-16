@@ -8,6 +8,7 @@
 
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
+#define IS_MAP(value)           isObjType(value, OBJ_MAP)
 #define IS_ARRAY(value)         isObjType(value, OBJ_ARRAY)
 #define IS_BOUND_METHOD(value)  isObjType(value, OBJ_BOUND_METHOD)
 #define IS_CLASS(value)         isObjType(value, OBJ_CLASS)
@@ -17,6 +18,7 @@
 #define IS_NATIVE(value)        isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 
+#define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
 #define AS_ARRAY(value)         ((ObjArray*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value)  ((ObjBoundMethod*)AS_OBJ(value))
 #define AS_CLASS(value)         ((ObjClass*)AS_OBJ(value))
@@ -38,6 +40,7 @@ typedef enum {
     OBJ_STRING,
     OBJ_UPVALUE,
     OBJ_ARRAY,
+    OBJ_MAP
 } ObjType;
 
 struct Obj {
@@ -109,9 +112,10 @@ typedef struct {
 
 typedef struct {
     Obj obj;
-    Table table;
+    Table items;
 } ObjMap;
 
+ObjMap* newMap();
 void arrayAppend(ObjArray* array, Value value);
 ObjArray* newArray(int count);
 ObjBoundMethod* newBoundMethod(Value receiver,

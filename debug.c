@@ -196,12 +196,14 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return constantInstruction("OP_METHOD", chunk, offset);
         case OP_DUP:
             return simpleInstruction("OP_DUP", offset);
+        case OP_MAP:
+            return byteInstruction("OP_MAP", chunk, offset);
         case OP_ARRAY:
             return byteInstruction("OP_ARRAY", chunk, offset);
-        case OP_GET_SUBSCRIPT:
-            return byteInstruction("OP_GET_SUBSCRIPT", chunk, offset);
-        case OP_SET_SUBSCRIPT:
-            return byteInstruction("OP_SET_SUBSCRIPT", chunk, offset);
+        case OP_GET_INDEX:
+            return byteInstruction("OP_GET_INDEX", chunk, offset);
+        case OP_SET_INDEX:
+            return byteInstruction("OP_SET_INDEX", chunk, offset);
         case OP_ARRAY_FILL:
             return simpleInstruction("OP_ARRAY_FILL", offset);
         default:

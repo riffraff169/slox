@@ -74,6 +74,12 @@ static void blackenObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_MAP:
+            {
+                ObjMap* map = (ObjMap*)object;
+                markTable(&map->items);
+            }
+            break;
         case OBJ_ARRAY:
             {
                 ObjArray* array = (ObjArray*)object;
@@ -134,6 +140,13 @@ static void freeObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_MAP:
+            {
+                ObjMap* map = (ObjMap*)object;
+                freeTable(&map->items);
+                FREE(ObjMap, object);
+            }
+            break;
         case OBJ_ARRAY:
             {
                 ObjArray* array = (ObjArray*)object;

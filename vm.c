@@ -847,6 +847,27 @@ static InterpretResult run() {
             case OP_METHOD:
                 defineMethod(READ_STRING());
                 break;
+            case OP_MAP:
+                {
+                    uint8_t itemCount = READ_BYTE();
+                    ObjMap* map = newMap();
+                    push(OBJ_VAL(map));
+
+                    for (int i = 0; i < itemCount; i++) {
+                        Value value = peek(1);
+                        Value key = peek(2);
+
+                        if (!IS_STRING(key)) {
+                            runtimeError("Map keys must be strings.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        tableSet(&map->items, AS_STRING(key), value);
+                        Value mapVal = pop();
+                        popn(2);
+                        push(mapVal);
+                    }
+                }
+                break;
             case OP_ARRAY:
                 {
                     uint8_t count = READ_BYTE();
@@ -877,17 +898,29 @@ static InterpretResult run() {
                         array->values[i] = element;
                     }
                     popn(2);
-                    //push(NIL_VAL);
                     push(OBJ_VAL(array));
                 }
                 break;
-            case OP_GET_SUBSCRIPT:
+            case OP_GET_INDEX:
                 {
                     Value indexValue = pop();
                     Value targetValue = pop();
 
-                    if (!IS_ARRAY(targetValue)) {
-                        runtimeError("Only arrays support subscripting.");
+                    if (IS_MAP(targetValue)) {
+                        if (!IS_STRING(indexValue)) {
+                            runtimeError("Map index must be a string.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        Value result;
+                        if (tableGet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), &result)) {
+                            push(result);
+                        } else {
+                            push(NIL_VAL);
+                        }
+                        break;
+                    } else if (!IS_ARRAY(targetValue)) {
+                        runtimeError("Only maps and arrays support subscripting.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -908,14 +941,23 @@ static InterpretResult run() {
 
                 }
                 break;
-            case OP_SET_SUBSCRIPT:
+            case OP_SET_INDEX:
                 {
                     Value newValue = peek(0);
                     Value indexValue = peek(1);
                     Value targetValue = peek(2);
 
-                    if (!IS_ARRAY(targetValue)) {
-                        runtimeError("Only arrays support subscript assignment.");
+                    if (IS_MAP(targetValue)) {
+                        if (!IS_STRING(indexValue)) {
+                            runtimeError("Map keys must be strings.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        tableSet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), newValue);
+                        popn(3);
+                        push(newValue);
+                        break;
+                    } else if (!IS_ARRAY(targetValue)) {
+                        runtimeError("Only maps and arrays support subscript assignment.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 

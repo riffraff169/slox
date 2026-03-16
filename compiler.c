@@ -498,14 +498,14 @@ static void literal(bool canAssign) {
 }
 
 static void subscript(bool canAssign) {
-    expression();
+    parsePrecedence(PREC_OR);
     consume(TOKEN_RIGHT_BRACKET, "Expect ']' after index.");
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
-        emitByte(OP_SET_SUBSCRIPT);
+        emitByte(OP_SET_INDEX);
     } else {
-        emitByte(OP_GET_SUBSCRIPT);
+        emitByte(OP_GET_INDEX);
     }
 }
 
@@ -535,7 +535,24 @@ static void array(bool canAssign) {
     }
 }
 
-static void array_index(bool canAssign) {
+static void map(bool canAssign) {
+    int item_count = 0;
+
+    if (!check(TOKEN_RIGHT_BRACE)) {
+        do {
+            parsePrecedence(PREC_OR);
+            consume(TOKEN_COLON, "Expect ':' after map key.");
+            parsePrecedence(PREC_OR);
+            item_count++;
+
+            if (item_count > 255) {
+                error("Cannot have more than 255 items in a map literal.");
+            }
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after map items.");
+    emitBytes(OP_MAP, (uint8_t)item_count);
 }
 
 static void grouping(bool canAssign) {
@@ -550,10 +567,8 @@ static void number(bool canAssign) {
 
 static void or_(bool canAssign) {
     int endJump = emitJump(OP_JUMP_IF_TRUE);
-    //int endJump = emitJump(OP_JUMP);
 
     emitByte(OP_POP);
-    //patchJump(endJump);
 
     parsePrecedence(PREC_OR);
     patchJump(endJump);
@@ -704,7 +719,7 @@ static void lambda(bool canAssign);
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN]       = {grouping, call,   PREC_CALL},
     [TOKEN_RIGHT_PAREN]      = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_LEFT_BRACE]       = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_LEFT_BRACE]       = {map,      NULL,   PREC_NONE},
     [TOKEN_RIGHT_BRACE]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_LEFT_BRACKET]     = {array,    subscript,  PREC_CALL},
     [TOKEN_RIGHT_BRACKET]    = {NULL,     NULL,   PREC_NONE},
