@@ -684,7 +684,7 @@ ParseRule rules[] = {
     [TOKEN_ELSE]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]            = {literal,  NULL,   PREC_NONE},
     [TOKEN_FOR]              = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FUN]              = {lambda,   NULL, PREC_NONE},
+    [TOKEN_FUN]              = {lambda,   NULL,   PREC_NONE},
     [TOKEN_IF]               = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]              = {literal,  NULL,   PREC_NONE},
     [TOKEN_OR]               = {NULL,     or_,    PREC_OR},
@@ -766,27 +766,38 @@ static void function(FunctionType type) {
     }
 }
 
-static void compileFunction(FunctionType type) {
+static void parseFunction(FunctionType type) {
+    Compiler compiler;
+    initCompiler(&compiler, type);
     beginScope();
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun' or function name.");
 
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun.");
     if (!check(TOKEN_RIGHT_PAREN)) {
         do {
+            current->function->arity++;
+            if (current->function->arity > 255) {
+                errorAtCurrent("Can't have more than 255 parameters.");
+            }
             uint8_t constant = parseVariable("Expect parameter name.");
             defineVariable(constant);
         } while (match(TOKEN_COMMA));
     }
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
-    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
 
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     block();
 
     ObjFunction* function = endCompiler();
     emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+    for (int i = 0; i < function->upvalueCount; i++) {
+        emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+        emitByte(compiler.upvalues[i].index);
+    }
 }
 
 static void lambda(bool canAssign) {
-    compileFunction(TYPE_FUNCTION);
+    parseFunction(TYPE_FUNCTION);
 }
 
 static void method() {
@@ -852,7 +863,7 @@ static void classDeclaration() {
 static void funDeclaration() {
     uint8_t global = parseVariable("Expect function name.");
     markInitialized();
-    function(TYPE_FUNCTION);
+    parseFunction(TYPE_FUNCTION);
     //lambda(false);
     defineVariable(global);
 }
