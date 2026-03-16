@@ -277,6 +277,37 @@ static Value selectNative(int argCount, Value* args) {
     return OBJ_VAL(resultList);
 }
 
+static Value reduceNative(int argCount, Value* args) {
+    // args[0]: array (receiver)
+    // args[1]: callback function
+    // args[2]: initial value
+    if (argCount != 2) return NIL_VAL;
+
+    ObjArray* array = AS_ARRAY(args[0]);
+    Value callback = args[1];
+    Value acc = args[2];
+
+    for (int i = 0; i < array->count; i++) {
+        push(callback);
+        push(acc);
+        push(array->values[i]);
+
+        if (callValue(callback, 2)) {
+            vm.nativeExitDepth = vm.frameCount - 1;
+
+            InterpretResult result = run();
+
+            if (result != INTERPRET_OK) return NIL_VAL;
+
+            acc = pop();
+        } else {
+            return NIL_VAL;
+        }
+    }
+
+    return acc;
+}
+
 void initArrayMethods() {
     initTable(&vm.arrayMethods);
 
@@ -285,6 +316,7 @@ void initArrayMethods() {
     defineNativeInTable(&vm.arrayMethods, "select", selectNative);
     defineNativeInTable(&vm.arrayMethods, "map", mapNative);
     defineNativeInTable(&vm.arrayMethods, "dup", dupNative);
+    defineNativeInTable(&vm.arrayMethods, "reduce", reduceNative);
 }
 
 static bool invokeFromClass(ObjClass* klass, ObjString* name,
@@ -613,6 +645,27 @@ static InterpretResult run() {
                     push(NUMBER_VAL(pow(AS_NUMBER(a), AS_NUMBER(b))));
                 }
                 break;
+            case OP_MOD:
+                {
+                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                        runtimeError("Operands must be numbers.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    Value b = pop();
+                    Value a = pop();
+
+                    double ad = AS_NUMBER(a);
+                    double bd = AS_NUMBER(b);
+
+                    if (bd == 0) {
+                        runtimeError("Division by zero.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    double res = fmod(ad, bd);
+                    push(NUMBER_VAL(res == 0.0 ? 0.0 : res));
+                }
+                ;
             case OP_NEGATE:
                 if (!IS_NUMBER(peek(0))) {
                     runtimeError("Operand must be a number.");

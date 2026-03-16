@@ -452,6 +452,9 @@ static void binary(bool canAssign) {
         case TOKEN_CARET:
             emitByte(OP_POW);
             break;
+        case TOKEN_PERCENT:
+            emitByte(OP_MOD);
+            break;
         default:
             return;
     }
@@ -645,11 +648,7 @@ static void unary(bool canAssign) {
     }
 }
 
-static void lambda(bool canAssign) {
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun'.");
-
-    //compileFunction(TYPE_FUNCTION);
-}
+static void lambda(bool canAssign);
 
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN]       = {grouping, call,   PREC_CALL},
@@ -665,6 +664,7 @@ ParseRule rules[] = {
     [TOKEN_PLUS_PLUS]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_MINUS_MINUS]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_CARET]            = {NULL,     binary, PREC_EXP},
+    [TOKEN_PERCENT]          = {NULL,     binary, PREC_TERM},
     [TOKEN_SEMICOLON]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_SLASH]            = {NULL,     binary, PREC_FACTOR},
     [TOKEN_STAR]             = {NULL,     binary, PREC_FACTOR},
@@ -684,7 +684,7 @@ ParseRule rules[] = {
     [TOKEN_ELSE]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]            = {literal,  NULL,   PREC_NONE},
     [TOKEN_FOR]              = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FUN]              = {lambda,     NULL, PREC_NONE},
+    [TOKEN_FUN]              = {lambda,   NULL, PREC_NONE},
     [TOKEN_IF]               = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]              = {literal,  NULL,   PREC_NONE},
     [TOKEN_OR]               = {NULL,     or_,    PREC_OR},
@@ -766,6 +766,29 @@ static void function(FunctionType type) {
     }
 }
 
+static void compileFunction(FunctionType type) {
+    beginScope();
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun' or function name.");
+
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            uint8_t constant = parseVariable("Expect parameter name.");
+            defineVariable(constant);
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+
+    block();
+
+    ObjFunction* function = endCompiler();
+    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+}
+
+static void lambda(bool canAssign) {
+    compileFunction(TYPE_FUNCTION);
+}
+
 static void method() {
     consume(TOKEN_IDENTIFIER, "Expect method name.");
     uint8_t constant = identifierConstant(&parser.previous);
@@ -830,6 +853,7 @@ static void funDeclaration() {
     uint8_t global = parseVariable("Expect function name.");
     markInitialized();
     function(TYPE_FUNCTION);
+    //lambda(false);
     defineVariable(global);
 }
 
