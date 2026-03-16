@@ -6,7 +6,7 @@
 
 typedef enum {
     OP_CONSTANT,
-    OP_CONSTANT_16,
+    //OP_CONSTANT_16,
     OP_DUP,
     OP_NIL,
     OP_TRUE,
@@ -39,6 +39,7 @@ typedef enum {
     OP_POW,
     OP_MOD,
     OP_NEGATE,
+    OP_STR,
     OP_PRINT,
     OP_JUMP,
     OP_JUMP_IF_FALSE,

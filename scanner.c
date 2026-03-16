@@ -8,6 +8,7 @@ typedef struct {
     const char* start;
     const char* current;
     int line;
+    int interpolationDepth;
 } Scanner;
 
 Scanner scanner;
@@ -16,6 +17,7 @@ void initScanner(const char* source) {
     scanner.start = source;
     scanner.current = source;
     scanner.line = 1;
+    scanner.interpolationDepth = 0;
 }
 
 static bool isAlpha(char c) {
@@ -174,12 +176,43 @@ static Token number() {
     return makeToken(TOKEN_NUMBER);
 }
 
+static Token continueString() {
+    while (peek() != '"' && !isAtEnd()) {
+        if (peek() == '\n') scanner.line++;
+
+        if (peek() == '$' && peekNext() == '{') {
+            Token token = makeToken(TOKEN_INTERPOLATION);
+            advance();
+            advance();
+            scanner.interpolationDepth++;
+            return token;
+        }
+        if (peek() == '\\') advance();
+
+        advance();
+
+    }
+
+    if (isAtEnd()) return errorToken("Unterminated string.");
+
+    advance();
+    return makeToken(TOKEN_STRING);
+}
+
 static Token string() {
     while (peek() != '"' && !isAtEnd()) {
         if (peek() == '\n') scanner.line++;
 
         if (peek() == '\\') {
             advance();
+        }
+
+        if (peek() == '$' && peekNext() == '{') {
+            Token token = makeToken(TOKEN_INTERPOLATION);
+            advance();
+            advance();
+            scanner.interpolationDepth++;
+            return token;
         }
         advance();
     }
@@ -197,6 +230,10 @@ Token scanToken() {
     if (isAtEnd()) return makeToken(TOKEN_EOF);
 
     char c = advance();
+    if (scanner.interpolationDepth > 0 && c== '}') {
+        scanner.interpolationDepth--;
+        return continueString();
+    }
     if (isAlpha(c)) return identifier();
     if (isDigit(c)) return number();
 

@@ -561,7 +561,19 @@ static void or_(bool canAssign) {
 
 static void string(bool canAssign) {
     const char* source = parser.previous.start + 1;
-    int length = parser.previous.length - 2;
+    int length = parser.previous.length;
+
+    if (parser.previous.type == TOKEN_INTERPOLATION) {
+        if (*source == '"') {
+            source++;
+            length -= 1;
+        } else {
+            length -= 1;
+        }
+    } else {
+        //source++;
+        length -= 2;
+    }
 
     char* buffer = malloc(length + 1);
     int j = 0;
@@ -582,10 +594,6 @@ static void string(bool canAssign) {
     }
     buffer[j] = '\0';
 
-    /*
-    emitConstant(OBJ_VAL(copyString(parser.previous.start + 1,
-                    parser.previous.length - 2)));
-                    */
     emitConstant(OBJ_VAL(copyString(buffer, j)));
     free(buffer);
 }
@@ -674,6 +682,23 @@ static void unary(bool canAssign) {
     }
 }
 
+static void interpolation(bool canAssign) {
+    string(false);
+
+    expression();
+
+    emitByte(OP_STR);
+    emitByte(OP_ADD);
+
+    if (match(TOKEN_INTERPOLATION)) {
+        interpolation(false);
+        emitByte(OP_ADD);
+    } else if (match(TOKEN_STRING)) {
+        string(false);
+        emitByte(OP_ADD);
+    }
+}
+
 static void lambda(bool canAssign);
 
 ParseRule rules[] = {
@@ -723,6 +748,7 @@ ParseRule rules[] = {
     [TOKEN_WHILE]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
 };
 
 static void parsePrecedence(Precedence precedence) {

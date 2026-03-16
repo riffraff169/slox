@@ -420,6 +420,12 @@ static void concatenate() {
     push(OBJ_VAL(result));
 }
 
+Value numberToValue(double num) {
+    char buffer[32];
+    int length = snprintf(buffer, sizeof(buffer), "%g", num);
+    return OBJ_VAL(copyString(buffer, length));
+}
+
 static InterpretResult run() {
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
 
@@ -463,6 +469,28 @@ static InterpretResult run() {
                 {
                     Value constant = READ_CONSTANT();
                     push(constant);
+                }
+                break;
+            case OP_STR:
+                {
+                    Value value = peek(0);
+                    if (IS_STRING(value)) break;
+
+                    char buffer[32];
+                    int length = 0;
+
+                    if (IS_NUMBER(value)) {
+                        length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
+                    } else if (IS_BOOL(value)) {
+                        length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
+                    } else if (IS_NIL(value)) {
+                        length = snprintf(buffer, sizeof(buffer), "nil");
+                    } else {
+                        runtimeError("Cannot convert value to string.");
+                    }
+
+                    pop();
+                    push(OBJ_VAL(copyString(buffer, length)));
                 }
                 break;
             case OP_NIL:
@@ -682,7 +710,6 @@ static InterpretResult run() {
                         if (i > 0) printf(" ");
                     }
                     popn(argCount);
-                    //printValue(pop());
                     printf("\n");
                 }
                 break;
