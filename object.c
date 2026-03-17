@@ -175,6 +175,17 @@ ObjArray* duplicateArray(ObjArray* original) {
     return copy;
 }
 
+static ObjRegex* allocateRegex(pcre2_code* code, ObjString* pattern) {
+    ObjRegex* re = ALLOCATE_OBJ(ObjRegex, OBJ_REGEX);
+    re->code = code;
+    re->pattern = pattern;
+    return re;
+}
+
+ObjRegex* newRegex(pcre2_code* code, ObjString* pattern) {
+    return allocateRegex(code, pattern);
+}
+
 static void printFunction(ObjFunction* function) {
     if (function->name == NULL) {
         printf("<script>");
@@ -211,6 +222,9 @@ void printMap(ObjMap* map) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_REGEX:
+            printf("/%s/", AS_REGEX(value)->pattern->chars);
+            break;
         case OBJ_MAP:
             printMap(AS_MAP(value));
             break;

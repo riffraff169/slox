@@ -74,6 +74,12 @@ static void blackenObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_REGEX:
+            {
+                ObjRegex* re = (ObjRegex*)object;
+                markObject((Obj*)re->pattern);
+            }
+            break;
         case OBJ_MAP:
             {
                 ObjMap* map = (ObjMap*)object;
@@ -140,6 +146,13 @@ static void freeObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_REGEX:
+            {
+                ObjRegex* re = (ObjRegex*)object;
+                pcre2_code_free(re->code);
+                FREE(ObjRegex, object);
+            }
+            break;
         case OBJ_MAP:
             {
                 ObjMap* map = (ObjMap*)object;

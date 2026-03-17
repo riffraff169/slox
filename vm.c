@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <dirent.h>
 
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 #include "common.h"
 #include "compiler.h"
 #include "debug.h"
@@ -470,7 +473,9 @@ static void runtimeError(const char* format, ...) {
 static void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
-    tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    //tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
+
     pop();
     pop();
 }
@@ -608,6 +613,89 @@ static Value fileListNative(int argCount, Value* args) {
     return pop();
 }
 
+static Value regexTestNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[1])) {
+        runtimeError("test() expects 1 string argument.");
+        return NIL_VAL;
+    }
+
+    ObjRegex* re = AS_REGEX(args[0]);
+    ObjString* subject = AS_STRING(args[1]);
+
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
+    int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
+                0, 0, match_data, NULL);
+
+    pcre2_match_data_free(match_data);
+    return BOOL_VAL(rc >= 0);
+
+}
+
+static Value regexExecNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[1])) {
+        runtimeError("test() expects 1 string argument.");
+        return NIL_VAL;
+    }
+
+    ObjRegex* re = AS_REGEX(args[0]);
+    ObjString* subject = AS_STRING(args[1]);
+
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
+    int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
+                0, 0, match_data, NULL);
+
+    if (rc < 0) {
+        pcre2_match_data_free(match_data);
+        return NIL_VAL;
+    }
+
+    PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(match_data);
+
+    ObjArray* results = newArray(0);
+    push(OBJ_VAL(results));
+
+    for (int i = 0; i < rc; i++) {
+        int start = (int)ovector[2 * i];
+        int end = (int)ovector[2 * i + 1];
+
+        if (start == -1) {
+            arrayAppend(results, NIL_VAL);
+        } else {
+            ObjString* matchStr = copyString(subject->chars + start, end - start);
+            push(OBJ_VAL(matchStr));
+            arrayAppend(results, OBJ_VAL(matchStr));
+            pop();
+        }
+    }
+
+    //ObjString* result = copyString(subject->chars + start, length);
+
+    pcre2_match_data_free(match_data);
+    return pop();
+}
+
+static Value regexInitNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        runtimeError("Regex constructor expects a pattern string.");
+        return NIL_VAL;
+    }
+
+    ObjString* pattern = AS_STRING(args[0]);
+    int errornumber;
+    PCRE2_SIZE erroroffset;
+
+    pcre2_code* code = pcre2_compile(
+            (unsigned char*)pattern->chars, PCRE2_ZERO_TERMINATED,
+            0, &errornumber, &erroroffset, NULL);
+
+    if (code == NULL) {
+        runtimeError("Regex compilation failed.");
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(newRegex(code, pattern));
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -660,6 +748,24 @@ void initFileLibrary() {
     popn(2);
 }
 
+void initRegexLibrary() {
+    //ObjString* regexName = copyString("Regex", 5);
+    //push(OBJ_VAL(regexName));
+    //vm.regexClass = newClass(copyString("Regex", 5));
+    push(OBJ_VAL(vm.regexClass));
+
+    //defineNativeMethod(vm.regexClass, "init", regexInitNative);
+    defineNativeMethod(vm.regexClass, "test", regexTestNative);
+    defineNativeMethod(vm.regexClass, "exec", regexExecNative);
+
+    defineNative("Regex", regexInitNative);
+
+    pop();
+    //tableSet(&vm.globals, regexName, OBJ_VAL(regexClass));
+
+    //popn(2);
+}
+
 void initVM() {
     resetStack();
     vm.objects = NULL;
@@ -681,6 +787,7 @@ void initVM() {
     vm.arrayClass = newClass(copyString("Array", 5));
     vm.mapClass = newClass(copyString("Map", 3));
     vm.stringClass = newClass(copyString("String", 6));
+    vm.regexClass = newClass(copyString("Regex", 5));
 
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
@@ -705,6 +812,7 @@ void initVM() {
     initMathLibrary();
     initSystemLibrary();
     initFileLibrary();
+    initRegexLibrary();
     //initArrayMethods();
 }
 
@@ -764,7 +872,16 @@ static bool callValue(Value callee, int argCount) {
                     Value initializer;
                     if (tableGet(&klass->methods, vm.initString,
                                 &initializer)) {
-                        return call(AS_CLOSURE(initializer), argCount);
+                        if (IS_NATIVE(initializer)) {
+                            NativeFn native = AS_NATIVE(initializer);
+                            Value result = native(argCount, vm.stackTop - argCount);
+
+                            vm.stackTop -= argCount + 1;
+                            push(result);
+                            return true;
+                        } else {
+                            return call(AS_CLOSURE(initializer), argCount);
+                        }
                     } else if (argCount != 0) {
                         runtimeError("Expect 0 arguments but got %d.", argCount);
                         return false;
@@ -832,6 +949,7 @@ static bool invoke(ObjString* name, int argCount) {
     if (IS_ARRAY(receiver)) klass = vm.arrayClass;
     else if (IS_MAP(receiver)) klass = vm.mapClass;
     else if (IS_STRING(receiver)) klass = vm.stringClass;
+    else if (IS_REGEX(receiver)) klass = vm.regexClass;
 
     if (klass != NULL) {
         return invokeFromClass(klass, name, argCount);

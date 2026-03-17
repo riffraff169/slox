@@ -1,6 +1,9 @@
 #ifndef clox_object_h
 #define clox_object_h
 
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 #include "common.h"
 #include "chunk.h"
 #include "table.h"
@@ -8,6 +11,7 @@
 
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
+#define IS_REGEX(value)         isObjType(value, OBJ_REGEX)
 #define IS_MAP(value)           isObjType(value, OBJ_MAP)
 #define IS_ARRAY(value)         isObjType(value, OBJ_ARRAY)
 #define IS_BOUND_METHOD(value)  isObjType(value, OBJ_BOUND_METHOD)
@@ -18,6 +22,7 @@
 #define IS_NATIVE(value)        isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 
+#define AS_REGEX(value)         ((ObjRegex*)AS_OBJ(value))
 #define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
 #define AS_ARRAY(value)         ((ObjArray*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value)  ((ObjBoundMethod*)AS_OBJ(value))
@@ -40,7 +45,8 @@ typedef enum {
     OBJ_STRING,
     OBJ_UPVALUE,
     OBJ_ARRAY,
-    OBJ_MAP
+    OBJ_MAP,
+    OBJ_REGEX
 } ObjType;
 
 struct Obj {
@@ -115,6 +121,13 @@ typedef struct {
     Table items;
 } ObjMap;
 
+typedef struct {
+    Obj obj;
+    pcre2_code* code;
+    ObjString* pattern;
+} ObjRegex;
+
+ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
 void arrayAppend(ObjArray* array, Value value);
 ObjArray* newArray(int count);

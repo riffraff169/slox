@@ -1,5 +1,5 @@
 CFLAGS = 
-CFLAGS += $(shell pkg-config --cflags gobject-introspection-1.0 gtk4 readline)
+CFLAGS += $(shell pkg-config --cflags gobject-introspection-1.0 gtk4 readline libpcre2-8)
 
 #-Wall -Wextra -g
 TARGET = slox
@@ -9,7 +9,7 @@ OBJ = $(SRC:.c=.o)
 DEPS = $(SRC:.c=.d)
 CC = gcc
 LIBS = -lm
-LIBS += $(shell pkg-config --libs gobject-introspection-1.0 gtk4 readline)
+LIBS += $(shell pkg-config --libs gobject-introspection-1.0 gtk4 readline libpcre2-8) 
 #OBJS    := ${patsubst %.c, %.o, ${wildcard *.c}}
 
 all:	$(TARGET)
