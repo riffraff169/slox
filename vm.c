@@ -19,6 +19,7 @@ static bool callValue(Value callee, int argCount);
 static Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
+static void runtimeError(const char* format, ...);
 
 static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
@@ -159,7 +160,70 @@ static Value arrayMapNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
+static Value mapValuesNative(int argCount, Value* args) {
+    ObjMap* map = AS_MAP(args[0]);
+    ObjArray* valuesArray = newArray(0);
+    push(OBJ_VAL(valuesArray));
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry* entry = &map->items.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(valuesArray, entry->value);
+        }
+    }
+    return pop();
+}
+
 static Value mapKeysNative(int argCount, Value* args) {
+    ObjMap* map = AS_MAP(args[0]);
+    ObjArray* valuesArray = newArray(0);
+    push(OBJ_VAL(valuesArray));
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry* entry = &map->items.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(valuesArray, OBJ_VAL(entry->key));
+        }
+    }
+
+    return pop();
+}
+
+static Value mapHasNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjMap* map = AS_MAP(args[0]);
+    Value dummy;
+    return BOOL_VAL(tableGet(&map->items, AS_STRING(args[1]), &dummy));
+}
+
+static Value mapRemoveNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("Map.remove() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[1])) {
+        runtimeError("Map keys must be strings.");
+        return NIL_VAL;
+    }
+
+    ObjMap* map = AS_MAP(args[0]);
+    ObjString* key = AS_STRING(args[1]);
+    Value removedValue;
+
+    if (tableGet(&map->items, key, &removedValue)) {
+        tableDelete(&map->items, key);
+        return removedValue;
+    }
+
+    return NIL_VAL;
+}
+
+static Value mapLenNative(int argCount, Value* args) {
+    return NUMBER_VAL(AS_MAP(args[0])->items.count);
 }
 
 static Value arrayLenNative(int argCount, Value* args) {
@@ -272,6 +336,10 @@ void initVM() {
     defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
     defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
+    defineNativeMethod(vm.mapClass, "values", mapValuesNative);
+    defineNativeMethod(vm.mapClass, "has", mapHasNative);
+    defineNativeMethod(vm.mapClass, "remove", mapRemoveNative);
+    defineNativeMethod(vm.mapClass, "len", mapLenNative);
 
     //initArrayMethods();
 }

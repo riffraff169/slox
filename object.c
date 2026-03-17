@@ -200,7 +200,7 @@ void printMap(ObjMap* map) {
         Entry* entry = &map->items.entries[i];
         if (entry->key == NULL) continue;
 
-        if (!first) printf(",");
+        if (!first) printf(", ");
 
         printf("\"%s\": ", entry->key->chars);
         printValueSafe(entry->value);
