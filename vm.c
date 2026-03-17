@@ -5,6 +5,7 @@
 #include <math.h>
 #include <time.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -520,6 +521,93 @@ static Value systemGCNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value fileReadNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        runtimeError("File.read() expects 1 string argument (path).");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_STRING(args[1])->chars;
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) return NIL_VAL;
+
+    fseek(file, 0L, SEEK_END);
+    size_t fileSize = ftell(file);
+    rewind(file);
+
+    char* buffer = (char*)malloc(fileSize + 1);
+    if (buffer == NULL) {
+        fclose(file);
+        runtimeError("Not enough memory to read file.");
+        return NIL_VAL;
+    }
+
+    size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
+    buffer[bytesRead] = '\0';
+    fclose(file);
+
+    return OBJ_VAL(takeString(buffer, (int)bytesRead));
+}
+
+static Value fileWriteNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[1]) || !IS_STRING(args[2])) {
+        runtimeError("File.read() expects (path, content).");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_STRING(args[1])->chars;
+    const char* content = AS_STRING(args[2])->chars;
+
+    FILE* file = fopen(path, "w");
+    if (file == NULL) return BOOL_VAL(false);
+
+    fprintf(file, "%s", content);
+    fclose(file);
+    return BOOL_VAL(true);
+}
+
+static Value fileExistsNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) return BOOL_VAL(false);
+    FILE* file = fopen(AS_STRING(args[1])->chars, "r");
+    if (file) {
+        fclose(file);
+        return BOOL_VAL(true);
+    }
+    return BOOL_VAL(false);
+}
+
+static Value fileListNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        runtimeError("File.read() expects 1 string argument (directory path).");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_STRING(args[1])->chars;
+    DIR* dir = opendir(path);
+
+    if (dir == NULL) {
+        return NIL_VAL;
+    }
+
+    ObjArray* fileList = newArray(0);
+    push(OBJ_VAL(fileList));
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        ObjString* name = copyString(entry->d_name, (int)strlen(entry->d_name));
+        push(OBJ_VAL(name));
+        arrayAppend(fileList, OBJ_VAL(name));
+        pop();
+    }
+
+    closedir(dir);
+    return pop();
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -552,6 +640,22 @@ void initSystemLibrary() {
     defineNativeMethod(systemClass, "gc", systemGCNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
+
+    popn(2);
+}
+
+void initFileLibrary() {
+    ObjString* fileName = copyString("File", 4);
+    push(OBJ_VAL(fileName));
+    ObjClass* fileClass = newClass(fileName);
+    push(OBJ_VAL(fileClass));
+
+    defineNativeMethod(fileClass, "read", fileReadNative);
+    defineNativeMethod(fileClass, "write", fileWriteNative);
+    defineNativeMethod(fileClass, "exists", fileExistsNative);
+    defineNativeMethod(fileClass, "list", fileListNative);
+
+    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
     popn(2);
 }
@@ -600,6 +704,7 @@ void initVM() {
 
     initMathLibrary();
     initSystemLibrary();
+    initFileLibrary();
     //initArrayMethods();
 }
 
