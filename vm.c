@@ -502,6 +502,24 @@ static void defineNativeMethod(ObjClass* klass, const char* name,
     popn(2);
 }
 
+static Value systemTimeNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)time(NULL));
+}
+
+static Value systemExitNative(int argCount, Value* args) {
+    int code = 0;
+    if (argCount == 1 && IS_NUMBER(args[1])) {
+        code = (int)AS_NUMBER(args[1]);
+    }
+    exit(code);
+    return NIL_VAL; // technically never reached
+}
+
+static Value systemGCNative(int argCount, Value* args) {
+    collectGarbage();
+    return NIL_VAL;
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -521,6 +539,21 @@ void initMathLibrary() {
     popn(2);
 
     srand((unsigned int)time(NULL));
+}
+
+void initSystemLibrary() {
+    ObjString* systemName = copyString("System", 6);
+    push(OBJ_VAL(systemName));
+    ObjClass* systemClass = newClass(systemName);
+    push(OBJ_VAL(systemClass));
+
+    defineNativeMethod(systemClass, "time", systemTimeNative);
+    defineNativeMethod(systemClass, "exit", systemExitNative);
+    defineNativeMethod(systemClass, "gc", systemGCNative);
+
+    tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
+
+    popn(2);
 }
 
 void initVM() {
@@ -566,6 +599,7 @@ void initVM() {
     defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
 
     initMathLibrary();
+    initSystemLibrary();
     //initArrayMethods();
 }
 
