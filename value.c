@@ -28,6 +28,26 @@ void freeValueArray(ValueArray* array) {
     initValueArray(array);
 }
 
+ObjString* valueToString(Value value) {
+    if (IS_STRING(value)) {
+        return AS_STRING(value);
+    } else if (IS_BOOL(value)) {
+        return AS_BOOL(value) ? copyString("true", 4) : copyString("false", 5);
+    } else if (IS_NIL(value)) {
+        return copyString("nil", 3);
+    } else if (IS_NUMBER(value)) {
+        char buffer[32];
+        int length = snprintf(buffer, 32, "%g", AS_NUMBER(value));
+        return copyString(buffer, length);
+    } else if (IS_ARRAY(value)) {
+        return copyString("[array]", 7);
+    } else if (IS_MAP(value)) {
+        return copyString("[map]", 5);
+    }
+
+    return copyString("obj", 3);
+}
+
 void printValueSafe(Value value) {
     if (IS_STRING(value)) {
         printf("\"%s\"", AS_CSTRING(value));

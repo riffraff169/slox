@@ -42,6 +42,7 @@ typedef struct {
     Value* values;
 } ValueArray;
 
+ObjString* valueToString(Value value);
 bool valuesEqual(Value a, Value b);
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, Value value);

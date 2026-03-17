@@ -1,8 +1,10 @@
+#include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <ctype.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -231,6 +233,161 @@ static Value arrayLenNative(int argCount, Value* args) {
     return NUMBER_VAL(array->count);
 }
 
+static Value stringSplitNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        runtimeError("split() expects 1 string argument (separator).");
+        return NIL_VAL;
+    }
+
+    ObjString* receiver = AS_STRING(args[0]);
+    ObjString* sep = AS_STRING(args[1]);
+
+    ObjArray* result = newArray(0);
+    push(OBJ_VAL(result));
+
+    // Edge case: Empty separator splits into individual characters
+    if (sep->length == 0) {
+        for (int i = 0; i < receiver->length; i++) {
+            ObjString* charStr = copyString(receiver->chars + i, 1);
+            arrayAppend(result, OBJ_VAL(charStr));
+        }
+        return pop();
+    }
+
+    char *text = receiver->chars;
+    char* found;
+    int sepLen = sep->length;
+
+    while ((found = strstr(text, sep->chars)) != NULL) {
+        int segmentLen = (int)(found - text);
+
+        ObjString* segment = copyString(text, segmentLen);
+        push(OBJ_VAL(segment));
+        arrayAppend(result, OBJ_VAL(segment));
+        pop();
+
+        text = found + sepLen;
+    }
+
+    ObjString* lastSegment = copyString(text, (int)strlen(text));
+    arrayAppend(result, OBJ_VAL(lastSegment));
+
+    return pop();
+}
+
+static Value stringTrimNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[0]);
+    char* start = str->chars;
+    char* end = str->chars + str->length - 1;
+
+    while (isspace(*start)) start++;
+
+    while (end > start && isspace(*end)) end--;
+
+    int newLength = (int)(end - start + 1);
+    if (newLength <= 0) return OBJ_VAL(copyString("", 0));
+
+    return OBJ_VAL(copyString(start, newLength));
+}
+
+static Value stringContainsNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjString* haystack = AS_STRING(args[0]);
+    ObjString* needle = AS_STRING(args[1]);
+
+    return BOOL_VAL(strstr(haystack->chars, needle->chars) != NULL);
+}
+
+static Value stringToUpperNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[0]);
+
+    char* buffer = (char*)malloc(str->length + 1);
+    if (buffer == NULL) {
+        runtimeError("join() expects 1 string argument (separator).");
+        return NIL_VAL;
+    }
+
+    for (int i = 0; i < str->length; i++) {
+        buffer[i] = toupper((unsigned char)str->chars[i]);
+    }
+    buffer[str->length] = '\0';
+
+    return OBJ_VAL(takeString(buffer, str->length));
+}
+
+static Value stringToLowerNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[0]);
+
+    char* buffer = (char*)malloc(str->length + 1);
+    if (buffer == NULL) {
+        runtimeError("join() expects 1 string argument (separator).");
+        return NIL_VAL;
+    }
+
+    for (int i = 0; i < str->length; i++) {
+        buffer[i] = tolower((unsigned char)str->chars[i]);
+    }
+    buffer[str->length] = '\0';
+
+    return OBJ_VAL(takeString(buffer, str->length));
+}
+
+static Value arrayJoinNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[1])) {
+        runtimeError("join() expects 1 string argument (separator).");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[0]);
+    ObjString* sep = AS_STRING(args[1]);
+
+    if (array->count == 0) return OBJ_VAL(copyString("", 0));
+
+    int totalLength = 0;
+    for (int i = 0; i < array->count; i++) {
+        Value item = array->values[i];
+
+        ObjString* s = valueToString(item);
+        push(OBJ_VAL(s));
+        totalLength += s->length;
+
+        if (i < array->count - 1) {
+            totalLength += sep->length;
+        }
+    }
+
+    char* buffer = (char*)malloc(totalLength + 1);
+    if (buffer == NULL) {
+        runtimeError("Unable to allocate memory.");
+        exit(1);
+    }
+    char* current = buffer;
+
+    for (int i = 0; i < array->count; i++) {
+        Value itemStr = vm.stackTop[-array->count + i];
+        ObjString* s = AS_STRING(itemStr);
+
+        memcpy(current, s->chars, s->length);
+        current += s->length;
+
+        if (i < array->count - 1) {
+            memcpy(current, sep->chars, sep->length);
+            current += sep->length;
+        }
+    }
+    *current = '\0';
+
+    ObjString* result = takeString(buffer, totalLength);
+
+    popn(array->count);
+
+    return OBJ_VAL(result);
+
+}
+
 static void resetStack() {
     vm.stackTop = vm.stack;
     vm.frameCount = 0;
@@ -326,6 +483,7 @@ void initVM() {
 
     vm.arrayClass = newClass(copyString("Array", 5));
     vm.mapClass = newClass(copyString("Map", 3));
+    vm.stringClass = newClass(copyString("String", 6));
 
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
@@ -335,11 +493,17 @@ void initVM() {
     defineNativeMethod(vm.arrayClass, "isEmpty", arrayIsEmptyNative);
     defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
     defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
+    defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
     defineNativeMethod(vm.mapClass, "values", mapValuesNative);
     defineNativeMethod(vm.mapClass, "has", mapHasNative);
     defineNativeMethod(vm.mapClass, "remove", mapRemoveNative);
     defineNativeMethod(vm.mapClass, "len", mapLenNative);
+    defineNativeMethod(vm.stringClass, "split", stringSplitNative);
+    defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
+    defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
+    defineNativeMethod(vm.stringClass, "toUpper", stringToUpperNative);
+    defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
 
     //initArrayMethods();
 }
