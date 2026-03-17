@@ -37,6 +37,7 @@ typedef struct {
     ObjClass* arrayClass;
     ObjClass* mapClass;
     ObjClass* stringClass;
+    ObjClass* mathClass;
     int nativeExitDepth;
 } VM;
 

@@ -40,6 +40,45 @@ static bool callNative(ObjNative* native, int argCount) {
 }
 */
 
+static Value mathSqrtNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_NUMBER(args[1])) {
+        runtimeError("sqrt() expects 1 number argument.");
+        return NIL_VAL;
+    }
+    return NUMBER_VAL(sqrt(AS_NUMBER(args[1])));
+}
+
+static Value mathAbsNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_NUMBER(args[1])) {
+        runtimeError("sqrt() expects 1 number argument.");
+        return NIL_VAL;
+    }
+    return NUMBER_VAL(fabs(AS_NUMBER(args[1])));
+}
+
+static Value mathFloorNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(floor(AS_NUMBER(args[1])));
+}
+
+static Value mathCeilNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(ceil(AS_NUMBER(args[1])));
+}
+
+static Value mathRandomNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)rand() / (double)RAND_MAX);
+}
+
+static Value mathPiNative(int argCount, Value* args) {
+    return NUMBER_VAL(3.14159265358979323846);
+}
+
+static Value mathExpNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_NUMBER(args[1])) return NUMBER_VAL(exp(1.0));
+    return NUMBER_VAL(exp(AS_NUMBER(args[1])));
+}
+
 static Value arrayPushNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
 
@@ -463,6 +502,27 @@ static void defineNativeMethod(ObjClass* klass, const char* name,
     popn(2);
 }
 
+void initMathLibrary() {
+    ObjString* mathName = copyString("Math", 4);
+    push(OBJ_VAL(mathName));
+    ObjClass* mathClass = newClass(mathName);
+    push(OBJ_VAL(mathClass));
+
+    defineNativeMethod(mathClass, "sqrt", mathSqrtNative);
+    defineNativeMethod(mathClass, "abs", mathAbsNative);
+    defineNativeMethod(mathClass, "floor", mathFloorNative);
+    defineNativeMethod(mathClass, "ceil", mathCeilNative);
+    defineNativeMethod(mathClass, "random", mathRandomNative);
+    defineNativeMethod(mathClass, "pi", mathPiNative);
+    defineNativeMethod(mathClass, "exp", mathExpNative);
+
+    tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
+
+    popn(2);
+
+    srand((unsigned int)time(NULL));
+}
+
 void initVM() {
     resetStack();
     vm.objects = NULL;
@@ -505,6 +565,7 @@ void initVM() {
     defineNativeMethod(vm.stringClass, "toUpper", stringToUpperNative);
     defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
 
+    initMathLibrary();
     //initArrayMethods();
 }
 
@@ -634,6 +695,11 @@ static bool invoke(ObjString* name, int argCount) {
     else if (IS_STRING(receiver)) klass = vm.stringClass;
 
     if (klass != NULL) {
+        return invokeFromClass(klass, name, argCount);
+    }
+
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
         return invokeFromClass(klass, name, argCount);
     }
 
