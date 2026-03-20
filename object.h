@@ -11,6 +11,7 @@
 
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
+#define IS_FOREIGN(value)       isObjType(value, OBJ_FOREIGN)
 #define IS_REGEX(value)         isObjType(value, OBJ_REGEX)
 #define IS_MAP(value)           isObjType(value, OBJ_MAP)
 #define IS_ARRAY(value)         isObjType(value, OBJ_ARRAY)
@@ -22,6 +23,7 @@
 #define IS_NATIVE(value)        isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 
+#define AS_FOREIGN(value)       ((ObjForeign*)AS_OBJ(value))
 #define AS_REGEX(value)         ((ObjRegex*)AS_OBJ(value))
 #define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
 #define AS_ARRAY(value)         ((ObjArray*)AS_OBJ(value))
@@ -32,6 +34,7 @@
 #define AS_INSTANCE(value)      ((ObjInstance*)AS_OBJ(value))
 #define AS_NATIVE(value) \
     (((ObjNative*)AS_OBJ(value))->function)
+#define AS_NATIVE_OBJ(value)    ((ObjNative*)AS_OBJ(value))
 #define AS_STRING(value)        ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)       (((ObjString*)AS_OBJ(value))->chars)
 
@@ -46,6 +49,7 @@ typedef enum {
     OBJ_UPVALUE,
     OBJ_ARRAY,
     OBJ_MAP,
+    OBJ_FOREIGN,
     OBJ_REGEX
 } ObjType;
 
@@ -68,6 +72,8 @@ typedef Value (*NativeFn)(int argCount, Value* args);
 typedef struct {
     Obj obj;
     NativeFn function;
+    ObjString* name;
+    void* foreignData;
 } ObjNative;
 
 struct ObjString {
@@ -91,15 +97,20 @@ typedef struct {
     int upvalueCount;
 } ObjClosure;
 
+typedef Value (*ClassCallFn)(int argCount, Value* args);
+
 typedef struct {
     Obj obj;
     ObjString* name;
     Table methods;
+    ClassCallFn callHandler;
+    void* foreignData;
 } ObjClass;
 
 typedef struct {
     Obj obj;
     ObjClass* klass;
+    void* foreignPtr;
     Table fields;
 } ObjInstance;
 
@@ -127,6 +138,13 @@ typedef struct {
     ObjString* pattern;
 } ObjRegex;
 
+typedef struct {
+    Obj obj;
+    void* ptr;
+    const char* name;
+} ObjForeign;
+
+ObjForeign* newForeign(void* ptr, const char* name);
 ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
 void arrayAppend(ObjArray* array, Value value);

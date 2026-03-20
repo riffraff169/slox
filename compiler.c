@@ -719,6 +719,19 @@ static void interpolation(bool canAssign) {
     }
 }
 
+static void importDeclaration() {
+    consume(TOKEN_STRING, "Expect module name after 'import'.");
+
+    ObjString* nameString = copyString(
+            parser.previous.start + 1,
+            parser.previous.length - 2);
+
+    uint8_t nameConstant = makeConstant(OBJ_VAL(nameString));
+
+    emitBytes(OP_IMPORT, nameConstant);
+    consume(TOKEN_SEMICOLON, "Expect ';' after import path.");
+}
+
 static void lambda(bool canAssign);
 
 ParseRule rules[] = {
@@ -769,6 +782,7 @@ ParseRule rules[] = {
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
+//    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},
 };
 
 static void parsePrecedence(Precedence precedence) {
@@ -1154,6 +1168,8 @@ static void declaration() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_IMPORT)) {
+        importDeclaration();
     } else if (match(TOKEN_FOR)) {
         forStatement();
     } else if (match(TOKEN_IF)) {

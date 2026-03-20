@@ -19,9 +19,16 @@ static void repl() {
         if (!(line = readline("> ")))
             break;
 
-        add_history(line);
+        HISTORY_STATE* myhist = history_get_history_state();
+        HIST_ENTRY **mylist = history_list();
+
+        if (myhist->length == 0 || strcmp(line, mylist[myhist->length - 1]->line) != 0) {
+            add_history(line);
+        }
+
         interpret(line);
         free(line);
+        free(myhist);
     }
     write_history(history_file);
 }

@@ -68,12 +68,14 @@ ObjInstance* newInstance(ObjClass* klass) {
     ObjInstance* instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
     instance->klass = klass;
     initTable(&instance->fields);
+    instance->foreignPtr = NULL;
     return instance;
 }
 
 ObjNative* newNative(NativeFn function) {
     ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
     native->function = function;
+    native->foreignData = NULL;
     return native;
 }
 
@@ -186,6 +188,13 @@ ObjRegex* newRegex(pcre2_code* code, ObjString* pattern) {
     return allocateRegex(code, pattern);
 }
 
+ObjForeign* newForeign(void* ptr, const char* name) {
+    ObjForeign* foreign = ALLOCATE_OBJ(ObjForeign, OBJ_FOREIGN);
+    foreign->ptr = ptr;
+    foreign->name = name;
+    return foreign;
+}
+
 static void printFunction(ObjFunction* function) {
     if (function->name == NULL) {
         printf("<script>");
@@ -222,6 +231,9 @@ void printMap(ObjMap* map) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_FOREIGN:
+            printf("<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
+            break;
         case OBJ_REGEX:
             printf("/%s/", AS_REGEX(value)->pattern->chars);
             break;

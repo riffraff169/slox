@@ -6,6 +6,8 @@
 #include <time.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <dlfcn.h>
+#include <unistd.h>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -25,7 +27,6 @@ static bool callValue(Value callee, int argCount);
 static Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
-static void runtimeError(const char* format, ...);
 
 static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
@@ -43,6 +44,69 @@ static bool callNative(ObjNative* native, int argCount) {
     return true;
 }
 */
+
+static Value getMembersNative(int argCount, Value* args) {
+    if (argCount < 1 || (!IS_INSTANCE(args[0]) && !IS_CLASS(args[0]))) {
+        runtimeError("getMembers() expects a class or instance argument.");
+        return NIL_VAL;
+    }
+
+    ObjArray* list = newArray(0);
+    push(OBJ_VAL(list));
+
+    Table* table;
+    if (IS_INSTANCE(args[0])) {
+        table = &AS_INSTANCE(args[0])->fields;
+    } else {
+        table = &AS_CLASS(args[0])->methods;
+    }
+
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        if (entry->key != NULL) {
+            push(OBJ_VAL(entry->key));
+            arrayAppend(list, OBJ_VAL(entry->key));
+            pop();
+        }
+    }
+    return pop();
+}
+
+void* loadModule(const char* name) {
+    // 1. construct the filename
+    char path[256];
+    snprintf(path, sizeof(path), "./liblox_%s.so", name);
+
+    // 2. open the shared library
+    void* handle = dlopen(path, RTLD_NOW);
+    if (!handle) {
+        runtimeError("Could not load module '%s': %s", name, dlerror());
+        return NULL;
+    }
+
+    if (vm.moduleCapacity < vm.moduleCount + 1) {
+        int oldCapacity = vm.moduleCapacity;
+        vm.moduleCapacity = GROW_CAPACITY(oldCapacity);
+        vm.moduleHandles = GROW_ARRAY(void*, vm.moduleHandles, oldCapacity, vm.moduleCapacity);
+    }
+    vm.moduleHandles[vm.moduleCount++] = handle;
+
+    // 3. find the init function
+    // every module must have a function: void lox_module_init(VM* vm)
+    typedef void (*ModuleInitFn)(VM* vm);
+    ModuleInitFn init = (ModuleInitFn)dlsym(handle, "lox_module_init");
+
+    if (!init) {
+        runtimeError("Module '%s' is missing lox_module_init.", name);
+        dlclose(handle);
+        return NULL;
+    }
+
+    // 4. run the init function to register classes/natives
+    init(&vm);
+    
+    return handle;
+}
 
 static Value mathSqrtNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_NUMBER(args[1])) {
@@ -445,7 +509,7 @@ static ObjClass* getClassForValue(Value value) {
     return NULL;
 }
 
-static void runtimeError(const char* format, ...) {
+void runtimeError(const char* format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
@@ -470,7 +534,7 @@ static void runtimeError(const char* format, ...) {
     resetStack();
 }
 
-static void defineNative(const char* name, NativeFn function) {
+void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
     //tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
@@ -776,8 +840,13 @@ void initVM() {
     vm.grayCapacity = 0;
     vm.grayStack = NULL;
 
+    vm.moduleCount = 0;
+    vm.moduleCapacity = 0;
+    vm.moduleHandles = NULL;
+
     initTable(&vm.globals);
     initTable(&vm.strings);
+    initTable(&vm.giTypes);
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
@@ -788,6 +857,7 @@ void initVM() {
     vm.mapClass = newClass(copyString("Map", 3));
     vm.stringClass = newClass(copyString("String", 6));
     vm.regexClass = newClass(copyString("Regex", 5));
+    vm.moduleClass = newClass(copyString("Module", 6));
 
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
@@ -813,13 +883,25 @@ void initVM() {
     initSystemLibrary();
     initFileLibrary();
     initRegexLibrary();
+
+    defineNative("getMembers", getMembersNative);
     //initArrayMethods();
 }
 
 void freeVM() {
     freeTable(&vm.globals);
     freeTable(&vm.strings);
+    freeTable(&vm.giTypes);
+
     vm.initString = NULL;
+
+    for (int i = 0; i < vm.moduleCount; i++) {
+        if (vm.moduleHandles[i] != NULL) {
+            dlclose(vm.moduleHandles[i]);
+        }
+    }
+    FREE_ARRAY(void*, vm.moduleHandles, vm.moduleCapacity);
+
     freeObjects();
 }
 
@@ -868,6 +950,17 @@ static bool callValue(Value callee, int argCount) {
             case OBJ_CLASS:
                 {
                     ObjClass* klass = AS_CLASS(callee);
+
+                    if (klass->callHandler != NULL) {
+                        Value result = klass->callHandler(argCount, vm.stackTop - argCount);
+
+                        if (vm.frameCount == 0) return false;
+
+                        vm.stackTop -= argCount + 1;
+                        push(result);
+                        return true;
+                    }
+
                     vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
                     Value initializer;
                     if (tableGet(&klass->methods, vm.initString,
@@ -894,8 +987,11 @@ static bool callValue(Value callee, int argCount) {
                 {
                     NativeFn native = AS_NATIVE(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
+                    //if (vm.frameCount == 0) return false;
+
                     vm.stackTop -= argCount + 1;
                     push(result);
+
                     return true;
                 }
             default:
@@ -920,9 +1016,28 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 
     if (IS_NATIVE(method)) {
         NativeFn native = AS_NATIVE(method);
-        Value result = native(argCount, vm.stackTop - argCount - 1);
 
-        vm.stackTop -= argCount + 1;
+        // 1. Capture the receiver (currently at -argCount - 1)
+        Value receiver = vm.stackTop[-argCount - 1];
+
+        // 2. Put the method obj where the reciver was (this becomes args[-1])
+        vm.stackTop[-argCount - 1] = method;
+
+        // 3. shift, move all exist arguments up one slot
+        // we go backward from the top
+        for (int i = 0; i < argCount; i++) {
+            vm.stackTop[-i] = vm.stackTop[-i - 1];
+        }
+        
+        // 4. place the receiver in the now vacant first argument slot
+        vm.stackTop[-argCount] = receiver;
+        vm.stackTop++;
+
+        // 5. call the function (total args is now argCoutn + 1)
+        Value result = native(argCount + 1, vm.stackTop - argCount - 1);
+
+        // 6. cleanup
+        vm.stackTop -= (argCount + 2);
         push(result);
         return true;
     }
@@ -1172,6 +1287,14 @@ static InterpretResult run() {
                     Value receiver = peek(0);
                     ObjString* name = READ_STRING();
 
+                    ObjInstance* instance = AS_INSTANCE(receiver);
+                    printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
+
+                    if (instance->klass == NULL) {
+                        runtimeError("Instance has no class.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
                     //ObjClass* klass = NULL;
                     if (IS_INSTANCE(receiver)) {
                         ObjInstance* instance = AS_INSTANCE(receiver);
@@ -1419,7 +1542,7 @@ static InterpretResult run() {
             case OP_CALL:
                 {
                     int argCount = READ_BYTE();
-                    if (!callValue(peek(argCount), argCount)) {
+                    if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
@@ -1430,23 +1553,7 @@ static InterpretResult run() {
                     ObjString* method = READ_STRING();
                     int argCount = READ_BYTE();
 
-                    Value receiver = peek(argCount);
-
-                    /*
-                    if (IS_ARRAY(receiver)) {
-                        Value function;
-                        if (tableGet(&vm.arrayMethods, method, &function)) {
-                            if (callNative((ObjNative*)AS_OBJ(function), argCount)) {
-                                break;
-                            }
-                            break;
-                        }
-                        runtimeError("Array has no method '%s'.", method->chars);
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    */
-
-                    if (!invoke(method, argCount)) {
+                    if (!invoke(method, argCount) || vm.frameCount == 0) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
@@ -1483,6 +1590,23 @@ static InterpretResult run() {
             case OP_CLOSE_UPVALUE:
                 closeUpvalues(vm.stackTop - 1);
                 pop();
+                break;
+            case OP_IMPORT: 
+                {
+                    ObjString* moduleName = AS_STRING(READ_CONSTANT());
+                    /*
+                    if (access(moduleName->chars, F_OK) == -1) {
+                        runtimeError("Module file not found at %s", moduleName->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    */
+
+                    void* handle = loadModule(moduleName->chars);
+                    if (handle == NULL) {
+                        runtimeError("Could not load module.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                }
                 break;
             case OP_RETURN:
                 {

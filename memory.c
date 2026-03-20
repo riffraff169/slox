@@ -146,6 +146,11 @@ static void freeObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_FOREIGN:
+            {
+                FREE(ObjForeign, object);
+            }
+            break;
         case OBJ_REGEX:
             {
                 ObjRegex* re = (ObjRegex*)object;
@@ -236,6 +241,8 @@ static void markRoots() {
     markObject((Obj*)vm.arrayClass);
     markObject((Obj*)vm.mapClass);
     markObject((Obj*)vm.stringClass);
+    markObject((Obj*)vm.moduleClass);
+    markTable(&vm.giTypes);
 }
 
 static void traceReferences() {
