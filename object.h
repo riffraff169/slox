@@ -97,17 +97,25 @@ typedef struct {
     int upvalueCount;
 } ObjClosure;
 
-typedef Value (*ClassCallFn)(int argCount, Value* args);
+typedef struct ObjInstance ObjInstance;
+typedef struct ObjClass ObjClass;
 
-typedef struct {
+typedef Value (*ClassCallFn)(int argCount, Value* args);
+typedef Value (*ForeignGetFn)(ObjInstance* instance, ObjString* name);
+typedef bool (*ForeignSetFn)(ObjInstance* instance, ObjString* name, Value value);
+
+typedef struct ObjClass {
     Obj obj;
     ObjString* name;
     Table methods;
-    ClassCallFn callHandler;
+
     void* foreignData;
+    ClassCallFn callHandler;
+    ForeignGetFn getter;
+    ForeignSetFn setter;
 } ObjClass;
 
-typedef struct {
+typedef struct ObjInstance {
     Obj obj;
     ObjClass* klass;
     void* foreignPtr;

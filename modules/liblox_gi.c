@@ -2,6 +2,119 @@
 #include <girepository.h>
 #include "../vm.h"
 
+/*
+static GValue LoxValueToGValue(GParamSpec* spec, Value value) {
+    GValue gval = G_VALUE_INIT;
+    g_value_init(&gval, spec->value_type);
+
+    switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
+        case G_TYPE_STRING:
+            if (!IS_STRING(value)) goto type_error;
+            g_value_set_string(&gval, AS_CSTRING(value));
+            break;
+        case G_TYPE_INT:
+            if (!IS_NUMBER(value)) goto type_error;
+            g_value_set_int(&gval, (int)AS_NUMBER(value));
+            break;
+        case G_TYPE_BOOLEAN:
+            if (!IS_BOOL(value)) goto type_error;
+            g_value_set_boolean(&gval, AS_BOOL(value));
+            break;
+        default:
+            printf("Setter: unhandled gtype %d\n", spec->value_type);
+            g_value_set_boolean(&gval, false);
+            break;
+    }
+    return gval;
+}
+*/
+
+static Value GValueToLoxValue(GParamSpec* spec, GValue gval) {
+    Value result = NIL_VAL;
+
+    switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
+        case G_TYPE_STRING:
+            printf("TYPE STRING\n");
+            const char* str = g_value_get_string(&gval);
+            if (str == NULL) {
+                result = OBJ_VAL(copyString("", 0));
+            } else {
+                result = OBJ_VAL(copyString(str, strlen(str)));
+            } 
+            break;
+        case G_TYPE_INT:
+            printf("TYPE INT\n");
+            result = NUMBER_VAL(g_value_get_int(&gval));
+            break;
+        case G_TYPE_BOOLEAN:
+            printf("TYPE BOOL\n");
+            result = BOOL_VAL(g_value_get_boolean(&gval));
+            break;
+        default:
+            printf("Unhandled gtype %d\n", spec->value_type);
+            break;
+    }
+    return result;
+}
+
+static bool giPropertySetter(ObjInstance* instance, ObjString* name, Value value) {
+    GObjectClass* obj_class = G_OBJECT_GET_CLASS(instance->foreignPtr);
+    GParamSpec* spec = g_object_class_find_property(obj_class, name->chars);
+
+    if (spec == NULL) return false;
+
+    if (!(spec->flags & G_PARAM_WRITABLE)) return false;
+
+    GValue gval = G_VALUE_INIT;
+    g_value_init(&gval, spec->value_type);
+
+    switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
+        case G_TYPE_STRING:
+            if (!IS_STRING(value)) goto type_error;
+            g_value_set_string(&gval, AS_CSTRING(value));
+            break;
+        case G_TYPE_INT:
+            if (!IS_NUMBER(value)) goto type_error;
+            g_value_set_int(&gval, (int)AS_NUMBER(value));
+            break;
+        case G_TYPE_DOUBLE:
+            if (!IS_NUMBER(value)) goto type_error;
+            g_value_set_double(&gval, AS_NUMBER(value));
+            break;
+        case G_TYPE_BOOLEAN:
+            if (!IS_BOOL(value)) goto type_error;
+            g_value_set_boolean(&gval, AS_BOOL(value));
+            break;
+        default:
+            printf("Setter: Unhandled gtype %d\n", spec->value_type);
+            g_value_unset(&gval);
+            return false;
+    }
+    
+    g_object_set_property(G_OBJECT(instance->foreignPtr), name->chars, &gval);
+    g_value_unset(&gval);
+    return true;
+
+type_error:
+    g_value_unset(&gval);
+    return false;
+}
+
+static Value giPropertyGetter(ObjInstance* instance, ObjString* name) {
+    GObjectClass* obj_class = G_OBJECT_GET_CLASS(instance->foreignPtr);
+    GParamSpec* spec = g_object_class_find_property(obj_class, name->chars);
+
+    if (spec == NULL) return NIL_VAL;
+
+    GValue gval = G_VALUE_INIT;
+    g_value_init(&gval, spec->value_type);
+    g_object_get_property(G_OBJECT(instance->foreignPtr), name->chars, &gval);
+
+    Value result = NIL_VAL;
+    result = GValueToLoxValue(spec, gval);
+    g_value_unset(&gval);
+    return result;
+}
 
 static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_info) {
     if (type_info == NULL) return;
@@ -305,6 +418,8 @@ static Value giLoadNative(int argCount, Value* args) {
 
             klass->foreignData = g_base_info_ref(info);
             klass->callHandler = giClassCallHandler;
+            klass->getter = giPropertyGetter;
+            klass->setter = giPropertySetter;
 
             initTable(&klass->methods);
 
@@ -317,6 +432,21 @@ static Value giLoadNative(int argCount, Value* args) {
             pop();
             pop();
         }
+        /*
+        else if (type == GI_INFO_TYPE_ENUM) {
+            GIEnumInfo* enum_info = (GIEnumInfo*)info;
+            ObjClass* enum_obj = newClass(copyString(name, strlen(name)));
+
+            int n_values = g_enum_info_get_n_values(enum_info);
+            for (int i = 0; i < n_values; i++) {
+                GIValueInfo* val_info = g_enum_info_get_value(enum_info, i);
+                const char* val_name = g_base_info_get_name((GIBaseInfo*)val_info);
+                int64_t val = g_value_info_get_value(val_info);
+
+                tableSet(&enum_obj->fields, copyString(val_name, strlen(val_name)), NUMBER_VAL((double)val));
+                g_base_info_unref(val_info);
+            }
+            */
         g_base_info_unref(info);
     }
     return pop();

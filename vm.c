@@ -1307,6 +1307,15 @@ static InterpretResult run() {
                             break;
                         }
 
+                        if (instance->klass->getter != NULL) {
+                            value = instance->klass->getter(instance, name);
+                            if (!IS_NIL(value)) {
+                                pop();
+                                push(value);
+                                break;
+                            }
+                        }
+
                         if (!bindMethod(instance->klass, name)) {
                             return INTERPRET_RUNTIME_ERROR;
                         }
@@ -1393,8 +1402,20 @@ static InterpretResult run() {
                     }
 
                     ObjInstance* instance = AS_INSTANCE(peek(1));
-                    tableSet(&instance->fields, READ_STRING(), peek(0));
-                    Value value = pop();
+                    ObjString* name = READ_STRING();
+                    Value value = peek(0);
+
+                    if (instance->klass->setter != NULL) {
+                        if (instance->klass->setter(instance, name, value)) {
+                            pop();
+                            pop();
+                            push(value);
+                            break;
+                        }
+                    }
+
+                    tableSet(&instance->fields, name, value);
+                    pop();
                     pop();
                     push(value);
                     break;
