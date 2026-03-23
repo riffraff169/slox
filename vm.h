@@ -39,7 +39,14 @@ typedef struct {
     ObjClass* stringClass;
     ObjClass* mathClass;
     ObjClass* regexClass;
+    ObjClass* moduleClass;
     int nativeExitDepth;
+
+    int moduleCount;
+    int moduleCapacity;
+    void** moduleHandles;
+
+    Table giTypes;
 } VM;
 
 typedef enum {
@@ -50,6 +57,8 @@ typedef enum {
 
 extern VM vm;
 
+void defineNative(const char* name, NativeFn function);
+void runtimeError(const char* format, ...);
 void initVM();
 void freeVM();
 InterpretResult interpret(const char* source);
