@@ -1010,6 +1010,7 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
+        printf("[INVOKE]\n");
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -1082,6 +1083,7 @@ static bool invoke(ObjString* name, int argCount) {
 static bool bindMethod(ObjClass* klass, ObjString* name) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
+        printf("[bindMethod]\n");
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -1287,12 +1289,14 @@ static InterpretResult run() {
                     Value receiver = peek(0);
                     ObjString* name = READ_STRING();
 
-                    ObjInstance* instance = AS_INSTANCE(receiver);
-                    printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
+                    if (IS_INSTANCE(receiver)) {
+                        ObjInstance* instance = AS_INSTANCE(receiver);
+                        printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
 
-                    if (instance->klass == NULL) {
-                        runtimeError("Instance has no class.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        if (instance->klass == NULL) {
+                            runtimeError("Instance has no class.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                     }
 
                     //ObjClass* klass = NULL;
@@ -1338,59 +1342,7 @@ static InterpretResult run() {
                         }
                     }
 
-                    /*
-                    if (IS_ARRAY(receiver)) {
-                        klass = vm.arrayClass;
-                        break;
-                    }
-
-                    if (IS_MAP(receiver)) {
-                        klass = vm.mapClass;
-                        break;
-                    }
-
-                    if (IS_STRING(receiver)) {
-                        klass = vm.stringClass;
-                        break;
-                    }
-                    */
-
-                    /*
-                    if (IS_ARRAY(receiver)) {
-                        ObjString* name = READ_STRING();
-                        Value method;
-                        if (tableGet(&vm.arrayMethods, name, &method)) {
-                            ObjBoundMethod* bound = newBoundMethod(receiver, AS_CLOSURE(method));
-                            pop();
-                            push(OBJ_VAL(bound));
-                            break;
-                        }
-                        runtimeError("Array has no method '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    */
-
-                    /*
-                    if (!IS_INSTANCE(peek(0))) {
-                        runtimeError("Only instances have properties.");
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-
-                    ObjInstance* instance = AS_INSTANCE(peek(0));
-                    ObjString* name = READ_STRING();
-
-                    Value value;
-                    if (tableGet(&instance->fields, name, &value)) {
-                        pop();
-                        push(value);
-                        break;
-                    }
-
-                    if (!bindMethod(instance->klass, name)) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    */
-                    runtimeError("Property '%s' nothave found.", name->chars);
+                    runtimeError("Property '%s' not found.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;

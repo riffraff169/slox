@@ -2,4 +2,6 @@ slox
 *.o
 *.d
 examples
+*.so
 .*_history
+*.c.*
