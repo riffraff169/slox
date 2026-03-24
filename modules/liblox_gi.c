@@ -2,72 +2,126 @@
 #include <girepository.h>
 #include "../vm.h"
 
-/*
-static GValue LoxValueToGValue(GParamSpec* spec, Value value) {
-    GValue gval = G_VALUE_INIT;
-    g_value_init(&gval, spec->value_type);
+//static Table keepAlive;
+static ObjInstance* globalRegistry = NULL;
 
-    switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
-        case G_TYPE_STRING:
-            if (!IS_STRING(value)) goto type_error;
-            g_value_set_string(&gval, AS_CSTRING(value));
-            break;
-        case G_TYPE_INT:
-            if (!IS_NUMBER(value)) goto type_error;
-            g_value_set_int(&gval, (int)AS_NUMBER(value));
-            break;
-        case G_TYPE_BOOLEAN:
-            if (!IS_BOOL(value)) goto type_error;
-            g_value_set_boolean(&gval, AS_BOOL(value));
-            break;
-        default:
-            printf("Setter: unhandled gtype %d\n", spec->value_type);
-            g_value_set_boolean(&gval, false);
-            break;
-    }
-    return gval;
+static void stub_callback(void) {
+    printf("[DEBUG] In stub_callback\n");
+}
+
+void initGiModule() {
+}
+
+/*
+ObjString* getClosureKey(GClosure* closure) {
+    char addr[32];
+    sprintf(addr, "%p", (void*)closure);
+    return copyString(addr, strlen(addr));
 }
 */
 
-static Value giInspectNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[0])) return NIL_VAL;
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+void LoxValueToGValue(Value loxVal, GValue* gval) {
+    GType expectedType = G_VALUE_TYPE(gval);
 
-    printf("--- Inspecting Instance %p ---\n", instance);
-    for (int i = 0; i < instance->fields.capacity; i++) {
-        Entry* entry = &instance->fields.entries[i];
+    switch (G_TYPE_FUNDAMENTAL(expectedType)) {
+        case G_TYPE_BOOLEAN:
+            g_value_set_boolean(gval, AS_BOOL(loxVal));
+            break;
+        case G_TYPE_INT:
+            g_value_set_int(gval, (int)AS_NUMBER(loxVal));
+            break;
+        case G_TYPE_DOUBLE:
+            g_value_set_double(gval, AS_NUMBER(loxVal));
+            break;
+        case G_TYPE_STRING:
+            g_value_set_string(gval, AS_CSTRING(loxVal));
+            break;
+        case G_TYPE_OBJECT:
+            if (IS_NIL(loxVal)) {
+                g_value_set_object(gval, NULL);
+            } else {
+                g_value_set_object(gval, G_OBJECT(AS_INSTANCE(loxVal)->foreignPtr));
+            }
+            break;
+        default:
+            printf("Warning: Unsupported return type GType %s\n", g_type_name(expectedType));
+            break;
+    }
+}
+
+Value wrap_gobject_to_lox(GObject* obj) {
+    if (obj == NULL) return NIL_VAL;
+
+    const char* typeName = G_OBJECT_TYPE_NAME(obj);
+    ObjString* key = copyString(typeName, strlen(typeName));
+    push(OBJ_VAL(key)); // push key onto stack
+
+    Value klassValue;
+    printf("[DEBUG] In wrap_gobject_to_lox\n");
+
+    printf("[DEBUG] typeName: '%s'\n", key->chars);
+
+    pop(); // remove key from stack
+
+    printf("[DEBUG] Value: ");
+    //printValue(klassValue);
+    printf("\n");
+    GType type = G_TYPE_FROM_INSTANCE(obj);
+
+    while (type != 0) {
+        const char* name = g_type_name(type);
+
+        if (tableGet(&globalRegistry->fields, key, &klassValue)) {
+            printValue(klassValue);
+            ObjClass* klass = AS_CLASS(klassValue);
+            ObjInstance* instance = newInstance(klass);
+            instance->foreignPtr = obj;
+            g_object_ref(obj);
+            return OBJ_VAL(instance);
+        }
+        type = g_type_parent(type);
+    }
+
+    /*
+    printf("--- Current Registry Contents ---\n");
+    for (int i = 0; i < globalRegistry->fields.capacity; i++) {
+        Entry* entry = &globalRegistry->fields.entries[i];
         if (entry->key != NULL) {
-            printf(" Field: '%s' [Hash: %u] [Ptr: %p]\n",
-                    entry->key->chars, entry->key->hash, (void*)entry->key);
+            printf("  Key: '%s' Ptr: %p\n", entry->key->chars, (void*)entry->key);
         }
     }
+    */
+
+    printf("Warning: No Lox class found for GType %s\n", typeName);
     return NIL_VAL;
 }
 
-static Value GValueToLoxValue(GParamSpec* spec, GValue gval) {
+static Value GValueToLoxValue(GValue gval) {
     Value result = NIL_VAL;
 
-    switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
+    //switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
+    GType gtype = G_TYPE_FUNDAMENTAL(G_VALUE_TYPE(&gval));
+
+    switch (gtype) {
         case G_TYPE_STRING:
             const char* str = g_value_get_string(&gval);
             if (str == NULL) {
-                result = OBJ_VAL(copyString("", 0));
+                return OBJ_VAL(copyString("", 0));
             } else {
-                result = OBJ_VAL(copyString(str, strlen(str)));
-                printValue(result);
+                return OBJ_VAL(copyString(str, strlen(str)));
             } 
-            break;
         case G_TYPE_INT:
-            result = NUMBER_VAL(g_value_get_int(&gval));
-            break;
+        case G_TYPE_FLOAT:
+        case G_TYPE_DOUBLE:
+            return NUMBER_VAL(g_value_get_int(&gval));
         case G_TYPE_BOOLEAN:
-            result = BOOL_VAL(g_value_get_boolean(&gval));
-            break;
+            return BOOL_VAL(g_value_get_boolean(&gval));
         case G_TYPE_OBJECT:
             {
-                GObject* gptr = g_value_get_object(&gval);
-                if (gptr == NULL) return NIL_VAL;
+                GObject* obj = g_value_get_object(&gval);
+                if (obj == NULL) return NIL_VAL;
 
+                /*
                 const char* type_name = G_OBJECT_TYPE_NAME(gptr);
 
                 Value klass;
@@ -88,14 +142,118 @@ static Value GValueToLoxValue(GParamSpec* spec, GValue gval) {
                     result = NIL_VAL;
                 }
                 pop(); // string
+                */
+                return wrap_gobject_to_lox(obj);
             }
-            break;
+            return result;
+        case G_TYPE_BOXED:
+            return NIL_VAL;
         default:
-            printf("Unhandled gtype %d\n", spec->value_type);
+            printf("Unhandled gtype %d\n", gtype);
+            return NIL_VAL;
             break;
     }
-    return result;
+    return NIL_VAL;
 }
+
+void lox_marshal_generic(GClosure* closure,
+        GValue* return_value,
+        guint n_params,
+        const GValue* params,
+        gpointer hint,
+        gpointer data) {
+    ObjClosure* loxClosure = (ObjClosure*)closure->data;
+
+    Value* stackStart = vm.stackTop;
+
+    push(OBJ_VAL(loxClosure));
+
+    printf("[DEBUG] Signal Marshaller triggered for closure %p\n", (void*)loxClosure);
+
+    for (guint i = 0; i < n_params; i++) {
+        push(GValueToLoxValue(params[i]));
+    }
+
+    vm.nativeExitDepth = vm.frameCount - 1;
+
+    if (vmCall(loxClosure, n_params)) {
+        run();
+    }
+
+    if (return_value != NULL && G_IS_VALUE(return_value)) {
+        Value loxResult = peek(0);
+        LoxValueToGValue(loxResult, return_value);
+    }
+
+    vm.stackTop = stackStart;
+}
+
+static void loxSignalProxy(GObject* widget, gpointer data) {
+    ObjClosure* closure = (ObjClosure*)data;
+    push(OBJ_VAL(closure));
+
+    vm.nativeExitDepth = vm.frameCount - 1;
+
+    if (vmCall(closure, 0)) {
+        run();
+    }
+}
+
+static void unpin_from_lox(gpointer data, GClosure* gclosure) {
+    char keyBuf[32];
+    sprintf(keyBuf, "%p", (void*)gclosure);
+    ObjString* key = copyString(keyBuf, strlen(keyBuf));
+
+    tableDelete(&globalRegistry->fields, key);
+}
+
+static Value giConnectNative(int argCount, Value* args) {
+    if (globalRegistry == NULL) {
+        printf("[CRITICAL] globalRegistry is NULL in gi.connect\n");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjString* signal_name = AS_STRING(args[1]);
+    ObjClosure* closure = AS_CLOSURE(args[2]);
+
+    GClosure* gclosure = g_cclosure_new(G_CALLBACK(stub_callback), closure, NULL);
+    g_closure_set_marshal(gclosure, lox_marshal_generic);
+
+    char keyBuf[32];
+    sprintf(keyBuf, "%p", (void*)gclosure);
+    ObjString* key = copyString(keyBuf, strlen(keyBuf));
+
+    tableSet(&globalRegistry->fields, key, OBJ_VAL(closure));
+
+    g_closure_add_finalize_notifier(gclosure, closure, (GClosureNotify)unpin_from_lox);
+
+    //g_signal_connect(instance->foreignPtr, signal_name->chars,
+    //        G_CALLBACK(loxSignalProxy), closure);
+
+    g_signal_connect_closure(instance->foreignPtr, signal_name->chars,
+            gclosure, false);
+
+    printf("[CONNECT] Closure connected\n");
+
+    return NIL_VAL;
+}
+
+static Value giInspectNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[0])) return NIL_VAL;
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+
+    printf("--- Inspecting Instance %p ---\n", instance);
+    for (int i = 0; i < instance->fields.capacity; i++) {
+        Entry* entry = &instance->fields.entries[i];
+        if (entry->key != NULL) {
+            printf(" Field: '%s' [Hash: %u] [Ptr: %p]\n",
+                    entry->key->chars, entry->key->hash, (void*)entry->key);
+        }
+    }
+    return NIL_VAL;
+}
+
 
 static bool giPropertySetter(ObjInstance* instance, ObjString* name, Value value) {
     GObjectClass* obj_class = G_OBJECT_GET_CLASS(instance->foreignPtr);
@@ -162,7 +320,7 @@ static Value giPropertyGetter(ObjInstance* instance, ObjString* name) {
     g_object_get_property(G_OBJECT(instance->foreignPtr), name->chars, &gval);
 
     Value result = NIL_VAL;
-    result = GValueToLoxValue(spec, gval);
+    result = GValueToLoxValue(gval);
     g_value_unset(&gval);
     return result;
 }
@@ -452,9 +610,16 @@ static Value giLoadNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+
     ObjInstance* module = newInstance(vm.moduleClass);
     push(OBJ_VAL(module)); // [1] module
     initTable(&module->fields);
+
+    /*
+    ObjInstance* registry = newInstance(vm.moduleClass);
+    tableSet(&module->fields, copyString("__registry", 10), OBJ_VAL(registry));
+    globalRegistry = registry;
+    */
 
     int n_infos = g_irepository_get_n_infos(NULL, namespace);
 
@@ -476,6 +641,13 @@ static Value giLoadNative(int argCount, Value* args) {
             ObjString* className = copyString(name, strlen(name));
             push(OBJ_VAL(className));
 
+            const char* namespace = g_base_info_get_namespace(info);
+
+            int fullLen = strlen(namespace) + strlen(name) + 1;
+            char* fullTypeName = malloc(fullLen);
+            snprintf(fullTypeName, fullLen, "%s%s", namespace, name);
+
+
             ObjClass* klass = newClass(className);
             push(OBJ_VAL(klass));
 
@@ -484,13 +656,21 @@ static Value giLoadNative(int argCount, Value* args) {
             klass->getter = giPropertyGetter;
             klass->setter = giPropertySetter;
 
+            const char* typeName = g_base_info_get_name(info);
+            if (strcmp(namespace, "GObject") == 0) {
+                snprintf(fullTypeName, strlen(name), "%s", name);
+            }
+            tableSet(&globalRegistry->fields, copyString(fullTypeName, strlen(fullTypeName)),
+                    OBJ_VAL(klass));
+
             initTable(&klass->methods);
 
             loadMethodsIntoClass(klass, info);
 
             tableSet(&module->fields, className, OBJ_VAL(klass));
 
-            printf("[LOADER]: Registered Class '%s' | Info: %p\n", name, klass->foreignData);
+            printf("[LOADER]: Registered Class '%s' (Internal: %s)\n", name, fullTypeName);
+            free(fullTypeName);
 
             pop();
             pop();
@@ -523,6 +703,8 @@ static Value giLoadNative(int argCount, Value* args) {
 }
 
 void lox_module_init(VM* vm) {
+    initGiModule();
+
     ObjInstance* giModule = newInstance(vm->moduleClass);
     push(OBJ_VAL(giModule)); // [1] instance
 
@@ -538,6 +720,13 @@ void lox_module_init(VM* vm) {
     ObjString* giStr = copyString("gi", 2);
     push(OBJ_VAL(giStr)); // [3] string
     tableSet(&vm->globals, giStr, OBJ_VAL(giModule));
+    globalRegistry = newInstance(vm->moduleClass);
+    tableSet(&giModule->fields, copyString("__registry", 16), OBJ_VAL(globalRegistry));
+
+    /*
+    static Table* registryTable = NULL;
+    registryTable = &internalRegistry->fields;
+    */
 
     ObjNative* loopFn = newNative(giLoopNative);
     push(OBJ_VAL(loopFn)); // [4] loop
@@ -560,6 +749,10 @@ void lox_module_init(VM* vm) {
     tableSet(&giModule->fields, inspectStr, OBJ_VAL(inspectFn));
     pop();
     pop();
+
+    tableSet(&giModule->fields,
+            copyString("connect", 7),
+            OBJ_VAL(newNative(giConnectNative)));
 
     pop(); // [2]
     pop(); // [1]

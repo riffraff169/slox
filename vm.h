@@ -61,8 +61,11 @@ void defineNative(const char* name, NativeFn function);
 void runtimeError(const char* format, ...);
 void initVM();
 void freeVM();
+bool vmCall(ObjClosure* closure, int argCount);
+InterpretResult run();
 InterpretResult interpret(const char* source);
 void push(Value value);
 Value pop();
+Value peek(int distance);
 
 #endif

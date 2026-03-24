@@ -20,11 +20,11 @@
 #include "vm.h"
 
 VM vm;
-static InterpretResult run();
+InterpretResult run();
 //void initArrayMethods();
 
 static bool callValue(Value callee, int argCount);
-static Value peek(int distance);
+Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
 
@@ -915,11 +915,11 @@ Value pop() {
     return *vm.stackTop;
 }
 
-static Value peek(int distance) {
+Value peek(int distance) {
     return vm.stackTop[-1 - distance];
 }
 
-static bool call(ObjClosure* closure, int argCount) {
+bool vmCall(ObjClosure* closure, int argCount) {
     if (argCount != closure->function->arity) {
         runtimeError("Expected %d arguments but got %d.",
                 closure->function->arity, argCount);
@@ -945,7 +945,7 @@ static bool callValue(Value callee, int argCount) {
                 {
                     ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
                     vm.stackTop[-argCount - 1] = bound->receiver;
-                    return call(bound->method, argCount);
+                    return vmCall(bound->method, argCount);
                 }
             case OBJ_CLASS:
                 {
@@ -973,7 +973,7 @@ static bool callValue(Value callee, int argCount) {
                             push(result);
                             return true;
                         } else {
-                            return call(AS_CLOSURE(initializer), argCount);
+                            return vmCall(AS_CLOSURE(initializer), argCount);
                         }
                     } else if (argCount != 0) {
                         runtimeError("Expect 0 arguments but got %d.", argCount);
@@ -982,7 +982,7 @@ static bool callValue(Value callee, int argCount) {
                     return true;
                 }
             case OBJ_CLOSURE:
-                return call(AS_CLOSURE(callee), argCount);
+                return vmCall(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE:
                 {
                     NativeFn native = AS_NATIVE(callee);
@@ -1043,7 +1043,7 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         return true;
     }
 
-    return call(AS_CLOSURE(method), argCount);
+    return vmCall(AS_CLOSURE(method), argCount);
 }
 
 static bool invoke(ObjString* name, int argCount) {
@@ -1159,7 +1159,7 @@ Value numberToValue(double num) {
     return OBJ_VAL(copyString(buffer, length));
 }
 
-static InterpretResult run() {
+InterpretResult run() {
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
 
 #define READ_BYTE() (*frame->ip++)
@@ -1774,7 +1774,7 @@ InterpretResult interpret(const char* source) {
     ObjClosure* closure = newClosure(function);
     pop();
     push(OBJ_VAL(closure));
-    call(closure, 0);
+    vmCall(closure, 0);
 
     return run();
 }
