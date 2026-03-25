@@ -103,6 +103,7 @@ typedef struct ObjClass ObjClass;
 typedef Value (*ClassCallFn)(int argCount, Value* args);
 typedef Value (*ForeignGetFn)(ObjInstance* instance, ObjString* name);
 typedef bool (*ForeignSetFn)(ObjInstance* instance, ObjString* name, Value value);
+typedef void (*DestructorFn)(ObjInstance* instance);
 
 typedef struct ObjClass {
     Obj obj;
@@ -113,12 +114,14 @@ typedef struct ObjClass {
     ClassCallFn callHandler;
     ForeignGetFn getter;
     ForeignSetFn setter;
+    DestructorFn destructor;
 } ObjClass;
 
 typedef struct ObjInstance {
     Obj obj;
     ObjClass* klass;
     void* foreignPtr;
+    //bool isBoxed;
     Table fields;
 } ObjInstance;
 
