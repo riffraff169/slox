@@ -245,6 +245,10 @@ Token scanToken() {
     if (isDigit(c)) return number();
 
     switch (c) {
+        case '&':
+            return makeToken(TOKEN_AMPERSAND);
+        case '|':
+            return makeToken(TOKEN_PIPE);
         case '(':
             return makeToken(TOKEN_LEFT_PAREN);
         case ')':

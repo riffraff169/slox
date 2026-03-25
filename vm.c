@@ -1451,27 +1451,44 @@ InterpretResult run() {
                         runtimeError("Operands must be numbers.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
-                    Value b = pop();
-                    Value a = pop();
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
 
-                    double ad = AS_NUMBER(a);
-                    double bd = AS_NUMBER(b);
-
-                    if (bd == 0) {
+                    if (b == 0) {
                         runtimeError("Division by zero.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
+                    /*
                     double res = fmod(ad, bd);
                     push(NUMBER_VAL(res == 0.0 ? 0.0 : res));
+                    */
+                    push(NUMBER_VAL(fmod(a, b)));
                 }
-                ;
+                break;
             case OP_NEGATE:
                 if (!IS_NUMBER(peek(0))) {
                     runtimeError("Operand must be a number.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 push(NUMBER_VAL(-AS_NUMBER(pop())));
+                break;
+            case OP_BITWISE_AND:
+                {
+                    Value b = pop();
+                    Value a = pop();
+
+                    int result = (int)AS_NUMBER(a) & (int)AS_NUMBER(b);
+                    push(NUMBER_VAL((double)result));
+                }
+                break;
+            case OP_BITWISE_OR:
+                {
+                    Value b = pop();
+                    Value a = pop();
+                    int result = (int)AS_NUMBER(a) | (int)AS_NUMBER(b);
+                    push(NUMBER_VAL((double)result));
+                }
                 break;
             case OP_PRINT:
                 {

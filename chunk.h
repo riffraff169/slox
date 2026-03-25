@@ -36,6 +36,8 @@ typedef enum {
     OP_MULTIPLY,
     OP_DIVIDE,
     OP_NOT,
+    OP_BITWISE_AND,
+    OP_BITWISE_OR,
     OP_POW,
     OP_MOD,
     OP_NEGATE,

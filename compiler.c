@@ -455,6 +455,11 @@ static void binary(bool canAssign) {
         case TOKEN_PERCENT:
             emitByte(OP_MOD);
             break;
+        case TOKEN_AMPERSAND:
+            emitByte(OP_BITWISE_AND);
+            break;
+        case TOKEN_PIPE:
+            emitByte(OP_BITWISE_OR);
         default:
             return;
     }
@@ -764,6 +769,8 @@ ParseRule rules[] = {
     [TOKEN_STRING]           = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
     [TOKEN_AND]              = {NULL,     and_,   PREC_AND},
+    [TOKEN_AMPERSAND]        = {NULL,     binary, PREC_COMPARISON},
+    [TOKEN_PIPE]             = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_CLASS]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ELSE]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]            = {literal,  NULL,   PREC_NONE},
