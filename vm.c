@@ -760,6 +760,109 @@ static Value regexInitNative(int argCount, Value* args) {
     return OBJ_VAL(newRegex(code, pattern));
 }
 
+static Value fromHexNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
+
+    const char* str = AS_CSTRING(args[1]);
+    char* endptr;
+
+    unsigned long long result = strtoull(str, &endptr, 16);
+
+    if (str == endptr) return NIL_VAL;
+    return NUMBER_VAL((double)result);
+}
+
+static Value fromBinNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
+
+    const char* str = AS_CSTRING(args[1]);
+    char* endptr;
+
+    unsigned long long result = strtoull(str, &endptr, 2);
+
+    if (str == endptr) return NIL_VAL;
+    return NUMBER_VAL((double)result);
+}
+
+static Value mathParseNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
+
+    const char* str = AS_CSTRING(args[1]);
+    char* endptr;
+
+    unsigned long long result = strtoull(str, &endptr, 0);
+
+    if (str == endptr) return NIL_VAL;
+
+    return NUMBER_VAL((double)result);
+}
+
+static Value bitTestNative(int argCount, Value* args) {
+    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) return NIL_VAL;
+
+    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
+    int bit = (int)AS_NUMBER(args[2]);
+
+    if (bit < 0 || bit > 63) return BOOL_VAL(false);
+
+    return BOOL_VAL((num >> bit) & 1);
+}
+
+static Value hexNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+
+    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
+    int precision = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (unsigned long long)num);
+
+    return OBJ_VAL(copyString(buffer, strlen(buffer)));
+}
+
+static Value octNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+
+    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
+    int precision = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "0%.*llo", precision, (unsigned long long)num);
+
+    return OBJ_VAL(copyString(buffer, strlen(buffer)));
+}
+
+static Value binNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+
+    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
+    int min_bits = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+
+    if (min_bits > 64) min_bits = 64;
+    if (min_bits < 1) min_bits = 1;
+
+    char buffer[70];
+    char* p = buffer;
+    *p++ = '0';
+    *p++ = 'b';
+
+    int highest_bit = 0;
+    for (int i = 63; i >= 0; i--) {
+        if ((num >> i) & 1) {
+            highest_bit = i;
+            break;
+        }
+    }
+    int start_bit = (highest_bit >= min_bits) ? highest_bit : min_bits - 1;
+
+    for (int i = start_bit; i >= 0; i--) {
+        *p++ = ((num >> i) & 1) ? '1' : '0';
+    }
+    *p = '\0';
+
+    return OBJ_VAL(copyString(buffer, (int)(p - buffer)));
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -773,6 +876,13 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "random", mathRandomNative);
     defineNativeMethod(mathClass, "pi", mathPiNative);
     defineNativeMethod(mathClass, "exp", mathExpNative);
+    defineNativeMethod(mathClass, "hex", hexNative);
+    defineNativeMethod(mathClass, "oct", octNative);
+    defineNativeMethod(mathClass, "bin", binNative);
+    defineNativeMethod(mathClass, "bit_test", bitTestNative);
+    defineNativeMethod(mathClass, "parse", mathParseNative);
+    defineNativeMethod(mathClass, "from_hex", fromHexNative);
+    defineNativeMethod(mathClass, "from_bin", fromBinNative);
 
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
 
