@@ -525,7 +525,7 @@ static Value arrayLenNative(int argCount, Value* args) {
 }
 
 static Value stringSplitNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    if (argCount < 1 || !IS_STRING(args[1])) {
         runtimeError("split() expects 1 string argument (separator).");
         return NIL_VAL;
     }
@@ -597,7 +597,7 @@ static Value stringToUpperNative(int argCount, Value* args) {
 
     char* buffer = (char*)malloc(str->length + 1);
     if (buffer == NULL) {
-        runtimeError("join() expects 1 string argument (separator).");
+        runtimeError("to_upper() failed to allocate memory.");
         return NIL_VAL;
     }
 
@@ -614,7 +614,7 @@ static Value stringToLowerNative(int argCount, Value* args) {
 
     char* buffer = (char*)malloc(str->length + 1);
     if (buffer == NULL) {
-        runtimeError("join() expects 1 string argument (separator).");
+        runtimeError("to_lower() failed to allocate memory.");
         return NIL_VAL;
     }
 
@@ -632,7 +632,7 @@ static Value stringLenNative(int argCount, Value* args) {
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    if (argCount < 2 || !IS_STRING(args[1])) {
         runtimeError("join() expects 1 string argument (separator).");
         return NIL_VAL;
     }
@@ -1178,12 +1178,12 @@ void initVM() {
     defineNativeMethod(vm.mapClass, "has", mapHasNative);
     defineNativeMethod(vm.mapClass, "remove", mapRemoveNative);
     defineNativeMethod(vm.mapClass, "len", mapLenNative);
-    defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
     defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
     defineNativeMethod(vm.stringClass, "toUpper", stringToUpperNative);
     defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
     defineNativeMethod(vm.stringClass, "len", stringLenNative);
+    defineNativeMethod(vm.stringClass, "split", stringSplitNative);
 
     initMathLibrary();
     initSystemLibrary();
