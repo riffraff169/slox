@@ -147,6 +147,86 @@ static Value mathExpNative(int argCount, Value* args) {
     return NUMBER_VAL(exp(AS_NUMBER(args[1])));
 }
 
+static Value arraySliceNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[0]);
+    int count = array->count;
+
+    int start = (argCount >= 2 && IS_NUMBER(args[1])) ?  (int)AS_NUMBER(args[1]) : 0;
+    if (start < 0) start = count + start;
+    if (start < 0) start = 0;
+    if (start > count) start = count;
+
+    int end = (argCount >= 3 && IS_NUMBER(args[2])) ?  (int)AS_NUMBER(args[2]) : count;
+    if (end < 0) end = count + end;
+    if (end < 0) end = 0;
+    if (end > count) end = count;
+
+    ObjArray* result = newArray(0);
+    push(OBJ_VAL(result));
+
+    if (end > start) {
+        for (int i = start; i < end; i++) {
+            arrayAppend(result, array->values[i]);
+        }
+    }
+
+    return pop();
+}
+
+static Value arrayFindNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_CLOSURE(args[1])) return NIL_VAL;
+    ObjArray* array = AS_ARRAY(args[0]);
+    ObjClosure* callback = AS_CLOSURE(args[1]);
+
+    Value* stackStart = vm.stackTop;
+
+    for (int i = 0; i < array->count; i++) {
+
+        push(array->values[i]);
+
+        vm.nativeExitDepth = vm.frameCount; // - 1;
+
+
+        if (vmCall(callback, 1)) {
+            InterpretResult result_state = run();
+
+            Value result = pop();
+
+
+            if (!isFalsey(result)) {
+                vm.stackTop = stackStart;
+                return array->values[i];
+            }
+        }
+        vm.stackTop = stackStart;
+    }
+
+    vm.stackTop = stackStart;
+    return NIL_VAL;
+}
+
+static Value arrayEachNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_CLOSURE(args[1])) return NIL_VAL;
+    ObjArray* array = AS_ARRAY(args[0]);
+    ObjClosure* callback = AS_CLOSURE(args[1]);
+
+    Value* stackStart = vm.stackTop;
+
+    for (int i = 0; i < array->count; i++) {
+        push(args[1]);
+        push(array->values[i]);
+
+        vm.nativeExitDepth = vm.frameCount - 1;
+
+        if (vmCall(callback, 1)) {
+            run();
+        }
+
+        vm.stackTop = stackStart;
+    }
+    return NIL_VAL;
+}
+
 static Value arrayPushNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
 
@@ -978,6 +1058,9 @@ void initVM() {
     defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
     defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
     defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
+    defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
+    defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
+    defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
     defineNativeMethod(vm.mapClass, "values", mapValuesNative);
     defineNativeMethod(vm.mapClass, "has", mapHasNative);
