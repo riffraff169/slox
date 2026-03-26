@@ -147,6 +147,73 @@ static Value mathExpNative(int argCount, Value* args) {
     return NUMBER_VAL(exp(AS_NUMBER(args[1])));
 }
 
+static int defaultSortComparator(const void* a, const void* b) {
+    Value valA = *(Value*)a;
+    Value valB = *(Value*)b;
+
+    // sort numbers
+    if (IS_NUMBER(valA) && IS_NUMBER(valB)) {
+        double diff = AS_NUMBER(valA) - AS_NUMBER(valB);
+        return (diff > 0) - (diff < 0);
+    }
+
+    // sort strings
+    if (IS_STRING(valA) && IS_STRING(valB)) {
+        return strcmp(AS_CSTRING(valA), AS_CSTRING(valB));
+    }
+
+    // sort booleans (false < true)
+    if (IS_BOOL(valA) && IS_BOOL(valB)) {
+        return (int)AS_BOOL(valA) - (int)AS_BOOL(valB);
+    }
+
+    // fallback: stable order for mixed types based on type tag
+    return (int)valA.type - (int)valB.type;
+}
+
+static int loxSortComparator(const void* a, const void* b, void* userdata) {
+    // 1. recover our context
+    ObjClosure* callback = (ObjClosure*)userdata;
+    Value valA = *(Value*)a;
+    Value valB = *(Value*)b;
+
+    // 2. setup the stack baseline
+    Value* comparisonStackBase = vm.stackTop;
+
+    // 3. push closure + 2 arguments
+    push(OBJ_VAL(callback));
+    push(valA);
+    push(valB);
+
+    vm.nativeExitDepth = vm.frameCount;
+
+    if (vmCall(callback, 2)) {
+        run();
+        Value result = pop();
+
+        vm.stackTop = comparisonStackBase;
+
+        if (IS_NUMBER(result)) return (int)AS_NUMBER(result);
+    }
+    vm.stackTop = comparisonStackBase;
+    return 0; // default to equal
+}
+
+static Value arraySortNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[0]);
+    if (array->count < 2) return args[0];
+
+    if (argCount >= 2 && IS_CLOSURE(args[1])) {
+        qsort_r(array->values, array->count, sizeof(Value),
+                loxSortComparator, AS_CLOSURE(args[1]));
+    } else {
+        // default sort (fast c)
+        qsort(array->values, array->count, sizeof(Value),
+                defaultSortComparator);
+    }
+    return args[0];
+}
+
 static Value arraySliceNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[0]);
     int count = array->count;
@@ -349,6 +416,43 @@ static Value arrayMapNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
+static Value arrayReverseNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[0]);
+    if (array->count < 2) return args[0];
+
+    int left = 0;
+    int right = array->count - 1;
+    
+    while (left < right) {
+        Value temp = array->values[left];
+        array->values[left] = array->values[right];
+        array->values[right] = temp;
+        left++;
+        right--;
+    }
+    return args[0];
+}
+
+static Value arrayFlattenNative(int argCount, Value* args) {
+    ObjArray* source = AS_ARRAY(args[0]);
+    ObjArray* result = newArray(0);
+    push(OBJ_VAL(result));
+
+    for (int i = 0; i < source->count; i++) {
+        Value item = source->values[i];
+
+        if (IS_ARRAY(item)) {
+            ObjArray* inner = AS_ARRAY(item);
+            for (int j = 0; j < inner->count; j++) {
+                arrayAppend(result, inner->values[j]);
+            }
+        } else {
+            arrayAppend(result, item);
+        }
+    }
+    return pop();
+}
+
 static Value mapValuesNative(int argCount, Value* args) {
     ObjMap* map = AS_MAP(args[0]);
     ObjArray* valuesArray = newArray(0);
@@ -520,6 +624,11 @@ static Value stringToLowerNative(int argCount, Value* args) {
     buffer[str->length] = '\0';
 
     return OBJ_VAL(takeString(buffer, str->length));
+}
+
+static Value stringLenNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[0]);
+    return NUMBER_VAL((double)str->length);
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
@@ -1061,6 +1170,9 @@ void initVM() {
     defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
     defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
     defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
+    defineNativeMethod(vm.arrayClass, "sort", arraySortNative);
+    defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
+    defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
     defineNativeMethod(vm.mapClass, "values", mapValuesNative);
     defineNativeMethod(vm.mapClass, "has", mapHasNative);
@@ -1071,6 +1183,7 @@ void initVM() {
     defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
     defineNativeMethod(vm.stringClass, "toUpper", stringToUpperNative);
     defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
+    defineNativeMethod(vm.stringClass, "len", stringLenNative);
 
     initMathLibrary();
     initSystemLibrary();

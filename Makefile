@@ -1,4 +1,4 @@
-CFLAGS = -rdynamic
+CFLAGS = -rdynamic -D_GNU_SOURCE
 CFLAGS += $(shell pkg-config --cflags gobject-introspection-1.0 gtk4 readline libpcre2-8)
 
 #-Wall -Wextra -g
