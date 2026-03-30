@@ -32,6 +32,27 @@ static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
+static Value strNative(int argCount, Value* args) {
+    if (argCount != 1) return NIL_VAL;
+
+    char buffer[64];
+    int len = 0;
+
+    if (IS_NUMBER(args[0])) {
+        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(args[0]));
+    } else if (IS_BOOL(args[0])) {
+        len = snprintf(buffer, sizeof(buffer), AS_BOOL(args[0]) ? "true" : "false");
+    } else if (IS_NIL(args[0])) {
+        len = snprintf(buffer, sizeof(buffer), "nil");
+    } else if (IS_STRING(args[0])) {
+        return args[0]; // already a string
+    } else {
+        len = snprintf(buffer, sizeof(buffer), "<object>");
+    }
+
+    return OBJ_VAL(copyString(buffer, len));
+}
+
 /*
 static bool callNative(ObjNative* native, int argCount) {
     Value* argsStart = vm.stackTop - argCount - 1;
@@ -1304,8 +1325,11 @@ void initVM() {
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
+    vm.displayString = NULL;
+    vm.displayString = copyString("display", 7);
 
     defineNative("clock", clockNative);
+    defineNative("str", strNative);
 
     vm.arrayClass = newClass(copyString("Array", 5));
     vm.mapClass = newClass(copyString("Map", 3));
@@ -1976,8 +2000,30 @@ InterpretResult run() {
                     int argCount = READ_BYTE();
 
                     for (int i = argCount - 1; i >= 0; i--) {
-                        printValue(peek(i));
-                        if (i > 0) printf(" ");
+                        Value value = peek(i);
+                        if (IS_INSTANCE(value)) {
+                            ObjInstance* instance = AS_INSTANCE(value);
+                            Value method;
+
+                            Value* stackStart = vm.stackTop;
+                            if (tableGet(&instance->klass->methods, vm.displayString, &method)) {
+                                push(value);
+                                if (callValue(method, 0)) {
+                                    vm.nativeExitDepth = vm.frameCount - 1;
+                                    run();
+                                    Value result = pop();
+
+                                    if (!IS_NIL(result)) {
+                                        printValue(result);
+                                    }
+                                }
+                            }
+                            vm.stackTop = stackStart;
+                            pop();
+                        } else {
+                            printValue(value);
+                            if (i > 0) printf(" ");
+                        }
                     }
                     popn(argCount);
                     printf("\n");
