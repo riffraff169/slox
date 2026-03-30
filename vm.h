@@ -27,6 +27,7 @@ typedef struct {
 
     Table arrayMethods;
 
+    bool isGC;
     size_t bytesAllocated;
     size_t nextGC;
     Obj* objects;
@@ -46,7 +47,7 @@ typedef struct {
     int moduleCapacity;
     void** moduleHandles;
 
-    Table giTypes;
+    //Table giTypes;
 } VM;
 
 typedef enum {

@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "compiler.h"
 #include "memory.h"
@@ -18,7 +19,7 @@ void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
         collectGarbage();
 #endif
 
-        if (vm.bytesAllocated > vm.nextGC) {
+        if (!vm.isGC && vm.bytesAllocated > vm.nextGC) {
             collectGarbage();
         }
     }
@@ -200,6 +201,10 @@ static void freeObject(Obj* object) {
         case OBJ_INSTANCE:
             {
                 ObjInstance* instance = (ObjInstance*)object;
+                if (instance->klass != NULL && instance->klass->destructor != NULL) {
+                    instance->klass->destructor(instance);
+                }
+
                 freeTable(&instance->fields);
                 FREE(ObjInstance, object);
             }
@@ -242,7 +247,7 @@ static void markRoots() {
     markObject((Obj*)vm.mapClass);
     markObject((Obj*)vm.stringClass);
     markObject((Obj*)vm.moduleClass);
-    markTable(&vm.giTypes);
+    //markTable(&vm.giTypes);
 }
 
 static void traceReferences() {
@@ -275,6 +280,7 @@ static void sweep() {
 }
 
 void collectGarbage() {
+    vm.isGC = true;
 #ifdef DEBUG_LOG_GC
     printf("-- gc begin\n");
     size_t before = vm.bytesAllocated;
@@ -293,13 +299,16 @@ void collectGarbage() {
             before - vm.bytesAllocated, before, vm.bytesAllocated,
             vm.nextGC);
 #endif
+    vm.isGC = false;
 }
 
 void freeObjects() {
     Obj* object = vm.objects;
     while (object != NULL) {
         Obj* next = object->next;
+
         freeObject(object);
+
         object = next;
     }
 

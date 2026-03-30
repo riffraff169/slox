@@ -109,7 +109,7 @@ void* loadModule(const char* name) {
 }
 
 static Value mathSqrtNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_NUMBER(args[1])) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) {
         runtimeError("sqrt() expects 1 number argument.");
         return NIL_VAL;
     }
@@ -117,20 +117,30 @@ static Value mathSqrtNative(int argCount, Value* args) {
 }
 
 static Value mathAbsNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_NUMBER(args[1])) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) {
         runtimeError("sqrt() expects 1 number argument.");
         return NIL_VAL;
     }
     return NUMBER_VAL(fabs(AS_NUMBER(args[1])));
 }
 
+static Value roundNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(round(AS_NUMBER(args[1])));
+}
+
+static Value ceilNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(ceil(AS_NUMBER(args[1])));
+}
+
 static Value mathFloorNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_NUMBER(args[1])) return NIL_VAL;
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
     return NUMBER_VAL(floor(AS_NUMBER(args[1])));
 }
 
 static Value mathCeilNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_NUMBER(args[1])) return NIL_VAL;
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
     return NUMBER_VAL(ceil(AS_NUMBER(args[1])));
 }
 
@@ -298,7 +308,7 @@ static Value arrayPushNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
 
     ObjArray* array = AS_ARRAY(args[0]);
-    for (int i = 1; i <= argCount; i++) {
+    for (int i = 1; i < argCount; i++) {
         arrayAppend(array, args[i]);
     }
     return OBJ_VAL(array);
@@ -779,8 +789,107 @@ static Value systemGCNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value fileCloseNative(int argCount, Value* args) {
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    if (inst->foreignPtr != NULL) {
+        fclose((FILE*)inst->foreignPtr);
+        inst->foreignPtr = NULL;
+    }
+    return NIL_VAL;
+}
+
 static Value fileReadNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if  (!handle) return NIL_VAL;
+
+    int length = -1;
+
+    if (argCount >= 1 && IS_NUMBER(args[1])) {
+        length = (int)AS_NUMBER(args[1]);
+    } else {
+        fseek(handle, 0L, SEEK_END);
+        length = ftell(handle);
+        rewind(handle);
+    }
+
+    char* buffer = (char*)malloc(length + 1);
+    size_t bytesRead = fread(buffer, 1, length, handle);
+
+    if (bytesRead == 0) {
+        free(buffer);
+        return NIL_VAL;
+    }
+
+    ObjString* result = copyString(buffer, (int)bytesRead);
+    free(buffer);
+
+    return OBJ_VAL(result);
+}
+
+static Value fileReadlineNative(int argCount, Value* args) {
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if (!handle) return NIL_VAL;
+
+    char lineBuffer[1024];
+    if (fgets(lineBuffer, sizeof(lineBuffer), handle) == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(copyString(lineBuffer, (int)strlen(lineBuffer)));
+}
+
+static Value fileWriteNative(int argCount, Value* args) {
+    if (argCount <= 1) {
+        runtimeError("File.write() expects 1 string argument (data).");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+
+    if (handle) {
+        fprintf(handle, "%s", AS_CSTRING(args[1]));
+    }
+    return args[0]; // return self for chaining
+}
+
+static Value fileOpenNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[1])) {
+        runtimeError("File.open() expects t least a path string.");
+        return NIL_VAL;
+    }
+    const char* path = AS_CSTRING(args[1]);
+    const char* mode = "r";
+
+    if (argCount >= 2 && IS_STRING(args[2])) {
+        mode = AS_CSTRING(args[2]);
+    }
+
+    FILE* handle = fopen(path, mode);
+
+    if (handle == NULL) {
+        return NIL_VAL;
+    }
+
+    /*
+    Value fileObj;
+    if (!tableGet(&vm.globals, copyString("File", 4), &fileObj)) {
+        runtimeError("Global 'File' class not found.");
+        return NIL_VAL;
+    }
+    */
+
+    ObjClass* fileClass = AS_CLASS(args[0]);
+    ObjInstance* fileInst = newInstance(fileClass);
+    fileInst->foreignPtr = handle;
+
+    return OBJ_VAL(fileInst);
+}
+
+static Value fileLoadNative(int argCount, Value* args) {
+    if (argCount <= 1 || !IS_STRING(args[1])) {
         runtimeError("File.read() expects 1 string argument (path).");
         return NIL_VAL;
     }
@@ -807,8 +916,33 @@ static Value fileReadNative(int argCount, Value* args) {
     return OBJ_VAL(takeString(buffer, (int)bytesRead));
 }
 
-static Value fileWriteNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_STRING(args[1]) || !IS_STRING(args[2])) {
+static Value fileSeekNative(int argCount, Value* args) {
+    if (argCount <= 2 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+        runtimeError("File.seek() requires 2 numbers");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if (!handle) return NIL_VAL;
+
+    long offset = (long)AS_NUMBER(args[1]);
+    int whence = (int)AS_NUMBER(args[2]);
+
+    int result = fseek(handle, offset, whence);
+    return NUMBER_VAL(result);
+}
+
+static Value fileTellNative(int argCount, Value* args) {
+    ObjInstance* inst = AS_INSTANCE(args[0]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if (!handle) return NIL_VAL;
+
+    return NUMBER_VAL((double)ftell(handle));
+}
+
+static Value fileSaveNative(int argCount, Value* args) {
+    if (argCount <= 2 || !IS_STRING(args[1]) || !IS_STRING(args[2])) {
         runtimeError("File.read() expects (path, content).");
         return NIL_VAL;
     }
@@ -825,7 +959,7 @@ static Value fileWriteNative(int argCount, Value* args) {
 }
 
 static Value fileExistsNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) return BOOL_VAL(false);
+    if (argCount <= 1 || !IS_STRING(args[1])) return BOOL_VAL(false);
     FILE* file = fopen(AS_STRING(args[1])->chars, "r");
     if (file) {
         fclose(file);
@@ -835,7 +969,7 @@ static Value fileExistsNative(int argCount, Value* args) {
 }
 
 static Value fileListNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    if (argCount <= 1 || !IS_STRING(args[1])) {
         runtimeError("File.read() expects 1 string argument (directory path).");
         return NIL_VAL;
     }
@@ -1072,6 +1206,9 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "parse", mathParseNative);
     defineNativeMethod(mathClass, "from_hex", fromHexNative);
     defineNativeMethod(mathClass, "from_bin", fromBinNative);
+    //defineNativeMethod(mathClass, "ceil", ceilNative);
+    defineNativeMethod(mathClass, "round", roundNative);
+
 
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
 
@@ -1095,16 +1232,33 @@ void initSystemLibrary() {
     popn(2);
 }
 
+void fileDestructor(ObjInstance* inst) {
+    if (inst->foreignPtr != NULL) {
+        fclose((FILE*)inst->foreignPtr);
+        inst->foreignPtr = NULL;
+    }
+}
+
 void initFileLibrary() {
     ObjString* fileName = copyString("File", 4);
     push(OBJ_VAL(fileName));
     ObjClass* fileClass = newClass(fileName);
     push(OBJ_VAL(fileClass));
+    fileClass->destructor = fileDestructor;
 
-    defineNativeMethod(fileClass, "read", fileReadNative);
-    defineNativeMethod(fileClass, "write", fileWriteNative);
+
+    defineNativeMethod(fileClass, "load", fileLoadNative);
+    defineNativeMethod(fileClass, "save", fileSaveNative);
     defineNativeMethod(fileClass, "exists", fileExistsNative);
     defineNativeMethod(fileClass, "list", fileListNative);
+    defineNativeMethod(fileClass, "open", fileOpenNative);
+    defineNativeMethod(fileClass, "read", fileReadNative);
+    defineNativeMethod(fileClass, "readline", fileReadlineNative);
+    defineNativeMethod(fileClass, "write", fileWriteNative);
+    defineNativeMethod(fileClass, "close", fileCloseNative);
+    defineNativeMethod(fileClass, "seek", fileSeekNative);
+    defineNativeMethod(fileClass, "tell", fileTellNative);
+
 
     tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
@@ -1134,6 +1288,7 @@ void initVM() {
     vm.objects = NULL;
     vm.bytesAllocated = 0;
     vm.nextGC = 1024 * 1024;
+    vm.isGC = false;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -1145,7 +1300,7 @@ void initVM() {
 
     initTable(&vm.globals);
     initTable(&vm.strings);
-    initTable(&vm.giTypes);
+    //initTable(&vm.giTypes);
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
@@ -1195,9 +1350,10 @@ void initVM() {
 }
 
 void freeVM() {
+    freeObjects();
+
     freeTable(&vm.globals);
     freeTable(&vm.strings);
-    freeTable(&vm.giTypes);
 
     vm.initString = NULL;
 
@@ -1207,8 +1363,6 @@ void freeVM() {
         }
     }
     FREE_ARRAY(void*, vm.moduleHandles, vm.moduleCapacity);
-
-    freeObjects();
 }
 
 void push(Value value) {
@@ -1316,7 +1470,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
-        printf("[INVOKE]\n");
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -1389,7 +1542,6 @@ static bool invoke(ObjString* name, int argCount) {
 static bool bindMethod(ObjClass* klass, ObjString* name) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
-        printf("[bindMethod]\n");
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -1469,14 +1621,16 @@ InterpretResult run() {
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
 
 #define READ_BYTE() (*frame->ip++)
-
 #define READ_SHORT() \
     (frame->ip += 2, \
      (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+#define READ_24BIT() \
+    (frame->ip +=3, (uint32_t)((frame->ip[-3] <<16) | (frame->ip[-2] << 8) | frame->ip[-1]))
 
 #define READ_CONSTANT() \
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
-
+#define READ_CONSTANT_LONG(index) \
+    (frame->closure->function->chunk.constants.values[index])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 #define BINARY_OP(valueType, op) \
     do { \
@@ -1507,6 +1661,18 @@ InterpretResult run() {
             case OP_CONSTANT:
                 {
                     Value constant = READ_CONSTANT();
+                    push(constant);
+                }
+                break;
+            case OP_CONSTANT_LONG:
+                {
+                    uint8_t b1 = READ_BYTE();
+                    uint8_t b2 = READ_BYTE();
+                    uint8_t b3 = READ_BYTE();
+                    int index = b1 | (b2 << 8) | (b3 << 16);
+
+                    //Value constant = frame->closure->function->chunk.constants.values[index];
+                    Value constant = READ_CONSTANT_LONG(index);
                     push(constant);
                 }
                 break;
@@ -1553,7 +1719,8 @@ InterpretResult run() {
             case OP_GET_LOCAL:
                 {
                     uint8_t slot = READ_BYTE();
-                    push(frame->slots[slot]);
+                    Value val = frame->slots[slot];
+                    push(val);
                 }
                 break;
             case OP_SET_LOCAL:
@@ -1580,6 +1747,14 @@ InterpretResult run() {
                     pop();
                 }
                 break;
+            case OP_DEFINE_GLOBAL_LONG:
+                {
+                    uint32_t index = READ_24BIT();
+                    ObjString* name = AS_STRING(frame->closure->function->chunk.constants.values[index]);
+                    tableSet(&vm.globals, name, peek(0));
+                    pop();
+                }
+                break;
             case OP_SET_GLOBAL:
                 {
                     ObjString* name = READ_STRING();
@@ -1597,7 +1772,7 @@ InterpretResult run() {
 
                     if (IS_INSTANCE(receiver)) {
                         ObjInstance* instance = AS_INSTANCE(receiver);
-                        printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
+                        //printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
 
                         if (instance->klass == NULL) {
                             runtimeError("Instance has no class.");
@@ -1848,6 +2023,11 @@ InterpretResult run() {
                 {
                     ObjString* method = READ_STRING();
                     int argCount = READ_BYTE();
+                    Value receiver = peek(argCount);
+
+                    if (!IS_OBJ(receiver)) {
+                        printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
+                    }
 
                     if (!invoke(method, argCount) || vm.frameCount == 0) {
                         return INTERPRET_RUNTIME_ERROR;
@@ -1902,6 +2082,8 @@ InterpretResult run() {
                         runtimeError("Could not load module.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
+                    //tableSet(&vm.globals, moduleName, peek(0));
+                    pop();
                 }
                 break;
             case OP_RETURN:

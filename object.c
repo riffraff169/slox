@@ -43,6 +43,7 @@ ObjClass* newClass(ObjString* name) {
     klass->callHandler = NULL;
     klass->getter = NULL;
     klass->setter = NULL;
+    klass->destructor = NULL;
 
     return klass;
 }

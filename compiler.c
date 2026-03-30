@@ -184,7 +184,16 @@ static uint8_t makeConstant(Value value) {
 }
 
 static void emitConstant(Value value) {
-    emitBytes(OP_CONSTANT, makeConstant(value));
+    int constant = makeConstant(value);
+
+    if (constant < 256) {
+        emitBytes(OP_CONSTANT, (uint8_t)constant);
+    } else {
+        emitByte(OP_CONSTANT_LONG);
+        emitByte((uint8_t)((constant >> 16) & 0xff));
+        emitByte((uint8_t)((constant >> 8) & 0xff));
+        emitByte((uint8_t)(constant & 0xff));
+    }
 }
 
 static void patchJump(int offset) {
@@ -386,7 +395,14 @@ static void defineVariable(uint8_t global) {
         return;
     }
 
-    emitBytes(OP_DEFINE_GLOBAL, global);
+    if (global < 256) {
+        emitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+    } else {
+        emitByte(OP_DEFINE_GLOBAL_LONG);
+        emitByte((uint8_t)(global & 0xff));
+        emitByte((uint8_t)((global >> 8) & 0xff));
+        emitByte((uint8_t)((global >> 16) & 0xff));
+    }
 }
 
 static uint8_t argumentList() {
@@ -946,9 +962,12 @@ static void classDeclaration() {
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
     emitByte(OP_POP);
 
+    endScope();
+    /*
     if (classCompiler.hasSuperclass) {
         endScope();
     }
+    */
 
     currentClass = currentClass->enclosing;
 }

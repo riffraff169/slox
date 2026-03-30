@@ -149,6 +149,23 @@ void giBoxedDestructor(ObjInstance* instance) {
     }
 }
 
+void giInstanceDestructor(ObjInstance* instance) {
+    if (instance->foreignPtr == NULL) return;
+
+    if (G_IS_OBJECT(instance->foreignPtr)) {
+        /*
+        g_signal_handlers_disconnect_matched(instance->foreignPtr,
+                G_SIGNAL_MATCH_DATA,
+                0, 0, NULL, NULL,
+                NULL); // vm_pointer_or_closure_list
+        */
+        g_object_unref(instance->foreignPtr);
+    } else {
+        g_base_info_unref((GIBaseInfo*)instance->foreignPtr);
+    }
+    instance->foreignPtr = NULL;
+}
+
 Value scrape_boxed_to_lox(gpointer boxed, GType type) {
     Value eventKlassVal;
     if (!tableGet(&globalRegistry->fields, copyString("Event", 5), &eventKlassVal)) {
@@ -694,17 +711,14 @@ void debugPrintGIType(GITypeInfo* type_info) {
         GIBaseInfo* interface = g_type_info_get_interface(type_info);
         const char* name = g_base_info_get_name(interface);
         const char* ns = g_base_info_get_namespace(interface);
-        printf("[DEBUG TYPE]: Interface (%s.%s)\n", ns, name);
     } else {
-        printf("[DEBUG TYPE]: Basic Tag (%s)\n", tag_name);
+        //printf("[DEBUG TYPE]: Basic Tag (%s)\n", tag_name);
     }
 }
 
 Value giInvokeNative(int argCount, Value* args) {
     ObjNative* native = AS_NATIVE_OBJ(args[-1]);
     GIFunctionInfo* info = (GIFunctionInfo*)native->foreignData;
-    //const char* name = g_function_info_get_name(info);
-    //printf("[INVOKE] function %s\n", name);
     GIFunctionInfoFlags flags = g_function_info_get_flags(info);
 
     bool is_method = (flags & GI_FUNCTION_IS_METHOD) != 0;
@@ -717,16 +731,10 @@ Value giInvokeNative(int argCount, Value* args) {
     int n_args = g_callable_info_get_n_args((GICallableInfo*)info);
     GIArgument* in_args = alloca(sizeof(GIArgument) * n_args );
 
-    printf("[INVOKE] n_args: %d\n", n_args);
-    printf("[INVOKE] argCount: %d\n", argCount);
-
     if (is_method) {
         if (argCount > 0 && IS_INSTANCE(args[0])) {
             self = get_gobject_from_value(args[0]);
-            printf("[DEBUG] Self pointer extracted: %p\n", self);
             in_args[gi_idx++].v_pointer = self;
-            printValue(args[0]);
-            printf("\n");
             //in_args[gi_idx++].v_pointer = get_gobject_from_value(args[0]);
             lox_idx = 1;
         }
@@ -748,17 +756,13 @@ Value giInvokeNative(int argCount, Value* args) {
         GIArgInfo* arg_info = g_callable_info_get_arg((GICallableInfo*)info, i);
         GITypeInfo* type_info = g_arg_info_get_type(arg_info);
 
-        printf("Arg %d: ", i);
-        debugPrintGIType(type_info);
+        //printf("Arg %d: ", i);
+        //debugPrintGIType(type_info);
         convertLoxToGI(args[lox_idx++], &in_args[gi_idx++], type_info);
 
         g_base_info_unref(type_info);
         g_base_info_unref(arg_info);
     }
-
-    printf("[INVOKE] Required args: %d\n", n_args);
-    printf("[INVOKE] Provided args: %d\n", argCount);
-    printf("[INVOKE] gi_idx: %d\n", gi_idx);
 
     if (!g_function_info_invoke(info, in_args, gi_idx, NULL, 0, &return_value, &error)) {
         runtimeError("GI Error in %s: %s", g_base_info_get_name(info), error->message);
@@ -766,7 +770,6 @@ Value giInvokeNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    printf("[INVOKE] after call\n");
     GITypeInfo* ret_type = g_callable_info_get_return_type((GICallableInfo*)info);
     Value result = GIArgumentToLox(&return_value, ret_type);
     //Value result = convertGIToLox(&return_value, ret_type);
@@ -864,17 +867,28 @@ static Value giInvokeNative(int argCount, Value* args) {
 */
 
 static void registerGIMethod(ObjClass* klass, GIBaseInfo* info) {
+    //printf("[registerGIMethod] enter registerGIMethod\n");
     const char* fn_name = g_base_info_get_name(info);
     ObjString* method_name = copyString(fn_name, strlen(fn_name));
     push(OBJ_VAL(method_name));
+    //printf("[registerGIMethod] after push\n");
 
     Value existing;
     if (!tableGet(&klass->methods, method_name, &existing)) {
+        //printf("[registerGIMethod] got existing value\n");
+
         ObjNative* native = newNative(giInvokeNative);
+        push(OBJ_VAL(native));
+        //printf("[registerGIMethod] newNative\n");
         native->foreignData = g_base_info_ref(info);
+        //printf("[registerGIMethod] set foreignData\n");
         tableSet(&klass->methods, method_name, OBJ_VAL(native));
+        //printf("[registerGIMethod] after tableSet\n");
+        pop();
     }
+    //printf("[registerGIMethod] before pop\n");
     pop();
+    //printf("[registerGIMethod] enter registerGIMethod\n");
 }
 
 static void loadMethodsIntoNamespace(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* info) {
@@ -942,12 +956,22 @@ static void loadMethodsIntoClass(ObjClass* klass, GIBaseInfo* info) {
     }
 }
 
-static Value giLoopNative(int argcCount, Value* args) {
-    GMainLoop* loop = g_main_loop_new(NULL, false);
+static GMainLoop* lox_gi_main_loop = NULL;
 
-    g_main_loop_run(loop);
+static Value giQuitNative(int argCount, Value* args) {
+    if (lox_gi_main_loop != NULL && g_main_loop_is_running(lox_gi_main_loop)) {
+        g_main_loop_quit(lox_gi_main_loop);
+    }
+    return NIL_VAL;
+}
 
-    g_main_loop_unref(loop);
+static Value giLoopNative(int argCount, Value* args) {
+    lox_gi_main_loop = g_main_loop_new(NULL, false);
+
+    g_main_loop_run(lox_gi_main_loop);
+
+    g_main_loop_unref(lox_gi_main_loop);
+    lox_gi_main_loop = NULL;
     return NIL_VAL;
 }
 
@@ -1014,6 +1038,7 @@ void register_gdk_constants() {
 }
 
 static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* info) {
+    //printf("[loadMethods] in loadMethods\n");
     GIInfoType type = g_base_info_get_type(info);
     int n_methods = 0;
 
@@ -1022,6 +1047,8 @@ static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* in
     } else if (type == GI_INFO_TYPE_STRUCT) {
         n_methods = g_struct_info_get_n_methods((GIObjectInfo*)info);
     }
+
+    //printf("[loadMethods] before loop\n");
 
     for (int i = 0; i < n_methods; i++) {
         GIFunctionInfo* fn_info = NULL;
@@ -1044,25 +1071,42 @@ static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* in
         g_base_info_unref(fn_info);
     }
 
+    //printf("[loadMethods] after loop\n");
     if (type == GI_INFO_TYPE_OBJECT) {
+        //printf("[loadMethods] loading OBJECT\n");
         GIObjectInfo* parent = g_object_info_get_parent((GIObjectInfo*)info);
+        //printf("[loadMethods] got parent\n");
         while (parent != NULL) {
+            //printf("[loadMethods] parent is not NULL\n");
             int pn = g_object_info_get_n_methods(parent);
+            //printf("[loadMethods] got number of parent methods\n");
             for (int i = 0; i < pn; i++) {
+                //printf("[loadMethods] got parent method %d\n", i);
                 GIFunctionInfo* p_fn = g_object_info_get_method(parent, i);
+                //printf("[loadMethods] got parent method info %d\n", i);
+
                 if (g_function_info_get_flags(p_fn) & GI_FUNCTION_IS_METHOD) {
+                    //printf("[loadMethods] before registerGIMethod\n");
                     registerGIMethod(klass, (GIBaseInfo*)p_fn);
+                    //printf("[loadMethods] after registerGIMethod\n");
                 }
                 g_base_info_unref(p_fn);
             }
             GIObjectInfo* next = g_object_info_get_parent(parent);
+            //printf("[loadMethods] got next parent\n");
+
             g_base_info_unref(parent);
+            //printf("[loadMethods] unref parent\n");
             parent = next;
         }
+        //printf("[loadMethods] done loading OBJECT\n");
     }
+    //printf("[loadMethods] exit loadMethods\n");
+
 }
 
 static Value giLoadNative(int argCount, Value* args) {
+    //printf("[DEBUG] in giLoadNative\n");
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("gi.load() expects 1 string argument (the namespace).");
         return NIL_VAL;
@@ -1077,12 +1121,14 @@ static Value giLoadNative(int argCount, Value* args) {
         g_error_free(error);
         return NIL_VAL;
     }
+    //printf("[DEBUG] g_irepository_require\n");
 
 
     ObjInstance* module = newInstance(vm.moduleClass);
     push(OBJ_VAL(module)); // [1] module
     initTable(&module->fields);
 
+    //printf("[DEBUG] initTable\n");
     /*
     ObjInstance* registry = newInstance(vm.moduleClass);
     tableSet(&module->fields, copyString("__registry", 10), OBJ_VAL(registry));
@@ -1090,6 +1136,7 @@ static Value giLoadNative(int argCount, Value* args) {
     */
 
     int n_infos = g_irepository_get_n_infos(NULL, namespace);
+    //printf("[DEBUG] getting n infos\n");
 
     for (int i = 0; i < n_infos; i++) {
         GIBaseInfo* info = g_irepository_get_info(NULL, namespace, i);
@@ -1097,6 +1144,7 @@ static Value giLoadNative(int argCount, Value* args) {
         GIInfoType type = g_base_info_get_type(info);
 
         if (type == GI_INFO_TYPE_FUNCTION) {
+            //printf("[DEBUG] adding function\n");
             ObjNative* native = newNative(giInvokeNative);
             push(OBJ_VAL(native));
 
@@ -1106,13 +1154,13 @@ static Value giLoadNative(int argCount, Value* args) {
 
             pop();
         } else if (type == GI_INFO_TYPE_OBJECT || type == GI_INFO_TYPE_STRUCT) {
+            //printf("[DEBUG] adding object or struct\n");
             ObjString* className = copyString(name, strlen(name));
             push(OBJ_VAL(className));
 
             const char* namespace = g_base_info_get_namespace(info);
 
-            int fullLen = strlen(namespace) + strlen(name) + 1;
-            char* fullTypeName = malloc(fullLen);
+            char fullTypeName[512];
 
             ObjClass* klass = newClass(className);
             push(OBJ_VAL(klass));
@@ -1121,6 +1169,7 @@ static Value giLoadNative(int argCount, Value* args) {
             klass->callHandler = giClassCallHandler;
             klass->getter = giPropertyGetter;
             klass->setter = giPropertySetter;
+            klass->destructor = giInstanceDestructor;
 
             ObjInstance* nsInstance = newInstance(klass);
             push(OBJ_VAL(nsInstance));
@@ -1129,16 +1178,21 @@ static Value giLoadNative(int argCount, Value* args) {
 
             const char* typeName = g_base_info_get_name(info);
             if (strcmp(namespace, "GObject") == 0) {
-                snprintf(fullTypeName, strlen(name), "%s", name);
+                snprintf(fullTypeName, sizeof(fullTypeName), "%s", name);
             } else {
-                snprintf(fullTypeName, fullLen, "%s%s", namespace, name);
+                snprintf(fullTypeName, sizeof(fullTypeName), "%s%s", namespace, name);
             }
-            tableSet(&globalRegistry->fields, copyString(fullTypeName, strlen(fullTypeName)),
-                    OBJ_VAL(klass));
+            ObjString* loxTypeName = copyString(fullTypeName, (int)strlen(fullTypeName));
+            push(OBJ_VAL(loxTypeName));
+
+            tableSet(&globalRegistry->fields, loxTypeName, OBJ_VAL(klass));
+            pop();
 
             initTable(&klass->methods);
 
+            //printf("[DEBUG] loading methods\n");
             loadMethods(nsInstance, klass, info);
+            //printf("[DEBUG] done loading methods\n");
             /*
             if (type == GI_INFO_TYPE_OBJECT) {
                 loadMethodsForObject(nsInstance, klass, info);
@@ -1151,8 +1205,7 @@ static Value giLoadNative(int argCount, Value* args) {
 
             tableSet(&module->fields, className, OBJ_VAL(klass));
 
-            printf("[LOADER]: Registered Class '%s' (Internal: %s)\n", name, fullTypeName);
-            free(fullTypeName);
+            //printf("[LOADER]: Registered Class '%s' (Internal: %s)\n", name, fullTypeName);
 
             pop();
             pop();
@@ -1173,7 +1226,7 @@ static Value giLoadNative(int argCount, Value* args) {
                 int64_t val = g_value_info_get_value(val_info);
 
                 tableSet(&enumInstance->fields, copyString(val_name, strlen(val_name)), NUMBER_VAL((double)val));
-                printf("[LOADER]: Registered Enum '%s' Val: %s)\n", name, val_name);
+                //printf("[LOADER]: Registered Enum '%s' Val: %s)\n", name, val_name);
                 g_base_info_unref(val_info);
             }
 
@@ -1193,7 +1246,7 @@ static Value giLoadNative(int argCount, Value* args) {
                     g_type_info_get_tag(type_info) == GI_TYPE_TAG_UINT32) {
                 tableSet(&module->fields, copyString(name, strlen(name)),
                         NUMBER_VAL((double)arg.v_int));
-                printf("[LOADER]: Registered Constant '%s' Val: %d)\n", name, arg.v_int);
+                //printf("[LOADER]: Registered Constant '%s' Val: %d)\n", name, arg.v_int);
             }
             g_base_info_unref(type_info);
         }
@@ -1236,6 +1289,14 @@ void lox_module_init(VM* vm) {
     push(OBJ_VAL(loopStr)); // [5] loop
 
     tableSet(&giModule->fields, loopStr, OBJ_VAL(loopFn));
+    pop(); // [5]
+    pop(); // [4]
+
+    ObjNative* quitFn = newNative(giQuitNative);
+    push(OBJ_VAL(quitFn)); // [4]
+    ObjString* quitStr = copyString("quit", 4);
+    push(OBJ_VAL(quitStr)); // [5]
+    tableSet(&giModule->fields, quitStr, OBJ_VAL(quitFn));
     pop(); // [5]
     pop(); // [4]
 

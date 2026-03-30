@@ -56,3 +56,16 @@ int addConstant(Chunk* chunk, Value value) {
     return chunk->constants.count - 1;
 }
 
+void writeConstant(Chunk* chunk, Value value, int line) {
+    int constant = addConstant(chunk, value);
+    if (constant < 256) {
+        writeChunk(chunk, OP_CONSTANT, line);
+        writeChunk(chunk, (uint8_t)constant, line);
+    } else {
+        writeChunk(chunk, OP_CONSTANT_LONG, line);
+        // break the 24-bit index into 3 8-bit byts
+        writeChunk(chunk, (uint8_t)(constant & 0xff), line);
+        writeChunk(chunk, (uint8_t)((constant >> 8) & 0xff), line);
+        writeChunk(chunk, (uint8_t)((constant >> 16) & 0xff), line);
+    }
+}
