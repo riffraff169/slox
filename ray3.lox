@@ -1,3 +1,6 @@
+var infinity = 1.0 / 0.0;
+var neg_infinity = -1.0 / 0.0;
+
 class Vec3 {
   init(x, y, z) {
     this.x = x;
@@ -47,7 +50,7 @@ class Vec3 {
   }
 
   div(d) {
-    return this.mult(1 / d);
+    return Vec3(this.x / d, this.y / d, this.z / d);
   }
 
   __div__(d) {
@@ -103,10 +106,10 @@ fun dot(u, v) {
 }
 
 class Ray {
-  //init() { 
-  //  this.origin = Vec3(0, 0, 0);
-  //  this.direction = Vec3(0, 0, 0);
-  //}
+  init() { 
+    this.origin = Vec3(0, 0, 0);
+    this.direction = Vec3(0, 0, 0);
+  }
 
   set(origin, direction) {
     this.origin = origin;
@@ -115,7 +118,6 @@ class Ray {
 
   at(t) {
     return this.origin + this.direction * t;
-    //return this.origin.add(this.direction.mult(t));
   }
 
   display() {
@@ -132,38 +134,131 @@ var sphere = Vec3(0, 0, -1);
 
 fun hit_sphere(center, radius, r) {
   var oc = center - r.origin;
-  //var a = dot(r.direction, r.direction);
   var a = r.direction.length_squared();
-  //var b = dot(r.direction, oc) * -2.0;
   var h = dot(r.direction, oc);
-  //var c = dot(oc, oc) - radius * radius;
   var c = oc.length_squared() - radius * radius;
-  //var discriminant = b * b - a * c * 4;
   var discriminant = h * h - a * c;
 
   if (discriminant < 0) {
     return -1.0;
   } else {
-    //return (-b - Math.sqrt(discriminant)) / (a*2);
     return (h  - Math.sqrt(discriminant)) / a;
   }
-  //return discriminant >= 0;
 }
 
-fun ray_color(r) {
-  var t = hit_sphere(sphere, 0.5, r);
-  if (t > 0.0) {
-    var N = unit_vector(r.at(t) - sphere);
-    return Vec3(N.x + 1, N.y + 1, N.z + 1)*0.5;
+fun ray_color(r, world) {
+  var rec = world.hit(r, 0, infinity);
+  if (rec) {
+    return (rec.normal + white) * 0.5;
   }
+
+  //var t = hit_sphere(sphere, 0.5, r);
+  //if (t > 0.0) {
+  //  var N = unit_vector(r.at(t) - sphere);
+  //  return Vec3(N.x + 1, N.y + 1, N.z + 1)*0.5;
+  //}
 
   var unit_direction = unit_vector(r.direction);
   var a = (unit_direction.y + 1.0) * 0.5;
-  //var a = unit_direction.y.add(1.0).mult(0.5);
-  //return color1.mult(add(color5.mult(a));
-  //return color1 * ((a * -1) + 1.0) + color5 * a;
-  //return color1 * ((a * -1) + 1.0) + color5 * a;
   return white * (1.0 - a) + blue * a;
+}
+
+class Hittable {
+  init() {
+    this.objects = [];
+  }
+
+  clear()  {
+    this.objects = [];
+  }
+
+  add(object) {
+    this.objects.push(object);
+  }
+
+  hit(r, ray_tmin, ray_tmax) {
+    var hit_anything = false;
+    var closest_so_far = ray_tmax;
+    var final_record = nil;
+
+    for (var i = 0; i < this.objects.len(); i = i + 1) {
+      var object = this.objects[i];
+      if (has_method(object, "hit")) {
+          var rec = object.hit(r, ray_tmin, closest_so_far);
+          if (rec != nil and rec != false) {
+            //print "---";
+            //print rec;
+            //print "---";
+            hit_anything = true;
+            closest_so_far = rec.t;
+            final_record = rec;
+          }
+       }
+    }
+
+    return final_record;
+  }
+}
+
+fun degrees_to_radians(degrees) {
+  return degrees * Math.pi / 180.0;
+}
+
+class Sphere {
+  init(center, radius) {
+    this.center = center;
+    this.radius = radius;
+  }
+
+  hit(r, ray_tmin, ray_tmax) {
+    var oc = this.center - r.origin;
+    var a = r.direction.length_squared();
+    var h = dot(r.direction, oc);
+    var c = oc.length_squared() - this.radius * this.radius;
+
+    var discriminant = h * h - a * c;
+    if (discriminant < 0) {
+      return false;
+    }
+
+    var sqrtd = Math.sqrt(discriminant);
+
+    var root = (h - sqrtd) / a;
+    if (root <= ray_tmin or ray_tmax <= root) {
+      root = (h + sqrtd) / a;
+      if (root <= ray_tmin or ray_tmax <= root) {
+        return false;
+      }
+    }
+    
+    var rec = HitRecord();
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    var outward_normal = (rec.p - this.center) / this.radius;
+    rec.set_face_normal(r, outward_normal);
+
+    return rec;
+  }
+}
+
+class HitRecord {
+  
+  //init(p, normal, t) { //, front_face) {
+  //  this.p = p;
+  //  this.normal = normal;
+  //  this.t = t;
+    //this.front_face = front_face;
+  //}
+
+  set_face_normal(r, outward_normal) {
+    this.front_face = dot(r.direction, outward_normal) < 0;
+    if (this.front_face) {
+      this.normal = outward_normal;
+    } else {
+      this.normal = -outward_normal;
+    }
+  }
+
 }
 
 var file = "out.ppm";
@@ -180,6 +275,10 @@ var image_height = Math.floor(image_width / aspect_ratio);
 if (image_height < 1) {
   image_height = 1;
 }
+
+var world = Hittable();
+world.add(Sphere(Vec3(0,0,-1), 0.5));
+world.add(Sphere(Vec3(0, -100.5, -1), 100));
 
 var focal_length = 1.0;
 var viewport_height = 2.0;
@@ -207,10 +306,9 @@ for (var j = 0; j < image_height; j = j + 1) {
     var ray_direction = pixel_center - camera_center;
     var r = Ray();
     r.set(camera_center, ray_direction);
-    pixel_color = ray_color(r);
+    pixel_color = ray_color(r, world);
     write_color(out, pixel_color);
   }
 }
 
 
-  //print pixel_color;
