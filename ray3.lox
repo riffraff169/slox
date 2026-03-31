@@ -1,0 +1,203 @@
+class Vec3 {
+  init(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  add(v) {
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+  
+  __add__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x + v, this.y + v, this.z + v);
+    }
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+
+  __sub__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x - v, this.y - v, this.z - v);
+    }
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  minus(v) {
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  mult(d) {
+    return Vec3(this.x * d, this.y * d, this.z * d);
+  }
+
+  __mul__(d) {
+    if (isnumber(d)) {
+      return Vec3(this.x * d, this.y * d, this.z * d);
+    }
+    return this;
+  }
+
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  }
+
+  neg() {
+    return Vec3(-this.x, -this.y, -this.z);
+  }
+
+  div(d) {
+    return this.mult(1 / d);
+  }
+
+  __div__(d) {
+    //return this * 1/d;
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+
+  length() {
+    return Math.sqrt(this.length_squared());
+  }
+
+  length_squared() {
+    return this.x * this.x + this.y * this.y + this.z * this.z;
+  }
+
+  display() {
+    return "Vec3(${this.x}, ${this.y}, ${this.z})";
+  }
+}
+
+fun cross(u, v) {
+  return Vec3(u.y * v.z - u.z * v.y,
+              u.z * v.x - u.x * v.z,
+              u.x * v.y - u.y * v.x);
+}
+
+fun unit_vector(v) {
+  return v / v.length();
+  //return v.div(v.length());
+}
+
+fun write_color(out, color) {
+  var r = color.x;
+  var g = color.y;
+  var b = color.z;
+
+  var rbyte = Math.floor(255.999 * r);
+  var gbyte = Math.floor(255.999 * g);
+  var bbyte = Math.floor(255.999 * b);
+
+  out.write("${rbyte} ${gbyte} ${bbyte}\n");
+}
+
+fun dot(u, v) {
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+class Ray {
+  //init() { 
+  //  this.origin = Vec3(0, 0, 0);
+  //  this.direction = Vec3(0, 0, 0);
+  //}
+
+  set(origin, direction) {
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  at(t) {
+    return this.origin + this.direction * t;
+    //return this.origin.add(this.direction.mult(t));
+  }
+
+  display() {
+    //return "Ray(${this.origin}, ${this.direction})";
+    return "Ray()";
+  }
+}
+
+var white = Vec3(1.0, 1.0, 1.0);
+var blue = Vec3(0.5, 0.7, 1.0);
+var red = Vec3(1, 0, 0);
+
+var sphere = Vec3(0, 0, -1);
+
+fun ray_color(r) {
+  if (hit_sphere(sphere, 0.5, r)) {
+    return red;
+  }
+
+  var unit_direction = unit_vector(r.direction);
+  var a = (unit_direction.y + 1.0) * 0.5;
+  //var a = unit_direction.y.add(1.0).mult(0.5);
+  //return color1.mult(add(color5.mult(a));
+  //return color1 * ((a * -1) + 1.0) + color5 * a;
+  //return color1 * ((a * -1) + 1.0) + color5 * a;
+  return white * (1.0 - a) + blue * a;
+}
+
+fun hit_sphere(center, radius, r) {
+  var oc = center - r.origin;
+  var a = dot(r.direction, r.direction);
+  var b = dot(r.direction, oc) * 2.0;
+  var c = dot(oc, oc) - radius * radius;
+  var discriminant = b * b - a * c * 4;
+  return discriminant >= 0;
+}
+
+var file = "out.ppm";
+if (System.ARGS.len() > 0) {
+  file = System.ARGS[0];
+}
+
+var out = File.open(file, "w");
+
+var aspect_ratio = 16.0 / 9.0;
+
+var image_width = 400;
+var image_height = Math.floor(image_width / aspect_ratio);
+if (image_height < 1) {
+  image_height = 1;
+}
+
+var focal_length = 1.0;
+var viewport_height = 2.0;
+var viewport_width = viewport_height * (image_width/image_height);
+var camera_center = Vec3(0,0,0);
+
+var viewport_u = Vec3(viewport_width, 0, 0);
+var viewport_v = Vec3(0, -viewport_height, 0);
+
+var pixel_delta_u = viewport_u / image_width;
+var pixel_delta_v = viewport_v / image_height;
+
+var viewport_upper_left = camera_center - Vec3(0, 0, focal_length) - viewport_u / 2 - viewport_v / 2;
+var pixel00_loc = viewport_upper_left + (pixel_delta_u + pixel_delta_v) * 0.5;
+
+out.write("P3\n ${image_width} ${image_height}\n255\n");
+var err = File.stderr();
+var pixel_color = Vec3(0, 0, 0);
+
+for (var j = 0; j < image_height; j = j + 1) {
+  err.write("\rScanlines remaining: ${image_height - j}  ");
+  err.flush();
+  for (var i = 0; i < image_width; i = i + 1) {
+    var pixel_center = pixel00_loc + (pixel_delta_u * i) + (pixel_delta_v * j);
+    var ray_direction = pixel_center - camera_center;
+    var r = Ray();
+    r.set(camera_center, ray_direction);
+    pixel_color = ray_color(r);
+    write_color(out, pixel_color);
+  }
+}
+
+
+  //print pixel_color;

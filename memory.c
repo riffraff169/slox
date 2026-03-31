@@ -243,10 +243,17 @@ static void markRoots() {
     markTable(&vm.globals);
     markCompilerRoots();
     markObject((Obj*)vm.initString);
+    markObject((Obj*)vm.displayString);
+    markObject((Obj*)vm.str_add);
+    markObject((Obj*)vm.str_sub);
+    markObject((Obj*)vm.str_mul);
+    markObject((Obj*)vm.str_div);
     markObject((Obj*)vm.arrayClass);
     markObject((Obj*)vm.mapClass);
     markObject((Obj*)vm.stringClass);
     markObject((Obj*)vm.moduleClass);
+    markObject((Obj*)vm.regexClass);
+    markObject((Obj*)vm.mathClass);
     //markTable(&vm.giTypes);
 }
 

@@ -1246,6 +1246,58 @@ static Value binNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(buffer, (int)(p - buffer)));
 }
 
+static Value isNumberNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_NUMBER(args[0]));
+}
+
+static Value isStringNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_STRING(args[0]));
+}
+
+static Value isBoolNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_BOOL(args[0]));
+}
+
+static Value isNilNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_NIL(args[0]));
+}
+
+static Value isClassNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_CLASS(args[0]));
+}
+
+static Value isInstanceNative(int argCount, Value* args) {
+    return BOOL_VAL(argCount > 0 && IS_INSTANCE(args[0]));
+}
+
+static Value typeofNative(int argCount, Value* args) {
+    if (argCount < 1) return OBJ_VAL(copyString("NIL", 3));
+    Value value = args[0];
+
+    if (IS_NUMBER(value)) return OBJ_VAL(copyString("NUMBER", 6));
+    if (IS_BOOL(value)) return OBJ_VAL(copyString("BOOL", 4));
+    if (IS_NIL(value)) return OBJ_VAL(copyString("NIL", 3));
+
+    if (IS_OBJ(value)) {
+        switch (OBJ_TYPE(value)) {
+            case OBJ_STRING:
+                return OBJ_VAL(copyString("STRING", 6));
+            case OBJ_NATIVE:
+                return OBJ_VAL(copyString("NATIVE", 6));
+            case OBJ_CLOSURE:
+                return OBJ_VAL(copyString("FUNCTION", 8));
+            case OBJ_CLASS:
+                return OBJ_VAL(copyString("CLASS", 5));
+            case OBJ_INSTANCE:
+                return OBJ_VAL(AS_INSTANCE(value)->klass->name);
+            default:
+                return OBJ_VAL(copyString("OBJECT", 6));
+        }
+    }
+
+    return OBJ_VAL(copyString("UNKNOWN", 7));
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -1332,7 +1384,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     tableSet(&systemInstance->fields, copyString("ENV", 3), OBJ_VAL(envMap));
     tableSet(&vm.globals, copyString("System", 6), OBJ_VAL(systemInstance));
 
-    popn(2);
+    popn(5);
 }
 
 void fileDestructor(ObjInstance* inst) {
@@ -1380,46 +1432,6 @@ void initRegexLibrary() {
     pop();
 }
 
-void setArgs(int argc, const char* argv[], const char* env[]) {
-    ObjArray* argsArray = newArray(0);
-    push(OBJ_VAL(argsArray));
-
-    for (int i = 2; i < argc; i++) {
-        ObjString* argStr = copyString(argv[i], strlen(argv[i]));
-        push(OBJ_VAL(argStr));
-        arrayAppend(argsArray, OBJ_VAL(argStr));
-        pop();
-    }
-    tableSet(&vm.globals, copyString("ARGS", 4), OBJ_VAL(argsArray));
-
-    pop();
-
-    ObjMap* envMap = newMap();
-    push(OBJ_VAL(envMap));
-
-    for (const char **envp = env; *envp != NULL; envp++) {
-        const char *entry = *envp;
-        char *sep = strchr(entry, '=');
-
-        if (sep != NULL) {
-
-            int keyLen = (int)(sep - entry);
-            int valLen = (int)strlen(sep + 1);
-
-            ObjString* key = copyString(entry, keyLen);
-            push(OBJ_VAL(key));
-            ObjString* val = copyString(sep + 1, valLen);
-            push(OBJ_VAL(val));
-
-            tableSet(&envMap->items, key, OBJ_VAL(val));
-            pop();
-            pop();
-        }
-    }
-    tableSet(&vm.globals, copyString("ENV", 3), OBJ_VAL(envMap));
-    pop();
-}
-
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -1443,9 +1455,24 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.initString = copyString("init", 4);
     vm.displayString = NULL;
     vm.displayString = copyString("display", 7);
+    vm.str_add = NULL;
+    vm.str_add = copyString("__add__", 7);
+    vm.str_sub = NULL;
+    vm.str_sub = copyString("__sub__", 7);
+    vm.str_mul = NULL;
+    vm.str_mul = copyString("__mul__", 7);
+    vm.str_div = NULL;
+    vm.str_div = copyString("__div__", 7);
 
     defineNative("clock", clockNative);
     defineNative("str", strNative);
+    defineNative("typeof", typeofNative);
+    defineNative("isnumber", isNumberNative);
+    defineNative("isstring", isStringNative);
+    defineNative("isbool", isBoolNative);
+    defineNative("isnil", isNilNative);
+    defineNative("isclass", isClassNative);
+    defineNative("isinstance", isInstanceNative);
 
     vm.arrayClass = newClass(copyString("Array", 5));
     vm.mapClass = newClass(copyString("Map", 3));
@@ -1485,8 +1512,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initFileLibrary();
     initRegexLibrary();
 
-    //setArgs(argc, argv, env);
-
     defineNative("getMembers", getMembersNative);
     //initArrayMethods();
 }
@@ -1498,6 +1523,11 @@ void freeVM() {
     freeTable(&vm.strings);
 
     vm.initString = NULL;
+    vm.displayString = NULL;
+    vm.str_add = NULL;
+    vm.str_sub = NULL;
+    vm.str_mul = NULL;
+    vm.str_div = NULL;
 
     for (int i = 0; i < vm.moduleCount; i++) {
         if (vm.moduleHandles[i] != NULL) {
@@ -2032,27 +2062,123 @@ InterpretResult run() {
                 break;
             case OP_ADD:
                 {
+
                     if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
                         concatenate();
-                    } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                        break;
+                    } 
+                    //Value b = pop();
+                    //Value a = pop();
+                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                         double b = AS_NUMBER(pop());
                         double a = AS_NUMBER(pop());
                         push(NUMBER_VAL(a + b));
+                    } else if (IS_INSTANCE(peek(1))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(1));
+                        Value method;
+                        Value result;
+
+                        Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->klass->methods, vm.str_add, &method)) {
+                            if (callValue(method, 1)) {
+                                vm.nativeExitDepth = vm.frameCount - 1;
+                                run();
+                                result = pop();
+                            }
+                        }
+                        vm.stackTop = stackStart;
+                        popn(2);
+                        push(result);
                     } else {
-                        runtimeError(
-                                "Operands must be two numbers or two strings.");
+                        popn(2);
+                        runtimeError("Invalid operands.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
                 }
                 break;
             case OP_SUBTRACT:
-                BINARY_OP(NUMBER_VAL, -);
+                {
+                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                        double b = AS_NUMBER(pop());
+                        double a = AS_NUMBER(pop());
+                        push(NUMBER_VAL(a - b));
+                    } else if (IS_INSTANCE(peek(1))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(1));
+                        Value method;
+                        Value result;
+
+                        Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->klass->methods, vm.str_sub, &method)) {
+                            if (callValue(method, 1)) {
+                                vm.nativeExitDepth = vm.frameCount - 1;
+                                run();
+                                result = pop();
+                            }
+                        }
+                        vm.stackTop = stackStart;
+                        popn(2);
+                        push(result);
+                    } else {
+                        runtimeError("Invalid operands.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                }
                 break;
             case OP_MULTIPLY:
-                BINARY_OP(NUMBER_VAL, *);
+                {
+                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                        double b = AS_NUMBER(pop());
+                        double a = AS_NUMBER(pop());
+                        push(NUMBER_VAL(a * b));
+                    } else if (IS_INSTANCE(peek(1))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(1));
+                        Value method;
+                        Value result;
+
+                        Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->klass->methods, vm.str_mul, &method)) {
+                            if (callValue(method, 1)) {
+                                vm.nativeExitDepth = vm.frameCount - 1;
+                                run();
+                                result = pop();
+                            }
+                        }
+                        vm.stackTop = stackStart;
+                        popn(2);
+                        push(result);
+                    } else {
+                        runtimeError("Invalid operands.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                }
                 break;
             case OP_DIVIDE:
-                BINARY_OP(NUMBER_VAL, /);
+                {
+                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                        double b = AS_NUMBER(pop());
+                        double a = AS_NUMBER(pop());
+                        push(NUMBER_VAL(a / b));
+                    } else if (IS_INSTANCE(peek(1))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(1));
+                        Value method;
+                        Value result;
+
+                        Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->klass->methods, vm.str_div, &method)) {
+                            if (callValue(method, 1)) {
+                                vm.nativeExitDepth = vm.frameCount - 1;
+                                run();
+                                result = pop();
+                            }
+                        }
+                        vm.stackTop = stackStart;
+                        popn(2);
+                        push(result);
+                    } else {
+                        runtimeError("Invalid operands.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                }
                 break;
             case OP_NOT:
                 push(BOOL_VAL(isFalsey(pop())));
@@ -2082,10 +2208,6 @@ InterpretResult run() {
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
-                    /*
-                    double res = fmod(ad, bd);
-                    push(NUMBER_VAL(res == 0.0 ? 0.0 : res));
-                    */
                     push(NUMBER_VAL(fmod(a, b)));
                 }
                 break;

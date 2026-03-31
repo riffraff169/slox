@@ -26,6 +26,11 @@ typedef struct {
     ObjString* displayString;
     ObjUpvalue* openUpvalues;
 
+    ObjString* str_add;
+    ObjString* str_sub;
+    ObjString* str_mul;
+    ObjString* str_div;
+
     Table arrayMethods;
 
     bool isGC;
