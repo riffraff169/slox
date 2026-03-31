@@ -61,7 +61,7 @@ extern VM vm;
 
 void defineNative(const char* name, NativeFn function);
 void runtimeError(const char* format, ...);
-void initVM();
+void initVM(int argc, const char* argv[], const char* env[]);
 void freeVM();
 bool vmCall(ObjClosure* closure, int argCount);
 InterpretResult run();

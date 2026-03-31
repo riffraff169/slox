@@ -71,17 +71,18 @@ static void runFile(const char* path) {
     if (result == INTERPRET_RUNTIME_ERROR) exit(70);
 }
 
-int main(int argc, const char* argv[]) {
-    initVM();
+int main(int argc, const char* argv[], const char* env[]) {
+    initVM(argc, argv, env);
 
     if (argc == 1) {
         repl();
-    } else if (argc == 2) {
+    } else { /*if (argc == 2) {*/
         runFile(argv[1]);
-    } else {
+    } /*else {
         fprintf(stderr, "Usage: slox [path]\n");
         exit(64);
     }
+    */
 
     freeVM();
     return 0;

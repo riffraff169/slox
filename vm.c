@@ -145,14 +145,25 @@ static Value mathAbsNative(int argCount, Value* args) {
     return NUMBER_VAL(fabs(AS_NUMBER(args[1])));
 }
 
-static Value roundNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(round(AS_NUMBER(args[1])));
+static Value toNumberNative(int argCount, Value* args) {
+    if (argCount < 2) return NUMBER_VAL(0);
+
+    if (IS_NUMBER(args[1])) return args[1];
+
+    if (!IS_STRING(args[1])) return NUMBER_VAL(0);
+
+    char* end;
+    const char* str = AS_CSTRING(args[1]);
+    double number = strtod(str, &end);
+
+    if (str == end) return NUMBER_VAL(0);
+
+    return NUMBER_VAL(number);
 }
 
-static Value ceilNative(int argCount, Value* args) {
+static Value mathRoundNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(ceil(AS_NUMBER(args[1])));
+    return NUMBER_VAL(round(AS_NUMBER(args[1])));
 }
 
 static Value mathFloorNative(int argCount, Value* args) {
@@ -812,6 +823,7 @@ static Value systemGCNative(int argCount, Value* args) {
 
 static Value fileCloseNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[0]);
+    if (inst->foreignPtr == stdout || inst->foreignPtr == stderr) return NIL_VAL;
     if (inst->foreignPtr != NULL) {
         fclose((FILE*)inst->foreignPtr);
         inst->foreignPtr = NULL;
@@ -876,6 +888,24 @@ static Value fileWriteNative(int argCount, Value* args) {
     return args[0]; // return self for chaining
 }
 
+static Value fileFlushNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    FILE* stream = (FILE*)instance->foreignPtr;
+    if (stream) fflush(stream);
+    return NIL_VAL;
+}
+
+static Value fileStderrNative(int argCount, Value* args) {
+    Value fileClass;
+    if (!tableGet(&vm.globals, copyString("File", 4), &fileClass)) {
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = newInstance(AS_CLASS(fileClass));
+    instance->foreignPtr = stderr;
+    return OBJ_VAL(instance);
+}
+
 static Value fileOpenNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[1])) {
         runtimeError("File.open() expects t least a path string.");
@@ -883,12 +913,21 @@ static Value fileOpenNative(int argCount, Value* args) {
     }
     const char* path = AS_CSTRING(args[1]);
     const char* mode = "r";
+    FILE* handle = NULL;
 
     if (argCount >= 2 && IS_STRING(args[2])) {
         mode = AS_CSTRING(args[2]);
     }
 
-    FILE* handle = fopen(path, mode);
+    if (strcmp(path, "STDOUT") == 0) {
+        handle = stdout;
+        mode = "w";
+    } else if (strcmp(path, "STDERR") == 0) {
+        handle = stderr;
+        mode = "w";
+    } else {
+        handle = fopen(path, mode);
+    }
 
     if (handle == NULL) {
         return NIL_VAL;
@@ -1227,8 +1266,9 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "parse", mathParseNative);
     defineNativeMethod(mathClass, "from_hex", fromHexNative);
     defineNativeMethod(mathClass, "from_bin", fromBinNative);
-    //defineNativeMethod(mathClass, "ceil", ceilNative);
-    defineNativeMethod(mathClass, "round", roundNative);
+    //defineNativeMethod(mathClass, "ceil", mathCeilNative);
+    defineNativeMethod(mathClass, "round", mathRoundNative);
+    defineNativeMethod(mathClass, "to_number", toNumberNative);
 
 
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
@@ -1238,7 +1278,7 @@ void initMathLibrary() {
     srand((unsigned int)time(NULL));
 }
 
-void initSystemLibrary() {
+void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjString* systemName = copyString("System", 6);
     push(OBJ_VAL(systemName));
     ObjClass* systemClass = newClass(systemName);
@@ -1249,6 +1289,48 @@ void initSystemLibrary() {
     defineNativeMethod(systemClass, "gc", systemGCNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
+
+    ObjInstance* systemInstance = newInstance(systemClass);
+    push(OBJ_VAL(systemInstance));
+
+    tableSet(&systemInstance->fields, copyString("EXE", 3),
+            OBJ_VAL(copyString(argv[0], strlen(argv[0]))));
+
+    ObjArray* argsArray = newArray(0);
+    push(OBJ_VAL(argsArray));
+
+    for (int i = 2; i < argc; i++) {
+        ObjString* argStr = copyString(argv[i], strlen(argv[i]));
+        push(OBJ_VAL(argStr));
+        arrayAppend(argsArray, OBJ_VAL(argStr));
+        pop();
+    }
+    tableSet(&systemInstance->fields, copyString("ARGS", 4), OBJ_VAL(argsArray));
+
+    ObjMap* envMap = newMap();
+    push(OBJ_VAL(envMap));
+
+    for (const char **envp = env; *envp != NULL; envp++) {
+        const char *entry = *envp;
+        char *sep = strchr(entry, '=');
+
+        if (sep != NULL) {
+
+            int keyLen = (int)(sep - entry);
+            int valLen = (int)strlen(sep + 1);
+
+            ObjString* key = copyString(entry, keyLen);
+            push(OBJ_VAL(key));
+            ObjString* val = copyString(sep + 1, valLen);
+            push(OBJ_VAL(val));
+
+            tableSet(&envMap->items, key, OBJ_VAL(val));
+            pop();
+            pop();
+        }
+    }
+    tableSet(&systemInstance->fields, copyString("ENV", 3), OBJ_VAL(envMap));
+    tableSet(&vm.globals, copyString("System", 6), OBJ_VAL(systemInstance));
 
     popn(2);
 }
@@ -1279,7 +1361,8 @@ void initFileLibrary() {
     defineNativeMethod(fileClass, "close", fileCloseNative);
     defineNativeMethod(fileClass, "seek", fileSeekNative);
     defineNativeMethod(fileClass, "tell", fileTellNative);
-
+    defineNativeMethod(fileClass, "stderr", fileStderrNative);
+    defineNativeMethod(fileClass, "flush", fileFlushNative);
 
     tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
@@ -1287,24 +1370,57 @@ void initFileLibrary() {
 }
 
 void initRegexLibrary() {
-    //ObjString* regexName = copyString("Regex", 5);
-    //push(OBJ_VAL(regexName));
-    //vm.regexClass = newClass(copyString("Regex", 5));
     push(OBJ_VAL(vm.regexClass));
 
-    //defineNativeMethod(vm.regexClass, "init", regexInitNative);
     defineNativeMethod(vm.regexClass, "test", regexTestNative);
     defineNativeMethod(vm.regexClass, "exec", regexExecNative);
 
     defineNative("Regex", regexInitNative);
 
     pop();
-    //tableSet(&vm.globals, regexName, OBJ_VAL(regexClass));
-
-    //popn(2);
 }
 
-void initVM() {
+void setArgs(int argc, const char* argv[], const char* env[]) {
+    ObjArray* argsArray = newArray(0);
+    push(OBJ_VAL(argsArray));
+
+    for (int i = 2; i < argc; i++) {
+        ObjString* argStr = copyString(argv[i], strlen(argv[i]));
+        push(OBJ_VAL(argStr));
+        arrayAppend(argsArray, OBJ_VAL(argStr));
+        pop();
+    }
+    tableSet(&vm.globals, copyString("ARGS", 4), OBJ_VAL(argsArray));
+
+    pop();
+
+    ObjMap* envMap = newMap();
+    push(OBJ_VAL(envMap));
+
+    for (const char **envp = env; *envp != NULL; envp++) {
+        const char *entry = *envp;
+        char *sep = strchr(entry, '=');
+
+        if (sep != NULL) {
+
+            int keyLen = (int)(sep - entry);
+            int valLen = (int)strlen(sep + 1);
+
+            ObjString* key = copyString(entry, keyLen);
+            push(OBJ_VAL(key));
+            ObjString* val = copyString(sep + 1, valLen);
+            push(OBJ_VAL(val));
+
+            tableSet(&envMap->items, key, OBJ_VAL(val));
+            pop();
+            pop();
+        }
+    }
+    tableSet(&vm.globals, copyString("ENV", 3), OBJ_VAL(envMap));
+    pop();
+}
+
+void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
     vm.bytesAllocated = 0;
@@ -1365,9 +1481,11 @@ void initVM() {
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
 
     initMathLibrary();
-    initSystemLibrary();
+    initSystemLibrary(argc, argv, env);
     initFileLibrary();
     initRegexLibrary();
+
+    //setArgs(argc, argv, env);
 
     defineNative("getMembers", getMembersNative);
     //initArrayMethods();
@@ -2019,7 +2137,7 @@ InterpretResult run() {
                                 }
                             }
                             vm.stackTop = stackStart;
-                            pop();
+                            //pop();
                         } else {
                             printValue(value);
                             if (i > 0) printf(" ");
