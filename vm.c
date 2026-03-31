@@ -66,6 +66,21 @@ static bool callNative(ObjNative* native, int argCount) {
 }
 */
 
+static Value hasMethodNative(int argCount, Value* args) {
+    if (argCount < 2 || (!IS_INSTANCE(args[0])) || !IS_STRING(args[1])) {
+        runtimeError("has_method() expects an instance");
+        return BOOL_VAL(false);
+    }
+    Value instance = args[0];
+    Value name = args[1];
+    Value method;
+
+    if (tableGet(&AS_INSTANCE(instance)->klass->methods, AS_STRING(name), &method)) {
+        return BOOL_VAL(true);
+    }
+    return BOOL_VAL(false);
+}
+
 static Value getMembersNative(int argCount, Value* args) {
     if (argCount < 1 || (!IS_INSTANCE(args[0]) && !IS_CLASS(args[0]))) {
         runtimeError("getMembers() expects a class or instance argument.");
@@ -1513,6 +1528,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initRegexLibrary();
 
     defineNative("getMembers", getMembersNative);
+    defineNative("has_method", hasMethodNative);
+    defineNative("responds_to", hasMethodNative);
     //initArrayMethods();
 }
 
