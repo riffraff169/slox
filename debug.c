@@ -67,6 +67,16 @@ static int byteInstruction(const char* name, Chunk* chunk,
     return offset + 2;
 }
 
+static int byteLongInstruction(const char* name, Chunk* chunk,
+        int offset) {
+    uint8_t b1 = chunk->code[offset + 1];
+    uint8_t b2 = chunk->code[offset + 2];
+    uint8_t b3 = chunk->code[offset + 3];
+    int slot = (b1 << 16) | (b2 << 8) | b3;
+
+    printf("%-16s %4d\n", name, slot);
+    return offset + 4;
+}
 static int jumpInstruction(const char* name, int sign,
         Chunk* chunk, int offset) {
     uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
@@ -126,14 +136,24 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return byteInstruction("OP_POPN", chunk, offset);
         case OP_GET_LOCAL:
             return byteInstruction("OP_GET_LOCAL", chunk, offset);
+        case OP_GET_LOCAL_LONG:
+            return byteLongInstruction("OP_GET_LOCAL_LONG", chunk, offset);
         case OP_SET_LOCAL:
             return byteInstruction("OP_SET_LOCAL", chunk, offset);
+        case OP_SET_LOCAL_LONG:
+            return byteLongInstruction("OP_SET_LOCAL_LONG", chunk, offset);
         case OP_GET_GLOBAL:
             return constantInstruction("OP_GET_GLOBAL", chunk, offset);
+        case OP_GET_GLOBAL_LONG:
+            return constantLongInstruction("OP_GET_GLOBAL_LONG", chunk, offset);
         case OP_DEFINE_GLOBAL:
             return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+        case OP_DEFINE_GLOBAL_LONG:
+            return constantLongInstruction("OP_DEFINE_GLOBAL_LONG", chunk, offset);
         case OP_SET_GLOBAL:
             return constantInstruction("OP_SET_GLOBAL", chunk, offset);
+        case OP_SET_GLOBAL_LONG:
+            return constantLongInstruction("OP_SET_GLOBAL_LONG", chunk, offset);
         case OP_GET_UPVALUE:
             return byteInstruction("OP_GET_UPVALUE", chunk, offset);
         case OP_SET_UPVALUE:
@@ -215,6 +235,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_RETURN", offset);
         case OP_CLASS:
             return constantInstruction("OP_CLASS", chunk, offset);
+        case OP_CLASS_LONG:
+            return constantLongInstruction("OP_CLASS_LONG", chunk, offset);
         case OP_INHERIT:
             return simpleInstruction("OP_INHERIT", offset);
         case OP_METHOD:

@@ -1305,6 +1305,10 @@ static Value typeofNative(int argCount, Value* args) {
                 return OBJ_VAL(copyString("CLASS", 5));
             case OBJ_INSTANCE:
                 return OBJ_VAL(AS_INSTANCE(value)->klass->name);
+            case OBJ_ARRAY:
+                return OBJ_VAL(copyString("ARRAY", 5));
+            case OBJ_MAP:
+                return OBJ_VAL(copyString("MAP", 3));
             default:
                 return OBJ_VAL(copyString("OBJECT", 6));
         }
@@ -1818,9 +1822,13 @@ InterpretResult run() {
 
 #define READ_CONSTANT() \
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
-#define READ_CONSTANT_LONG(index) \
-    (frame->closure->function->chunk.constants.values[index])
+//#define READ_CONSTANT_LONG(i) (frame->closure->function->chunk.constants.values[i])
+#define READ_CONSTANT_LONG() \
+    (frame->closure->function->chunk.constants.values[ \
+     (READ_BYTE() << 16) | (READ_BYTE() << 8) | READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+#define READ_STRING_LONG(index) \
+    AS_STRING(READ_CONSTANT_LONG(index))
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
@@ -1855,13 +1863,17 @@ InterpretResult run() {
                 break;
             case OP_CONSTANT_LONG:
                 {
+                    /*
                     uint8_t b1 = READ_BYTE();
                     uint8_t b2 = READ_BYTE();
                     uint8_t b3 = READ_BYTE();
-                    int index = b1 | (b2 << 8) | (b3 << 16);
+                    //int index = b1 | (b2 << 8) | (b3 << 16);
+                    int index = (b1 << 16) | (b2 << 8) | b3;
+                    */
 
                     //Value constant = frame->closure->function->chunk.constants.values[index];
-                    Value constant = READ_CONSTANT_LONG(index);
+                    //Value constant = READ_CONSTANT_LONG(index);
+                    Value constant = READ_CONSTANT_LONG();
                     push(constant);
                 }
                 break;
@@ -1912,15 +1924,39 @@ InterpretResult run() {
                     push(val);
                 }
                 break;
+            case OP_GET_LOCAL_LONG:
+                {
+                    int slot = READ_24BIT();
+                    Value val = frame->slots[slot];
+                    push(val);
+                }
+                break;
             case OP_SET_LOCAL:
                 {
                     uint8_t slot = READ_BYTE();
                     frame->slots[slot] = peek(0);
                 }
                 break;
+            case OP_SET_LOCAL_LONG:
+                {
+                    int slot = READ_24BIT();
+                    frame->slots[slot] = peek(0);
+                }
+                break;
             case OP_GET_GLOBAL:
                 {
                     ObjString* name = READ_STRING();
+                    Value value;
+                    if (!tableGet(&vm.globals, name, &value)) {
+                        runtimeError("Undefined variable '%s'.", name->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    push(value);
+                }
+                break;
+            case OP_GET_GLOBAL_LONG:
+                {
+                    ObjString* name = READ_STRING_LONG();
                     Value value;
                     if (!tableGet(&vm.globals, name, &value)) {
                         runtimeError("Undefined variable '%s'.", name->chars);
@@ -1938,8 +1974,9 @@ InterpretResult run() {
                 break;
             case OP_DEFINE_GLOBAL_LONG:
                 {
-                    uint32_t index = READ_24BIT();
-                    ObjString* name = AS_STRING(frame->closure->function->chunk.constants.values[index]);
+                    //uint32_t index = READ_24BIT();
+                    //ObjString* name = AS_STRING(frame->closure->function->chunk.constants.values[index]);
+                    ObjString* name = READ_STRING_LONG();
                     tableSet(&vm.globals, name, peek(0));
                     pop();
                 }
@@ -1947,6 +1984,16 @@ InterpretResult run() {
             case OP_SET_GLOBAL:
                 {
                     ObjString* name = READ_STRING();
+                    if (tableSet(&vm.globals, name, peek(0))) {
+                        tableDelete(&vm.globals, name);
+                        runtimeError("Undefined variable '%s'.", name->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                }
+                break;
+            case OP_SET_GLOBAL_LONG:
+                {
+                    ObjString* name = READ_STRING_LONG();
                     if (tableSet(&vm.globals, name, peek(0))) {
                         tableDelete(&vm.globals, name);
                         runtimeError("Undefined variable '%s'.", name->chars);
@@ -2412,6 +2459,9 @@ InterpretResult run() {
                 break;
             case OP_CLASS:
                 push(OBJ_VAL(newClass(READ_STRING())));
+                break;
+            case OP_CLASS_LONG:
+                push(OBJ_VAL(newClass(READ_STRING_LONG())));
                 break;
             case OP_INHERIT:
                 {

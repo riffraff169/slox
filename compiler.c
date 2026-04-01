@@ -48,7 +48,7 @@ typedef struct {
 } Local;
 
 typedef struct {
-    uint8_t index;
+    uint16_t index;
     bool isLocal;
 } Upvalue;
 
@@ -64,9 +64,9 @@ typedef struct Compiler {
     ObjFunction* function;
     FunctionType type;
 
-    Local locals[UINT8_COUNT];
+    Local locals[65536];
     int localCount;
-    Upvalue upvalues[UINT8_COUNT];
+    Upvalue upvalues[65536];
     int scopeDepth;
 } Compiler;
 
@@ -173,14 +173,15 @@ static void emitReturn() {
     emitByte(OP_RETURN);
 }
 
-static uint8_t makeConstant(Value value) {
+static int makeConstant(Value value) {
     int constant = addConstant(currentChunk(), value);
-    if (constant > UINT8_MAX) {
+    //if (constant > UINT8_MAX) {
+    if (constant > 16777214) { // 2^24 - 1
         error("Too many constants in one chunk.");
         return 0;
     }
 
-    return (uint8_t)constant;
+    return (int)constant;
 }
 
 static void emitConstant(Value value) {
@@ -282,7 +283,7 @@ static void declaration();
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
-static uint8_t identifierConstant(Token* name) {
+static int identifierConstant(Token* name) {
     return makeConstant(OBJ_VAL(copyString(name->start,
                     name->length)));
 }
@@ -306,7 +307,7 @@ static int resolveLocal(Compiler* compiler, Token* name) {
     return -1;
 }
 
-static int addUpvalue(Compiler* compiler, uint8_t index,
+static int addUpvalue(Compiler* compiler, int index,
         bool isLocal) {
     int upvalueCount = compiler->function->upvalueCount;
 
@@ -317,7 +318,7 @@ static int addUpvalue(Compiler* compiler, uint8_t index,
         }
     }
 
-    if (upvalueCount == UINT8_COUNT) {
+    if (upvalueCount == 16777215) {
         error("Too many closure variables in function.");
         return 0;
     }
@@ -333,12 +334,12 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
     int local = resolveLocal(compiler->enclosing, name);
     if (local != -1) {
         compiler->enclosing->locals[local].isCaptured = true;
-        return addUpvalue(compiler, (uint8_t)local, true);
+        return addUpvalue(compiler, (int)local, true);
     }
 
     int upvalue = resolveUpvalue(compiler->enclosing, name);
     if (upvalue != -1) {
-        return addUpvalue(compiler, (uint8_t)upvalue, false);
+        return addUpvalue(compiler, (int)upvalue, false);
     }
 
     return -1;
@@ -374,7 +375,7 @@ static void declareVariable() {
     addLocal(*name);
 }
 
-static uint8_t parseVariable(const char* errorMessage) {
+static int parseVariable(const char* errorMessage) {
     consume(TOKEN_IDENTIFIER, errorMessage);
 
     declareVariable();
@@ -389,7 +390,7 @@ static void markInitialized() {
         current->scopeDepth;
 }
 
-static void defineVariable(uint8_t global) {
+static void defineVariable(int global) {
     if (current->scopeDepth > 0) {
         markInitialized();
         return;
@@ -399,9 +400,9 @@ static void defineVariable(uint8_t global) {
         emitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
     } else {
         emitByte(OP_DEFINE_GLOBAL_LONG);
-        emitByte((uint8_t)(global & 0xff));
-        emitByte((uint8_t)((global >> 8) & 0xff));
         emitByte((uint8_t)((global >> 16) & 0xff));
+        emitByte((uint8_t)((global >> 8) & 0xff));
+        emitByte((uint8_t)(global & 0xff));
     }
 }
 
@@ -488,7 +489,7 @@ static void call(bool canAssign) {
 
 static void dot(bool canAssign) {
     consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
-    uint8_t name = identifierConstant(&parser.previous);
+    int name = identifierConstant(&parser.previous);
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
@@ -643,22 +644,46 @@ static void namedVariable(Token name, bool canAssign) {
     uint8_t getOp, setOp;
     int arg = resolveLocal(current, &name);
     if (arg != -1) {
-        getOp = OP_GET_LOCAL;
-        setOp = OP_SET_LOCAL;
+        if (arg > 255) {
+            getOp = OP_GET_LOCAL_LONG;
+            setOp = OP_SET_LOCAL_LONG;
+        } else {
+            getOp = OP_GET_LOCAL;
+            setOp = OP_SET_LOCAL;
+        }
     } else if ((arg = resolveUpvalue(current, &name)) != -1) {
         getOp = OP_GET_UPVALUE;
         setOp = OP_SET_UPVALUE;
     } else {
         arg = identifierConstant(&name);
-        getOp = OP_GET_GLOBAL;
-        setOp = OP_SET_GLOBAL;
+        if (arg > 255) {
+            getOp = OP_GET_GLOBAL_LONG;
+            setOp = OP_SET_GLOBAL_LONG;
+        } else {
+            getOp = OP_GET_GLOBAL;
+            setOp = OP_SET_GLOBAL;
+        }
     }
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
-        emitBytes(setOp, (uint8_t)arg);
+        if (setOp == OP_SET_GLOBAL_LONG || setOp == OP_SET_LOCAL_LONG) {
+            emitByte(setOp);
+            emitByte((uint8_t)((arg >> 16) & 0xff));
+            emitByte((uint8_t)((arg >> 8) & 0xff));
+            emitByte((uint8_t)(arg & 0xff));
+        } else {
+            emitBytes(setOp, (uint8_t)arg);
+        }
     } else {
-        emitBytes(getOp, (uint8_t)arg);
+        if (getOp == OP_GET_GLOBAL_LONG || getOp == OP_GET_LOCAL_LONG) {
+            emitByte(getOp);
+            emitByte((uint8_t)((arg >> 16) & 0xff));
+            emitByte((uint8_t)((arg >> 8) & 0xff));
+            emitByte((uint8_t)(arg & 0xff));
+        } else {
+            emitBytes(getOp, (uint8_t)arg);
+        }
     }
 }
 
@@ -682,7 +707,7 @@ static void super_(bool canAssign) {
 
     consume(TOKEN_DOT, "Expect '.' after 'super'.");
     consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
-    uint8_t name = identifierConstant(&parser.previous);
+    int name = identifierConstant(&parser.previous);
 
     namedVariable(syntheticToken("this"), false);
     if (match(TOKEN_LEFT_PAREN)) {
@@ -747,7 +772,7 @@ static void importDeclaration() {
             parser.previous.start + 1,
             parser.previous.length - 2);
 
-    uint8_t nameConstant = makeConstant(OBJ_VAL(nameString));
+    int nameConstant = makeConstant(OBJ_VAL(nameString));
 
     emitBytes(OP_IMPORT, nameConstant);
     consume(TOKEN_SEMICOLON, "Expect ';' after import path.");
@@ -858,7 +883,7 @@ static void function(FunctionType type) {
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters.");
             }
-            uint8_t constant = parseVariable("Expect parameter name.");
+            int constant = parseVariable("Expect parameter name.");
             defineVariable(constant);
         } while (match(TOKEN_COMMA));
     }
@@ -887,7 +912,7 @@ static void parseFunction(FunctionType type) {
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters.");
             }
-            uint8_t constant = parseVariable("Expect parameter name.");
+            int constant = parseVariable("Expect parameter name.");
             defineVariable(constant);
         } while (match(TOKEN_COMMA));
     }
@@ -911,7 +936,7 @@ static void lambda(bool canAssign) {
 
 static void method() {
     consume(TOKEN_IDENTIFIER, "Expect method name.");
-    uint8_t constant = identifierConstant(&parser.previous);
+    int constant = identifierConstant(&parser.previous);
 
     FunctionType type = TYPE_METHOD;
     if (parser.previous.length == 4 &&
@@ -926,10 +951,18 @@ static void method() {
 static void classDeclaration() {
     consume(TOKEN_IDENTIFIER, "Expect class name.");
     Token className = parser.previous;
-    uint8_t nameConstant = identifierConstant(&parser.previous);
+    int nameConstant = identifierConstant(&parser.previous);
     declareVariable();
 
-    emitBytes(OP_CLASS, nameConstant);
+    if (nameConstant < 256) {
+        emitBytes(OP_CLASS, nameConstant);
+    } else {
+        emitByte(OP_CLASS_LONG);
+        emitByte((uint8_t)((nameConstant >> 16) & 0xff));
+        emitByte((uint8_t)((nameConstant >> 8) & 0xff));
+        emitByte((uint8_t)(nameConstant & 0xff));
+    }
+
     defineVariable(nameConstant);
 
     ClassCompiler classCompiler;
@@ -964,7 +997,6 @@ static void classDeclaration() {
 
     emitByte(OP_POP);
 
-    //endScope();
     if (classCompiler.hasSuperclass) {
         endScope();
     }
@@ -973,15 +1005,14 @@ static void classDeclaration() {
 }
 
 static void funDeclaration() {
-    uint8_t global = parseVariable("Expect function name.");
+    int global = parseVariable("Expect function name.");
     markInitialized();
     parseFunction(TYPE_FUNCTION);
-    //lambda(false);
     defineVariable(global);
 }
 
 static void varDeclaration() {
-    uint8_t global = parseVariable("Expect variable name.");
+    int global = parseVariable("Expect variable name.");
 
     if (match(TOKEN_EQUAL)) {
         expression();

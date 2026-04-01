@@ -261,6 +261,35 @@ class HitRecord {
 
 }
 
+fun Interval(min, max) {
+  return [min, max];
+}
+
+fun interval_size(i) {
+  return i[1] - i[0];
+}
+
+fun interval_contains(i, x) {
+  return i[0] <= x and x <= i[1];
+}
+
+fun interval_surrounds(i, x) {
+  if (typeof(i) != "ARRAY") {
+    print "NOT AN ARRAY";
+    print i;
+  }
+  return i[0] < x and x < i[1];
+}
+
+fun interval_clamp(i, x) {
+  if (x < i[0]) return i[0];
+  if (x > i[1]) return i[1];
+  return x;
+}
+
+var interval_empty = Interval(infinity, neg_infinity);
+var interval_universe = Interval(neg_infinity, infinity);
+
 var file = "out.ppm";
 if (System.ARGS.len() > 0) {
   file = System.ARGS[0];
