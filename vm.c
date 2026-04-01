@@ -2506,7 +2506,7 @@ InterpretResult run() {
                     uint8_t count = READ_BYTE();
                     
                     ObjArray* array = newArray(count);
-                    printValue(OBJ_VAL(array));
+                    //printValue(OBJ_VAL(array));
 
                     for (int i = count - 1; i >= 0; i--) {
                         array->values[i] = pop();

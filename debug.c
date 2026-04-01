@@ -248,7 +248,6 @@ int disassembleInstruction(Chunk* chunk, int offset) {
         case OP_ARRAY:
             return byteInstruction("OP_ARRAY", chunk, offset);
         case OP_GET_INDEX:
-            return byteInstruction("OP_GET_INDEX", chunk, offset);
             return simpleInstruction("OP_GET_INDEX", offset);
         case OP_SET_INDEX:
             return byteInstruction("OP_SET_INDEX", chunk, offset);
