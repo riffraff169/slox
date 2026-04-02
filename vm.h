@@ -5,7 +5,7 @@
 #include "table.h"
 #include "value.h"
 
-#define FRAMES_MAX 64
+#define FRAMES_MAX 256
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
 typedef struct {
@@ -30,6 +30,7 @@ typedef struct {
     ObjString* str_sub;
     ObjString* str_mul;
     ObjString* str_div;
+    ObjString* str_neg;
 
     Table arrayMethods;
 

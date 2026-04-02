@@ -1482,6 +1482,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.str_mul = copyString("__mul__", 7);
     vm.str_div = NULL;
     vm.str_div = copyString("__div__", 7);
+    vm.str_neg = NULL;
+    vm.str_neg = copyString("__neg__", 7);
 
     defineNative("clock", clockNative);
     defineNative("str", strNative);
@@ -2283,11 +2285,29 @@ InterpretResult run() {
                 }
                 break;
             case OP_NEGATE:
-                if (!IS_NUMBER(peek(0))) {
-                    runtimeError("Operand must be a number.");
-                    return INTERPRET_RUNTIME_ERROR;
+                {
+                    if (IS_NUMBER(peek(0))) {
+                        push(NUMBER_VAL(-AS_NUMBER(pop())));
+                    } else if (IS_INSTANCE(peek(0))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(0));
+                        Value method;
+                        Value result;
+
+                        Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->klass->methods, vm.str_neg, &method)) {
+                            if (callValue(method, 0)) {
+                                vm.nativeExitDepth = vm.frameCount - 1;
+                                run();
+                                result = pop();
+                            }
+                        }
+                        vm.stackTop = stackStart;
+                        push(result);
+                    } else {
+                        runtimeError("Operand must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
                 }
-                push(NUMBER_VAL(-AS_NUMBER(pop())));
                 break;
             case OP_BITWISE_AND:
                 {
