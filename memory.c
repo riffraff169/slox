@@ -90,6 +90,7 @@ static void blackenObject(Obj* object) {
         case OBJ_ARRAY:
             {
                 ObjArray* array = (ObjArray*)object;
+                if (array->values == NULL) break;
                 for (int i = 0; i < array->count; i++) {
                     markValue(array->values[i]);
                 }

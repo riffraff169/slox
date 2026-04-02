@@ -1812,6 +1812,8 @@ Value numberToValue(double num) {
 
 InterpretResult run() {
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
+    //printf("STACK DEPTH: %ld | FRAME: %d | OP: %d\n",
+     //       (long)(vm.stackTop - vm.stack), vm.frameCount, *frame->ip);
 
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT() \
@@ -1920,7 +1922,12 @@ InterpretResult run() {
             case OP_GET_LOCAL:
                 {
                     uint8_t slot = READ_BYTE();
+                   // printf("OP_GET_LOCAL: slot %d\n", slot);
                     Value val = frame->slots[slot];
+                    //printf("OP_GET_LOCAL: ");
+                    //printValue(val);
+                    //printf("\n");
+                    //printf("OP_GET_LOCAL: slot %d, Frame %d\n", slot, vm.frameCount);
                     push(val);
                 }
                 break;
@@ -2506,13 +2513,22 @@ InterpretResult run() {
                     uint8_t count = READ_BYTE();
                     
                     ObjArray* array = newArray(count);
-                    //printValue(OBJ_VAL(array));
+                    push(OBJ_VAL(array));
 
-                    for (int i = count - 1; i >= 0; i--) {
-                        array->values[i] = pop();
+                    if (count > 0) {
+                        Value* entries = ALLOCATE(Value, count);
+                        array->values = entries;
+                        array->capacity = count;
+                        array->count = count;
                     }
 
-                    push(OBJ_VAL(array));
+                    for (int i = count - 1; i >= 0; i--) {
+                        array->values[i] = vm.stackTop[- (count - i + 1)];
+                    }
+
+                    Value arrayVal = pop();
+                    vm.stackTop -= count;
+                    push(arrayVal);
                 }
                 break;
             case OP_ARRAY_FILL:
@@ -2538,6 +2554,16 @@ InterpretResult run() {
                 {
                     Value indexValue = pop();
                     Value targetValue = pop();
+
+                    if (!IS_ARRAY(targetValue) && !IS_MAP(targetValue)) {
+                        if (IS_OBJ(targetValue)) {
+                            printf("CRITICAL: Expected Array, got ObjType %d\n", OBJ_TYPE(targetValue));
+                        } else {
+                            printf("CRITICAL: Expected Array, got non-object Value tag %d\n", targetValue);
+                        }
+                        runtimeError("Not map or array");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
 
                     if (IS_MAP(targetValue)) {
                         if (!IS_STRING(indexValue)) {

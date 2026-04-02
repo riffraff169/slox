@@ -152,16 +152,18 @@ ObjMap* newMap() {
 ObjArray* newArray(int count) {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
 
-    array->count = count;
-    array->capacity = count;
+    array->count = 0;
+    array->capacity = 0;
     array->values = NULL;
 
+    /*
     if (count > 0) {
         array->values = ALLOCATE(Value, count);
         for (int i = 0; i < count; i++) {
             array->values[i] = NIL_VAL;
         }
     }
+    */
     return array;
 }
 

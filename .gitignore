@@ -5,3 +5,6 @@ examples
 *.so
 .*_history
 *.c.*
+temp/*
+*.ppm
+*.txt
