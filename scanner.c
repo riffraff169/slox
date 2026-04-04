@@ -180,6 +180,21 @@ static Token number() {
         while (isDigit(peek())) advance();
     }
 
+    if (peek() == 'e' || peek() == 'E') {
+        char next = peekNext();
+        if (isDigit(next) || ((next == '+' || next == '-'))) {
+            advance();
+            if (peek() == '+' || peek() == '-') advance();
+            if (!isDigit(peek())) {
+                return errorToken("Unterminated exponent.");
+            }
+
+            while (isDigit(peek())) advance();
+        } else {
+            return errorToken("Unterminated exponent.");
+        }
+    }
+
     return makeToken(TOKEN_NUMBER);
 }
 

@@ -2348,6 +2348,8 @@ InterpretResult run() {
                                         printValue(result);
                                     }
                                 }
+                            } else {
+                                printValue(value);
                             }
                             vm.stackTop = stackStart;
                             //pop();
