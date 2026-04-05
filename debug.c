@@ -46,9 +46,23 @@ static int constantLongInstruction(const char* name, Chunk* chunk,
 }
 
 static int invokeInstruction(const char* name, Chunk* chunk,
-        int offset) {
-    uint8_t constant = chunk->code[offset + 1];
-    uint8_t argCount = chunk->code[offset + 2];
+        int offset, bool isLong) {
+    uint32_t constant;
+    int argCount;
+    int nextOffset;
+
+    if (isLong) {
+        constant = (chunk->code[offset + 1] << 16) |
+            (chunk->code[offset + 2] << 8) |
+            chunk->code[offset + 3];
+        argCount = chunk->code[offset + 4];
+        nextOffset = offset + 5;
+    } else {
+        constant = chunk->code[offset + 1];
+        argCount = chunk->code[offset + 2];
+        nextOffset = offset + 3;
+    }
+
     printf("%-16s (%d args) %4d '", name, argCount, constant);
     printValue(chunk->constants.values[constant]);
     printf("'\n");
@@ -160,8 +174,12 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return byteInstruction("OP_SET_UPVALUE", chunk, offset);
         case OP_GET_PROPERTY:
             return constantInstruction("OP_GET_PROPERTY", chunk, offset);
+        case OP_GET_PROPERTY_LONG:
+            return constantLongInstruction("OP_GET_PROPERTY_LONG", chunk, offset);
         case OP_SET_PROPERTY:
             return constantInstruction("OP_SET_PROPERTY", chunk, offset);
+        case OP_SET_PROPERTY_LONG:
+            return constantLongInstruction("OP_SET_PROPERTY_LONG", chunk, offset);
         case OP_GET_SUPER:
             return constantInstruction("OP_GET_SUPER", chunk, offset);
         case OP_EQUAL:
@@ -207,9 +225,11 @@ int disassembleInstruction(Chunk* chunk, int offset) {
         case OP_CALL:
             return byteInstruction("OP_CALL", chunk, offset);
         case OP_INVOKE:
-            return invokeInstruction("OP_INVOKE", chunk, offset);
+            return invokeInstruction("OP_INVOKE", chunk, offset, false);
+        case OP_INVOKE_LONG:
+            return invokeInstruction("OP_INVOKE_LONG", chunk, offset, true);
         case OP_SUPER_INVOKE:
-            return invokeInstruction("OP_SUPER_INVOKE", chunk, offset);
+            return invokeInstruction("OP_SUPER_INVOKE", chunk, offset, false);
         case OP_CLOSURE:
             {
                 offset++;

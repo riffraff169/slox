@@ -1812,6 +1812,10 @@ Value numberToValue(double num) {
     return OBJ_VAL(copyString(buffer, length));
 }
 
+static inline uint32_t read24(uint8_t* ip) {
+    return(ip[0] << 16) | (ip[1] << 8) | ip[2];
+}
+
 InterpretResult run() {
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
     //printf("STACK DEPTH: %ld | FRAME: %d | OP: %d\n",
@@ -1828,11 +1832,12 @@ InterpretResult run() {
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
 //#define READ_CONSTANT_LONG(i) (frame->closure->function->chunk.constants.values[i])
 #define READ_CONSTANT_LONG() \
-    (frame->closure->function->chunk.constants.values[ \
-     (READ_BYTE() << 16) | (READ_BYTE() << 8) | READ_BYTE()])
+    (frame->ip += 3, \
+     frame->closure->function->chunk.constants.values[read24(frame->ip - 3)])
+
 #define READ_STRING() AS_STRING(READ_CONSTANT())
-#define READ_STRING_LONG(index) \
-    AS_STRING(READ_CONSTANT_LONG(index))
+#define READ_STRING_LONG() \
+    AS_STRING(READ_CONSTANT_LONG())
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
@@ -2011,9 +2016,13 @@ InterpretResult run() {
                 }
                 break;
             case OP_GET_PROPERTY:
+            case OP_GET_PROPERTY_LONG:
                 {
+                    ObjString* name = (instruction == OP_GET_PROPERTY)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    
                     Value receiver = peek(0);
-                    ObjString* name = READ_STRING();
 
                     if (IS_INSTANCE(receiver)) {
                         ObjInstance* instance = AS_INSTANCE(receiver);
@@ -2073,6 +2082,7 @@ InterpretResult run() {
                 }
                 break;
             case OP_SET_PROPERTY:
+            case OP_SET_PROPERTY_LONG:
                 {
                     if (!IS_INSTANCE(peek(1))) {
                         runtimeError("Only instances have fields.");
@@ -2080,7 +2090,10 @@ InterpretResult run() {
                     }
 
                     ObjInstance* instance = AS_INSTANCE(peek(1));
-                    ObjString* name = READ_STRING();
+                    ObjString* name = (instruction == OP_SET_PROPERTY)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+
                     Value value = peek(0);
 
                     if (instance->klass->setter != NULL) {
@@ -2399,8 +2412,11 @@ InterpretResult run() {
                 }
                 break;
             case OP_INVOKE:
+            case OP_INVOKE_LONG:
                 {
-                    ObjString* method = READ_STRING();
+                    ObjString* method = (instruction == OP_INVOKE)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
                     int argCount = READ_BYTE();
                     Value receiver = peek(argCount);
 

@@ -493,13 +493,35 @@ static void dot(bool canAssign) {
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
-        emitBytes(OP_SET_PROPERTY, name);
+        if (name < 256) {
+            emitBytes(OP_SET_PROPERTY, (uint8_t)name);
+        } else {
+            emitByte(OP_SET_PROPERTY_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+        }
     } else if (match(TOKEN_LEFT_PAREN)) {
         uint8_t argCount = argumentList();
-        emitBytes(OP_INVOKE, name);
-        emitByte(argCount);
+        if (name < 256) {
+            emitBytes(OP_INVOKE, (uint8_t)name);
+            emitByte(argCount);
+        } else {
+            emitByte(OP_INVOKE_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+            emitByte(argCount);
+        }
     } else {
-        emitBytes(OP_GET_PROPERTY, name);
+        if (name < 256) {
+            emitBytes(OP_GET_PROPERTY, (uint8_t)name);
+        } else {
+            emitByte(OP_GET_PROPERTY_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+        }
     }
 }
 
