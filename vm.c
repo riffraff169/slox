@@ -176,6 +176,21 @@ static Value toNumberNative(int argCount, Value* args) {
     return NUMBER_VAL(number);
 }
 
+static Value mathSinNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(sin(AS_NUMBER(args[1])));
+}
+
+static Value mathCosNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(cos(AS_NUMBER(args[1])));
+}
+
+static Value mathTanNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(tan(AS_NUMBER(args[1])));
+}
+
 static Value mathRoundNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
     return NUMBER_VAL(round(AS_NUMBER(args[1])));
@@ -1340,6 +1355,9 @@ void initMathLibrary() {
     //defineNativeMethod(mathClass, "ceil", mathCeilNative);
     defineNativeMethod(mathClass, "round", mathRoundNative);
     defineNativeMethod(mathClass, "to_number", toNumberNative);
+    defineNativeMethod(mathClass, "sin", mathSinNative);
+    defineNativeMethod(mathClass, "cos", mathCosNative);
+    defineNativeMethod(mathClass, "tan", mathTanNative);
 
 
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
