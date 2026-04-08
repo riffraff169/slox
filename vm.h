@@ -37,6 +37,12 @@ typedef struct {
     bool isGC;
     size_t bytesAllocated;
     size_t nextGC;
+    int heap_growth_factor;
+    int init_threshold;
+    int bump_size;
+    bool stress_mode;
+    int gctype; // 1: multiplier, 0: linear
+
     Obj* objects;
     int grayCount;
     int grayCapacity;
@@ -49,6 +55,7 @@ typedef struct {
     ObjClass* regexClass;
     ObjClass* moduleClass;
     ObjClass* vec3Class;
+    ObjClass* gcClass;
     int nativeExitDepth;
 
     int moduleCount;

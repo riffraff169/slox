@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <malloc.h>
 
 #include "compiler.h"
 #include "memory.h"
@@ -15,11 +16,11 @@
 void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
     vm.bytesAllocated += newSize - oldSize;
     if (newSize > oldSize) {
-#ifdef DEBUG_STRESS_GC
-        collectGarbage();
-#endif
+        if (vm.stress_mode) {
+            collectGarbage();
+        }
 
-        if (!vm.isGC && vm.bytesAllocated > vm.nextGC) {
+        if (!vm.isGC && vm.bytesAllocated > vm.nextGC && vm.init_threshold < vm.bytesAllocated) {
             collectGarbage();
         }
     }
@@ -215,6 +216,7 @@ static void freeObject(Obj* object) {
             break;
         case OBJ_STRING:
             {
+                //printf("Freeing string: %s\n", ((ObjString*)object)->chars);
                 ObjString* string = (ObjString*)object;
                 FREE_ARRAY(char, string->chars, string->length + 1);
                 FREE(ObjString, object);
@@ -249,13 +251,15 @@ static void markRoots() {
     markObject((Obj*)vm.str_sub);
     markObject((Obj*)vm.str_mul);
     markObject((Obj*)vm.str_div);
+    markObject((Obj*)vm.str_neg);
     markObject((Obj*)vm.arrayClass);
     markObject((Obj*)vm.mapClass);
     markObject((Obj*)vm.stringClass);
     markObject((Obj*)vm.moduleClass);
     markObject((Obj*)vm.regexClass);
     markObject((Obj*)vm.mathClass);
-    //markTable(&vm.giTypes);
+    markObject((Obj*)vm.vec3Class);
+    markObject((Obj*)vm.gcClass);
 }
 
 static void traceReferences() {
@@ -297,9 +301,27 @@ void collectGarbage() {
     markRoots();
     traceReferences();
     tableRemoveWhite(&vm.strings);
+    /*
+    printf("[GC]: strings table capacity: %d\n", vm.strings.capacity);
+    printf("[GC]: strings table count: %d\n", vm.strings.count);
+    printf("[GC]: strings table size: %d\n", sizeof(vm.strings.entries) * vm.strings.capacity);
+    */
     sweep();
 
-    vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;
+    if (vm.gctype == 1) {
+        vm.nextGC = vm.bytesAllocated * vm.heap_growth_factor;
+    } else if (vm.gctype == 0) {
+        vm.nextGC = vm.bytesAllocated + vm.bump_size;
+    }
+
+    malloc_trim(0);
+    int count = 0;
+    Obj* object = vm.objects;
+    while (object != NULL) {
+        count++;
+        object = object->next;
+    }
+    printf("[GC] Total Objects remaining in heap: %d\n", count);
 
 #ifdef DEBUG_LOG_GC
     printf("-- gc end\n");

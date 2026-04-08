@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -851,6 +852,103 @@ static Value systemGCNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value systemShowStackNative(int argCount, Value* args) {
+    printf("[SHOW_STACK]: stack: %d\n", (int)(vm.stackTop - vm.stack));
+    return NIL_VAL;
+}
+
+static Value systemResetStackNative(int argCount, Value* args) {
+    for (Value* slot = vm.stackTop; slot < vm.stack + STACK_MAX; slot++) {
+        *slot = NIL_VAL;
+    }
+    return NIL_VAL;
+}
+
+typedef struct {
+    unsigned long size, resident, share, text, lib, data, dt;
+} statm_t;
+
+static Value systemMemNative(int argCount, Value* args) {
+    ObjMap* memmap = newMap();
+    push(OBJ_VAL(memmap));
+
+    statm_t res;
+    const char* statm_path = "/proc/self/statm";
+    FILE *f = fopen(statm_path, "r");
+    if (!f) {
+        int errsv = errno;
+        char *errmsg = strerror(errsv);
+        runtimeError("Error reading statm: %s\n", errmsg);
+        pop();
+        return NIL_VAL;
+    }
+
+    if (7 != fscanf(f, "%ld %ld %ld %ld %ld %ld %ld",
+                &res.size, &res.resident, &res.share, &res.text,
+                &res.lib, &res.data, &res.dt)) {
+        int errsv = errno;
+        char *errmsg = strerror(errsv);
+        runtimeError("Error parsing statm: %s\n", errmsg);
+        return NIL_VAL;
+    }
+    ObjString* key;
+    double val;
+    key = copyString("size", 4);
+    push(OBJ_VAL(key));
+    val = res.size;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+
+    key = copyString("resident", 8);
+    push(OBJ_VAL(key));
+    val = res.resident;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+
+    key = copyString("share", 5);
+    push(OBJ_VAL(key));
+    val = res.share;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+
+    key = copyString("text", 4);
+    push(OBJ_VAL(key));
+    val = res.text;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+
+    /* unused
+    key = copyString("lib", 3);
+    push(OBJ_VAL(key));
+    val = res.lib;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+    */
+
+    key = copyString("data", 4);
+    push(OBJ_VAL(key));
+    val = res.data;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+
+    /* unused
+    key = copyString("dt", 2);
+    push(OBJ_VAL(key));
+    val = res.data;
+    push(NUMBER_VAL(val));
+    tableSet(&memmap->items, key, NUMBER_VAL(val));
+    popn(2);
+    */
+    pop();
+    return OBJ_VAL(memmap);
+}
+
 static Value fileCloseNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[0]);
     if (inst->foreignPtr == stdout || inst->foreignPtr == stderr) return NIL_VAL;
@@ -915,7 +1013,8 @@ static Value fileWriteNative(int argCount, Value* args) {
     if (handle) {
         fprintf(handle, "%s", AS_CSTRING(args[1]));
     }
-    return args[0]; // return self for chaining
+    //return args[0]; // return self for chaining
+    return NIL_VAL;
 }
 
 static Value fileFlushNative(int argCount, Value* args) {
@@ -1537,6 +1636,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "time", systemTimeNative);
     defineNativeMethod(systemClass, "exit", systemExitNative);
     defineNativeMethod(systemClass, "gc", systemGCNative);
+    defineNativeMethod(systemClass, "mem", systemMemNative);
+    defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
+    defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -1620,33 +1722,130 @@ void initFileLibrary() {
 }
 
 void initVec3Library() {
-    //ObjString* name = copyString("Vec3", 4);
-    //push(OBJ_VAL(name));
-    //ObjClass* vec3Class = newClass(name);
-    //vm.vec3Class->getter = vec3Getter;
-    //vm.vec3Class->setter = vec3Setter;
-    //push(OBJ_VAL(vm.vec3Class));
-
-    //defineNativeMethod(vm.vec3Class, "__add__", vec3AddNative);
-    //defineNativeMethod(vm.vec3Class, "add", vec3AddNative);
-    //defineNativeMethod(vm.vec3Class, "__sub__", vec3SubNative);
-    //defineNativeMethod(vm.vec3Class, "sub", vec3SubNative);
-    //defineNativeMethod(vm.vec3Class, "__mul__", vec3MulNative);
-    //defineNativeMethod(vm.vec3Class, "mul", vec3MulNative);
-    //defineNativeMethod(vm.vec3Class, "__div__", vec3DivNative);
-    //defineNativeMethod(vm.vec3Class, "div", vec3DivNative);
-    //defineNativeMethod(vm.vec3Class, "__neg__", vec3NegNative);
-    //defineNativeMethod(vm.vec3Class, "neg", vec3NegNative);
-    //defineNativeMethod(vec3Class, "init", vec3InitNative);
-
     defineNative("Vec3", vec3InitNative);
     defineNative("dot", vec3DotNative);
     defineNative("cross", vec3CrossNative);
     defineNative("unit", vec3UnitNative);
+}
 
-    //tableSet(&vm.globals, name, OBJ_VAL(vec3Class));
+static Value hgfGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
 
-    //pop();
+    double val = AS_NUMBER(args[0]);
+    // minimum of 1.1, can't turn off gc entirely
+    if (val > 1.1) {
+        vm.heap_growth_factor = val;
+    }
+    return NIL_VAL;
+}
+
+static Value get_hgfGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_grown_factor() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.heap_growth_factor);
+}
+
+static Value thresholdGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+
+    uint32_t val = (uint32_t)AS_NUMBER(args[0]);
+    vm.init_threshold = val;
+    return NIL_VAL;
+}
+
+static Value get_thresholdGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_threshold() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.init_threshold);
+}
+
+static Value bumpsizeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+
+    uint32_t val = (uint32_t)AS_NUMBER(args[0]);
+    vm.bump_size = val;
+    return NIL_VAL;
+}
+
+static Value get_bumpsizeGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_bumpsize() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.bump_size);
+}
+
+static Value stressmodeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+
+    vm.stress_mode = AS_BOOL(args[0]);
+    return NIL_VAL;
+}
+
+static Value get_stressmodeGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_stressmode() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return BOOL_VAL(vm.stress_mode);
+}
+
+static Value typeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+
+    int type = AS_NUMBER(args[0]);
+    if (type == 0) {
+        vm.gctype = 0;
+    } else {
+        vm.gctype = 1;
+    }
+    return NIL_VAL;
+}
+
+static Value get_typeGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_gctype() takes 0 arguments.");
+        return NIL_VAL;
+    }
+    if (vm.gctype == 0) {
+        return OBJ_VAL(copyString("linear", 6));
+    } else if (vm.gctype == 1) {
+        return OBJ_VAL(copyString("multiplier", 10));
+    }
+    // shouldn't get here
+    return NIL_VAL;
+}
+
+void initGCLibrary() {
+    ObjString* gcName = copyString("GC", 2);
+    push(OBJ_VAL(gcName));
+    ObjClass* gcClass = newClass(gcName);
+    push(OBJ_VAL(gcClass));
+
+    defineNativeMethod(gcClass, "heap_growth_factor", hgfGCNative);
+    defineNativeMethod(gcClass, "get_growth_factor", get_hgfGCNative);
+    defineNativeMethod(gcClass, "init_threshold", thresholdGCNative);
+    defineNativeMethod(gcClass, "get_threshold", get_thresholdGCNative);
+    defineNativeMethod(gcClass, "bump_size", bumpsizeGCNative);
+    defineNativeMethod(gcClass, "get_bumpsize", get_bumpsizeGCNative);
+    defineNativeMethod(gcClass, "stress_mode", stressmodeGCNative);
+    defineNativeMethod(gcClass, "get_stress_mode", get_stressmodeGCNative);
+    defineNativeMethod(gcClass, "type", typeGCNative);
+    defineNativeMethod(gcClass, "get_gctype", get_typeGCNative);
+    // same as System.gc()
+    defineNativeMethod(gcClass, "gc", systemGCNative);
+
+    tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
+
+    popn(2);
 }
 
 void initRegexLibrary() {
@@ -1664,8 +1863,13 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
     vm.bytesAllocated = 0;
-    vm.nextGC = 1024 * 1024;
     vm.isGC = false;
+    vm.heap_growth_factor = 2.0;
+    vm.init_threshold = 0;
+    vm.nextGC = 1024 * 1024;
+    vm.bump_size = 1024 * 1024 * 64;
+    vm.stress_mode = false;
+    vm.gctype = 1;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -1743,6 +1947,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initFileLibrary();
     initRegexLibrary();
     initVec3Library();
+    initGCLibrary();
 
     defineNative("getMembers", getMembersNative);
     defineNative("has_method", hasMethodNative);
