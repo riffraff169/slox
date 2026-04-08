@@ -94,7 +94,7 @@ static Value nxGetPixel(int argCount, Value* args) {
 
     int offset = (y * width + x) * 4;
 
-    ObjArray* rgba = newArray(0);
+    ObjArray* rgba = newArray();
     push(OBJ_VAL(rgba));
     arrayAppend(rgba, NUMBER_VAL(pixels[offset]));      // r
     arrayAppend(rgba, NUMBER_VAL(pixels[offset + 1]));  // g

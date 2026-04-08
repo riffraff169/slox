@@ -11,6 +11,7 @@
 
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
+#define IS_VEC3(value)          isObjType(value, OBJ_VEC3)
 #define IS_FOREIGN(value)       isObjType(value, OBJ_FOREIGN)
 #define IS_REGEX(value)         isObjType(value, OBJ_REGEX)
 #define IS_MAP(value)           isObjType(value, OBJ_MAP)
@@ -23,6 +24,7 @@
 #define IS_NATIVE(value)        isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 
+#define AS_VEC3(value)          ((ObjVec3*)AS_OBJ(value))
 #define AS_FOREIGN(value)       ((ObjForeign*)AS_OBJ(value))
 #define AS_REGEX(value)         ((ObjRegex*)AS_OBJ(value))
 #define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
@@ -50,7 +52,8 @@ typedef enum {
     OBJ_ARRAY,
     OBJ_MAP,
     OBJ_FOREIGN,
-    OBJ_REGEX
+    OBJ_REGEX,
+    OBJ_VEC3   
 } ObjType;
 
 struct Obj {
@@ -155,11 +158,17 @@ typedef struct {
     const char* name;
 } ObjForeign;
 
+typedef struct {
+    Obj obj;
+    double x, y, z;
+} ObjVec3;
+
+ObjVec3* newVec3(Value x, Value y, Value z);
 ObjForeign* newForeign(void* ptr, const char* name);
 ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
 void arrayAppend(ObjArray* array, Value value);
-ObjArray* newArray(int count);
+ObjArray* newArray();
 ObjBoundMethod* newBoundMethod(Value receiver,
         ObjClosure* method);
 ObjClass* newClass(ObjString* name);

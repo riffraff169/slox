@@ -48,6 +48,7 @@ typedef struct {
     ObjClass* mathClass;
     ObjClass* regexClass;
     ObjClass* moduleClass;
+    ObjClass* vec3Class;
     int nativeExitDepth;
 
     int moduleCount;

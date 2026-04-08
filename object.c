@@ -149,21 +149,27 @@ ObjMap* newMap() {
     return map;
 }
 
-ObjArray* newArray(int count) {
+ObjVec3* newVec3(Value x, Value y, Value z) {
+    ObjVec3* vec3 = ALLOCATE_OBJ(ObjVec3, OBJ_VEC3);
+
+    //vec3->instance.klass = vm.vec3Class;
+    //initTable(&vec3->instance.fields);
+
+    vec3->x = AS_NUMBER(x);
+    vec3->y = AS_NUMBER(y);
+    vec3->z = AS_NUMBER(z);
+
+    return vec3;
+}
+
+ObjArray* newArray() {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
 
     array->count = 0;
     array->capacity = 0;
     array->values = NULL;
 
-    /*
-    if (count > 0) {
-        array->values = ALLOCATE(Value, count);
-        for (int i = 0; i < count; i++) {
-            array->values[i] = NIL_VAL;
-        }
-    }
-    */
+    // init deferred until later for gc reasons
     return array;
 }
 
@@ -179,7 +185,13 @@ void arrayAppend(ObjArray* array, Value value) {
 }
 
 ObjArray* duplicateArray(ObjArray* original) {
-    ObjArray* copy = newArray(original->count);
+    ObjArray* copy = newArray();
+    if (original->count > 0) {
+        Value* entries = ALLOCATE(Value, original->count);
+        copy->values = entries;
+        copy->capacity = original->count;
+        copy->count = original->count;
+    }
 
     memcpy(copy->values, original->values, sizeof(Value) * original->count);
 
@@ -240,6 +252,12 @@ void printMap(ObjMap* map) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_VEC3:
+            {
+                ObjVec3* v = AS_VEC3(value);
+                printf("Vec3(%g, %g, %g)", v->x, v->y, v->z);
+            }
+            break;
         case OBJ_FOREIGN:
             printf("<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
             break;

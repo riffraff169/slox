@@ -23,7 +23,7 @@ ObjString* getClosureKey(GClosure* closure) {
 */
 
 Value scrape_glist_to_lox(GList* list, GType item_type) {
-    ObjArray* array = newArray(0);
+    ObjArray* array = newArray();
     push(OBJ_VAL(array));
 
     for (GList* l = list; l != NULL; l = l->next) {
