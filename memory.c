@@ -252,13 +252,16 @@ static void markRoots() {
     markObject((Obj*)vm.str_mul);
     markObject((Obj*)vm.str_div);
     markObject((Obj*)vm.str_neg);
+    markObject((Obj*)vm.xString);
+    markObject((Obj*)vm.yString);
+    markObject((Obj*)vm.zString);
     markObject((Obj*)vm.arrayClass);
     markObject((Obj*)vm.mapClass);
     markObject((Obj*)vm.stringClass);
     markObject((Obj*)vm.moduleClass);
     markObject((Obj*)vm.regexClass);
     markObject((Obj*)vm.mathClass);
-    markObject((Obj*)vm.vec3Class);
+    //markObject((Obj*)vm.vec3Class);
     markObject((Obj*)vm.gcClass);
 }
 
@@ -314,6 +317,7 @@ void collectGarbage() {
         vm.nextGC = vm.bytesAllocated + vm.bump_size;
     }
 
+    /*
     malloc_trim(0);
     int count = 0;
     Obj* object = vm.objects;
@@ -322,6 +326,7 @@ void collectGarbage() {
         object = object->next;
     }
     printf("[GC] Total Objects remaining in heap: %d\n", count);
+    */
 
 #ifdef DEBUG_LOG_GC
     printf("-- gc end\n");

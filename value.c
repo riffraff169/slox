@@ -43,6 +43,11 @@ ObjString* valueToString(Value value) {
         return copyString("[array]", 7);
     } else if (IS_MAP(value)) {
         return copyString("[map]", 5);
+    } else if (IS_VEC3(value)) {
+        char buffer[128];
+        int length = snprintf(buffer, 128, "Vec3(%g, %g, %g)",
+                AS_VEC3(value).x, AS_VEC3(value).y, AS_VEC3(value).z);
+        return copyString(buffer, length);
     }
 
     return copyString("obj", 3);
@@ -64,6 +69,10 @@ void printValueSafe(Value value) {
                 break;
             case VAL_OBJ:
                 printObject(value);
+                break;
+            case VAL_VEC3:
+                printf("Vec3(%g, %g, %g)", AS_VEC3(value).x,
+                        AS_VEC3(value).y, AS_VEC3(value).z);
                 break;
         }
     }
@@ -88,6 +97,10 @@ bool valuesEqual(Value a, Value b) {
             return AS_NUMBER(a) == AS_NUMBER(b);
         case VAL_OBJ:
             return AS_OBJ(a) == AS_OBJ(b);
+        case VAL_VEC3:
+            return (AS_VEC3(a).x == AS_VEC3(b).x) &&
+                (AS_VEC3(a).y == AS_VEC3(b).y) &&
+                (AS_VEC3(a).z == AS_VEC3(b).z);
         default:
             return false;
     }

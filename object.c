@@ -149,6 +149,7 @@ ObjMap* newMap() {
     return map;
 }
 
+/*
 ObjVec3* newVec3(Value x, Value y, Value z) {
     ObjVec3* vec3 = ALLOCATE_OBJ(ObjVec3, OBJ_VEC3);
 
@@ -161,6 +162,7 @@ ObjVec3* newVec3(Value x, Value y, Value z) {
 
     return vec3;
 }
+*/
 
 ObjArray* newArray() {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
@@ -252,12 +254,14 @@ void printMap(ObjMap* map) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        /*
         case OBJ_VEC3:
             {
                 ObjVec3* v = AS_VEC3(value);
                 printf("Vec3(%g, %g, %g)", v->x, v->y, v->z);
             }
             break;
+            */
         case OBJ_FOREIGN:
             printf("<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
             break;

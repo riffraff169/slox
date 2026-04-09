@@ -1309,29 +1309,18 @@ static Value mathParseNative(int argCount, Value* args) {
     return NUMBER_VAL((double)result);
 }
 
-static Value vec3ConstructorNative(int argCount, Value* args) {
-    if (argCount < 3) {
-        runtimeError("Vec3() expects 3 arguments.");
-        return NIL_VAL;
-    }
-
-    return OBJ_VAL(newVec3(args[0], args[1], args[2]));
-}
-
 static Value vec3InitNative(int argCount, Value* args) {
     if (argCount != 3) {
         runtimeError("Need 3 arguments.");
         return NIL_VAL;
     }
 
-    //ObjVec3* vec3 = AS_VEC3(args[0]);
-    //double x = AS_NUMBER(args[0]);
-    //double y = AS_NUMBER(args[1]);
-    //double z = AS_NUMBER(args[2]);
+    Vec3 v;
+    v.x = AS_NUMBER(args[0]);
+    v.y = AS_NUMBER(args[1]);
+    v.z = AS_NUMBER(args[2]);
 
-    return OBJ_VAL(newVec3(args[0],
-                args[1],
-                args[2]));
+    return VEC3_VAL(v);
 }
 
 static Value vec3DotNative(int argCount, Value* args) {
@@ -1339,11 +1328,11 @@ static Value vec3DotNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b = AS_VEC3(args[1]);
 
-    return NUMBER_VAL((a->x * b->x) +
-            (a->y * b->y) + (a->z * b->z));
+    return NUMBER_VAL((a.x * b.x) +
+            (a.y * b.y) + (a.z * b.z));
 }
 
 static Value vec3UnitNative(int argCount, Value* args) {
@@ -1351,18 +1340,19 @@ static Value vec3UnitNative(int argCount, Value* args) {
         runtimeError("unit() expects 1 Vec3 argument.");
         return NIL_VAL;
     }
-    ObjVec3* a = AS_VEC3(args[0]);
+    Vec3 a = AS_VEC3(args[0]);
 
-    double mag2 = a->x * a->x + a->y * a->y + a->z * a->z;
+    double mag2 = a.x * a.x + a.y * a.y + a.z * a.z;
     if (mag2 > 0) {
         double invMag = 1.0 / sqrt(mag2);
-        return OBJ_VAL(newVec3(NUMBER_VAL(a->x * invMag),
-                NUMBER_VAL(a->y * invMag),
-                NUMBER_VAL(a->z * invMag)));
+        Vec3 v;
+        v.x = a.x * invMag;
+        v.y = a.y * invMag;
+        v.z = a.z * invMag;
+        return VEC3_VAL(v);
     }
-    return OBJ_VAL(newVec3(NUMBER_VAL(0),
-            NUMBER_VAL(0),
-            NUMBER_VAL(0)));
+    Vec3 v = {.x = 0, .y = 0, .z = 0};
+    return VEC3_VAL(v);
 }
 
 static Value vec3CrossNative(int argCount, Value* args) {
@@ -1370,104 +1360,72 @@ static Value vec3CrossNative(int argCount, Value* args) {
         runtimeError("cross() expects 2 Vec3 arguments.");
         return NIL_VAL;
     }
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
-    ObjVec3* c = newVec3(NUMBER_VAL(a->y * b->z - a->z * b->y),
-            NUMBER_VAL(a->z * b->x - a->x * b->z),
-            NUMBER_VAL(a->x * b->y - a->y * b->x));
-    return OBJ_VAL(c);
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b = AS_VEC3(args[1]);
+    Vec3 c;
+    c.x = a.y * b.z - a.z * b.y;
+    c.y = a.z * b.x - a.x * b.z;
+    c.z = a.x * b.y - a.y * b.x;
+    return VEC3_VAL(c);
 }
 
 static Value vec3AddNative(int argCount, Value* args) {
     if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
-    ObjVec3* c = newVec3(NUMBER_VAL(a->x + b->x),
-            NUMBER_VAL(a->y + b->y),
-            NUMBER_VAL(a->z + b->z));
-    return OBJ_VAL(c);
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b = AS_VEC3(args[1]);
+    Vec3 c;
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+    c.z = a.z + b.z;
+    return VEC3_VAL(c);
 }
 
 static Value vec3SubNative(int argCount, Value* args) {
     if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
-    ObjVec3* c = newVec3(NUMBER_VAL(a->x - b->x),
-            NUMBER_VAL(a->y - b->y),
-            NUMBER_VAL(a->z - b->z));
-    return OBJ_VAL(c);
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b = AS_VEC3(args[1]);
+    Vec3 c;
+    c.x = a.x - b.x;
+    c.y = a.y - b.y;
+    c.z = a.z - b.z;
+    return VEC3_VAL(c);
 }
 
 static Value vec3MulNative(int argCount, Value* args) {
     if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
-    ObjVec3* c = newVec3(NUMBER_VAL(a->x * b->x),
-            NUMBER_VAL(a->y * b->y),
-            NUMBER_VAL(a->z * b->z));
-    return OBJ_VAL(c);
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b = AS_VEC3(args[1]);
+    Vec3 c;
+    c.x = a.x * b.x;
+    c.y = a.y * b.y;
+    c.z = a.z * b.z;
+    return VEC3_VAL(c);
 }
 
 static Value vec3DivNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
+    if (argCount < 3 || !IS_NUMBER(args[1])) return args[0];
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = AS_VEC3(args[1]);
-    ObjVec3* c = newVec3(NUMBER_VAL(a->x / b->x),
-            NUMBER_VAL(a->y / b->y),
-            NUMBER_VAL(a->z / b->z));
-    return OBJ_VAL(c);
+    Vec3 a = AS_VEC3(args[0]);
+    double b = AS_NUMBER(args[1]);
+    Vec3 c;
+    c.x = a.x / b;
+    c.y = a.y / b;
+    c.z = a.z / b;
+    return VEC3_VAL(c);
 }
 
 static Value vec3NegNative(int argCount, Value* args) {
     if (argCount < 2) return args[0];
 
-    ObjVec3* a = AS_VEC3(args[0]);
-    ObjVec3* b = newVec3(NUMBER_VAL(-a->x),
-            NUMBER_VAL(-a->y),
-            NUMBER_VAL(-a->z));
-    return OBJ_VAL(b);
-}
-
-bool vec3Setter(ObjInstance* instance, ObjString* name, Value value) {
-    if (!IS_NUMBER(value)) return false;
-
-    ObjVec3* vec = (ObjVec3*)instance;
-    double val = AS_NUMBER(value);
-
-    if (name->length == 1) {
-        switch (name->chars[0]) {
-            case 'x':
-                vec->x = val;
-                return true;
-            case 'y':
-                vec->y = val;
-                return true;
-            case 'z':
-                vec->z = val;
-                return true;
-        }
-    }
-    return false;
-}
-
-Value vec3Getter(ObjInstance* instance, ObjString* name) {
-    ObjVec3* vec = (ObjVec3*)instance;
-
-    if (name->length == 1) {
-        switch (name->chars[0]) {
-            case 'x':
-                return NUMBER_VAL(vec->x);
-            case 'y':
-                return NUMBER_VAL(vec->y);
-            case 'z':
-                return NUMBER_VAL(vec->z);
-        }
-    }
-    return NIL_VAL;
+    Vec3 a = AS_VEC3(args[0]);
+    Vec3 b;
+    b.x = -b.x;
+    b.y = -b.y;
+    b.z = -b.z;
+    return VEC3_VAL(b);
 }
 
 static Value bitTestNative(int argCount, Value* args) {
@@ -1897,6 +1855,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.str_div = copyString("__div__", 7);
     vm.str_neg = NULL;
     vm.str_neg = copyString("__neg__", 7);
+    vm.xString = copyString("x", 1);
+    vm.yString = copyString("y", 1);
+    vm.zString = copyString("z", 1);
 
     defineNative("clock", clockNative);
     defineNative("str", strNative);
@@ -1913,7 +1874,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.stringClass = newClass(copyString("String", 6));
     vm.regexClass = newClass(copyString("Regex", 5));
     vm.moduleClass = newClass(copyString("Module", 6));
-    vm.vec3Class = newClass(copyString("Vec3", 4));
+    //vm.vec3Class = newClass(copyString("Vec3", 4));
 
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
@@ -2441,20 +2402,21 @@ InterpretResult run() {
                     Value receiver = peek(0);
 
                     if (IS_VEC3(receiver)) {
-                        ObjVec3* vec = AS_VEC3(receiver);
+                        Vec3 vec = AS_VEC3(receiver);
+                        /*
                         if (name->length == 1) {
                             switch (name->chars[0]) {
                                 case 'x':
                                     pop();
-                                    push(NUMBER_VAL(vec->x));
+                                    push(NUMBER_VAL(vec.x));
                                     break;
                                 case 'y':
                                     pop();
-                                    push(NUMBER_VAL(vec->y));
+                                    push(NUMBER_VAL(vec.y));
                                     break;
                                 case 'z':
                                     pop();
-                                    push(NUMBER_VAL(vec->z));
+                                    push(NUMBER_VAL(vec.z));
                                     break;
                                 default:
                                     runtimeError("Vec3 has no property '%s'.", name->chars);
@@ -2462,8 +2424,20 @@ InterpretResult run() {
                             }
                             break;
                         }
-                        runtimeError("Vec3 has no property '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        */
+                        if (name == vm.xString) {
+                            pop();
+                            push(NUMBER_VAL(vec.x));
+                        } else if (name == vm.yString) {
+                            pop();
+                            push(NUMBER_VAL(vec.y));
+                        } else if (name == vm.zString) {
+                            pop();
+                            push(NUMBER_VAL(vec.z));
+                        }
+                        break;
+                        //runtimeError("Vec3 has no property '%s'.", name->chars);
+                        //return INTERPRET_RUNTIME_ERROR;
                     } 
 
                     if (IS_INSTANCE(receiver)) {
@@ -2527,7 +2501,7 @@ InterpretResult run() {
             case OP_SET_PROPERTY:
             case OP_SET_PROPERTY_LONG:
                 {
-                    if (!IS_INSTANCE(peek(1)) && !IS_VEC3(peek(1)))  {
+                    if (!IS_INSTANCE(peek(1))) { // && !IS_VEC3(peek(1))) 
                     //if (!IS_INSTANCE(peek(1)))
                         runtimeError("Only instances have fields.");
                         return INTERPRET_RUNTIME_ERROR;
@@ -2540,20 +2514,21 @@ InterpretResult run() {
 
                     Value value = peek(0);
 
-                    if (IS_VEC3(peek(1))) {
-                        ObjVec3* vec = AS_VEC3(peek(1));
+                    //if (IS_VEC3(peek(1))) {
+                        /*
+                        Vec3 vec = AS_VEC3(peek(1));
 
                         if (name->length == 1) {
                             double val = AS_NUMBER(value);
                             switch (name->chars[0]) {
                                 case 'x':
-                                    vec->x = val;
+                                    vec.x = val;
                                     break;
                                 case 'y':
-                                    vec->y = val;
+                                    vec.y = val;
                                     break;
                                 case 'z':
-                                    vec->z = val;
+                                    vec.z = val;
                                     break;
                                 default:
                                     runtimeError("Vec3 properties are restricted to x, y, z.");
@@ -2563,12 +2538,13 @@ InterpretResult run() {
                             push(value);
                             break;
                         } else {
-                            runtimeError("Cannot add new properties to Vec3.");
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                        popn(2);
-                        break;
-                    }
+                        */
+                        //popn(2);
+                        //runtimeError("Vec3 properties are read-only.");
+                        //return INTERPRET_RUNTIME_ERROR;
+                        //}
+                        //break;
+                    //}
                     if (instance->klass->setter != NULL) {
                         if (instance->klass->setter(instance, name, value)) {
                             pop();
@@ -2632,22 +2608,28 @@ InterpretResult run() {
                         push(NUMBER_VAL(a + b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x + d),
-                                        NUMBER_VAL(a->y + d),
-                                        NUMBER_VAL(a->z + d))));
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 b;
+                        b.x = a.x + d;
+                        b.y = a.y + d;
+                        b.z = a.z + d;
+                        push(VEC3_VAL(b));
                     } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
-                        ObjVec3* b = AS_VEC3(pop());
+                        Vec3 b = AS_VEC3(pop());
                         double d = AS_NUMBER(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(b->x + d),
-                                        NUMBER_VAL(b->y + d),
-                                        NUMBER_VAL(b->z + d))));
+                        Vec3 a;
+                        a.x = b.x + d;
+                        a.y = b.y + d;
+                        a.z = b.z + d;
+                        push(VEC3_VAL(a));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        ObjVec3* b = AS_VEC3(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x + b->x),
-                                        NUMBER_VAL(a->y + b->y),
-                                        NUMBER_VAL(a->z + b->z))));
+                        Vec3 b = AS_VEC3(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 c;
+                        c.x = a.x + b.x;
+                        c.y = a.y + b.y;
+                        c.z = a.z + b.z;
+                        push(VEC3_VAL(c));
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -2678,16 +2660,20 @@ InterpretResult run() {
                         push(NUMBER_VAL(a - b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(1))) {
                         double d = AS_NUMBER(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x - d),
-                                        NUMBER_VAL(a->y - d),
-                                        NUMBER_VAL(a->z - d))));
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 b;
+                        b.x = a.x - d;
+                        b.y = a.y - d;
+                        b.z = a.z - d;
+                        push(VEC3_VAL(b));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        ObjVec3* b = AS_VEC3(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x - b->x),
-                                        NUMBER_VAL(a->y - b->y),
-                                        NUMBER_VAL(a->z - b->z))));
+                        Vec3 b = AS_VEC3(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 c;
+                        c.x = a.x - b.x;
+                        c.y = a.y - b.y;
+                        c.z = a.z - b.z;
+                        push(VEC3_VAL(c));
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -2718,22 +2704,28 @@ InterpretResult run() {
                         push(NUMBER_VAL(a * b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x * d),
-                                        NUMBER_VAL(a->y * d),
-                                        NUMBER_VAL(a->z * d))));
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 b;
+                        b.x = a.x * d;
+                        b.y = a.y * d;
+                        b.z = a.z * d;
+                        push(VEC3_VAL(b));
                     } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
-                        ObjVec3* b = AS_VEC3(pop());
+                        Vec3 b = AS_VEC3(pop());
                         double d = AS_NUMBER(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(b->x * d),
-                                        NUMBER_VAL(b->y * d),
-                                        NUMBER_VAL(b->z * d))));
+                        Vec3 a;
+                        a.x = b.x * d;
+                        a.y = b.y * d;
+                        a.z = b.z * d;
+                        push(VEC3_VAL(a));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        ObjVec3* b = AS_VEC3(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x * b->x),
-                                        NUMBER_VAL(a->y * b->y),
-                                        NUMBER_VAL(a->z * b->z))));
+                        Vec3 b = AS_VEC3(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 c;
+                        c.x = a.x * b.x;
+                        c.y = a.y * b.y;
+                        c.z = a.z * b.z;
+                        push(VEC3_VAL(c));
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -2764,10 +2756,12 @@ InterpretResult run() {
                         push(NUMBER_VAL(a / b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(a->x / d),
-                                        NUMBER_VAL(a->y / d),
-                                        NUMBER_VAL(a->z / d))));
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 b;
+                        b.x = a.x / d;
+                        b.y = a.y / d;
+                        b.z = a.z / d;
+                        push(VEC3_VAL(b));
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -2826,10 +2820,12 @@ InterpretResult run() {
                     if (IS_NUMBER(peek(0))) {
                         push(NUMBER_VAL(-AS_NUMBER(pop())));
                     } else if (IS_VEC3(peek(0))) {
-                        ObjVec3* a = AS_VEC3(pop());
-                        push(OBJ_VAL(newVec3(NUMBER_VAL(-a->x),
-                                        NUMBER_VAL(-a->y),
-                                        NUMBER_VAL(-a->z))));
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 b;
+                        b.x = -a.x;
+                        b.y = -a.y;
+                        b.z = -a.z;
+                        push(VEC3_VAL(b));
                     } else if (IS_INSTANCE(peek(0))) {
                         ObjInstance* instance = AS_INSTANCE(peek(0));
                         Value method;
@@ -2965,7 +2961,7 @@ InterpretResult run() {
                             method->chars, argCount, (vm.stackTop - vm.stack), receiverIndex, receiver.type);
                             */
                     if (IS_VEC3(receiver)) {
-                        ObjVec3* vec = AS_VEC3(peek(argCount));
+                        Vec3 vec = AS_VEC3(peek(argCount));
 
                         if (method->length == 6 && memcmp(method->chars, "length", 6) == 0) {
                             if (argCount != 0) {
@@ -2973,8 +2969,8 @@ InterpretResult run() {
                                 return INTERPRET_RUNTIME_ERROR;
                             }
 
-                            double len = sqrt(vec->x * vec->x +
-                                    vec->y * vec->y + vec->z * vec->z);
+                            double len = sqrt(vec.x * vec.x +
+                                    vec.y * vec.y + vec.z * vec.z);
                             popn(argCount + 1);
                             push(NUMBER_VAL(len));
                             break;
@@ -2984,8 +2980,8 @@ InterpretResult run() {
                                 return INTERPRET_RUNTIME_ERROR;
                             }
                             
-                            double len = vec->x * vec->x +
-                                    vec->y * vec->y + vec->z * vec->z;
+                            double len = vec.x * vec.x +
+                                    vec.y * vec.y + vec.z * vec.z;
                             popn(argCount + 1);
                             push(NUMBER_VAL(len));
                             break;
@@ -2995,13 +2991,13 @@ InterpretResult run() {
                                 return INTERPRET_RUNTIME_ERROR;
                             }
 
-                            ObjVec3* b = AS_VEC3(pop());
-                            ObjVec3* a = AS_VEC3(pop());
-                            push(OBJ_VAL(newVec3(
-                                            NUMBER_VAL(a->y * b->z - a->z * b->y),
-                                            NUMBER_VAL(a->z * b->x - a->x * b->z),
-                                            NUMBER_VAL(a->x * b->y - a->y * b->x)
-                                            )));
+                            Vec3 b = AS_VEC3(pop());
+                            Vec3 a = AS_VEC3(pop());
+                            Vec3 c;
+                            c.x = a.y * b.z - a.z * b.y;
+                            c.y = a.z * b.x - a.x * b.z;
+                            c.z = a.x * b.y - a.y * b.x;
+                            push(VEC3_VAL(c));
                             break;
                         } else if (method->length == 4 && memcmp(method->chars, "unit", 4) == 0) {
                             if (argCount != 0) {
@@ -3009,22 +3005,21 @@ InterpretResult run() {
                                 return INTERPRET_RUNTIME_ERROR;
                             }
 
-                            double mag2 = vec->x * vec->x + vec->y * vec->y +
-                                    vec->z * vec->z;
+                            double mag2 = vec.x * vec.x + vec.y * vec.y +
+                                    vec.z * vec.z;
                             if (mag2 > 0) {
                                 double invMag = 1.0 / sqrt(mag2);
-                                Value result = OBJ_VAL(newVec3(NUMBER_VAL(vec->x * invMag),
-                                                NUMBER_VAL(vec->y * invMag),
-                                                NUMBER_VAL(vec->z * invMag)));
+                                Vec3 a;
+                                a.x = vec.x * invMag;
+                                a.y = vec.y * invMag;
+                                a.z = vec.z * invMag;
                                 pop();
-                                push(result);
+                                push(VEC3_VAL(a));
                                 break;
                             } else {
                                 pop();
-                                push(OBJ_VAL(newVec3(NUMBER_VAL(0), NUMBER_VAL(0), NUMBER_VAL(0))));
-                                //Value result = pop();
-                                //popn(argCount + 1);
-                                //push(result);
+                                Vec3 a = {.x = 0, .y = 0, .z = 0};
+                                push(VEC3_VAL(a));
                                 break;
                             }
                         } else if (method->length == 3 && memcmp(method->chars, "dot", 3) == 0) {
@@ -3037,10 +3032,10 @@ InterpretResult run() {
                                 return INTERPRET_RUNTIME_ERROR;
                             }
 
-                            ObjVec3* other = AS_VEC3(pop());
+                            Vec3 other = AS_VEC3(pop());
                             pop();
-                            double result = (vec->x * other->x) +
-                                (vec->y * other->y) + (vec->z * other->z);
+                            double result = (vec.x * other.x) +
+                                (vec.y * other.y) + (vec.z * other.z);
                             push(NUMBER_VAL(result));
                         }
                         break;

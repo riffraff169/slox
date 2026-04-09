@@ -31,6 +31,9 @@ typedef struct {
     ObjString* str_mul;
     ObjString* str_div;
     ObjString* str_neg;
+    ObjString* xString;
+    ObjString* yString;
+    ObjString* zString;
 
     Table arrayMethods;
 
@@ -54,7 +57,6 @@ typedef struct {
     ObjClass* mathClass;
     ObjClass* regexClass;
     ObjClass* moduleClass;
-    ObjClass* vec3Class;
     ObjClass* gcClass;
     int nativeExitDepth;
 
