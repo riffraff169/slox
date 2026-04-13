@@ -267,9 +267,36 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
         vm.stackTop = comparisonStackBase;
 
         if (IS_NUMBER(result)) return (int)AS_NUMBER(result);
+        if (IS_BOOL(result)) {
+            if (AS_BOOL(result) == false)
+                return 1;
+            else
+                return -1;
+        }
     }
     vm.stackTop = comparisonStackBase;
     return 0; // default to equal
+}
+
+static Value arraySortSliceNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[0]);
+    if (array->count < 2) return args[0];
+    int start = AS_NUMBER(args[1]);
+    int end = AS_NUMBER(args[2]);
+    if (start < 0 || end > array->count || start > end) {
+        return args[0];
+    }
+
+    Value* sliceStart = &array->values[start];
+    int count = end - start;
+    if (argCount >= 4 && IS_CLOSURE(args[3])) {
+        qsort_r(sliceStart, count, sizeof(Value),
+                loxSortComparator, AS_CLOSURE(args[3]));
+    } else {
+        qsort(sliceStart, count, sizeof(Value),
+                defaultSortComparator);
+    }
+    return args[0];
 }
 
 static Value arraySortNative(int argCount, Value* args) {
@@ -1296,6 +1323,16 @@ static Value fromBinNative(int argCount, Value* args) {
     return NUMBER_VAL((double)result);
 }
 
+static Value mathMinNative(int argCount, Value* args) {
+    if (argCount != 3) return NIL_VAL;
+    return NUMBER_VAL(fmin(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
+}
+
+static Value mathMaxNative(int argCount, Value* args) {
+    if (argCount != 3) return NIL_VAL;
+    return NUMBER_VAL(fmax(AS_NUMBER(args[0]), AS_NUMBER(args[1])));
+}
+
 static Value mathParseNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
 
@@ -1567,6 +1604,8 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "oct", octNative);
     defineNativeMethod(mathClass, "bin", binNative);
     defineNativeMethod(mathClass, "bit_test", bitTestNative);
+    defineNativeMethod(mathClass, "min", mathMinNative);
+    defineNativeMethod(mathClass, "max", mathMaxNative);
     defineNativeMethod(mathClass, "parse", mathParseNative);
     defineNativeMethod(mathClass, "from_hex", fromHexNative);
     defineNativeMethod(mathClass, "from_bin", fromBinNative);
@@ -1889,6 +1928,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
     defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
     defineNativeMethod(vm.arrayClass, "sort", arraySortNative);
+    defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
     defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
     defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
@@ -2403,28 +2443,6 @@ InterpretResult run() {
 
                     if (IS_VEC3(receiver)) {
                         Vec3 vec = AS_VEC3(receiver);
-                        /*
-                        if (name->length == 1) {
-                            switch (name->chars[0]) {
-                                case 'x':
-                                    pop();
-                                    push(NUMBER_VAL(vec.x));
-                                    break;
-                                case 'y':
-                                    pop();
-                                    push(NUMBER_VAL(vec.y));
-                                    break;
-                                case 'z':
-                                    pop();
-                                    push(NUMBER_VAL(vec.z));
-                                    break;
-                                default:
-                                    runtimeError("Vec3 has no property '%s'.", name->chars);
-                                    return INTERPRET_RUNTIME_ERROR;
-                            }
-                            break;
-                        }
-                        */
                         if (name == vm.xString) {
                             pop();
                             push(NUMBER_VAL(vec.x));
@@ -3221,11 +3239,11 @@ InterpretResult run() {
                     Value indexValue = pop();
                     Value targetValue = pop();
 
-                    if (!IS_ARRAY(targetValue) && !IS_MAP(targetValue)) {
+                    if (!IS_ARRAY(targetValue) && !IS_MAP(targetValue) && !IS_VEC3(targetValue)) {
                         if (IS_OBJ(targetValue)) {
-                            printf("CRITICAL: Expected Map or Array, got ObjType %d\n", OBJ_TYPE(targetValue));
+                            printf("CRITICAL: Expected Vec3, Map or Array, got ObjType %d\n", OBJ_TYPE(targetValue));
                         } else {
-                            printf("CRITICAL: Expected Map or Array, got non-object Value tag %d\n", targetValue);
+                            printf("CRITICAL: Expected Vec3, Map or Array, got non-object Value tag %d\n", targetValue);
                         }
                         runtimeError("Not map or array");
                         return INTERPRET_RUNTIME_ERROR;
@@ -3244,8 +3262,27 @@ InterpretResult run() {
                             push(NIL_VAL);
                         }
                         break;
+                    } else if (IS_VEC3(targetValue)) {
+                        if (!IS_NUMBER(indexValue)) {
+                            runtimeError("Vec3 index must be a number.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        int index = (int)AS_NUMBER(indexValue);
+                        if (index < 0 || index > 2) {
+                            runtimeError("Array index out of bounds.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        Vec3 vec3 = AS_VEC3(targetValue);
+                        if (index == 0)
+                            push(NUMBER_VAL(vec3.x));
+                        if (index == 1)
+                            push(NUMBER_VAL(vec3.y));
+                        if (index == 2)
+                            push(NUMBER_VAL(vec3.z));
+                        break;
                     } else if (!IS_ARRAY(targetValue)) {
-                        runtimeError("Only maps and arrays support subscripting.");
+                        runtimeError("Only vec3s, maps and arrays support subscripting.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
