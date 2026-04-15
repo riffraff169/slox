@@ -246,7 +246,7 @@ static void markRoots() {
     markTable(&vm.globals);
     markCompilerRoots();
     markObject((Obj*)vm.initString);
-    markObject((Obj*)vm.displayString);
+    markObject((Obj*)vm.toString);
     markObject((Obj*)vm.str_add);
     markObject((Obj*)vm.str_sub);
     markObject((Obj*)vm.str_mul);

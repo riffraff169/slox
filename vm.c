@@ -187,9 +187,19 @@ static Value mathCosNative(int argCount, Value* args) {
     return NUMBER_VAL(cos(AS_NUMBER(args[1])));
 }
 
+static Value mathAcosNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    return NUMBER_VAL(acos(AS_NUMBER(args[1])));
+}
+
 static Value mathTanNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
     return NUMBER_VAL(tan(AS_NUMBER(args[1])));
+}
+
+static Value mathAtan2Native(int argCount, Value* args) {
+    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) return NIL_VAL;
+    return NUMBER_VAL(atan2(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
 }
 
 static Value mathRoundNative(int argCount, Value* args) {
@@ -1613,7 +1623,10 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "round", mathRoundNative);
     defineNativeMethod(mathClass, "to_number", toNumberNative);
     defineNativeMethod(mathClass, "sin", mathSinNative);
+    defineNativeMethod(mathClass, "tan", mathTanNative);
+    defineNativeMethod(mathClass, "atan2", mathAtan2Native);
     defineNativeMethod(mathClass, "cos", mathCosNative);
+    defineNativeMethod(mathClass, "acos", mathAcosNative);
     defineNativeMethod(mathClass, "tan", mathTanNative);
 
 
@@ -1882,8 +1895,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
-    vm.displayString = NULL;
-    vm.displayString = copyString("display", 7);
+    vm.toString = NULL;
+    vm.toString = copyString("to_string", 7);
     vm.str_add = NULL;
     vm.str_add = copyString("__add__", 7);
     vm.str_sub = NULL;
@@ -1963,7 +1976,7 @@ void freeVM() {
     freeTable(&vm.strings);
 
     vm.initString = NULL;
-    vm.displayString = NULL;
+    vm.toString = NULL;
     vm.str_add = NULL;
     vm.str_sub = NULL;
     vm.str_mul = NULL;
@@ -2676,7 +2689,7 @@ InterpretResult run() {
                         double b = AS_NUMBER(pop());
                         double a = AS_NUMBER(pop());
                         push(NUMBER_VAL(a - b));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(1))) {
+                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
                         Vec3 b;
@@ -2893,7 +2906,7 @@ InterpretResult run() {
                             Value method;
 
                             Value* stackStart = vm.stackTop;
-                            if (tableGet(&instance->klass->methods, vm.displayString, &method)) {
+                            if (tableGet(&instance->klass->methods, vm.toString, &method)) {
                                 push(value);
                                 if (callValue(method, 0)) {
                                     vm.nativeExitDepth = vm.frameCount - 1;
@@ -3055,6 +3068,9 @@ InterpretResult run() {
                             double result = (vec.x * other.x) +
                                 (vec.y * other.y) + (vec.z * other.z);
                             push(NUMBER_VAL(result));
+                        } else {
+                            runtimeError("Method %s does not exist.", method->chars);
+                            return INTERPRET_RUNTIME_ERROR;
                         }
                         break;
                     }
