@@ -1795,7 +1795,7 @@ static Value get_bumpsizeGCNative(int argCount, Value* args) {
 static Value stressmodeGCNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
 
-    vm.stress_mode = AS_BOOL(args[0]);
+    vm.stress_mode = AS_NUMBER(args[0]);
     return NIL_VAL;
 }
 
@@ -1805,7 +1805,7 @@ static Value get_stressmodeGCNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return BOOL_VAL(vm.stress_mode);
+    return NUMBER_VAL(vm.stress_mode);
 }
 
 static Value typeGCNative(int argCount, Value* args) {
@@ -1878,7 +1878,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.init_threshold = 0;
     vm.nextGC = 1024 * 1024;
     vm.bump_size = 1024 * 1024 * 64;
-    vm.stress_mode = false;
+    vm.stress_mode = 0; // 0 = normal, 1 = always, 2 = never
     vm.gctype = 1;
 
     vm.grayCount = 0;
@@ -1896,7 +1896,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
     vm.toString = NULL;
-    vm.toString = copyString("to_string", 7);
+    vm.toString = copyString("to_string", 9);
     vm.str_add = NULL;
     vm.str_add = copyString("__add__", 7);
     vm.str_sub = NULL;
@@ -2359,12 +2359,7 @@ InterpretResult run() {
             case OP_GET_LOCAL:
                 {
                     uint8_t slot = READ_BYTE();
-                   // printf("OP_GET_LOCAL: slot %d\n", slot);
                     Value val = frame->slots[slot];
-                    //printf("OP_GET_LOCAL: ");
-                    //printValue(val);
-                    //printf("\n");
-                    //printf("OP_GET_LOCAL: slot %d, Frame %d\n", slot, vm.frameCount);
                     push(val);
                 }
                 break;
@@ -3097,8 +3092,15 @@ InterpretResult run() {
                 }
                 break;
             case OP_CLOSURE:
+            case OP_CLOSURE_LONG:
                 {
-                    ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
+                    ObjFunction* function = NULL;
+                    if (instruction == OP_CLOSURE) {
+                        function = AS_FUNCTION(READ_CONSTANT());
+                    } else {
+                        function = AS_FUNCTION(READ_CONSTANT_LONG());
+                    }
+
                     ObjClosure* closure = newClosure(function);
                     push(OBJ_VAL(closure));
                     for (int i = 0; i < closure->upvalueCount; i++) {
@@ -3179,6 +3181,9 @@ InterpretResult run() {
                 break;
             case OP_METHOD:
                 defineMethod(READ_STRING());
+                break;
+            case OP_METHOD_LONG:
+                defineMethod(READ_STRING_LONG());
                 break;
             case OP_MAP:
                 {

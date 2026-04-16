@@ -16,13 +16,16 @@
 void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
     vm.bytesAllocated += newSize - oldSize;
     if (newSize > oldSize) {
-        if (vm.stress_mode) {
+        if (vm.stress_mode == 1) { // run always
             collectGarbage();
         }
 
+#ifndef DEBUG_DISABLE_GC
         if (!vm.isGC && vm.bytesAllocated > vm.nextGC && vm.init_threshold < vm.bytesAllocated) {
-            collectGarbage();
+            if (vm.stress_mode != 2) // run never
+                collectGarbage();
         }
+#endif
     }
 
     if (newSize == 0) {

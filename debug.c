@@ -249,6 +249,28 @@ int disassembleInstruction(Chunk* chunk, int offset) {
 
                 return offset;
             }
+        case OP_CLOSURE_LONG:
+            {
+                offset++;
+                uint32_t constant = chunk->code[offset++] << 16;
+                constant |= chunk->code[offset++] << 8;
+                constant |= chunk->code[offset++];
+
+                printf("%-16s %4d ", "OP_CLOSURE_LONG", constant);
+                printValue(chunk->constants.values[constant]);
+                printf("\n");
+
+                ObjFunction* function = AS_FUNCTION(chunk->constants.values[constant]);
+                for (int j = 0; j < function->upvalueCount; j++) {
+                    int isLocal = chunk->code[offset++];
+                    int index = chunk->code[offset++];
+                    printf("%04d      |                     %s %d\n",
+                           offset - 2, isLocal ? "local" : "upvalue", index);
+                }
+
+                return offset;
+            }
+            break;
         case OP_CLOSE_UPVALUE:
             return simpleInstruction("OP_CLOSE_UPVALUE", offset);
         case OP_RETURN:
@@ -261,6 +283,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_INHERIT", offset);
         case OP_METHOD:
             return constantInstruction("OP_METHOD", chunk, offset);
+        case OP_METHOD_LONG:
+            return constantLongInstruction("OP_METHOD_LONG", chunk, offset);
         case OP_DUP:
             return simpleInstruction("OP_DUP", offset);
         case OP_MAP:

@@ -62,12 +62,14 @@ typedef enum {
     OP_SUPER_INVOKE,
     OP_SUPER_INVOKE_LONG,
     OP_CLOSURE,
+    OP_CLOSURE_LONG,
     OP_CLOSE_UPVALUE,
     OP_RETURN,
     OP_CLASS,
     OP_CLASS_LONG,
     OP_INHERIT,
     OP_METHOD,
+    OP_METHOD_LONG,
     OP_IMPORT
 } OpCode;
 

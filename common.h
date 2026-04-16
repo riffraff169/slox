@@ -10,6 +10,7 @@
 
 #undef DEBUG_STRESS_GD
 #undef DEBUG_LOG_GC
+#undef DEBUG_DISABLE_GC
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 

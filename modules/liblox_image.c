@@ -188,21 +188,27 @@ void lox_module_init(VM* vm) {
     ObjInstance* imageModule = newInstance(vm->moduleClass);
     push(OBJ_VAL(imageModule)); // [1] instance
 
+    // 1. setup data class
     ObjString* dataStr = copyString("Data", 4);
     push(OBJ_VAL(dataStr)); // [2] string
-
     imageDataClass = newClass(dataStr);
     push(OBJ_VAL(imageDataClass)); // [3] class
+                                   //
     imageDataClass->destructor = imageDestructor;
     tableSet(&imageModule->fields, dataStr, OBJ_VAL(imageDataClass));
+
+    // Register Image global
     ObjString* imageStr = copyString("Image", 5);
     push(OBJ_VAL(imageStr)); // [4] string
     tableSet(&vm->globals, imageStr, OBJ_VAL(imageModule));
+
     pop(); // [4] string
     pop(); // [3] class
     pop(); // [2] string
-    pop(); // [1] instance
+    //pop(); // [1] instance
 
+    // 2 setup load/save on imagemodule
+    // load
     ObjNative* loadFn = newNative(nxImageLoad);
     push(OBJ_VAL(loadFn)); // [1] native
     ObjString* loadStr = copyString("load", 4);
@@ -212,12 +218,16 @@ void lox_module_init(VM* vm) {
     pop(); // [2] string
     pop(); // [1] native
 
+    // save
     ObjNative* saveFn = newNative(nxImageSave);
     push(OBJ_VAL(saveFn)); // [1] native
     ObjString* saveStr = copyString("save", 4);
     push(OBJ_VAL(saveStr)); // [2] string
     tableSet(&imageModule->fields, saveStr, OBJ_VAL(saveFn));
+    pop(); // [2] string
+    pop(); // [1] native
 
+    // get_pixel
     ObjNative* getPixelFn = newNative(nxGetPixel);
     push(OBJ_VAL(getPixelFn));
     tableSet(&imageDataClass->methods, copyString("get_pixel", 9), OBJ_VAL(getPixelFn));
@@ -228,7 +238,7 @@ void lox_module_init(VM* vm) {
     tableSet(&imageDataClass->methods, copyString("set_pixel", 9), OBJ_VAL(setPixelFn));
     pop();
 
-    pop(); // [2] string
-    pop(); // [1] instance
+    //pop(); // [2] string
+    //pop(); // [1] instance
 }
 

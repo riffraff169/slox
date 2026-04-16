@@ -43,7 +43,7 @@ typedef struct {
     int heap_growth_factor;
     int init_threshold;
     int bump_size;
-    bool stress_mode;
+    int stress_mode;
     int gctype; // 1: multiplier, 0: linear
 
     Obj* objects;

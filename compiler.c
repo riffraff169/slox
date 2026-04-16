@@ -64,9 +64,9 @@ typedef struct Compiler {
     ObjFunction* function;
     FunctionType type;
 
-    Local locals[65536];
+    Local locals[8192];
     int localCount;
-    Upvalue upvalues[65536];
+    Upvalue upvalues[8192];
     int scopeDepth;
 } Compiler;
 
@@ -914,7 +914,16 @@ static void function(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
-    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+    int constant = makeConstant(OBJ_VAL(function));
+    if (constant < 256) {
+        emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+    } else {
+        emitByte(OP_CLOSURE_LONG);
+        emitByte((uint8_t)((constant >> 16) & 0xff));
+        emitByte((uint8_t)((constant >> 8) & 0xff));
+        emitByte((uint8_t)(constant & 0xff));
+    }
 
     for (int i = 0; i < function->upvalueCount; i++) {
         emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
@@ -944,7 +953,16 @@ static void parseFunction(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
-    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+    int constant = makeConstant(OBJ_VAL(function));
+    if (constant < 256) {
+        emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+    } else {
+        emitByte(OP_CLOSURE_LONG);
+        emitByte((uint8_t)((constant >> 16) & 0xff));
+        emitByte((uint8_t)((constant >> 8) & 0xff));
+        emitByte((uint8_t)(constant & 0xff));
+    }
 
     for (int i = 0; i < function->upvalueCount; i++) {
         emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
@@ -967,7 +985,14 @@ static void method() {
     }
 
     function(type);
-    emitBytes(OP_METHOD, constant);
+    if (constant < 256) {
+        emitBytes(OP_METHOD, (uint8_t)constant);
+    } else {
+        emitByte(OP_METHOD_LONG);
+        emitByte((uint8_t)((constant >> 16) & 0xff));
+        emitByte((uint8_t)((constant >> 8) & 0xff));
+        emitByte((uint8_t)(constant & 0xff));
+    }
 }
 
 static void classDeclaration() {
