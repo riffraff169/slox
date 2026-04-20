@@ -22,6 +22,7 @@ typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,
     PREC_OR,
+    PREC_XOR,
     PREC_AND,
     PREC_EQUALITY,
     PREC_COMPARISON,
@@ -433,7 +434,10 @@ static void and_(bool canAssign) {
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = getRule(operatorType);
-    parsePrecedence((Precedence)(rule->precedence + 1));
+    int precedence = (operatorType == TOKEN_STAR_STAR)
+        ? rule->precedence
+        : (rule->precedence + 1);
+    parsePrecedence((Precedence)precedence);
 
     switch (operatorType) {
         case TOKEN_BANG_EQUAL:
@@ -463,11 +467,14 @@ static void binary(bool canAssign) {
         case TOKEN_STAR:
             emitByte(OP_MULTIPLY);
             break;
+        case TOKEN_STAR_STAR:
+            emitByte(OP_POW);
+            break;
         case TOKEN_SLASH:
             emitByte(OP_DIVIDE);
             break;
         case TOKEN_CARET:
-            emitByte(OP_POW);
+            emitByte(OP_XOR);
             break;
         case TOKEN_PERCENT:
             emitByte(OP_MOD);
@@ -694,6 +701,10 @@ static void namedVariable(Token name, bool canAssign) {
             emitByte((uint8_t)((arg >> 16) & 0xff));
             emitByte((uint8_t)((arg >> 8) & 0xff));
             emitByte((uint8_t)(arg & 0xff));
+        } else if (setOp == OP_SET_UPVALUE) {
+            emitByte(setOp);
+            emitByte((uint8_t)((arg >> 8) & 0x0ff));
+            emitByte((uint8_t)(arg & 0xff));
         } else {
             emitBytes(setOp, (uint8_t)arg);
         }
@@ -701,6 +712,10 @@ static void namedVariable(Token name, bool canAssign) {
         if (getOp == OP_GET_GLOBAL_LONG || getOp == OP_GET_LOCAL_LONG) {
             emitByte(getOp);
             emitByte((uint8_t)((arg >> 16) & 0xff));
+            emitByte((uint8_t)((arg >> 8) & 0xff));
+            emitByte((uint8_t)(arg & 0xff));
+        } else if (getOp == OP_GET_UPVALUE) {
+            emitByte(getOp);
             emitByte((uint8_t)((arg >> 8) & 0xff));
             emitByte((uint8_t)(arg & 0xff));
         } else {
@@ -796,7 +811,14 @@ static void importDeclaration() {
 
     int nameConstant = makeConstant(OBJ_VAL(nameString));
 
-    emitBytes(OP_IMPORT, nameConstant);
+    if (nameConstant < 256) {
+        emitBytes(OP_IMPORT, nameConstant);
+    } else {
+        emitByte(OP_IMPORT_LONG);
+        emitByte((uint8_t)((nameConstant >> 16) & 0xff));
+        emitByte((uint8_t)((nameConstant >> 8) & 0xff));
+        emitByte((uint8_t)(nameConstant & 0xff));
+    }
     consume(TOKEN_SEMICOLON, "Expect ';' after import path.");
 }
 
@@ -815,11 +837,12 @@ ParseRule rules[] = {
     [TOKEN_PLUS]             = {NULL,     binary, PREC_TERM},
     [TOKEN_PLUS_PLUS]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_MINUS_MINUS]      = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_CARET]            = {NULL,     binary, PREC_EXP},
+    [TOKEN_CARET]            = {NULL,     binary, PREC_XOR},
     [TOKEN_PERCENT]          = {NULL,     binary, PREC_TERM},
     [TOKEN_SEMICOLON]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_SLASH]            = {NULL,     binary, PREC_FACTOR},
     [TOKEN_STAR]             = {NULL,     binary, PREC_FACTOR},
+    [TOKEN_STAR_STAR]        = {NULL,     binary, PREC_EXP},
     [TOKEN_BANG]             = {unary,    NULL,   PREC_NONE},
     [TOKEN_BANG_EQUAL]       = {NULL,     binary, PREC_EQUALITY},
     [TOKEN_EQUAL]            = {NULL,     NULL,   PREC_NONE},
@@ -917,7 +940,8 @@ static void function(FunctionType type) {
 
     int constant = makeConstant(OBJ_VAL(function));
     if (constant < 256) {
-        emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+        emitByte(OP_CLOSURE);
+        emitByte((uint8_t)constant);
     } else {
         emitByte(OP_CLOSURE_LONG);
         emitByte((uint8_t)((constant >> 16) & 0xff));
@@ -927,7 +951,8 @@ static void function(FunctionType type) {
 
     for (int i = 0; i < function->upvalueCount; i++) {
         emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
-        emitByte(compiler.upvalues[i].index);
+        emitByte((uint8_t)((compiler.upvalues[i].index >> 8) & 0xff));
+        emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
     }
 }
 
@@ -956,7 +981,7 @@ static void parseFunction(FunctionType type) {
 
     int constant = makeConstant(OBJ_VAL(function));
     if (constant < 256) {
-        emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+        emitBytes(OP_CLOSURE, constant);
     } else {
         emitByte(OP_CLOSURE_LONG);
         emitByte((uint8_t)((constant >> 16) & 0xff));
@@ -966,7 +991,8 @@ static void parseFunction(FunctionType type) {
 
     for (int i = 0; i < function->upvalueCount; i++) {
         emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
-        emitByte(compiler.upvalues[i].index);
+        emitByte((uint8_t)(compiler.upvalues[i].index >> 8) & 0xff);
+        emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
     }
 }
 

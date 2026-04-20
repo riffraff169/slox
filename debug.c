@@ -66,12 +66,19 @@ static int invokeInstruction(const char* name, Chunk* chunk,
     printf("%-16s (%d args) %4d '", name, argCount, constant);
     printValue(chunk->constants.values[constant]);
     printf("'\n");
-    return offset + 3;
+    return nextOffset;
 }
 
 static int simpleInstruction(const char* name, int offset) {
     printf("%s\n", name);
     return offset + 1;
+}
+
+static int shortInstruction(const char* name, Chunk* chunk,
+        int offset) {
+    uint16_t slot = (chunk->code[offset + 1] << 8) | chunk->code[offset + 2];
+    printf("%-16s %4d\n", name, slot);
+    return offset + 3;
 }
 
 static int byteInstruction(const char* name, Chunk* chunk,
@@ -125,6 +132,7 @@ static int arrayFillInstruction(const char* name, Chunk* chunk,
 
 int disassembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
+
     int line = getLine(chunk, offset);
     if (offset > 0 && line == getLine(chunk, offset - 1)) {
         printf("   | ");
@@ -169,9 +177,9 @@ int disassembleInstruction(Chunk* chunk, int offset) {
         case OP_SET_GLOBAL_LONG:
             return constantLongInstruction("OP_SET_GLOBAL_LONG", chunk, offset);
         case OP_GET_UPVALUE:
-            return byteInstruction("OP_GET_UPVALUE", chunk, offset);
+            return shortInstruction("OP_GET_UPVALUE", chunk, offset);
         case OP_SET_UPVALUE:
-            return byteInstruction("OP_SET_UPVALUE", chunk, offset);
+            return shortInstruction("OP_SET_UPVALUE", chunk, offset);
         case OP_GET_PROPERTY:
             return constantInstruction("OP_GET_PROPERTY", chunk, offset);
         case OP_GET_PROPERTY_LONG:
@@ -186,12 +194,16 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_EQUAL", offset);
         case OP_IMPORT:
             return constantInstruction("OP_IMPORT", chunk, offset);
+        case OP_IMPORT_LONG:
+            return constantLongInstruction("OP_IMPORT_LONG", chunk, offset);
         case OP_GREATER:
             return simpleInstruction("OP_GREATER", offset);
         case OP_LESS:
             return simpleInstruction("OP_LESS", offset);
         case OP_ADD:
             return simpleInstruction("OP_ADD", offset);
+        case OP_XOR:
+            return simpleInstruction("OP_XOR", offset);
         case OP_STR:
             return simpleInstruction("OP_STR", offset);
         case OP_SUBTRACT:
@@ -232,17 +244,20 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return invokeInstruction("OP_SUPER_INVOKE", chunk, offset, false);
         case OP_CLOSURE:
             {
-                offset++;
-                uint8_t constant = chunk->code[offset++];
+                uint8_t constant = chunk->code[offset + 1];
                 printf("%-16s %4d ", "OP_CLOSURE", constant);
                 printValue(chunk->constants.values[constant]);
                 printf("\n");
 
                 ObjFunction* function = AS_FUNCTION(
                         chunk->constants.values[constant]);
+                offset += 2;
+
                 for (int j = 0; j < function->upvalueCount; j++) {
                     int isLocal = chunk->code[offset++];
-                    int index = chunk->code[offset++];
+                    int index = (chunk->code[offset++] << 8);
+                    index |= chunk->code[offset++];
+
                     printf("%04d      |                   %s %d\n",
                             offset - 2, isLocal ? "local" : "upvalue", index);
                 }
@@ -251,19 +266,21 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             }
         case OP_CLOSURE_LONG:
             {
-                offset++;
-                uint32_t constant = chunk->code[offset++] << 16;
-                constant |= chunk->code[offset++] << 8;
-                constant |= chunk->code[offset++];
+                uint32_t constant = chunk->code[offset + 1] << 16;
+                constant |= chunk->code[offset + 2] << 8;
+                constant |= chunk->code[offset + 3];
 
                 printf("%-16s %4d ", "OP_CLOSURE_LONG", constant);
                 printValue(chunk->constants.values[constant]);
                 printf("\n");
+                offset += 4;
 
                 ObjFunction* function = AS_FUNCTION(chunk->constants.values[constant]);
                 for (int j = 0; j < function->upvalueCount; j++) {
                     int isLocal = chunk->code[offset++];
-                    int index = chunk->code[offset++];
+                    int index = (chunk->code[offset++] << 8);
+                    index |= chunk->code[offset++];
+
                     printf("%04d      |                     %s %d\n",
                            offset - 2, isLocal ? "local" : "upvalue", index);
                 }
@@ -298,7 +315,7 @@ int disassembleInstruction(Chunk* chunk, int offset) {
         case OP_ARRAY_FILL:
             return simpleInstruction("OP_ARRAY_FILL", offset);
         default:
-            printf("Unknown opcode %d\n", instruction);
+            printf("Unknown opcode %d (Hex: 0x%02x)\n", instruction, instruction);
             return offset + 1;
     }
 }

@@ -1572,6 +1572,7 @@ static Value typeofNative(int argCount, Value* args) {
     if (IS_NUMBER(value)) return OBJ_VAL(copyString("NUMBER", 6));
     if (IS_BOOL(value)) return OBJ_VAL(copyString("BOOL", 4));
     if (IS_NIL(value)) return OBJ_VAL(copyString("NIL", 3));
+    if (IS_VEC3(value)) return OBJ_VAL(copyString("Vec3", 4));
 
     if (IS_OBJ(value)) {
         switch (OBJ_TYPE(value)) {
@@ -2605,13 +2606,15 @@ InterpretResult run() {
                 break;
             case OP_GET_UPVALUE:
                 {
-                    uint8_t slot = READ_BYTE();
+                    uint16_t slot = (READ_BYTE() << 8);
+                    slot |= READ_BYTE();
                     push(*frame->closure->upvalues[slot]->location);
                 }
                 break;
             case OP_SET_UPVALUE:
                 {
-                    uint8_t slot = READ_BYTE();
+                    uint16_t slot = (READ_BYTE() << 8);
+                    slot |= READ_BYTE();
                     *frame->closure->upvalues[slot]->location = peek(0);
                 }
                 break;
@@ -2822,6 +2825,19 @@ InterpretResult run() {
                     Value b = pop();
                     Value a = pop();
                     push(NUMBER_VAL(pow(AS_NUMBER(a), AS_NUMBER(b))));
+                }
+                break;
+            case OP_XOR:
+                {
+                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                        runtimeError("Operands must be numbers.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+
+                    int result = (int)a & (int)b;
+                    push(NUMBER_VAL((double)result));
                 }
                 break;
             case OP_MOD:
@@ -3105,7 +3121,7 @@ InterpretResult run() {
                     push(OBJ_VAL(closure));
                     for (int i = 0; i < closure->upvalueCount; i++) {
                         uint8_t isLocal = READ_BYTE();
-                        uint8_t index = READ_BYTE();
+                        uint16_t index = (READ_BYTE() << 8) | READ_BYTE();
                         if (isLocal) {
                             closure->upvalues[i] =
                                 captureUpvalue(frame->slots + index);
@@ -3120,8 +3136,15 @@ InterpretResult run() {
                 pop();
                 break;
             case OP_IMPORT: 
+            case OP_IMPORT_LONG:
                 {
-                    ObjString* moduleName = AS_STRING(READ_CONSTANT());
+                    ObjString* moduleName;
+                    if (instruction == OP_IMPORT) {
+                        moduleName = AS_STRING(READ_CONSTANT());
+                    } else {
+                        moduleName = AS_STRING(READ_CONSTANT_LONG());
+                    }
+
                     /*
                     if (access(moduleName->chars, F_OK) == -1) {
                         runtimeError("Module file not found at %s", moduleName->chars);

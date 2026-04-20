@@ -48,6 +48,7 @@ typedef enum {
     OP_BITWISE_AND,
     OP_BITWISE_OR,
     OP_POW,
+    OP_XOR,
     OP_MOD,
     OP_NEGATE,
     OP_STR,
@@ -70,7 +71,8 @@ typedef enum {
     OP_INHERIT,
     OP_METHOD,
     OP_METHOD_LONG,
-    OP_IMPORT
+    OP_IMPORT,
+    OP_IMPORT_LONG
 } OpCode;
 
 typedef struct {
