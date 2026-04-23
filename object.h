@@ -109,6 +109,7 @@ typedef struct ObjClass {
     Obj obj;
     ObjString* name;
     Table methods;
+    struct ObjClass* superclass;
 
     void* foreignData;
     ClassCallFn callHandler;
@@ -148,6 +149,11 @@ typedef struct {
     pcre2_code* code;
     ObjString* pattern;
 } ObjRegex;
+
+typedef struct {
+    pcre2_code* code;
+    ObjString* pattern;
+} RegexInternal;
 
 typedef struct {
     Obj obj;

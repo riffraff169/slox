@@ -51,6 +51,7 @@ typedef struct {
     int grayCapacity;
     Obj** grayStack;
 
+    ObjClass* objectClass;
     ObjClass* arrayClass;
     ObjClass* mapClass;
     ObjClass* stringClass;

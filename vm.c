@@ -833,6 +833,14 @@ void runtimeError(const char* format, ...) {
     resetStack();
 }
 
+void defineGlobal(const char* name, Value value) {
+    push(OBJ_VAL(copyString(name, (int)strlen(name))));
+    push(value);
+    tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
+    pop();
+    pop();
+}
+
 void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
@@ -1232,7 +1240,14 @@ static Value regexTestNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjRegex* re = AS_REGEX(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    RegexInternal* re = (RegexInternal*)instance->foreignPtr;
+
+    if (re == NULL) {
+        runtimeError("Regex not initialized.");
+        return NIL_VAL;
+    }
+
     ObjString* subject = AS_STRING(args[1]);
 
     pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
@@ -1241,16 +1256,22 @@ static Value regexTestNative(int argCount, Value* args) {
 
     pcre2_match_data_free(match_data);
     return BOOL_VAL(rc >= 0);
-
 }
 
-static Value regexExecNative(int argCount, Value* args) {
+static Value regexMatchNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[1])) {
         runtimeError("test() expects 1 string argument.");
         return NIL_VAL;
     }
 
-    ObjRegex* re = AS_REGEX(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    RegexInternal* re = (RegexInternal*)instance->foreignPtr;
+
+    if (re == NULL) {
+        runtimeError("Regex not initialized.");
+        return NIL_VAL;
+    }
+
     ObjString* subject = AS_STRING(args[1]);
 
     pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
@@ -1281,19 +1302,19 @@ static Value regexExecNative(int argCount, Value* args) {
         }
     }
 
-    //ObjString* result = copyString(subject->chars + start, length);
-
     pcre2_match_data_free(match_data);
     return pop();
 }
 
-static Value regexInitNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+static Value regexInitMethod(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Regex constructor expects a pattern string.");
         return NIL_VAL;
     }
 
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     ObjString* pattern = AS_STRING(args[0]);
+
     int errornumber;
     PCRE2_SIZE erroroffset;
 
@@ -1306,7 +1327,97 @@ static Value regexInitNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return OBJ_VAL(newRegex(code, pattern));
+    RegexInternal* internal = ALLOCATE(RegexInternal, 1);
+    internal->code = code;
+    internal->pattern = pattern;
+
+    instance->foreignPtr = internal;
+
+    return args[-1];
+}
+
+static Value regexGetPatternNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+
+    if (instance->foreignPtr == NULL) {
+        runtimeError("Regex instance not initialized.");
+        return NIL_VAL;
+    }
+
+    RegexInternal* internal = (RegexInternal*)instance->foreignPtr;
+    return OBJ_VAL(internal->pattern);
+}
+
+static Value listFieldsNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (int i = 0; i < instance->fields.capacity; i++) {
+        Entry* entry = &instance->fields.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(array, OBJ_VAL(entry->key));
+        }
+    }
+
+    pop();
+
+    return OBJ_VAL(array);
+}
+
+static Value getFieldNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[1])) {
+        runtimeError("get_field() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjString* fieldName = AS_STRING(args[1]);
+    Value value;
+
+    if (tableGet(&instance->fields, fieldName, &value)) {
+        return value;
+    }
+
+    return NIL_VAL;
+}
+
+static Value setFieldNative(int argCount, Value* args) {
+    if (argCount != 3 || !IS_STRING(args[1])) {
+        runtimeError("get_field() expects string, value arguments.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjString* fieldName = AS_STRING(args[1]);
+    Value value = args[2];
+
+    tableSet(&instance->fields, fieldName, value);
+    return value;
+}
+
+static Value getSuperclassNative(int argCount, Value* args) {
+    if (argCount != 1 || (!IS_CLASS(args[0]) && !IS_INSTANCE(args[0]))) {
+        runtimeError("get_superclass() expects a class or instance as the argument.");
+        return NIL_VAL;
+    }
+
+    if (IS_CLASS(args[0])) {
+        ObjClass* klass = AS_CLASS(args[0]);
+        if (klass->superclass == NULL) return NIL_VAL;
+        
+        return OBJ_VAL(klass->superclass);
+    }
+
+    if (IS_INSTANCE(args[0])) {
+        ObjInstance* instance = AS_INSTANCE(args[0]);
+        ObjClass* klass = instance->klass;
+        if (klass->superclass == NULL) return NIL_VAL;
+
+        return OBJ_VAL(klass->superclass);
+    }
+    return NIL_VAL;
 }
 
 static Value fromHexNative(int argCount, Value* args) {
@@ -1859,13 +1970,25 @@ void initGCLibrary() {
     popn(2);
 }
 
+void regexDestructor(ObjInstance* inst) {
+    if (inst->foreignPtr != NULL) {
+        RegexInternal* re = (RegexInternal*)inst->foreignPtr;
+        pcre2_code_free(re->code);
+        inst->foreignPtr = NULL;
+    }
+}
+
 void initRegexLibrary() {
     push(OBJ_VAL(vm.regexClass));
 
+    defineNativeMethod(vm.regexClass, "init", regexInitMethod);
     defineNativeMethod(vm.regexClass, "test", regexTestNative);
-    defineNativeMethod(vm.regexClass, "exec", regexExecNative);
+    defineNativeMethod(vm.regexClass, "match", regexMatchNative);
+    defineNativeMethod(vm.regexClass, "get_pattern", regexGetPatternNative);
 
-    defineNative("Regex", regexInitNative);
+    //defineNative("Regex", regexInitNative);
+    vm.regexClass->destructor = regexDestructor;
+    defineGlobal("Regex", OBJ_VAL(vm.regexClass));
 
     pop();
 }
@@ -1922,12 +2045,41 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("isclass", isClassNative);
     defineNative("isinstance", isInstanceNative);
 
-    vm.arrayClass = newClass(copyString("Array", 5));
-    vm.mapClass = newClass(copyString("Map", 3));
-    vm.stringClass = newClass(copyString("String", 6));
+    ObjString* string = NULL;
+
+    string = copyString("Object", 6);
+    vm.objectClass = newClass(string);
+    vm.objectClass->superclass = NULL;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
+
+    string = copyString("Array", 5);
+    vm.arrayClass = newClass(string);
+    vm.arrayClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
+
+    string = copyString("Map", 3);
+    vm.mapClass = newClass(string);
+    vm.mapClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
+
+    string = copyString("String", 6);
+    vm.stringClass = newClass(string);
+    vm.stringClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
+
+    string = copyString("Regex", 5);
     vm.regexClass = newClass(copyString("Regex", 5));
+    vm.regexClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+
     vm.moduleClass = newClass(copyString("Module", 6));
-    //vm.vec3Class = newClass(copyString("Vec3", 4));
+
+    /*
+    defineNative("Object", OBJ_VAL(vm.objectClass));
+    defineNative("Array", OBJ_VAL(vm.arrayClass));
+    defineNative("String", OBJ_VAL(vm.stringClass));
+    defineNative("Map", OBJ_VAL(vm.mapClass));
+    */
 
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
@@ -1956,6 +2108,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
     defineNativeMethod(vm.stringClass, "len", stringLenNative);
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
+    defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
+    defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
+    defineNativeMethod(vm.objectClass, "set_field", setFieldNative);
 
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
@@ -1964,9 +2119,10 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initVec3Library();
     initGCLibrary();
 
-    defineNative("getMembers", getMembersNative);
+    defineNative("get_members", getMembersNative);
     defineNative("has_method", hasMethodNative);
     defineNative("responds_to", hasMethodNative);
+    defineNative("get_superclass", getSuperclassNative);
     //initArrayMethods();
 }
 
@@ -2092,13 +2248,39 @@ static bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
+static bool isTruthy(Value value) {
+    return !IS_NIL(value) || (IS_BOOL(value) && AS_BOOL(value));
+}
+
+static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
+    ObjClass* current = klass;
+    int i = 0;
+    while (current != NULL) {
+        if (tableGet(&current->methods, name, method)) {
+            return true;
+        }
+        current = current->superclass;
+        i++;
+    }
+    return false;
+}
+
 static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
+    ObjClass* current = klass;
     Value method;
+
+    if (!findMethod(klass, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    /*
     if (!tableGet(&klass->methods, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
+    */
 
     if (IS_NATIVE(method)) {
         NativeFn native = AS_NATIVE(method);
@@ -2220,7 +2402,6 @@ static void defineMethod(ObjString* name) {
     pop();
 }
 
-
 static void concatenate() {
     ObjString* b = AS_STRING(peek(0));
     ObjString* a = AS_STRING(peek(1));
@@ -2242,6 +2423,7 @@ Value numberToValue(double num) {
     int length = snprintf(buffer, sizeof(buffer), "%g", num);
     return OBJ_VAL(copyString(buffer, length));
 }
+
 
 static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
@@ -2463,25 +2645,15 @@ InterpretResult run() {
                             push(NUMBER_VAL(vec.z));
                         }
                         break;
-                        //runtimeError("Vec3 has no property '%s'.", name->chars);
-                        //return INTERPRET_RUNTIME_ERROR;
                     } 
 
                     if (IS_INSTANCE(receiver)) {
                         ObjInstance* instance = AS_INSTANCE(receiver);
-                        //printf("DEBUG: Instance %p has Klass %p\n", (void*)instance, (void*)instance->klass);
 
                         if (instance->klass == NULL) {
                             runtimeError("Instance has no class.");
                             return INTERPRET_RUNTIME_ERROR;
                         }
-                    }
-
-                    //ObjClass* klass = NULL;
-                    //if (IS_INSTANCE(receiver) || IS_VEC3(receiver)) 
-                    if (IS_INSTANCE(receiver)) {
-                        ObjInstance* instance = AS_INSTANCE(receiver);
-                        //ObjString* name = READ_STRING();
 
                         Value value;
                         if (tableGet(&instance->fields, name, &value)) {
@@ -2499,10 +2671,20 @@ InterpretResult run() {
                             }
                         }
 
+                        if (findMethod(instance->klass, name, &value)) {
+                            ObjBoundMethod* bound = newBoundMethod(peek(0), AS_CLOSURE(value));
+                            pop();
+                            push(OBJ_VAL(bound));
+                            break;
+                        }
+
+                        /*
                         if (!bindMethod(instance->klass, name)) {
                             return INTERPRET_RUNTIME_ERROR;
                         }
-                        break;
+                        */
+                        runtimeError("Undefined property '%s'.", name->chars);
+                        return INTERPRET_RUNTIME_ERROR;
                     } 
 
                     ObjClass* klass = getClassForValue(receiver);
@@ -3197,8 +3379,9 @@ InterpretResult run() {
                     }
 
                     ObjClass* subclass = AS_CLASS(peek(0));
-                    tableAddAll(&AS_CLASS(superclass)->methods,
-                            &subclass->methods);
+                    subclass->superclass = AS_CLASS(superclass);
+                    //tableAddAll(&AS_CLASS(superclass)->methods,
+                    //        &subclass->methods);
                     pop();
                 }
                 break;

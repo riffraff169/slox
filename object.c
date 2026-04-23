@@ -37,6 +37,7 @@ ObjBoundMethod* newBoundMethod(Value receiver,
 ObjClass* newClass(ObjString* name) {
     ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
     klass->name = name;
+    klass->superclass = vm.objectClass;
     initTable(&klass->methods);
 
     klass->foreignData = NULL;
@@ -254,19 +255,8 @@ void printMap(ObjMap* map) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
-        /*
-        case OBJ_VEC3:
-            {
-                ObjVec3* v = AS_VEC3(value);
-                printf("Vec3(%g, %g, %g)", v->x, v->y, v->z);
-            }
-            break;
-            */
         case OBJ_FOREIGN:
             printf("<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
-            break;
-        case OBJ_REGEX:
-            printf("/%s/", AS_REGEX(value)->pattern->chars);
             break;
         case OBJ_MAP:
             printMap(AS_MAP(value));
