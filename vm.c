@@ -68,12 +68,12 @@ static bool callNative(ObjNative* native, int argCount) {
 */
 
 static Value hasMethodNative(int argCount, Value* args) {
-    if (argCount < 2 || (!IS_INSTANCE(args[0])) || !IS_STRING(args[1])) {
+    if (argCount < 2 || (!IS_INSTANCE(args[-1])) || !IS_STRING(args[0])) {
         runtimeError("has_method() expects an instance");
         return BOOL_VAL(false);
     }
-    Value instance = args[0];
-    Value name = args[1];
+    Value instance = args[-1];
+    Value name = args[0];
     Value method;
 
     if (tableGet(&AS_INSTANCE(instance)->obj.klass->methods, AS_STRING(name), &method)) {
@@ -82,30 +82,38 @@ static Value hasMethodNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
-static Value getMembersNative(int argCount, Value* args) {
-    if (argCount < 1 || (!IS_INSTANCE(args[0]) && !IS_CLASS(args[0]))) {
-        runtimeError("getMembers() expects a class or instance argument.");
+static Value getMethodsNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+    ObjClass* klass = NULL;
+
+    if (IS_INSTANCE(receiver)) {
+        klass = AS_INSTANCE(receiver)->obj.klass;
+    } else if (IS_CLASS(receiver)) {
+        klass = AS_CLASS(receiver);
+    } else if (IS_OBJ(receiver)) {
+        klass = AS_OBJ(receiver)->klass;
+    }
+
+    if (klass == NULL) {
+        runtimeError("Cannot get methods of a non-object/non-class.");
         return NIL_VAL;
     }
 
     ObjArray* list = newArray();
     push(OBJ_VAL(list));
 
-    Table* table;
-    if (IS_INSTANCE(args[0])) {
-        table = &AS_INSTANCE(args[0])->fields;
-    } else {
-        table = &AS_CLASS(args[0])->methods;
+    ObjClass* current = klass;
+    while (current != NULL) {
+        Table* table = &current->methods;
+        for (int i = 0; i < table->capacity; i++) {
+            Entry* entry = &table->entries[i];
+            if (entry->key != NULL) {
+                arrayAppend(list, OBJ_VAL(entry->key));
+            }
+        }
+        current = current->superclass;
     }
 
-    for (int i = 0; i < table->capacity; i++) {
-        Entry* entry = &table->entries[i];
-        if (entry->key != NULL) {
-            push(OBJ_VAL(entry->key));
-            arrayAppend(list, OBJ_VAL(entry->key));
-            pop();
-        }
-    }
     return pop();
 }
 
@@ -566,7 +574,7 @@ static Value arrayFlattenNative(int argCount, Value* args) {
 }
 
 static Value mapValuesNative(int argCount, Value* args) {
-    ObjMap* map = AS_MAP(args[0]);
+    ObjMap* map = AS_MAP(args[-1]);
     ObjArray* valuesArray = newArray();
     push(OBJ_VAL(valuesArray));
 
@@ -580,7 +588,7 @@ static Value mapValuesNative(int argCount, Value* args) {
 }
 
 static Value mapKeysNative(int argCount, Value* args) {
-    ObjMap* map = AS_MAP(args[0]);
+    ObjMap* map = AS_MAP(args[-1]);
     ObjArray* valuesArray = newArray();
     push(OBJ_VAL(valuesArray));
 
@@ -595,13 +603,13 @@ static Value mapKeysNative(int argCount, Value* args) {
 }
 
 static Value mapHasNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
     }
 
-    ObjMap* map = AS_MAP(args[0]);
+    ObjMap* map = AS_MAP(args[-1]);
     Value dummy;
-    return BOOL_VAL(tableGet(&map->items, AS_STRING(args[1]), &dummy));
+    return BOOL_VAL(tableGet(&map->items, AS_STRING(args[0]), &dummy));
 }
 
 static Value mapRemoveNative(int argCount, Value* args) {
@@ -615,8 +623,8 @@ static Value mapRemoveNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjMap* map = AS_MAP(args[0]);
-    ObjString* key = AS_STRING(args[1]);
+    ObjMap* map = AS_MAP(args[-1]);
+    ObjString* key = AS_STRING(args[0]);
     Value removedValue;
 
     if (tableGet(&map->items, key, &removedValue)) {
@@ -628,22 +636,49 @@ static Value mapRemoveNative(int argCount, Value* args) {
 }
 
 static Value mapLenNative(int argCount, Value* args) {
-    return NUMBER_VAL(AS_MAP(args[0])->items.count);
+    return NUMBER_VAL(AS_MAP(args[-1])->items.count);
 }
 
 static Value arrayLenNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
+    ObjArray* array = AS_ARRAY(args[-1]);
     return NUMBER_VAL(array->count);
 }
 
+static Value stringSliceNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("slice() expects at least a start index.");
+        return NIL_VAL;
+    }
+
+    ObjString* dom = AS_STRING(args[-1]);
+    int length = dom->length;
+
+    int start = (int)AS_NUMBER(args[0]);
+    if (start < 0) start += length;
+    if (start < 0) start = 0;
+    if (start > length) start = length;
+
+    int end = length;
+    if (argCount >= 2 && IS_NUMBER(args[1])) {
+        end = (int)AS_NUMBER(args[1]);
+        if (end < 0) end += length;
+        if (end < 0) end = 0;
+        if (end > length) end = length;
+    }
+
+    if (start >= end) return OBJ_VAL(copyString("", 0));
+
+    return OBJ_VAL(copyString(dom->chars + start, end - start));
+}
+
 static Value stringSplitNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[1])) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("split() expects 1 string argument (separator).");
         return NIL_VAL;
     }
 
-    ObjString* receiver = AS_STRING(args[0]);
-    ObjString* sep = AS_STRING(args[1]);
+    ObjString* receiver = AS_STRING(args[-1]);
+    ObjString* sep = AS_STRING(args[0]);
 
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
@@ -679,7 +714,7 @@ static Value stringSplitNative(int argCount, Value* args) {
 }
 
 static Value stringTrimNative(int argCount, Value* args) {
-    ObjString* str = AS_STRING(args[0]);
+    ObjString* str = AS_STRING(args[-1]);
     char* start = str->chars;
     char* end = str->chars + str->length - 1;
 
@@ -694,18 +729,18 @@ static Value stringTrimNative(int argCount, Value* args) {
 }
 
 static Value stringContainsNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[1])) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
     }
 
-    ObjString* haystack = AS_STRING(args[0]);
-    ObjString* needle = AS_STRING(args[1]);
+    ObjString* haystack = AS_STRING(args[-1]);
+    ObjString* needle = AS_STRING(args[0]);
 
     return BOOL_VAL(strstr(haystack->chars, needle->chars) != NULL);
 }
 
 static Value stringToUpperNative(int argCount, Value* args) {
-    ObjString* str = AS_STRING(args[0]);
+    ObjString* str = AS_STRING(args[-1]);
 
     char* buffer = (char*)malloc(str->length + 1);
     if (buffer == NULL) {
@@ -722,7 +757,7 @@ static Value stringToUpperNative(int argCount, Value* args) {
 }
 
 static Value stringToLowerNative(int argCount, Value* args) {
-    ObjString* str = AS_STRING(args[0]);
+    ObjString* str = AS_STRING(args[-1]);
 
     char* buffer = (char*)malloc(str->length + 1);
     if (buffer == NULL) {
@@ -739,18 +774,18 @@ static Value stringToLowerNative(int argCount, Value* args) {
 }
 
 static Value stringLenNative(int argCount, Value* args) {
-    ObjString* str = AS_STRING(args[0]);
+    ObjString* str = AS_STRING(args[-1]);
     return NUMBER_VAL((double)str->length);
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) {
+    if (argCount < 2 || !IS_STRING(args[0])) {
         runtimeError("join() expects 1 string argument (separator).");
         return NIL_VAL;
     }
 
-    ObjArray* array = AS_ARRAY(args[0]);
-    ObjString* sep = AS_STRING(args[1]);
+    ObjArray* array = AS_ARRAY(args[-1]);
+    ObjString* sep = AS_STRING(args[0]);
 
     if (array->count == 0) return OBJ_VAL(copyString("", 0));
 
@@ -1371,34 +1406,43 @@ static Value listFieldsNative(int argCount, Value* args) {
 }
 
 static Value getFieldNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_STRING(args[1])) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("get_field() expects a string argument.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
-    ObjString* fieldName = AS_STRING(args[1]);
-    Value value;
+    Value receiver = args[-1];
+    ObjString* fieldName = AS_STRING(args[0]);
 
-    if (tableGet(&instance->fields, fieldName, &value)) {
-        return value;
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        Value value;
+        if (tableGet(&instance->fields, fieldName, &value)) {
+            return value;
+        }
     }
 
     return NIL_VAL;
 }
 
 static Value setFieldNative(int argCount, Value* args) {
-    if (argCount != 3 || !IS_STRING(args[1])) {
+    if (argCount != 2 || !IS_STRING(args[-1])) {
         runtimeError("get_field() expects string, value arguments.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
-    ObjString* fieldName = AS_STRING(args[1]);
-    Value value = args[2];
+    Value receiver = args[-1];
+    ObjString* fieldName = AS_STRING(args[0]);
+    Value value = args[1];
 
-    tableSet(&instance->fields, fieldName, value);
-    return value;
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        tableSet(&instance->fields, fieldName, value);
+        return value;
+    }
+
+    runtimeError("Cannot set fields on built-in types.");
+    return NIL_VAL;
 }
 
 static Value getSuperclassNative(int argCount, Value* args) {
@@ -2073,6 +2117,25 @@ static Value arrayNativeConstructor(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+static Value mapNativeConstructor(int argCount, Value* args) {
+    ObjMap* map = newMap();
+    map->obj.klass = vm.mapClass;
+    push(OBJ_VAL(map));
+
+    for (int i = 0; i < argCount; i+=2 ) {
+        Value value = args[i];
+        Value key = args[i+1];
+
+        if (!IS_STRING(key)) {
+            runtimeError("Map keys must be strings.");
+            return NIL_VAL;
+        }
+        tableSet(&map->items, AS_STRING(key), value);
+    }
+
+    return OBJ_VAL(map);
+}
+
 void initArrayClass() {
     ObjString* string = NULL;
 
@@ -2104,6 +2167,7 @@ void initArrayClass() {
     pop();
 }
 
+
 void initMapClass() {
     ObjString* string = NULL;
 
@@ -2113,7 +2177,14 @@ void initMapClass() {
     tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
     push(OBJ_VAL(vm.mapClass));
 
-    defineNativeMethod(vm.mapClass, "init", mapInitMethod);
+    defineNative("Map", mapNativeConstructor);
+
+    //defineNativeMethod(vm.mapClass, "init", mapInitMethod);
+    defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
+    defineNativeMethod(vm.mapClass, "values", mapValuesNative);
+    defineNativeMethod(vm.mapClass, "has", mapHasNative);
+    defineNativeMethod(vm.mapClass, "remove", mapRemoveNative);
+    defineNativeMethod(vm.mapClass, "len", mapLenNative);
     pop();
 }
 
@@ -2126,7 +2197,14 @@ void initStringClass() {
     tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
     push(OBJ_VAL(vm.stringClass));
 
-    defineNativeMethod(vm.stringClass, "init", stringInitMethod);
+    //defineNativeMethod(vm.stringClass, "init", stringInitMethod);
+    defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
+    defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
+    defineNativeMethod(vm.stringClass, "to_upper", stringToUpperNative);
+    defineNativeMethod(vm.stringClass, "to_lower", stringToLowerNative);
+    defineNativeMethod(vm.stringClass, "len", stringLenNative);
+    defineNativeMethod(vm.stringClass, "split", stringSplitNative);
+    defineNativeMethod(vm.stringClass, "slice", stringSliceNative);
     pop();
 }
 
@@ -2200,8 +2278,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
 
     //defineNative("get_class", objectClassMethod);
-    defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
     
+    /*
     string = copyString("Array", 5);
     vm.arrayClass = newClass(string);
     vm.arrayClass->superclass = vm.objectClass;
@@ -2221,48 +2299,17 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.regexClass = newClass(copyString("Regex", 5));
     vm.regexClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+    */
 
     vm.moduleClass = newClass(copyString("Module", 6));
 
-    /*
-    defineNative("Object", OBJ_VAL(vm.objectClass));
-    defineNative("Array", OBJ_VAL(vm.arrayClass));
-    defineNative("String", OBJ_VAL(vm.stringClass));
-    defineNative("Map", OBJ_VAL(vm.mapClass));
-    */
-
-    /*
-    defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
-    defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
-    defineNativeMethod(vm.arrayClass, "len", arrayLenNative);
-    defineNativeMethod(vm.arrayClass, "map", arrayMapNative);
-    defineNativeMethod(vm.arrayClass, "dup", arrayDupNative);
-    defineNativeMethod(vm.arrayClass, "is_empty", arrayIsEmptyNative);
-    defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
-    defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
-    defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
-    defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
-    defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
-    defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
-    defineNativeMethod(vm.arrayClass, "sort", arraySortNative);
-    defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
-    defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
-    defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
-    */
-    defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
-    defineNativeMethod(vm.mapClass, "values", mapValuesNative);
-    defineNativeMethod(vm.mapClass, "has", mapHasNative);
-    defineNativeMethod(vm.mapClass, "remove", mapRemoveNative);
-    defineNativeMethod(vm.mapClass, "len", mapLenNative);
-    defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
-    defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
-    defineNativeMethod(vm.stringClass, "to_upper", stringToUpperNative);
-    defineNativeMethod(vm.stringClass, "to_lower", stringToLowerNative);
-    defineNativeMethod(vm.stringClass, "len", stringLenNative);
-    defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
     defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
     defineNativeMethod(vm.objectClass, "set_field", setFieldNative);
+    defineNativeMethod(vm.objectClass, "get_methods", getMethodsNative);
+    defineNativeMethod(vm.objectClass, "has_method", hasMethodNative);
+    defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
+    defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
@@ -2271,12 +2318,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initVec3Library();
     initGCLibrary();
     initArrayClass();
+    initMapClass();
+    initStringClass();
 
-    defineNative("get_members", getMembersNative);
-    defineNative("has_method", hasMethodNative);
-    defineNative("responds_to", hasMethodNative);
-    defineNative("get_superclass", getSuperclassNative);
-    //initArrayMethods();
 }
 
 void freeVM() {
@@ -2439,25 +2483,12 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     Value method;
 
     while (current != NULL) {
+        printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
         if (tableGet(&current->methods, name, &method)) {
             return callValue(method, argCount);
         }
         current = current->superclass;
     }
-
-    /*
-    if (!findMethod(klass, name, &method)) {
-        runtimeError("Undefined property '%s'.", name->chars);
-        return false;
-    }
-    */
-
-    /*
-    if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'.", name->chars);
-        return false;
-    }
-    */
 
     if (IS_NATIVE(method)) {
         NativeFn native = AS_NATIVE(method);
@@ -3594,6 +3625,7 @@ InterpretResult run() {
                 {
                     uint8_t itemCount = READ_BYTE();
                     ObjMap* map = newMap();
+                    map->obj.klass = vm.mapClass;
                     push(OBJ_VAL(map));
 
                     for (int i = 0; i < itemCount; i++) {
