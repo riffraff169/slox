@@ -2438,7 +2438,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     ObjClass* current = klass;
     Value method;
 
-    //printf("[INVOKEFROMCLASS]\n");
     while (current != NULL) {
         if (tableGet(&current->methods, name, &method)) {
             return callValue(method, argCount);
@@ -2446,7 +2445,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         current = current->superclass;
     }
 
-    //printf("[INVOKEFROMCLASS] didn't find\n");
     /*
     if (!findMethod(klass, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
@@ -2489,9 +2487,11 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         return true;
     }
 
-    if (IS_CLOSURE(method))
+    if (IS_CLOSURE(method)) {
         return vmCall(AS_CLOSURE(method), argCount);
+    }
 
+    runtimeError("Undefined property '%s'.", name->chars);
     return false;
 }
 
@@ -2510,8 +2510,17 @@ static bool invoke(ObjString* name, int argCount) {
         return invokeFromClass(instance->obj.klass, name, argCount);
     }
 
+    if (!IS_OBJ(receiver) && !IS_ARRAY(receiver)) {
+        runtimeError("Only objects have methods.");
+        return false;
+    }
+
     Obj* obj = AS_OBJ(receiver);
     ObjClass* klass = NULL;
+
+    if (IS_ARRAY(receiver)) {
+        klass = AS_ARRAY(receiver)->obj.klass;
+    }
 
     if (obj->klass != NULL) {
         return invokeFromClass(obj->klass, name, argCount);
