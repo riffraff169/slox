@@ -2359,10 +2359,17 @@ Value peek(int distance) {
 }
 
 bool vmCall(ObjClosure* closure, int argCount) {
-    if (argCount != closure->function->arity) {
-        runtimeError("Expected %d arguments but got %d.",
-                closure->function->arity, argCount);
+    if (argCount < closure->function->minArity || argCount > closure->function->arity) {
+        runtimeError("Expected between %d and %d arguments but got %d.",
+                closure->function->minArity, closure->function->arity, argCount);
         return false;
+    }
+
+    int missing = closure->function->arity - argCount;
+
+    for (int i = 0; i < missing; i++) {
+        int defaultIndex = (closure->function->defaults.count - missing) + i;
+        push(closure->function->defaults.values[defaultIndex]);
     }
 
     if (vm.frameCount == FRAMES_MAX) {
@@ -2373,7 +2380,7 @@ bool vmCall(ObjClosure* closure, int argCount) {
     CallFrame* frame = &vm.frames[vm.frameCount++];
     frame->closure = closure;
     frame->ip = closure->function->chunk.code;
-    frame->slots = vm.stackTop - argCount - 1;
+    frame->slots = vm.stackTop - closure->function->arity - 1;
     return true;
 }
 

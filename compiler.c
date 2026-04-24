@@ -916,23 +916,57 @@ static void block() {
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
+static Value parseConstant() {
+    if (match(TOKEN_NUMBER)) {
+        return NUMBER_VAL(strtod(parser.previous.start, NULL));
+    } else if (match(TOKEN_STRING)) {
+        return OBJ_VAL(copyString(parser.previous.start + 1,
+                    parser.previous.length - 2));
+    } else if (match(TOKEN_TRUE)) {
+        return BOOL_VAL(true);
+    } else if (match(TOKEN_FALSE)) {
+        return BOOL_VAL(false);
+    } else if (match(TOKEN_NIL)) {
+        return NIL_VAL;
+    } else {
+        errorAtCurrent("Default parameter must be a constant (number, string, bool, or nil).");
+    }
+}
+
 static void function(FunctionType type) {
     Compiler compiler;
     initCompiler(&compiler, type);
     beginScope();
 
+    printf("[FUNCTION] begin argument parsing\n");
     consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
     if (!check(TOKEN_RIGHT_PAREN)) {
+        bool isOptional = false;
         do {
             current->function->arity++;
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters.");
             }
+            printf("get constant\n");
             int constant = parseVariable("Expect parameter name.");
+            printf("define variable\n");
             defineVariable(constant);
+
+            printf("looking for default value\n");
+            if (match(TOKEN_EQUAL)) {
+                printf("getting default value\n");
+                isOptional = true;
+                Value defaultValue = parseConstant();
+                writeValueArray(&current->function->defaults, defaultValue);
+            } else if (isOptional) {
+                error("Cannot have a require parameter after an optional one.");
+            }
+            if (!isOptional) current->function->minArity++;
         } while (match(TOKEN_COMMA));
     }
+    printf("[FUNCTION] before expect\n");
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    printf("[FUNCTION] after expect\n");
     consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     block();
 
@@ -963,6 +997,7 @@ static void parseFunction(FunctionType type) {
 
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'fun.");
     if (!check(TOKEN_RIGHT_PAREN)) {
+        bool isOptional = false;
         do {
             current->function->arity++;
             if (current->function->arity > 255) {
@@ -970,6 +1005,15 @@ static void parseFunction(FunctionType type) {
             }
             int constant = parseVariable("Expect parameter name.");
             defineVariable(constant);
+
+            if (match(TOKEN_EQUAL)) {
+                isOptional = true;
+                Value defaultValue = parseConstant();
+                writeValueArray(&current->function->defaults, defaultValue);
+            } else if (isOptional) {
+                error("Can't have a required parameter after an optional one.");
+            }
+            if (!isOptional) current->function->minArity++;
         } while (match(TOKEN_COMMA));
     }
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
