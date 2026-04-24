@@ -25,8 +25,7 @@ static Obj* allocateObject(size_t size, ObjType type) {
     return object;
 }
 
-ObjBoundMethod* newBoundMethod(Value receiver,
-        ObjClosure* method) {
+ObjBoundMethod* newBoundMethod(Value receiver, Value method) {
     ObjBoundMethod* bound = ALLOCATE_OBJ(ObjBoundMethod,
             OBJ_BOUND_METHOD);
     bound->receiver = receiver;
@@ -74,7 +73,7 @@ ObjFunction* newFunction() {
 
 ObjInstance* newInstance(ObjClass* klass) {
     ObjInstance* instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
-    instance->klass = klass;
+    instance->obj.klass = klass;
     initTable(&instance->fields);
     instance->foreignPtr = NULL;
     return instance;
@@ -171,6 +170,7 @@ ObjArray* newArray() {
     array->count = 0;
     array->capacity = 0;
     array->values = NULL;
+    array->obj.klass = vm.arrayClass;
 
     // init deferred until later for gc reasons
     return array;
@@ -265,7 +265,8 @@ void printObject(Value value) {
             printArray(AS_ARRAY(value));
             break;
         case OBJ_BOUND_METHOD:
-            printFunction(AS_BOUND_METHOD(value)->method->function);
+            //printFunction(AS_BOUND_METHOD(value)->method->function);
+            printValue(AS_BOUND_METHOD(value)->method);
             break;
         case OBJ_CLASS:
             printf("%s", AS_CLASS(value)->name->chars);
@@ -278,7 +279,7 @@ void printObject(Value value) {
             break;
         case OBJ_INSTANCE:
             printf("%s instance",
-                    AS_INSTANCE(value)->klass->name->chars);
+                    AS_INSTANCE(value)->obj.klass->name->chars);
             break;
         case OBJ_NATIVE:
             printf("<native fn>");

@@ -104,7 +104,7 @@ static void blackenObject(Obj* object) {
             {
                 ObjBoundMethod* bound = (ObjBoundMethod*)object;
                 markValue(bound->receiver);
-                markObject((Obj*)bound->method);
+                markObject(AS_OBJ(bound->method));
             }
             break;
         case OBJ_CLASS:
@@ -133,7 +133,7 @@ static void blackenObject(Obj* object) {
         case OBJ_INSTANCE:
             {
                 ObjInstance* instance = (ObjInstance*)object;
-                markObject((Obj*)instance->klass);
+                markObject((Obj*)instance->obj.klass);
                 markTable(&instance->fields);
             }
             break;
@@ -206,8 +206,8 @@ static void freeObject(Obj* object) {
         case OBJ_INSTANCE:
             {
                 ObjInstance* instance = (ObjInstance*)object;
-                if (instance->klass != NULL && instance->klass->destructor != NULL) {
-                    instance->klass->destructor(instance);
+                if (instance->obj.klass != NULL && instance->obj.klass->destructor != NULL) {
+                    instance->obj.klass->destructor(instance);
                 }
 
                 freeTable(&instance->fields);

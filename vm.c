@@ -76,7 +76,7 @@ static Value hasMethodNative(int argCount, Value* args) {
     Value name = args[1];
     Value method;
 
-    if (tableGet(&AS_INSTANCE(instance)->klass->methods, AS_STRING(name), &method)) {
+    if (tableGet(&AS_INSTANCE(instance)->obj.klass->methods, AS_STRING(name), &method)) {
         return BOOL_VAL(true);
     }
     return BOOL_VAL(false);
@@ -289,19 +289,19 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
 }
 
 static Value arraySortSliceNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
-    if (array->count < 2) return args[0];
-    int start = AS_NUMBER(args[1]);
-    int end = AS_NUMBER(args[2]);
+    ObjArray* array = AS_ARRAY(args[-1]);
+    if (array->count < 2) return args[-1];
+    int start = AS_NUMBER(args[0]);
+    int end = AS_NUMBER(args[1]);
     if (start < 0 || end > array->count || start > end) {
-        return args[0];
+        return args[-1];
     }
 
     Value* sliceStart = &array->values[start];
     int count = end - start;
-    if (argCount >= 4 && IS_CLOSURE(args[3])) {
+    if (argCount >= 4 && IS_CLOSURE(args[2])) {
         qsort_r(sliceStart, count, sizeof(Value),
-                loxSortComparator, AS_CLOSURE(args[3]));
+                loxSortComparator, AS_CLOSURE(args[2]));
     } else {
         qsort(sliceStart, count, sizeof(Value),
                 defaultSortComparator);
@@ -310,30 +310,30 @@ static Value arraySortSliceNative(int argCount, Value* args) {
 }
 
 static Value arraySortNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
-    if (array->count < 2) return args[0];
+    ObjArray* array = AS_ARRAY(args[-1]);
+    if (array->count < 2) return args[-1];
 
-    if (argCount >= 2 && IS_CLOSURE(args[1])) {
+    if (argCount >= 2 && IS_CLOSURE(args[0])) {
         qsort_r(array->values, array->count, sizeof(Value),
-                loxSortComparator, AS_CLOSURE(args[1]));
+                loxSortComparator, AS_CLOSURE(args[0]));
     } else {
         // default sort (fast c)
         qsort(array->values, array->count, sizeof(Value),
                 defaultSortComparator);
     }
-    return args[0];
+    return args[-1];
 }
 
 static Value arraySliceNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
+    ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
 
-    int start = (argCount >= 2 && IS_NUMBER(args[1])) ?  (int)AS_NUMBER(args[1]) : 0;
+    int start = (argCount >= 2 && IS_NUMBER(args[0])) ?  (int)AS_NUMBER(args[0]) : 0;
     if (start < 0) start = count + start;
     if (start < 0) start = 0;
     if (start > count) start = count;
 
-    int end = (argCount >= 3 && IS_NUMBER(args[2])) ?  (int)AS_NUMBER(args[2]) : count;
+    int end = (argCount >= 3 && IS_NUMBER(args[1])) ?  (int)AS_NUMBER(args[1]) : count;
     if (end < 0) end = count + end;
     if (end < 0) end = 0;
     if (end > count) end = count;
@@ -351,9 +351,9 @@ static Value arraySliceNative(int argCount, Value* args) {
 }
 
 static Value arrayFindNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_CLOSURE(args[1])) return NIL_VAL;
-    ObjArray* array = AS_ARRAY(args[0]);
-    ObjClosure* callback = AS_CLOSURE(args[1]);
+    if (argCount < 2 || !IS_CLOSURE(args[0])) return NIL_VAL;
+    ObjArray* array = AS_ARRAY(args[-1]);
+    ObjClosure* callback = AS_CLOSURE(args[0]);
 
     Value* stackStart = vm.stackTop;
 
@@ -383,17 +383,19 @@ static Value arrayFindNative(int argCount, Value* args) {
 }
 
 static Value arrayEachNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_CLOSURE(args[1])) return NIL_VAL;
-    ObjArray* array = AS_ARRAY(args[0]);
-    ObjClosure* callback = AS_CLOSURE(args[1]);
+    if (argCount < 1 || !IS_CLOSURE(args[0])) return NIL_VAL;
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    push(OBJ_VAL(array));
+    ObjClosure* callback = AS_CLOSURE(args[0]);
 
     Value* stackStart = vm.stackTop;
 
     for (int i = 0; i < array->count; i++) {
-        push(args[1]);
+        push(args[0]);
         push(array->values[i]);
 
-        vm.nativeExitDepth = vm.frameCount - 1;
+        vm.nativeExitDepth = vm.frameCount;
 
         if (vmCall(callback, 1)) {
             run();
@@ -401,21 +403,21 @@ static Value arrayEachNative(int argCount, Value* args) {
 
         vm.stackTop = stackStart;
     }
-    return NIL_VAL;
+    return pop();
 }
 
 static Value arrayPushNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
 
-    ObjArray* array = AS_ARRAY(args[0]);
-    for (int i = 1; i < argCount; i++) {
+    ObjArray* array = AS_ARRAY(args[-1]);
+    for (int i = 0; i < argCount; i++) {
         arrayAppend(array, args[i]);
     }
     return OBJ_VAL(array);
 }
 
 static Value arrayPopNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
+    ObjArray* array = AS_ARRAY(args[-1]);
 
     if (array->count == 0) {
         return NIL_VAL;
@@ -428,14 +430,14 @@ static Value arrayPopNative(int argCount, Value* args) {
 }
 
 static Value arrayReduceNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[1])) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
         return NIL_VAL;
     }
 
-    ObjArray* array = AS_ARRAY(args[0]);
-    Value callback = args[1];
+    ObjArray* array = AS_ARRAY(args[-1]);
+    Value callback = args[0];
 
-    Value acc = (argCount > 1) ? args[2] : NIL_VAL;
+    Value acc = (argCount > 1) ? args[1] : NIL_VAL;
     int startindex = (argCount > 1) ? 0 : 1;
     if (argCount <= 1 && array->count > 0) {
         acc = array->values[0];
@@ -459,12 +461,12 @@ static Value arrayReduceNative(int argCount, Value* args) {
 }
 
 static Value arraySelectNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[1])) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
         return NIL_VAL;
     }
 
-    ObjArray* original = AS_ARRAY(args[0]);
-    Value callback = args[1];
+    ObjArray* original = AS_ARRAY(args[-1]);
+    Value callback = args[0];
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
@@ -486,25 +488,25 @@ static Value arraySelectNative(int argCount, Value* args) {
 }
 
 static Value arrayDupNative(int argCount, Value* args) {
-    if (!IS_ARRAY(args[0])) return NIL_VAL;
+    if (!IS_ARRAY(args[-1])) return NIL_VAL;
 
-    ObjArray* original = AS_ARRAY(args[0]);
+    ObjArray* original = AS_ARRAY(args[-1]);
     ObjArray* copy = duplicateArray(original);
 
     return OBJ_VAL(copy);
 }
 
 static Value arrayIsEmptyNative(int argCount, Value* args) {
-    return BOOL_VAL(AS_ARRAY(args[0])->count == 0);
+    return BOOL_VAL(AS_ARRAY(args[-1])->count == 0);
 }
 
 static Value arrayMapNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[1])) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
         return NIL_VAL;
     }
 
-    ObjArray* original = AS_ARRAY(args[0]);
-    Value callback = args[1];
+    ObjArray* original = AS_ARRAY(args[-1]);
+    Value callback = args[0];
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
@@ -527,8 +529,8 @@ static Value arrayMapNative(int argCount, Value* args) {
 }
 
 static Value arrayReverseNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[0]);
-    if (array->count < 2) return args[0];
+    ObjArray* array = AS_ARRAY(args[-1]);
+    if (array->count < 2) return args[-1];
 
     int left = 0;
     int right = array->count - 1;
@@ -540,11 +542,11 @@ static Value arrayReverseNative(int argCount, Value* args) {
         left++;
         right--;
     }
-    return args[0];
+    return args[-1];
 }
 
 static Value arrayFlattenNative(int argCount, Value* args) {
-    ObjArray* source = AS_ARRAY(args[0]);
+    ObjArray* source = AS_ARRAY(args[-1]);
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
@@ -801,9 +803,11 @@ static void resetStack() {
 }
 
 static ObjClass* getClassForValue(Value value) {
-    if (IS_INSTANCE(value)) return AS_INSTANCE(value)->klass;
+    if (IS_INSTANCE(value)) return AS_INSTANCE(value)->obj.klass;
+    if (IS_CLASS(value)) return AS_CLASS(value)->obj.klass;
+    if (IS_OBJ(value)) return AS_OBJ(value)->klass;
     if (IS_MAP(value)) return vm.mapClass;
-    if (IS_ARRAY(value)) return vm.arrayClass;
+    //if (IS_ARRAY(value)) return vm.arrayClass;
     if (IS_STRING(value)) return vm.stringClass;
     return NULL;
 }
@@ -1398,25 +1402,36 @@ static Value setFieldNative(int argCount, Value* args) {
 }
 
 static Value getSuperclassNative(int argCount, Value* args) {
+    /*
     if (argCount != 1 || (!IS_CLASS(args[0]) && !IS_INSTANCE(args[0]))) {
         runtimeError("get_superclass() expects a class or instance as the argument.");
         return NIL_VAL;
     }
+    */
+    Obj* obj = AS_OBJ(args[0]);
+    ObjClass* klass = NULL;
 
+    if (!IS_OBJ(args[0])) {
+        runtimeError("get_superclass() expects an object.");
+        return NIL_VAL;
+    }
+    
     if (IS_CLASS(args[0])) {
-        ObjClass* klass = AS_CLASS(args[0]);
-        if (klass->superclass == NULL) return NIL_VAL;
-        
-        return OBJ_VAL(klass->superclass);
+        klass = AS_CLASS(args[0]);
     }
 
     if (IS_INSTANCE(args[0])) {
         ObjInstance* instance = AS_INSTANCE(args[0]);
-        ObjClass* klass = instance->klass;
-        if (klass->superclass == NULL) return NIL_VAL;
+        klass = instance->obj.klass;
+    }
 
+    if (obj->klass != NULL)
+        klass = obj->klass;
+
+    if (klass != NULL && klass->superclass != NULL) {
         return OBJ_VAL(klass->superclass);
     }
+
     return NIL_VAL;
 }
 
@@ -1680,29 +1695,40 @@ static Value typeofNative(int argCount, Value* args) {
     if (argCount < 1) return OBJ_VAL(copyString("NIL", 3));
     Value value = args[0];
 
-    if (IS_NUMBER(value)) return OBJ_VAL(copyString("NUMBER", 6));
-    if (IS_BOOL(value)) return OBJ_VAL(copyString("BOOL", 4));
-    if (IS_NIL(value)) return OBJ_VAL(copyString("NIL", 3));
+    // 1. Handle primitives
+    if (IS_NUMBER(value)) return OBJ_VAL(copyString("Number", 6));
+    if (IS_BOOL(value)) return OBJ_VAL(copyString("Bool", 4));
+    if (IS_NIL(value)) return OBJ_VAL(copyString("Nil", 3));
     if (IS_VEC3(value)) return OBJ_VAL(copyString("Vec3", 4));
 
+
     if (IS_OBJ(value)) {
+        Obj* obj = AS_OBJ(value);
+
+        // 2. Header promotion check
+        // If it has a class, just return that class's name
+        // This covers OBJ_ISNTANCE, OBJ_ARRAY, and any other promoted types.
+        if (obj->klass != NULL) {
+            return OBJ_VAL(obj->klass->name);
+        }
+
         switch (OBJ_TYPE(value)) {
             case OBJ_STRING:
-                return OBJ_VAL(copyString("STRING", 6));
+                return OBJ_VAL(copyString("String", 6));
             case OBJ_NATIVE:
-                return OBJ_VAL(copyString("NATIVE", 6));
+                return OBJ_VAL(copyString("Native", 6));
             case OBJ_CLOSURE:
-                return OBJ_VAL(copyString("FUNCTION", 8));
+                return OBJ_VAL(copyString("Function", 8));
             case OBJ_CLASS:
-                return OBJ_VAL(copyString("CLASS", 5));
-            case OBJ_INSTANCE:
-                return OBJ_VAL(AS_INSTANCE(value)->klass->name);
-            case OBJ_ARRAY:
-                return OBJ_VAL(copyString("ARRAY", 5));
-            case OBJ_MAP:
-                return OBJ_VAL(copyString("MAP", 3));
+                return OBJ_VAL(copyString("Class", 5));
+            //case OBJ_INSTANCE:
+            //    return OBJ_VAL(AS_INSTANCE(value)->obj.klass->name);
+            //case OBJ_ARRAY:
+            //    return OBJ_VAL(copyString("Array", 5));
+            //case OBJ_MAP:
+            //    return OBJ_VAL(copyString("Map", 3));
             default:
-                return OBJ_VAL(copyString("OBJECT", 6));
+                return OBJ_VAL(copyString("Object", 6));
         }
     }
 
@@ -1978,7 +2004,12 @@ void regexDestructor(ObjInstance* inst) {
     }
 }
 
-void initRegexLibrary() {
+void initRegexClass() {
+    ObjString* string = NULL;
+    string = copyString("Regex", 5);
+    vm.regexClass = newClass(copyString("Regex", 5));
+    vm.regexClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
     push(OBJ_VAL(vm.regexClass));
 
     defineNativeMethod(vm.regexClass, "init", regexInitMethod);
@@ -1991,6 +2022,122 @@ void initRegexLibrary() {
     defineGlobal("Regex", OBJ_VAL(vm.regexClass));
 
     pop();
+}
+
+static Value arrayInitMethod(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Array constructor expects a pattern string.");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = newArray();
+    array->obj.klass = vm.arrayClass;
+    array->count = 0;
+    array->capacity = 0;
+    array->values = NULL;
+    return OBJ_VAL(array);
+}
+
+static Value mapInitMethod(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Regex constructor expects a pattern string.");
+        return NIL_VAL;
+    }
+}
+
+static Value stringInitMethod(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Regex constructor expects a pattern string.");
+        return NIL_VAL;
+    }
+}
+
+static Value objectClassMethod(int argCount, Value* args) {
+    Obj* obj = AS_OBJ(args[-1]);
+    return OBJ_VAL(obj->klass);
+}
+
+static Value arrayNativeConstructor(int argCount, Value* args) {
+    ObjArray* array = newArray();
+    array->obj.klass = vm.arrayClass;
+
+    if (argCount > 0) {
+        array->values = ALLOCATE(Value, argCount);
+        array->capacity = argCount;
+        array->count = argCount;
+
+        for (int i = 0; i < argCount; i++) {
+            array->values[i] = args[i];
+        }
+    }
+    return OBJ_VAL(array);
+}
+
+void initArrayClass() {
+    ObjString* string = NULL;
+
+    string = copyString("Array", 5);
+    vm.arrayClass = newClass(string);
+    vm.arrayClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
+    push(OBJ_VAL(vm.arrayClass));
+
+    defineNative("Array", arrayNativeConstructor);
+
+    //defineNativeMethod(vm.arrayClass, "init", arrayInitMethod);
+    defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
+    defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
+    defineNativeMethod(vm.arrayClass, "len", arrayLenNative);
+    defineNativeMethod(vm.arrayClass, "map", arrayMapNative);
+    defineNativeMethod(vm.arrayClass, "dup", arrayDupNative);
+    defineNativeMethod(vm.arrayClass, "is_empty", arrayIsEmptyNative);
+    defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
+    defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
+    defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
+    defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
+    defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
+    defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
+    defineNativeMethod(vm.arrayClass, "sort", arraySortNative);
+    defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
+    defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
+    defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
+    pop();
+}
+
+void initMapClass() {
+    ObjString* string = NULL;
+
+    string = copyString("Map", 3);
+    vm.mapClass = newClass(string);
+    vm.mapClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
+    push(OBJ_VAL(vm.mapClass));
+
+    defineNativeMethod(vm.mapClass, "init", mapInitMethod);
+    pop();
+}
+
+void initStringClass() {
+    ObjString* string = NULL;
+
+    string = copyString("String", 6);
+    vm.stringClass = newClass(string);
+    vm.stringClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
+    push(OBJ_VAL(vm.stringClass));
+
+    defineNativeMethod(vm.stringClass, "init", stringInitMethod);
+    pop();
+}
+
+static Value objectGetSuperclassMethod(int argCount, Value* args) {
+    Obj* obj = AS_OBJ(args[-1]);
+
+    if (obj->klass != NULL && obj->klass->superclass != NULL) {
+        return OBJ_VAL(obj->klass->superclass);
+    }
+
+    return NIL_VAL;
 }
 
 void initVM(int argc, const char* argv[], const char* env[]) {
@@ -2052,6 +2199,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass->superclass = NULL;
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
 
+    //defineNative("get_class", objectClassMethod);
+    defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
+    
     string = copyString("Array", 5);
     vm.arrayClass = newClass(string);
     vm.arrayClass->superclass = vm.objectClass;
@@ -2081,12 +2231,13 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("Map", OBJ_VAL(vm.mapClass));
     */
 
+    /*
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
     defineNativeMethod(vm.arrayClass, "pop", arrayPopNative);
     defineNativeMethod(vm.arrayClass, "len", arrayLenNative);
     defineNativeMethod(vm.arrayClass, "map", arrayMapNative);
     defineNativeMethod(vm.arrayClass, "dup", arrayDupNative);
-    defineNativeMethod(vm.arrayClass, "isEmpty", arrayIsEmptyNative);
+    defineNativeMethod(vm.arrayClass, "is_empty", arrayIsEmptyNative);
     defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
     defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
     defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
@@ -2097,6 +2248,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
     defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
     defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
+    */
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
     defineNativeMethod(vm.mapClass, "values", mapValuesNative);
     defineNativeMethod(vm.mapClass, "has", mapHasNative);
@@ -2104,8 +2256,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.mapClass, "len", mapLenNative);
     defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
     defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
-    defineNativeMethod(vm.stringClass, "toUpper", stringToUpperNative);
-    defineNativeMethod(vm.stringClass, "toLower", stringToLowerNative);
+    defineNativeMethod(vm.stringClass, "to_upper", stringToUpperNative);
+    defineNativeMethod(vm.stringClass, "to_lower", stringToLowerNative);
     defineNativeMethod(vm.stringClass, "len", stringLenNative);
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
@@ -2115,9 +2267,10 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
     initFileLibrary();
-    initRegexLibrary();
+    initRegexClass();
     initVec3Library();
     initGCLibrary();
+    initArrayClass();
 
     defineNative("get_members", getMembersNative);
     defineNative("has_method", hasMethodNative);
@@ -2187,7 +2340,20 @@ static bool callValue(Value callee, int argCount) {
                 {
                     ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
                     vm.stackTop[-argCount - 1] = bound->receiver;
-                    return vmCall(bound->method, argCount);
+                    return callValue(bound->method, argCount);
+                    /*
+                    vm.stackTop[-argCount - 1] = bound->receiver;
+                    if (IS_CLOSURE(bound->method)) {
+                        ObjClosure* closure = AS_CLOSURE(bound->method);
+                        return vmCall(closure, argCount);
+                    } else if (IS_NATIVE(bound->method)) {
+                        NativeFn native = AS_NATIVE(bound->method);
+                        Value result = native(argCount, vm.stackTop - argCount);
+                        return true;
+                    }
+                    return false;
+                    */
+                    //return vmCall(bound->method, argCount);
                 }
             case OBJ_CLASS:
                 {
@@ -2227,12 +2393,14 @@ static bool callValue(Value callee, int argCount) {
                 return vmCall(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE:
                 {
+                    //printf("[CALLVALUE] OBJ_NATIVE\n");
                     NativeFn native = AS_NATIVE(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
                     //if (vm.frameCount == 0) return false;
 
                     vm.stackTop -= argCount + 1;
                     push(result);
+                    //printf("[CALLVALUE] OBJ_NATIVE done\n");
 
                     return true;
                 }
@@ -2270,10 +2438,21 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     ObjClass* current = klass;
     Value method;
 
+    //printf("[INVOKEFROMCLASS]\n");
+    while (current != NULL) {
+        if (tableGet(&current->methods, name, &method)) {
+            return callValue(method, argCount);
+        }
+        current = current->superclass;
+    }
+
+    //printf("[INVOKEFROMCLASS] didn't find\n");
+    /*
     if (!findMethod(klass, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
+    */
 
     /*
     if (!tableGet(&klass->methods, name, &method)) {
@@ -2310,7 +2489,10 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         return true;
     }
 
-    return vmCall(AS_CLOSURE(method), argCount);
+    if (IS_CLOSURE(method))
+        return vmCall(AS_CLOSURE(method), argCount);
+
+    return false;
 }
 
 static bool invoke(ObjString* name, int argCount) {
@@ -2325,12 +2507,18 @@ static bool invoke(ObjString* name, int argCount) {
             return callValue(value, argCount);
         }
 
-        return invokeFromClass(instance->klass, name, argCount);
+        return invokeFromClass(instance->obj.klass, name, argCount);
     }
 
+    Obj* obj = AS_OBJ(receiver);
     ObjClass* klass = NULL;
-    if (IS_ARRAY(receiver)) klass = vm.arrayClass;
-    else if (IS_MAP(receiver)) klass = vm.mapClass;
+
+    if (obj->klass != NULL) {
+        return invokeFromClass(obj->klass, name, argCount);
+    }
+
+    //if (IS_ARRAY(receiver)) klass = vm.arrayClass;
+    if (IS_MAP(receiver)) klass = vm.mapClass;
     else if (IS_STRING(receiver)) klass = vm.stringClass;
     else if (IS_REGEX(receiver)) klass = vm.regexClass;
 
@@ -2349,16 +2537,22 @@ static bool invoke(ObjString* name, int argCount) {
 
 static bool bindMethod(ObjClass* klass, ObjString* name) {
     Value method;
-    if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'.", name->chars);
-        return false;
+    ObjClass* current = klass;
+
+    while (current != NULL) {
+        if (tableGet(&klass->methods, name, &method)) {
+            ObjBoundMethod* bound = newBoundMethod(peek(0),
+                    method);
+                    //AS_CLOSURE(method));
+            pop();
+            push(OBJ_VAL(bound));
+            return true;
+        }
+        current = current->superclass;
     }
 
-    ObjBoundMethod* bound = newBoundMethod(peek(0),
-            AS_CLOSURE(method));
-    pop();
-    push(OBJ_VAL(bound));
-    return true;
+    runtimeError("Undefined property '%s'.", name->chars);
+    return false;
 }
 
 static ObjUpvalue* captureUpvalue(Value* local) {
@@ -2650,7 +2844,7 @@ InterpretResult run() {
                     if (IS_INSTANCE(receiver)) {
                         ObjInstance* instance = AS_INSTANCE(receiver);
 
-                        if (instance->klass == NULL) {
+                        if (instance->obj.klass == NULL) {
                             runtimeError("Instance has no class.");
                             return INTERPRET_RUNTIME_ERROR;
                         }
@@ -2662,8 +2856,8 @@ InterpretResult run() {
                             break;
                         }
 
-                        if (instance->klass->getter != NULL) {
-                            value = instance->klass->getter(instance, name);
+                        if (instance->obj.klass->getter != NULL) {
+                            value = instance->obj.klass->getter(instance, name);
                             if (!IS_NIL(value)) {
                                 pop();
                                 push(value);
@@ -2671,18 +2865,14 @@ InterpretResult run() {
                             }
                         }
 
-                        if (findMethod(instance->klass, name, &value)) {
-                            ObjBoundMethod* bound = newBoundMethod(peek(0), AS_CLOSURE(value));
-                            pop();
-                            push(OBJ_VAL(bound));
-                            break;
+                        if (instance->obj.klass != NULL) {
+                            if (findMethod(instance->obj.klass, name, &value)) {
+                                ObjBoundMethod* bound = newBoundMethod(peek(0), value);
+                                pop();
+                                push(OBJ_VAL(bound));
+                                break;
+                            }
                         }
-
-                        /*
-                        if (!bindMethod(instance->klass, name)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                        */
                         runtimeError("Undefined property '%s'.", name->chars);
                         return INTERPRET_RUNTIME_ERROR;
                     } 
@@ -2690,15 +2880,11 @@ InterpretResult run() {
                     ObjClass* klass = getClassForValue(receiver);
                     if (klass != NULL) {
                         Value method;
-                        if (tableGet(&klass->methods, name, &method)) {
-                            if (IS_NATIVE(method)) {
-                                pop();
-                                push(method);
-                            } else {
-                                ObjBoundMethod* bound = newBoundMethod(receiver, AS_CLOSURE(method));
-                                pop();
-                                push(OBJ_VAL(bound));
-                            }
+                        if (findMethod(klass, name, &method)) {
+
+                            ObjBoundMethod* bound = newBoundMethod(receiver, method);
+                            pop();
+                            push(OBJ_VAL(bound));
                             break;
                         }
                     }
@@ -2754,8 +2940,8 @@ InterpretResult run() {
                         //}
                         //break;
                     //}
-                    if (instance->klass->setter != NULL) {
-                        if (instance->klass->setter(instance, name, value)) {
+                    if (instance->obj.klass->setter != NULL) {
+                        if (instance->obj.klass->setter(instance, name, value)) {
                             pop();
                             pop();
                             push(value);
@@ -2847,7 +3033,7 @@ InterpretResult run() {
                         Value result;
 
                         Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->klass->methods, vm.str_add, &method)) {
+                        if (tableGet(&instance->obj.klass->methods, vm.str_add, &method)) {
                             if (callValue(method, 1)) {
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
@@ -2891,7 +3077,7 @@ InterpretResult run() {
                         Value result;
 
                         Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->klass->methods, vm.str_sub, &method)) {
+                        if (tableGet(&instance->obj.klass->methods, vm.str_sub, &method)) {
                             if (callValue(method, 1)) {
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
@@ -2943,7 +3129,7 @@ InterpretResult run() {
                         Value result;
 
                         Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->klass->methods, vm.str_mul, &method)) {
+                        if (tableGet(&instance->obj.klass->methods, vm.str_mul, &method)) {
                             if (callValue(method, 1)) {
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
@@ -2979,7 +3165,7 @@ InterpretResult run() {
                         Value result;
 
                         Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->klass->methods, vm.str_div, &method)) {
+                        if (tableGet(&instance->obj.klass->methods, vm.str_div, &method)) {
                             if (callValue(method, 1)) {
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
@@ -3056,7 +3242,7 @@ InterpretResult run() {
                         Value result;
 
                         Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->klass->methods, vm.str_neg, &method)) {
+                        if (tableGet(&instance->obj.klass->methods, vm.str_neg, &method)) {
                             if (callValue(method, 0)) {
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
@@ -3099,7 +3285,7 @@ InterpretResult run() {
                             Value method;
 
                             Value* stackStart = vm.stackTop;
-                            if (tableGet(&instance->klass->methods, vm.toString, &method)) {
+                            if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
                                 push(value);
                                 if (callValue(method, 0)) {
                                     vm.nativeExitDepth = vm.frameCount - 1;
@@ -3266,12 +3452,16 @@ InterpretResult run() {
                             return INTERPRET_RUNTIME_ERROR;
                         }
                         break;
-                    }
-                    if (!IS_OBJ(receiver)) {
+                    } else if (!IS_OBJ(receiver)) {
                         printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
+                    //printValue(receiver);
+                    Obj* obj = AS_OBJ(receiver);
+                    if (invokeFromClass(obj->klass, method, argCount)) {
+                        break;
+                    }
                     if (!invoke(method, argCount) || vm.frameCount == 0) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
@@ -3417,6 +3607,7 @@ InterpretResult run() {
                     uint8_t count = READ_BYTE();
                     
                     ObjArray* array = newArray();
+                    array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
 
                     if (count > 0) {
@@ -3447,6 +3638,7 @@ InterpretResult run() {
 
                     int count = (int)AS_NUMBER(sizeVal);
                     ObjArray* array = newArray();
+                    array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
                     if (count > 0) {
                         Value* entries = ALLOCATE(Value, count);

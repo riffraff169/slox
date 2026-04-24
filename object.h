@@ -56,6 +56,7 @@ typedef enum {
 struct Obj {
     ObjType type;
     bool isMarked;
+    struct ObjClass* klass;
     struct Obj* next;
 };
 
@@ -120,7 +121,7 @@ typedef struct ObjClass {
 
 typedef struct ObjInstance {
     Obj obj;
-    ObjClass* klass;
+    //ObjClass* klass;
     void* foreignPtr;
     //bool isBoxed;
     Table fields;
@@ -129,7 +130,8 @@ typedef struct ObjInstance {
 typedef struct {
     Obj obj;
     Value receiver;
-    ObjClosure* method;
+    //ObjClosure* method;
+    Value method;
 } ObjBoundMethod;
 
 typedef struct {
@@ -138,6 +140,12 @@ typedef struct {
     int capacity;
     Value* values;
 } ObjArray;
+
+typedef struct {
+    int count;
+    int capacity;
+    Value* values;
+} ArrayInternal;
 
 typedef struct {
     Obj obj;
@@ -166,8 +174,7 @@ ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
 void arrayAppend(ObjArray* array, Value value);
 ObjArray* newArray();
-ObjBoundMethod* newBoundMethod(Value receiver,
-        ObjClosure* method);
+ObjBoundMethod* newBoundMethod(Value receiver, Value method);
 ObjClass* newClass(ObjString* name);
 ObjClosure* newClosure(ObjFunction* function);
 ObjFunction* newFunction();
