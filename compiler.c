@@ -938,23 +938,37 @@ static void function(FunctionType type) {
     initCompiler(&compiler, type);
     beginScope();
 
-    printf("[FUNCTION] begin argument parsing\n");
+    //printf("[FUNCTION] begin argument parsing\n");
     consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
     if (!check(TOKEN_RIGHT_PAREN)) {
         bool isOptional = false;
         do {
+            if (match(TOKEN_DOT_DOT_DOT)) {
+                current->function->isVariadic = true;
+                int constant = parseVariable("Expect rest parameter name.");
+                defineVariable(constant);
+
+                current->function->arity++;
+
+                if (check(TOKEN_COMMA)) {
+                    error("Cannot have parameters after a rest parameter.");
+                }
+
+                break;
+            }
+
             current->function->arity++;
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters.");
             }
-            printf("get constant\n");
+            //printf("get constant\n");
             int constant = parseVariable("Expect parameter name.");
-            printf("define variable\n");
+            //printf("define variable\n");
             defineVariable(constant);
 
-            printf("looking for default value\n");
+            //printf("looking for default value\n");
             if (match(TOKEN_EQUAL)) {
-                printf("getting default value\n");
+                //printf("getting default value\n");
                 isOptional = true;
                 Value defaultValue = parseConstant();
                 writeValueArray(&current->function->defaults, defaultValue);
@@ -964,9 +978,9 @@ static void function(FunctionType type) {
             if (!isOptional) current->function->minArity++;
         } while (match(TOKEN_COMMA));
     }
-    printf("[FUNCTION] before expect\n");
+    //printf("[FUNCTION] before expect\n");
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
-    printf("[FUNCTION] after expect\n");
+    //printf("[FUNCTION] after expect\n");
     consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     block();
 
@@ -999,6 +1013,21 @@ static void parseFunction(FunctionType type) {
     if (!check(TOKEN_RIGHT_PAREN)) {
         bool isOptional = false;
         do {
+            if (match(TOKEN_DOT_DOT_DOT)) {
+                current->function->isVariadic = true;
+
+                int constant = parseVariable("Expect rest parameter name.");
+                defineVariable(constant);
+
+                current->function->arity++;
+
+                if (check(TOKEN_COMMA)) {
+                    error("Cannot have parameters after a rest parameter.");
+                }
+
+                break;
+            }
+
             current->function->arity++;
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters.");

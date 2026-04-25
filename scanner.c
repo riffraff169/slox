@@ -171,6 +171,15 @@ static Token identifier() {
     return makeToken(identifierType());
 }
 
+static Token dot() {
+    if (peek() == '.' && peekNext() == '.') {
+        advance();
+        advance();
+        return makeToken(TOKEN_DOT_DOT_DOT);
+    }
+    return makeToken(TOKEN_DOT);
+}
+
 static Token number() {
     while (isDigit(peek())) advance();
 
@@ -283,7 +292,8 @@ Token scanToken() {
         case ',':
             return makeToken(TOKEN_COMMA);
         case '.':
-            return makeToken(TOKEN_DOT);
+            return dot();
+            //return makeToken(TOKEN_DOT);
         case '-':
             return makeToken(
                     match('=') ? TOKEN_MINUS_EQUAL : TOKEN_MINUS);

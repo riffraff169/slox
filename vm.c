@@ -2359,18 +2359,49 @@ Value peek(int distance) {
 }
 
 bool vmCall(ObjClosure* closure, int argCount) {
-    if (argCount < closure->function->minArity || argCount > closure->function->arity) {
-        runtimeError("Expected between %d and %d arguments but got %d.",
-                closure->function->minArity, closure->function->arity, argCount);
-        return false;
+    ObjFunction* function = closure->function;
+    int namedArity = function->isVariadic ? function->arity - 1 : function->arity;
+
+    if (argCount < namedArity) {
+        int missing = namedArity - argCount;
+        for (int i = 0; i < missing; i++) {
+            int defaultIndex = (function->defaults.count - missing) + i;
+            push(function->defaults.values[defaultIndex]);
+        }
+        argCount = namedArity;
     }
 
-    int missing = closure->function->arity - argCount;
-
-    for (int i = 0; i < missing; i++) {
-        int defaultIndex = (closure->function->defaults.count - missing) + i;
-        push(closure->function->defaults.values[defaultIndex]);
+    if (function->isVariadic) {
+        if (argCount < function->minArity) {
+            runtimeError("Expected at least %d arguments but got %d.",
+                    function->minArity, argCount);
+            return false;
+        }
+    } else {
+        if (argCount < closure->function->minArity || argCount > closure->function->arity) {
+            runtimeError("Expected between %d and %d arguments but got %d.",
+                    closure->function->minArity, closure->function->arity, argCount);
+            return false;
+        }
     }
+
+    if (function->isVariadic) {
+        int numRest = argCount - namedArity;
+        if (numRest < 0) numRest = 0;
+
+        ObjArray* restArray = newArray();
+        push(OBJ_VAL(restArray));
+
+        for (int i = 0; i < numRest; i++) {
+            //Value val = peek(numRest - i + 1);
+            Value val = vm.stackTop[-(numRest + 1) + i];
+            arrayAppend(restArray, val);
+        }
+        vm.stackTop -= (numRest + 1);
+        push(OBJ_VAL(restArray));
+
+        argCount = namedArity + 1;
+    } 
 
     if (vm.frameCount == FRAMES_MAX) {
         runtimeError("Stack overflow.");
@@ -2490,7 +2521,7 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     Value method;
 
     while (current != NULL) {
-        printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
+        //printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
         if (tableGet(&current->methods, name, &method)) {
             return callValue(method, argCount);
         }
@@ -3507,12 +3538,12 @@ InterpretResult run() {
                     //printValue(receiver);
                     Obj* obj = AS_OBJ(receiver);
                     if (invokeFromClass(obj->klass, method, argCount)) {
-                        break;
-                    }
-                    if (!invoke(method, argCount) || vm.frameCount == 0) {
+                        frame = &vm.frames[vm.frameCount - 1];
+                    } else if (!invoke(method, argCount) || vm.frameCount == 0) {
                         return INTERPRET_RUNTIME_ERROR;
+                    } else {
+                        frame = &vm.frames[vm.frameCount - 1];
                     }
-                    frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;
             case OP_SUPER_INVOKE:

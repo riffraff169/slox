@@ -64,6 +64,7 @@ typedef struct {
     Obj obj;
     int arity;
     int minArity;
+    bool isVariadic;
     ValueArray defaults;
     int upvalueCount;
     Chunk chunk;
