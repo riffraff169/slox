@@ -76,6 +76,12 @@ typedef struct ClassCompiler {
     bool hasSuperclass;
 } ClassCompiler;
 
+typedef struct {
+    int totalSlots;
+    //int splatAt;
+    bool hasSplat;
+} ArgResult;
+
 Parser parser;
 Compiler* current = NULL;
 ClassCompiler* currentClass = NULL;
@@ -407,19 +413,40 @@ static void defineVariable(int global) {
     }
 }
 
-static uint8_t argumentList() {
-    uint8_t argCount = 0;
+static ArgResult argumentList() {
+    //ArgResult result = {0, -1, false};
+    ArgResult result = {0, false};
+
     if (!check(TOKEN_RIGHT_PAREN)) {
         do {
-            expression();
-            if (argCount == 255) {
+            if (match(TOKEN_STAR)) {
+                result.hasSplat = true;
+                expression();
+                emitByte(OP_SPLAT);
+            } else {
+                expression();
+                result.totalSlots++;
+            }
+
+            if (result.totalSlots >= 255) {
                 error("Can't have more than 255 arguments.");
             }
-            argCount++;
+            //argCount++;
         } while (match(TOKEN_COMMA));
     }
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
-    return argCount;
+
+    /*
+    if (hasSplat) {
+        emitByte(OP_CALL_SPLAT);
+        emitByte(result.count);
+    } else {
+        emitByte(OP_CALL);
+        emitByte(result.count);
+    }
+    */
+
+    return result;
 }
 
 static void and_(bool canAssign) {
@@ -490,8 +517,13 @@ static void binary(bool canAssign) {
 }
 
 static void call(bool canAssign) {
-    uint8_t argCount = argumentList();
-    emitBytes(OP_CALL, argCount);
+    ArgResult args = argumentList();
+
+    if (args.hasSplat) {
+        emitBytes(OP_CALL_SPLAT, (uint8_t)args.totalSlots);
+    } else {
+        emitBytes(OP_CALL, (uint8_t)args.totalSlots);
+    }
 }
 
 static void dot(bool canAssign) {
@@ -509,16 +541,21 @@ static void dot(bool canAssign) {
             emitByte((uint8_t)(name & 0xff));
         }
     } else if (match(TOKEN_LEFT_PAREN)) {
-        uint8_t argCount = argumentList();
+        ArgResult args = argumentList();
         if (name < 256) {
-            emitBytes(OP_INVOKE, (uint8_t)name);
-            emitByte(argCount);
+            if (args.hasSplat) {
+                emitBytes(OP_INVOKE_SPLAT, (uint8_t)name);
+                emitByte((uint8_t)args.totalSlots);
+            } else {
+                emitBytes(OP_INVOKE, (uint8_t)name);
+                emitByte((uint8_t)args.totalSlots);
+            }
         } else {
             emitByte(OP_INVOKE_LONG);
             emitByte((uint8_t)((name >> 16) & 0xff));
             emitByte((uint8_t)((name >> 8) & 0xff));
             emitByte((uint8_t)(name & 0xff));
-            emitByte(argCount);
+            emitByte(args.totalSlots);
         }
     } else {
         if (name < 256) {
@@ -748,10 +785,15 @@ static void super_(bool canAssign) {
 
     namedVariable(syntheticToken("this"), false);
     if (match(TOKEN_LEFT_PAREN)) {
-        uint8_t argCount = argumentList();
+        ArgResult args = argumentList();
         namedVariable(syntheticToken("super"), false);
-        emitBytes(OP_SUPER_INVOKE, name);
-        emitByte(argCount);
+        if (args.hasSplat) {
+            emitBytes(OP_SUPER_INVOKE_SPLAT, (uint8_t)name);
+            emitByte((uint8_t)args.totalSlots);
+        } else {
+            emitBytes(OP_SUPER_INVOKE, (uint8_t)name);
+            emitByte(args.totalSlots);
+        }
     } else {
         namedVariable(syntheticToken("super"), false);
         emitBytes(OP_GET_SUPER, name);

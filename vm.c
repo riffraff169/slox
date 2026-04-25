@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -3546,6 +3550,42 @@ InterpretResult run() {
                     }
                 }
                 break;
+            case OP_INVOKE_SPLAT:
+                {
+                    ObjString* method = READ_STRING();
+                    int staticCount = READ_BYTE();
+                    int dynamicCount = 0;
+
+                    if (IS_SPLAT_COUNT(peek(0))) {
+                        dynamicCount = AS_SPLAT_COUNT(pop());
+                    } else {
+                        Value sentinel = peek(staticCount);
+                        if (IS_SPLAT_COUNT(sentinel)) {
+                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                            for (int i = staticCount; i > 0; i--) {
+                                vm.stackTop[-i - 1] = vm.stackTop[-i];
+                            }
+                            vm.stackTop--;
+                        }
+                    }
+
+                    int totalArgs = staticCount + dynamicCount;
+
+                    Value receiver = peek(totalArgs);
+
+                    if (!IS_INSTANCE(receiver)) {
+                        runtimeError("Only instances have methods.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjInstance* instance = AS_INSTANCE(receiver);
+                    if (!invokeFromClass(instance->obj.klass, method, totalArgs)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
             case OP_SUPER_INVOKE:
                 {
                     ObjString* method = READ_STRING();
@@ -3609,6 +3649,66 @@ InterpretResult run() {
                     }
                     //tableSet(&vm.globals, moduleName, peek(0));
                     pop();
+                }
+                break;
+            case OP_CALL_SPLAT:
+                {
+                    //int dynamicCount = (int)AS_NUMBER(pop());
+                    int staticCount = READ_BYTE();
+                    int dynamicCount = 0;
+
+                    if (IS_SPLAT_COUNT(peek(0))) {
+                        dynamicCount = AS_SPLAT_COUNT(pop());
+                    } else {
+                        Value sentinel = peek(staticCount);
+                        if (IS_SPLAT_COUNT(sentinel)) {
+                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                            for (int i = staticCount; i > 0; i--) {
+                                vm.stackTop[-i - 1] = vm.stackTop[-i];
+                            }
+                            vm.stackTop--;
+                        }
+                    }
+
+                    int totalArgs = dynamicCount + staticCount;
+
+                    Value callee = peek(totalArgs);
+                    if (!callValue(callee, totalArgs)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_SPLAT:
+                {
+                    Value value = peek(0);
+                    if (!IS_ARRAY(value)) {
+                        runtimeError("Can only splat arrays.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjArray* array = AS_ARRAY(value);
+                    pop();
+                    int count = array->count;
+                    //int currentTotal = AS_NUMBER(pop());
+
+                    if (vm.stackTop > vm.stack && IS_SPLAT_COUNT(peek(0))) {
+                        count += AS_SPLAT_COUNT(pop());
+                    }
+
+                    if (vm.stackTop + array->count >= vm.stack + STACK_MAX) {
+                        runtimeError("Stack overflow during splat.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    for (int i = 0; i < array->count; i++) {
+                        push(array->values[i]);
+                    }
+
+                    //push(NUMBER_VAL((double)array->count + currentTotal));
+                    push(SPLAT_COUNT_VAL(count));
+
                 }
                 break;
             case OP_RETURN:

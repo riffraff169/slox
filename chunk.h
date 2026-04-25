@@ -72,7 +72,11 @@ typedef enum {
     OP_METHOD,
     OP_METHOD_LONG,
     OP_IMPORT,
-    OP_IMPORT_LONG
+    OP_IMPORT_LONG,
+    OP_SPLAT,
+    OP_CALL_SPLAT,
+    OP_INVOKE_SPLAT,
+    OP_SUPER_INVOKE_SPLAT
 } OpCode;
 
 typedef struct {

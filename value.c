@@ -70,6 +70,9 @@ void printValueSafe(Value value) {
             case VAL_OBJ:
                 printObject(value);
                 break;
+            case VAL_SPLAT_COUNT:
+                printf("<splat count: %d>\n", AS_SPLAT_COUNT(value));
+                break;
             case VAL_VEC3:
                 printf("Vec3(%g, %g, %g)", AS_VEC3(value).x,
                         AS_VEC3(value).y, AS_VEC3(value).z);
