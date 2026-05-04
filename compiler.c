@@ -26,6 +26,7 @@ typedef enum {
     PREC_AND,
     PREC_EQUALITY,
     PREC_COMPARISON,
+    PREC_SHIFT,
     PREC_TERM,
     PREC_FACTOR,
     PREC_UNARY,
@@ -479,11 +480,17 @@ static void binary(bool canAssign) {
         case TOKEN_GREATER_EQUAL:
             emitBytes(OP_LESS, OP_NOT);
             break;
+        case TOKEN_2RIGHT:
+            emitByte(OP_SHR);
+            break;
         case TOKEN_LESS:
             emitByte(OP_LESS);
             break;
         case TOKEN_LESS_EQUAL:
             emitBytes(OP_GREATER, OP_NOT);
+            break;
+        case TOKEN_2LEFT:
+            emitByte(OP_SHL);
             break;
         case TOKEN_PLUS:
             emitByte(OP_ADD);
@@ -649,7 +656,16 @@ static void grouping(bool canAssign) {
 }
 
 static void number(bool canAssign) {
-    double value = strtod(parser.previous.start, NULL);
+    const char* start = parser.previous.start;
+    int length = parser.previous.length;
+    double value;
+
+    if (length > 2 && start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
+        value = (double)strtoul(start, NULL, 16);
+    } else {
+        value = strtod(start, NULL);
+    }
+
     emitConstant(NUMBER_VAL(value));
 }
 
@@ -822,6 +838,9 @@ static void unary(bool canAssign) {
         case TOKEN_MINUS:
             emitByte(OP_NEGATE);
             break;
+        case TOKEN_TILDE:
+            emitByte(OP_BITWISE_NOT);
+            break;
         default:
             return;
     }
@@ -886,6 +905,9 @@ ParseRule rules[] = {
     [TOKEN_SLASH]            = {NULL,     binary, PREC_FACTOR},
     [TOKEN_STAR]             = {NULL,     binary, PREC_FACTOR},
     [TOKEN_STAR_STAR]        = {NULL,     binary, PREC_EXP},
+    [TOKEN_TILDE]            = {unary,    NULL,   PREC_UNARY},
+    [TOKEN_2LEFT]            = {NULL,     binary, PREC_SHIFT},
+    [TOKEN_2RIGHT]           = {NULL,     binary, PREC_SHIFT},
     [TOKEN_BANG]             = {unary,    NULL,   PREC_NONE},
     [TOKEN_BANG_EQUAL]       = {NULL,     binary, PREC_EQUALITY},
     [TOKEN_EQUAL]            = {NULL,     NULL,   PREC_NONE},

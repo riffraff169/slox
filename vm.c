@@ -24,6 +24,8 @@
 #include "memory.h"
 #include "vm.h"
 
+#define MAX32 4294967296.0
+
 VM vm;
 InterpretResult run();
 //void initArrayMethods();
@@ -32,6 +34,13 @@ static bool callValue(Value callee, int argCount);
 Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
+
+static uint32_t valueToUint32(Value value) {
+    double num = AS_NUMBER(value);
+
+    //return (uint32_t)fmod(num, MAX32);
+    return (uint32_t)(long long)num;
+}
 
 void includeMethods(ObjClass* target, ObjClass* mixin) {
     for (int i = 0; i < mixin->methods.capacity; i++) {
@@ -1545,14 +1554,14 @@ static Value getSuperclassNative(int argCount, Value* args) {
 }
 
 static Value fromHexNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
+    if (argCount != 1 || !IS_STRING(args[0])) return NIL_VAL;
 
-    const char* str = AS_CSTRING(args[1]);
-    char* endptr;
+    const char* str = AS_CSTRING(args[0]);
+    //char* endptr;
 
-    unsigned long long result = strtoull(str, &endptr, 16);
+    uint32_t result = (uint32_t)strtoul(str, NULL, 0);
 
-    if (str == endptr) return NIL_VAL;
+    //if (str == endptr) return NIL_VAL;
     return NUMBER_VAL((double)result);
 }
 
@@ -1722,13 +1731,16 @@ static Value bitTestNative(int argCount, Value* args) {
 }
 
 static Value hexNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        return NIL_VAL;
+    }
 
-    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
-    int precision = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+    uint64_t num = (uint64_t)AS_NUMBER(args[0]);
+
+    int precision = (argCount >= 2 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : 1;
 
     char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (unsigned long long)num);
+    snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (uint64_t)num);
 
     return OBJ_VAL(copyString(buffer, strlen(buffer)));
 }
@@ -3371,10 +3383,10 @@ InterpretResult run() {
                         runtimeError("Operands must be numbers.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
-                    double b = AS_NUMBER(pop());
-                    double a = AS_NUMBER(pop());
+                    uint32_t b = valueToUint32(pop());
+                    uint32_t a = valueToUint32(pop());
 
-                    int result = (int)a & (int)b;
+                    uint32_t result = a ^ b;
                     push(NUMBER_VAL((double)result));
                 }
                 break;
@@ -3393,6 +3405,35 @@ InterpretResult run() {
                     }
 
                     push(NUMBER_VAL(fmod(a, b)));
+                }
+                break;
+            case OP_BITWISE_NOT:
+                {
+                    uint32_t a = valueToUint32(pop());
+                    push(NUMBER_VAL((double)~a));
+                    //uint32_t val = (uint32_t)AS_NUMBER(pop());
+
+                    //push(NUMBER_VAL((double)~val));
+                }
+                break;
+            case OP_SHL:
+                {
+                    uint32_t amount = valueToUint32(pop());
+                    uint32_t value = valueToUint32(pop());
+
+                    // masking the amount by 31 is a common cpu behavior to prevent
+                    // undefined behavior with shifts >= bit width.
+                    push(NUMBER_VAL((double)(value << (amount & 31))));
+                }
+                break;
+            case OP_SHR:
+                {
+                    uint32_t amount = valueToUint32(pop());
+                    uint32_t value = valueToUint32(pop());
+
+                    // using uint32_t ensures a LOGICAL shift (fills with 0)
+                    // rather than an ARITHMETIC shift (fills with sign bit)
+                    push(NUMBER_VAL((double)(value >> (amount & 31))));
                 }
                 break;
             case OP_NEGATE:
@@ -3429,18 +3470,19 @@ InterpretResult run() {
                 break;
             case OP_BITWISE_AND:
                 {
-                    Value b = pop();
-                    Value a = pop();
+                    uint32_t b = valueToUint32(pop());
+                    uint32_t a = valueToUint32(pop());
 
-                    int result = (int)AS_NUMBER(a) & (int)AS_NUMBER(b);
+                    uint32_t result = a & b;
                     push(NUMBER_VAL((double)result));
                 }
                 break;
             case OP_BITWISE_OR:
                 {
-                    Value b = pop();
-                    Value a = pop();
-                    int result = (int)AS_NUMBER(a) | (int)AS_NUMBER(b);
+                    uint32_t b = valueToUint32(pop());
+                    uint32_t a = valueToUint32(pop());
+
+                    uint32_t result = a | b;
                     push(NUMBER_VAL((double)result));
                 }
                 break;

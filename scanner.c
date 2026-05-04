@@ -192,7 +192,21 @@ static Token dot() {
     return makeToken(TOKEN_DOT);
 }
 
+static bool isHexDigit(char c) {
+    return (c >= '0' && c <= '9') ||
+        (c >= 'a' && c <= 'f') ||
+        (c >= 'A' && c <= 'F');
+}
+
 static Token number() {
+    if (peek() == '0' && (peekNext() == 'x' || peekNext() == 'X')) {
+        advance();
+        advance();
+
+        while (isHexDigit(peek())) advance();
+        return makeToken(TOKEN_NUMBER);
+    }
+
     while (isDigit(peek())) advance();
 
     if (peek() == '.' && isDigit(peekNext())) {
@@ -278,7 +292,14 @@ Token scanToken() {
         return continueString();
     }
     if (isAlpha(c)) return identifier();
-    if (isDigit(c)) return number();
+    if (isDigit(c)) {
+        if (c == '0' && (peek() == 'x' || peek() == 'X')) {
+            advance();
+            while (isHexDigit(peek())) advance();
+            return makeToken(TOKEN_NUMBER);
+        }
+        return number();
+    }
 
     switch (c) {
         case '&':
@@ -328,11 +349,15 @@ Token scanToken() {
             return makeToken(
                     match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
         case '<':
+            if (match('<')) return makeToken(TOKEN_2LEFT);
             return makeToken(
                     match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
         case '>':
+            if (match('>')) return makeToken(TOKEN_2RIGHT);
             return makeToken(
                     match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
+        case '~':
+            return makeToken(TOKEN_TILDE);
         case '"':
             return string();
     }
