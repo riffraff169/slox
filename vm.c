@@ -191,17 +191,18 @@ static Value mathAbsNative(int argCount, Value* args) {
 }
 
 static Value toNumberNative(int argCount, Value* args) {
-    if (argCount < 2) return NUMBER_VAL(0);
+    if (argCount < 1) return NUMBER_VAL(0);
 
-    if (IS_NUMBER(args[1])) return args[1];
-
-    if (!IS_STRING(args[1])) return NUMBER_VAL(0);
+    if (IS_NUMBER(args[0])) return args[0];
+    if (!IS_STRING(args[0])) return NUMBER_VAL(0);
 
     char* end;
-    const char* str = AS_CSTRING(args[1]);
+    const char* str = AS_CSTRING(args[0]);
     double number = strtod(str, &end);
 
-    if (str == end) return NUMBER_VAL(0);
+    if (str == end) {
+        return NUMBER_VAL(0);
+    }
 
     return NUMBER_VAL(number);
 }
@@ -2284,6 +2285,12 @@ static Value objectGetSuperclassMethod(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value packInt32(int argCount, Value* args) {
+}
+
+static Value packByte(int argCount, Value* args) {
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -2335,6 +2342,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("isnil", isNilNative);
     defineNative("isclass", isClassNative);
     defineNative("isinstance", isInstanceNative);
+    defineNative("packInt32", packInt32);
+    defineNative("packByte", packByte);
 
     ObjString* string = NULL;
 
@@ -3998,6 +4007,7 @@ InterpretResult run() {
                         }
 
                         push(array->values[index]);
+                        break;
                     }
 
                     if (IS_STRING(targetValue)) {
