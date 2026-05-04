@@ -52,6 +52,9 @@ typedef struct {
     Obj** grayStack;
 
     ObjClass* objectClass;
+    ObjClass* numberClass;
+    ObjClass* boolClass;
+    ObjClass* nilClass;
     ObjClass* arrayClass;
     ObjClass* mapClass;
     ObjClass* stringClass;

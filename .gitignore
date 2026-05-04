@@ -8,3 +8,4 @@ examples
 temp/*
 *.ppm
 *.txt
+*.lox

@@ -875,6 +875,7 @@ ParseRule rules[] = {
     [TOKEN_RIGHT_BRACKET]    = {NULL,     NULL,   PREC_NONE},
     [TOKEN_COMMA]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_DOT]              = {NULL,     dot,    PREC_CALL},
+    [TOKEN_DOT_DOT_DOT]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_MINUS]            = {unary,    binary, PREC_TERM},
     [TOKEN_PLUS]             = {NULL,     binary, PREC_TERM},
     [TOKEN_PLUS_PLUS]        = {NULL,     NULL,   PREC_NONE},
@@ -903,6 +904,7 @@ ParseRule rules[] = {
     [TOKEN_ELSE]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]            = {literal,  NULL,   PREC_NONE},
     [TOKEN_FOR]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_FOREACH]          = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FUN]              = {lambda,   NULL,   PREC_NONE},
     [TOKEN_IF]               = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]              = {literal,  NULL,   PREC_NONE},
@@ -1179,7 +1181,15 @@ static void classDeclaration() {
 
     consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
     while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
-        method();
+        if (match(TOKEN_INCLUDE)) {
+            consume(TOKEN_IDENTIFIER, "Expect class name after 'include'.");
+
+            namedVariable(parser.previous, false);
+            emitByte(OP_INCLUDE);
+            consume(TOKEN_SEMICOLON, "Expect ';' after include statement.");
+        } else { 
+            method();
+        }
     }
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 
@@ -1217,6 +1227,53 @@ static void expressionStatement() {
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
     emitByte(OP_POP);
+}
+
+static void foreachStatement() {
+    beginScope();
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'foreach'.");
+
+    consume(TOKEN_IDENTIFIER, "Expect first loop variable name.");
+    Token var1 = parser.previous;
+    
+    bool isDual = false;
+    Token var2;
+
+    if (match(TOKEN_COMMA)) {
+        consume(TOKEN_IDENTIFIER, "Expect second loop variable name.");
+        var2 = parser.previous;
+        isDual = true;
+    }
+
+    consume(TOKEN_IN, "Expect 'in' after loop variables.");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after foreach clauses.");
+
+    //emitInvoke("iter", 0);
+
+    int loopStart = currentChunk()->count;
+
+    ///emitInvoke("done", 0);
+    int exitJump = emitJump(OP_JUMP_IF_FALSE);
+    emitByte(OP_POP);
+    //emitInvoke("next"), 0);
+
+    /*
+    if (isDual) {
+        unpackTwo(var1, var2);
+    } else {
+        defineVariable(identifierConstant(&var1));
+    }
+    */
+
+    statement();
+
+    emitLoop(loopStart);
+    patchJump(exitJump);
+    emitByte(OP_POP);
+    emitByte(OP_POP);
+
+    endScope();
 }
 
 static void forStatement() {
@@ -1383,6 +1440,7 @@ static void synchronize() {
             case TOKEN_FUN:
             case TOKEN_VAR:
             case TOKEN_FOR:
+            case TOKEN_FOREACH:
             case TOKEN_IF:
             case TOKEN_WHILE:
             case TOKEN_PRINT:
@@ -1417,6 +1475,8 @@ static void statement() {
         importDeclaration();
     } else if (match(TOKEN_FOR)) {
         forStatement();
+    } else if (match(TOKEN_FOREACH)) {
+        foreachStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
     } else if (match(TOKEN_RETURN)) {

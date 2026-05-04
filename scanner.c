@@ -126,7 +126,12 @@ static TokenType identifierType() {
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
                           case 'a': return checkKeyword(2, 3, "lse", TOKEN_FALSE);
-                          case 'o': return checkKeyword(2, 1, "r", TOKEN_FOR);
+                          case 'o':
+                                    {
+                                        int res = checkKeyword(2, 5, "reach", TOKEN_FOREACH);
+                                        if (res == TOKEN_FOREACH) return res;
+                                        return checkKeyword(2, 1, "r", TOKEN_FOR);
+                                    }
                           case 'u': return checkKeyword(2, 1, "n", TOKEN_FUN);
                       }
                   }
@@ -134,8 +139,15 @@ static TokenType identifierType() {
         case 'i': 
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
-                          case 'f': return TOKEN_IF;
+                          case 'f': if (scanner.current - scanner.start == 2) return TOKEN_IF;
                           case 'm': return checkKeyword(2, 4, "port", TOKEN_IMPORT);
+                          case 'n': 
+                                    {
+                                        int res = checkKeyword(2, 5, "clude", TOKEN_INCLUDE);
+                                        if (res == TOKEN_INCLUDE) return res;
+                                        if (scanner.current - scanner.start == 2)
+                                            return TOKEN_IN;
+                                    }
                       }
                   }
                   break;

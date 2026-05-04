@@ -111,6 +111,17 @@ void tableAddAll(Table* from, Table* to) {
     }
 }
 
+void tableMergeGuard(Table* from, Table* to) {
+    for (int i = 0; i < from->capacity; i++) {
+        Entry* entry = &from->entries[i];
+        if (entry->key == NULL) continue;
+        Value dummy;
+        if  (!tableGet(to, entry->key, &dummy)) {
+            tableSet(to, entry->key, entry->value);
+        }
+    }
+}
+
 ObjString* tableFindString(Table* table, const char* chars,
         int length, uint32_t hash) {
     if (table->count == 0) return NULL;

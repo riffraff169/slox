@@ -73,6 +73,7 @@ typedef enum {
     OP_METHOD_LONG,
     OP_IMPORT,
     OP_IMPORT_LONG,
+    OP_INCLUDE,
     OP_SPLAT,
     OP_CALL_SPLAT,
     OP_INVOKE_SPLAT,

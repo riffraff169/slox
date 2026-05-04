@@ -33,6 +33,23 @@ Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
 
+void includeMethods(ObjClass* target, ObjClass* mixin) {
+    for (int i = 0; i < mixin->methods.capacity; i++) {
+        Entry* entry = &mixin->methods.entries[i];
+
+        if (entry->key == NULL) continue;
+
+        if (memcmp(entry->key->chars, "init", 4) == 0 && entry->key->length == 4) {
+            continue;
+        }
+
+        Value dummy;
+        if (!tableGet(&target->methods, entry->key, &dummy)) {
+            tableSet(&target->methods, entry->key, entry->value);
+        }
+    }
+}
+
 static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
@@ -648,6 +665,19 @@ static Value arrayLenNative(int argCount, Value* args) {
     return NUMBER_VAL(array->count);
 }
 
+static Value stringToarrayNative(int argCount, Value* args) {
+    ObjString* string = AS_STRING(args[-1]);
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (int i = 0; i < string->length; i++) {
+        uint8_t byte = (uint8_t)string->chars[i];
+        arrayAppend(array, NUMBER_VAL((double)byte));
+    }
+
+    return pop();
+}
+
 static Value stringSliceNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_NUMBER(args[0])) {
         runtimeError("slice() expects at least a start index.");
@@ -780,6 +810,29 @@ static Value stringToLowerNative(int argCount, Value* args) {
 static Value stringLenNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
     return NUMBER_VAL((double)str->length);
+}
+
+static Value arrayStringNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[-1]);
+    int count = array->count;
+    uint8_t* buffer = ALLOCATE(uint8_t, count);
+
+    for (int i = 0; i < count; i++) {
+        Value v = array->values[i];
+        if (!IS_NUMBER(v)) {
+            FREE_ARRAY(uint8_t, buffer, count);
+            runtimeError("Array containers non-number at index %d.", i);
+            return NIL_VAL;
+        }
+        double num = AS_NUMBER(v);
+        if (num < 0 || num > 255) {
+            FREE_ARRAY(uint8_t, buffer, count);
+            runtimeError("Byte value %g out of range (0-255).", num);
+            return NIL_VAL;
+        }
+        buffer[i] = (uint8_t)num;
+    }
+    return OBJ_VAL(takeString((char*)buffer, count));
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
@@ -1166,14 +1219,21 @@ static Value fileOpenNative(int argCount, Value* args) {
 }
 
 static Value fileLoadNative(int argCount, Value* args) {
-    if (argCount <= 1 || !IS_STRING(args[1])) {
-        runtimeError("File.read() expects 1 string argument (path).");
+    Value pathValue;
+    if (IS_STRING(args[0])) {
+        pathValue = args[0];
+    } else if (argCount >= 1 && IS_STRING(args[1])) {
+        pathValue = args[1];
+    } else {
+        runtimeError("File.load() expects a string path.");
         return NIL_VAL;
     }
 
-    const char* path = AS_STRING(args[1])->chars;
+    const char* path = AS_CSTRING(pathValue);
     FILE* file = fopen(path, "rb");
-    if (file == NULL) return NIL_VAL;
+    if (file == NULL) {
+        return NIL_VAL;
+    }
 
     fseek(file, 0L, SEEK_END);
     size_t fileSize = ftell(file);
@@ -2168,6 +2228,7 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
     defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
     defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
+    defineNativeMethod(vm.arrayClass, "to_string", arrayStringNative);
     pop();
 }
 
@@ -2209,6 +2270,7 @@ void initStringClass() {
     defineNativeMethod(vm.stringClass, "len", stringLenNative);
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.stringClass, "slice", stringSliceNative);
+    defineNativeMethod(vm.stringClass, "to_array", stringToarrayNative);
     pop();
 }
 
@@ -2280,6 +2342,23 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass = newClass(string);
     vm.objectClass->superclass = NULL;
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
+
+    /*
+    string = copyString("Number", 6);
+    vm.numberClass = newClass(string);
+    vm.numberClass->superclass = NULL;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
+
+    string = copyString("Bool", 5);
+    vm.boolClass = newClass(string);
+    vm.boolClass->superclass = NULL;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
+
+    string = copyString("Nil", 5);
+    vm.nilClass = newClass(string);
+    vm.nilClass->superclass = NULL;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
+    */
 
     //defineNative("get_class", objectClassMethod);
     
@@ -3451,7 +3530,8 @@ InterpretResult run() {
                     printf("[INVOKE]: %s with %d args. Receiver type: %d\n", method->chars, argCount, receiver.type);
                     printf("[INVOKE]: %s | Args: %d | Stack Depth: %ld | Looking at Index: %d | Type: %d\n",
                             method->chars, argCount, (vm.stackTop - vm.stack), receiverIndex, receiver.type);
-                            */
+                    */
+
                     if (IS_VEC3(receiver)) {
                         Vec3 vec = AS_VEC3(peek(argCount));
 
@@ -3534,20 +3614,33 @@ InterpretResult run() {
                             return INTERPRET_RUNTIME_ERROR;
                         }
                         break;
-                    } else if (!IS_OBJ(receiver)) {
-                        printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
-                        return INTERPRET_RUNTIME_ERROR;
                     }
 
-                    //printValue(receiver);
-                    Obj* obj = AS_OBJ(receiver);
-                    if (invokeFromClass(obj->klass, method, argCount)) {
-                        frame = &vm.frames[vm.frameCount - 1];
-                    } else if (!invoke(method, argCount) || vm.frameCount == 0) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    } else {
-                        frame = &vm.frames[vm.frameCount - 1];
+                    if (IS_OBJ(receiver)) {
+                        //printValue(receiver);
+                        Obj* obj = AS_OBJ(receiver);
+
+                        // 1. If its a class, look at its own methods (Static Call)
+                        if (IS_CLASS(receiver)) {
+                            ObjClass* klass = AS_CLASS(receiver);
+                            if (invokeFromClass(klass, method, argCount)) {
+                                frame = &vm.frames[vm.frameCount - 1];
+                                break;
+                            }
+                        }
+
+                        // 2. Otherwise, look at the methods if its class (Instance call)
+                        if (invokeFromClass(obj->klass, method, argCount)) {
+                            frame = &vm.frames[vm.frameCount - 1];
+                        } else if (!invoke(method, argCount) || vm.frameCount == 0) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        } else {
+                            frame = &vm.frames[vm.frameCount - 1];
+                        }
+                        break;
                     }
+                    printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
+                    return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
             case OP_INVOKE_SPLAT:
@@ -3711,6 +3804,23 @@ InterpretResult run() {
 
                 }
                 break;
+            case OP_INCLUDE:
+                {
+                    Value mixinVal = peek(0);
+                    Value targetVal = peek(1);
+
+                    if (!IS_CLASS(mixinVal) || !IS_CLASS(targetVal)) {
+                        runtimeError("Only classes can be included.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjClass* mixin = AS_CLASS(mixinVal);
+                    ObjClass* target = AS_CLASS(targetVal);
+
+                    tableMergeGuard(&mixin->methods, &target->methods);
+                    pop();
+                }
+                break;
             case OP_RETURN:
                 {
                     Value result = pop();
@@ -3837,16 +3947,6 @@ InterpretResult run() {
                     Value indexValue = pop();
                     Value targetValue = pop();
 
-                    if (!IS_ARRAY(targetValue) && !IS_MAP(targetValue) && !IS_VEC3(targetValue)) {
-                        if (IS_OBJ(targetValue)) {
-                            printf("CRITICAL: Expected Vec3, Map or Array, got ObjType %d\n", OBJ_TYPE(targetValue));
-                        } else {
-                            printf("CRITICAL: Expected Vec3, Map or Array, got non-object Value tag %d\n", targetValue);
-                        }
-                        runtimeError("Not map or array");
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-
                     if (IS_MAP(targetValue)) {
                         if (!IS_STRING(indexValue)) {
                             runtimeError("Map index must be a string.");
@@ -3860,7 +3960,9 @@ InterpretResult run() {
                             push(NIL_VAL);
                         }
                         break;
-                    } else if (IS_VEC3(targetValue)) {
+                    }
+
+                    if (IS_VEC3(targetValue)) {
                         if (!IS_NUMBER(indexValue)) {
                             runtimeError("Vec3 index must be a number.");
                             return INTERPRET_RUNTIME_ERROR;
@@ -3879,25 +3981,46 @@ InterpretResult run() {
                         if (index == 2)
                             push(NUMBER_VAL(vec3.z));
                         break;
-                    } else if (!IS_ARRAY(targetValue)) {
-                        runtimeError("Only vec3s, maps and arrays support subscripting.");
-                        return INTERPRET_RUNTIME_ERROR;
                     }
 
-                    ObjArray* array = AS_ARRAY(targetValue);
+                    if (IS_ARRAY(targetValue)) {
+                        ObjArray* array = AS_ARRAY(targetValue);
 
-                    if (!IS_NUMBER(indexValue)) {
-                        runtimeError("Array index must be a number.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        if (!IS_NUMBER(indexValue)) {
+                            runtimeError("Array index must be a number.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        int index = (int)AS_NUMBER(indexValue);
+                        if (index < 0 || index >= array->count) {
+                            runtimeError("Array index out of bounds.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        push(array->values[index]);
                     }
 
-                    int index = (int)AS_NUMBER(indexValue);
-                    if (index < 0 || index >= array->count) {
-                        runtimeError("Array index out of bounds.");
-                        return INTERPRET_RUNTIME_ERROR;
+                    if (IS_STRING(targetValue)) {
+                        if (!IS_NUMBER(indexValue)) {
+                            runtimeError("String index must be a number.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        ObjString* string = AS_STRING(targetValue);
+                        int index = AS_NUMBER(indexValue);
+
+                        if (index < 0 || index >= string->length) {
+                            runtimeError("String index out of bounds.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        push(NUMBER_VAL((double)(uint8_t)string->chars[index]));
+
+                        break;
                     }
 
-                    push(array->values[index]);
+                    runtimeError("Only vec3s, maps and arrays support subscripting.");
+                    return INTERPRET_RUNTIME_ERROR;
 
                 }
                 break;
