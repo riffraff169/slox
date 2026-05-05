@@ -4,6 +4,7 @@
 #include "object.h"
 #include "memory.h"
 #include "value.h"
+#include "vm.h"
 
 void initValueArray(ValueArray* array) {
     array->values = NULL;
@@ -65,7 +66,11 @@ void printValueSafe(Value value) {
                 printf("nil");
                 break;
             case VAL_NUMBER:
-                printf("%g", AS_NUMBER(value));
+                if (vm.numNotation == 1) {
+                    printf("%g", AS_NUMBER(value));
+                } else {
+                    printf("%.0f", AS_NUMBER(value));
+                }
                 break;
             case VAL_OBJ:
                 printObject(value);

@@ -112,6 +112,7 @@ static TokenType checkKeyword(int start, int length,
 static TokenType identifierType() {
     switch (scanner.start[0]) {
         case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);
+        case 'b': return checkKeyword(1, 4, "reak", TOKEN_BREAK);
         case 'c':
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
@@ -299,6 +300,28 @@ Token scanToken() {
             return makeToken(TOKEN_NUMBER);
         }
         return number();
+    }
+    if (c == '\'') {
+        char val;
+        if (match('\\')) {
+            char escape = advance();
+            switch (escape) {
+                case 'n': val = '\n'; break;
+                case 't': val = '\t'; break;
+                case 'r': val = '\r'; break;
+                case '0': val = '\0'; break;
+                case '\'': val = '\''; break;
+                case '\\': val = '\\'; break;
+                default: val = escape;
+            }
+        } else {
+            val = advance();
+        }
+
+        if (!match('\'')) {
+            return errorToken("Unterminated character literl.");
+        }
+        return makeToken(TOKEN_CHAR);
     }
 
     switch (c) {

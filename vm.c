@@ -716,45 +716,70 @@ static Value stringSliceNative(int argCount, Value* args) {
 }
 
 static Value stringSplitNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("split() expects 1 string argument (separator).");
+    if (argCount < 1) {
+        runtimeError("split() expects 1 argument.");
         return NIL_VAL;
     }
 
-    ObjString* receiver = AS_STRING(args[-1]);
-    ObjString* sep = AS_STRING(args[0]);
+    Value val = args[0];
+    if (IS_STRING(val)) {
+        ObjString* receiver = AS_STRING(args[-1]);
+        ObjString* sep = AS_STRING(args[0]);
 
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
+        ObjArray* result = newArray();
+        push(OBJ_VAL(result));
 
-    // Edge case: Empty separator splits into individual characters
-    if (sep->length == 0) {
-        for (int i = 0; i < receiver->length; i++) {
-            ObjString* charStr = copyString(receiver->chars + i, 1);
-            arrayAppend(result, OBJ_VAL(charStr));
+        // Edge case: Empty separator splits into individual characters
+        if (sep->length == 0) {
+            for (int i = 0; i < receiver->length; i++) {
+                ObjString* charStr = copyString(receiver->chars + i, 1);
+                arrayAppend(result, OBJ_VAL(charStr));
+            }
+            return pop();
         }
+
+        char *text = receiver->chars;
+        char* found;
+        int sepLen = sep->length;
+
+        while ((found = strstr(text, sep->chars)) != NULL) {
+            int segmentLen = (int)(found - text);
+
+            ObjString* segment = copyString(text, segmentLen);
+            push(OBJ_VAL(segment));
+            arrayAppend(result, OBJ_VAL(segment));
+            pop();
+
+            text = found + sepLen;
+        }
+
+        ObjString* lastSegment = copyString(text, (int)strlen(text));
+        arrayAppend(result, OBJ_VAL(lastSegment));
+        return pop();
+    } else if (IS_NUMBER(val)) {
+        int split_size = (int)AS_NUMBER(val);
+        if (split_size < 0) {
+            runtimeError("split size must be > 0.");
+            return NIL_VAL;
+        }
+
+        ObjString* receiver = AS_STRING(args[-1]);
+        ObjArray* array = newArray();
+        push(OBJ_VAL(array));
+        
+        int index = 0;
+
+        while (index < receiver->length) {
+            int rem = receiver->length - index;
+            int current_size = (rem < split_size) ? rem : split_size;
+
+            ObjString* str = copyString(&receiver->chars[index], current_size);
+            arrayAppend(array, OBJ_VAL(str));
+            index += split_size;
+        }
+
         return pop();
     }
-
-    char *text = receiver->chars;
-    char* found;
-    int sepLen = sep->length;
-
-    while ((found = strstr(text, sep->chars)) != NULL) {
-        int segmentLen = (int)(found - text);
-
-        ObjString* segment = copyString(text, segmentLen);
-        push(OBJ_VAL(segment));
-        arrayAppend(result, OBJ_VAL(segment));
-        pop();
-
-        text = found + sepLen;
-    }
-
-    ObjString* lastSegment = copyString(text, (int)strlen(text));
-    arrayAppend(result, OBJ_VAL(lastSegment));
-
-    return pop();
 }
 
 static Value stringTrimNative(int argCount, Value* args) {
@@ -770,6 +795,21 @@ static Value stringTrimNative(int argCount, Value* args) {
     if (newLength <= 0) return OBJ_VAL(copyString("", 0));
 
     return OBJ_VAL(copyString(start, newLength));
+}
+
+static Value stringFindNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return NIL_VAL;
+    }
+
+    ObjString* haystack = AS_STRING(args[-1]);
+    ObjString* needle = AS_STRING(args[0]);
+
+    char* location = strstr(haystack->chars, needle->chars);
+    if (location != NULL) {
+        return NUMBER_VAL(location - haystack->chars );
+    }
+    return NIL_VAL;
 }
 
 static Value stringContainsNative(int argCount, Value* args) {
@@ -1001,6 +1041,15 @@ static Value systemExitNative(int argCount, Value* args) {
 static Value systemGCNative(int argCount, Value* args) {
     collectGarbage();
     return NIL_VAL;
+}
+
+static Value systemSetNotationNative(int argCount, Value* args) {
+    int style = 1;
+    if (argCount == 1 && IS_NUMBER(args[0])) {
+        style = (int)AS_NUMBER(args[0]);
+    }
+    vm.numNotation = style;
+    return NUMBER_VAL(style);
 }
 
 static Value systemShowStackNative(int argCount, Value* args) {
@@ -1738,9 +1787,13 @@ static Value hexNative(int argCount, Value* args) {
     uint64_t num = (uint64_t)AS_NUMBER(args[0]);
 
     int precision = (argCount >= 2 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : 1;
+    int prefix = (argCount >= 3 && IS_BOOL(args[2])) ? AS_BOOL(args[2]) : true;
 
     char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (uint64_t)num);
+    if (prefix)
+        snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (uint64_t)num);
+    else
+        snprintf(buffer, sizeof(buffer), "%.*llx", precision, (uint64_t)num);
 
     return OBJ_VAL(copyString(buffer, strlen(buffer)));
 }
@@ -1908,6 +1961,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "mem", systemMemNative);
     defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
     defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
+    defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -2278,6 +2332,7 @@ void initStringClass() {
     //defineNativeMethod(vm.stringClass, "init", stringInitMethod);
     defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
     defineNativeMethod(vm.stringClass, "contains", stringContainsNative);
+    defineNativeMethod(vm.stringClass, "find", stringFindNative);
     defineNativeMethod(vm.stringClass, "to_upper", stringToUpperNative);
     defineNativeMethod(vm.stringClass, "to_lower", stringToLowerNative);
     defineNativeMethod(vm.stringClass, "len", stringLenNative);
@@ -2303,6 +2358,23 @@ static Value packInt32(int argCount, Value* args) {
 static Value packByte(int argCount, Value* args) {
 }
 
+static Value chrNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        return NIL_VAL;
+    }
+
+    if (!IS_NUMBER(args[0])) {
+        return NIL_VAL;
+    }
+
+    uint8_t code = (uint8_t)AS_NUMBER(args[0]);
+    char c_str[2];
+    c_str[0] = (char)code;
+    c_str[1] = '\0';
+
+    return OBJ_VAL(copyString(c_str, 1));
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -2314,6 +2386,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.bump_size = 1024 * 1024 * 64;
     vm.stress_mode = 0; // 0 = normal, 1 = always, 2 = never
     vm.gctype = 1;
+    vm.numNotation = 1; // 1 = sci, 0 = %.0f
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -2356,6 +2429,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("isinstance", isInstanceNative);
     defineNative("packInt32", packInt32);
     defineNative("packByte", packByte);
+    defineNative("chr", chrNative);
 
     ObjString* string = NULL;
 
@@ -2683,7 +2757,8 @@ static bool invoke(ObjString* name, int argCount) {
         return invokeFromClass(instance->obj.klass, name, argCount);
     }
 
-    if (!IS_OBJ(receiver) && !IS_ARRAY(receiver)) {
+    if (!IS_OBJ(receiver) && !IS_ARRAY(receiver) && !IS_STRING(receiver) && !IS_MAP(receiver)) {
+        //printf("type: %d\n", receiver.type);
         runtimeError("Only objects have methods.");
         return false;
     }

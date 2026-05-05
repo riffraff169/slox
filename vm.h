@@ -45,6 +45,7 @@ typedef struct {
     int bump_size;
     int stress_mode;
     int gctype; // 1: multiplier, 0: linear
+    uint8_t numNotation; // 1 = sci %g, 0 = %.0f
 
     Obj* objects;
     int grayCount;

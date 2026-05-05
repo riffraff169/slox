@@ -655,6 +655,23 @@ static void grouping(bool canAssign) {
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
+static void character(bool canAssign) {
+    uint8_t value = (uint8_t)parser.previous.start[1];
+    if (value == '\\') {
+        switch (parser.previous.start[2]) {
+            case 'n': value = '\n'; break;
+            case 'r': value = '\r'; break;
+            case 't': value = '\t'; break;
+            case '0': value = '\0'; break;
+            case '\'': value = '\''; break;
+            case '\\': value = '\\'; break;
+            default: value = parser.previous.start[2];
+        }
+    }
+
+    emitConstant(NUMBER_VAL((double)value));
+}
+
 static void number(bool canAssign) {
     const char* start = parser.previous.start;
     int length = parser.previous.length;
@@ -919,6 +936,7 @@ ParseRule rules[] = {
     [TOKEN_IDENTIFIER]       = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]           = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
+    [TOKEN_CHAR]             = {character,NULL,   PREC_NONE},
     [TOKEN_AND]              = {NULL,     and_,   PREC_AND},
     [TOKEN_AMPERSAND]        = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_PIPE]             = {NULL,     binary, PREC_COMPARISON},
