@@ -167,6 +167,12 @@ typedef struct {
 } RegexInternal;
 
 typedef struct {
+    int fd;
+    int type;
+    bool connected;
+} SocketInternal;
+
+typedef struct {
     Obj obj;
     void* ptr;
     const char* name;

@@ -63,6 +63,7 @@ typedef struct {
     ObjClass* regexClass;
     ObjClass* moduleClass;
     ObjClass* gcClass;
+    //ObjClass* ioClass;
     int nativeExitDepth;
 
     int moduleCount;

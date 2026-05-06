@@ -1511,6 +1511,9 @@ static void declaration() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_SEMICOLON)) {
+        // do nothing, blank statement
+        return;
     } else if (match(TOKEN_IMPORT)) {
         importDeclaration();
     } else if (match(TOKEN_FOR)) {
