@@ -908,7 +908,7 @@ static void loadMethodsIntoNamespace(ObjInstance* nsInstance, ObjClass* klass, G
                     copyString(fn_name, strlen(fn_name)),
                     OBJ_VAL(native));
         } else {
-            registerGIMethod(nsInstance->klass, (GIBaseInfo*)fn_info);
+            //registerGIMethod(nsInstance->klass, (GIBaseInfo*)fn_info);
         }
         g_base_info_unref(fn_info);
     }

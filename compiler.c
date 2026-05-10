@@ -77,6 +77,15 @@ typedef struct ClassCompiler {
     bool hasSuperclass;
 } ClassCompiler;
 
+typedef struct Loop {
+    struct Loop* enclosing;
+    int scopeDepth;
+    int* breakJumps;
+    int breakCount;
+} Loop;
+
+Loop* currentLoop = NULL;
+
 typedef struct {
     int totalSlots;
     //int splatAt;
@@ -1456,6 +1465,14 @@ static void returnStatement() {
 }
 
 static void whileStatement() {
+    Loop loop;
+    loop.scopeDepth = current->scopeDepth;
+    loop.enclosing = currentLoop;
+    loop.breakCount = 0;
+    int jumps[255];
+    loop.breakJumps = jumps;
+    currentLoop = &loop;
+
     int loopStart = currentChunk()->count;
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression();

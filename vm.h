@@ -63,14 +63,14 @@ typedef struct {
     ObjClass* regexClass;
     ObjClass* moduleClass;
     ObjClass* gcClass;
-    //ObjClass* ioClass;
     int nativeExitDepth;
 
     int moduleCount;
     int moduleCapacity;
     void** moduleHandles;
 
-    //Table giTypes;
+    int lastErrno;
+    //ObjString* lastError;
 } VM;
 
 typedef enum {
@@ -91,5 +91,6 @@ InterpretResult interpret(const char* source);
 void push(Value value);
 Value pop();
 Value peek(int distance);
+void setLastError(int errorNum, const char* format, ...);
 
 #endif

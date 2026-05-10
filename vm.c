@@ -18,6 +18,8 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -39,6 +41,63 @@ static bool callValue(Value callee, int argCount);
 Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
+
+void setLastError(int errorNum, const char* format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    tableSet(&vm.globals,
+            copyString("errno", 5),
+            NUMBER_VAL((double)errorNum));
+
+    tableSet(&vm.globals,
+            copyString("errstr", 6),
+            OBJ_VAL(copyString(buffer, strlen(buffer))));
+}
+
+void clearLastError() {
+    setLastError(0, "%s", "Success");
+}
+
+static Value createResult(Value value, Value errval, bool isok) {
+    Value resultValue;
+
+    if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
+        ObjClass* resultClass = AS_CLASS(resultValue);
+        ObjInstance* result = newInstance(resultClass);
+        push(OBJ_VAL(result));
+
+        tableSet(&result->fields, copyString("ok", 2), BOOL_VAL(isok));
+        tableSet(&result->fields, copyString("val", 3), value);
+        tableSet(&result->fields, copyString("err", 3), errval);
+
+        pop();
+        return OBJ_VAL(result);
+    }
+    // shouldnt happen, class is defined in initVM()
+    return NIL_VAL;
+}
+
+static Value errorResult(const char* format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    ObjString* errstr = copyString(buffer, (int)strlen(buffer));
+    push(OBJ_VAL(errstr));
+    Value res = createResult(NIL_VAL, OBJ_VAL(errstr), false);
+    pop();
+    return res;
+}
+
+static Value okResult(Value value) {
+    return createResult(value, NIL_VAL, true);
+}
 
 static uint32_t valueToUint32(Value value) {
     double num = AS_NUMBER(value);
@@ -252,8 +311,8 @@ static Value mathRoundNative(int argCount, Value* args) {
 }
 
 static Value mathFloorNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(floor(AS_NUMBER(args[1])));
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    return NUMBER_VAL(floor(AS_NUMBER(args[0])));
 }
 
 static Value mathCeilNative(int argCount, Value* args) {
@@ -262,7 +321,12 @@ static Value mathCeilNative(int argCount, Value* args) {
 }
 
 static Value mathRandomNative(int argCount, Value* args) {
-    return NUMBER_VAL((double)rand() / (double)RAND_MAX);
+    //return NUMBER_VAL((double)rand() / (double)RAND_MAX);
+    //unsigned long large_rand = ((unsigned long)rand() << 15) | rand();
+    double r = (double)rand();
+    double m = (double)RAND_MAX;
+    //return NUMBER_VAL((double)large_rand / (double)0x3fffffff);
+    return NUMBER_VAL(r / (m + 1.0));
 }
 
 static Value mathPiNative(int argCount, Value* args) {
@@ -1426,12 +1490,12 @@ static Value regexTestNative(int argCount, Value* args) {
 }
 
 static Value regexMatchNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[1])) {
-        runtimeError("test() expects 1 string argument.");
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("match() expects 1 string argument.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     RegexInternal* re = (RegexInternal*)instance->foreignPtr;
 
     if (re == NULL) {
@@ -1439,7 +1503,7 @@ static Value regexMatchNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjString* subject = AS_STRING(args[1]);
+    ObjString* subject = AS_STRING(args[0]);
 
     pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
     int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
@@ -2323,24 +2387,33 @@ static Value ioInspectNative(int argCount, Value* args) {
 }
 
 static Value ioConnectNative(int argCount, Value* args) {
+    clearLastError();
     if (argCount < 2) {
-        runtimeError("Connect expects 2 arguments: (ip, port).");
-        return NIL_VAL;
+        runtimeError("Connect expects at least 2 arguments: (ip, port).");
+        return errorResult("%s", "Connect expects at least 2 arguments: (ip, port).");
+        //return NIL_VAL;
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+    int timeout = 0;
+    if (argCount > 2) {
+        timeout = AS_NUMBER(args[2]);
+    }
 
     if (so == NULL) {
-        runtimeError("Socket not initialized.");
-        return NIL_VAL;
+        //setLastError(1, "%s", "Socket not initialized.");
+        return errorResult("%s", "Socket not initialized.");
+        //runtimeError("Socket not initialized.");
+        //return NIL_VAL;
     }
 
     if (so->fd == -1) {
         so->fd = socket(AF_INET, so->type, 0);
         if (so->fd == -1) {
-            runtimeError("Failed to re-open socket.");
-            return BOOL_VAL(false);
+            //setLastError(2, "%s", "Failed to re-open socket.");
+            return errorResult("%s", "Failed to re-open socket.");
+            //return NIL_VAL;
         }
     }
 
@@ -2355,26 +2428,74 @@ static Value ioConnectNative(int argCount, Value* args) {
 
     int status = getaddrinfo(host, portStr, &hints, &res);
     if (status < 0) {
-        runtimeError("getaddrinfo: %s", gai_strerror(status));
-        return BOOL_VAL(false);
+        //setLastError(status, "getaddrinfo: %s", gai_strerror(status));
+        return errorResult("getaddrinfo: %s", gai_strerror(status));
+        //return NIL_VAL;
     }
 
-    if (connect(so->fd, res->ai_addr, res->ai_addrlen) < 0) {
-        runtimeError("connect: failed");
+    int flags = fcntl(so->fd, F_GETFL, 0);
+    if (timeout > 0) {
+        fcntl(so->fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    int cres = connect(so->fd, res->ai_addr, res->ai_addrlen);
+
+    if (cres < 0 && errno != EINPROGRESS) {
+        //setLastError(errno, "Immediate connection failure: %s", strerror(errno));
         freeaddrinfo(res);
-        return BOOL_VAL(false);
+        if (timeout > 0) fcntl(so->fd, F_SETFL, flags);
+        return errorResult("Immediate connection failure: %s", strerror(errno));
+        //return NIL_VAL;
+    }
+
+    if (cres != 0) {
+        struct pollfd pfd;
+        pfd.fd = so->fd;
+        pfd.events = POLLOUT;
+        int poll_res = poll(&pfd, 1, timeout * 1000);
+
+        if (poll_res <= 0) {
+            //setLastError(ETIMEDOUT, "Connection timed out after %ds", timeout * 1000);
+            if (timeout > 0) fcntl(so->fd, F_SETFL, flags);
+            close(so->fd);
+            so->fd = -1;
+            freeaddrinfo(res);
+            return errorResult("Connection timed out after %ds", timeout * 1000);
+            //return NIL_VAL;
+        }
+
+        int so_error;
+        socklen_t len = sizeof(so_error);
+        getsockopt(so->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (so_error != 0) {
+            //setLastError(so_error, "Connect error: %s", strerror(so_error));
+            if (timeout > 0) fcntl(so->fd, F_SETFL, flags);
+            close(so->fd);
+            so->fd = -1;
+            freeaddrinfo(res);
+            return errorResult("Connecct error: %s", strerror(so_error));
+            //return NIL_VAL;
+        }
+    }
+
+    if (timeout > 0) {
+        fcntl(so->fd, F_SETFL, flags);
     }
 
     freeaddrinfo(res);
     so->connected = true;
-
-    return BOOL_VAL(true);
+    //return createResult(BOOL_VAL(true), NIL_VAL, true);
+    return okResult(BOOL_VAL(true));
+    //return BOOL_VAL(true);
 }
 
 static Value ioCloseNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
 
+    if (strcmp(instance->obj.klass->name->chars, "tcp") == 0) {
+        shutdown(so->fd, SHUT_RDWR);
+    }
     if (so != NULL && so->fd != -1) {
         close(so->fd);
         so->fd = -1;
@@ -2386,16 +2507,18 @@ static Value ioCloseNative(int argCount, Value* args) {
 
 static Value ioSendNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Send expects a string as the first argument.");
-        return NIL_VAL;
+        runtimeError("Send() expects a string as the first argument.");
+        return errorResult("%s", "Send() expects a string as the first argument.");
+        //return NIL_VAL;
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
 
     if (so == NULL || so->fd == -1 || !so->connected) {
-        runtimeError("Socket is not initialized or connected.");
-        return NIL_VAL;
+        //fprintf(stderr,  "Socket is not initialized or connected.");
+        return errorResult("%s", "Socket is not initialized or connected.");
+        //return NIL_VAL;
     }
 
     ObjString* data = AS_STRING(args[0]);
@@ -2403,19 +2526,24 @@ static Value ioSendNative(int argCount, Value* args) {
     ssize_t bytesSent = send(so->fd, data->chars, data->length, 0);
 
     if (bytesSent < 0) {
-        return NUMBER_VAL(-1);
+        //fprintf(stderr, "Socket write error.");
+        return errorResult("%s", "Socket write error.");
+        //return NIL_VAL;
     }
 
-    return NUMBER_VAL((double)bytesSent);
+    //return createResult(NUMBER_VAL((double)bytesSent), NIL_VAL, true);
+    return okResult(NUMBER_VAL((double)bytesSent));
+    //return NUMBER_VAL((double)bytesSent);
 }
 
 static Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
 
-    if (so == NULL || so->fd == -1 || !so->connected) {
-        runtimeError("Socket is not initialized or connected.");
-        return NIL_VAL;
+    if (so == NULL || so->fd == -1) {
+        //runtimeError("Socket is not initialized or connected.");
+        return errorResult("%s", "Socket is not initialized");
+        //return BOOL_VAL(false);
     }
 
     int ms = (int)AS_NUMBER(args[0]);
@@ -2425,9 +2553,10 @@ static Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     timeout.tv_usec = (ms % 1000) * 1000;
 
     if (setsockopt(so->fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-        return BOOL_VAL(false);
+        return errorResult("%s", "Unable to set timeout");
+        //return BOOL_VAL(false);
     }
-    return BOOL_VAL(true);
+    return okResult(BOOL_VAL(true));
 }
 
 static Value ioRecvNative(int argCount, Value* args) {
@@ -2436,7 +2565,7 @@ static Value ioRecvNative(int argCount, Value* args) {
 
     if (so == NULL || so->fd == -1 || !so->connected) {
         runtimeError("Socket is not initialized or connected.");
-        return NIL_VAL;
+        return errorResult("%s", "Socket is not initialized or connected.");
     }
 
     int length = (int)AS_NUMBER(args[0]);
@@ -2446,19 +2575,110 @@ static Value ioRecvNative(int argCount, Value* args) {
 
     if (bytesRead < 0) {
         free(buffer);
-        return NIL_VAL;
+        /*
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            setLastError(errno, "Socket read error.");
+        }
+        */
+        return errorResult("%s", strerror(errno));
+        //return NIL_VAL;
+    }
+
+    if (bytesRead == 0) {
+        //printf("[RECV DEBUG] fd: %d, errno: %d (%s)\n", so->fd, errno, strerror(errno));
+        free(buffer);
+        //setLastError(5, "Received 0 bytes.");
+        return errorResult("%s", "Received 0 bytes.");
+        //return NIL_VAL;
     }
 
     ObjString* result = copyString(buffer, (int)bytesRead);
     free(buffer);
-
-    return OBJ_VAL(result);
+    return okResult(OBJ_VAL(result));
 }
 
 static Value ioListenNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Listen() expects a port number as the first argument.");
+        return errorResult("Ts", "Listen() expects a port number as the first argument.");
+        //return NIL_VAL;
+    }
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1 || !so->connected) {
+        runtimeError("Socket is not initialized or connected.");
+        return errorResult("%s", "Socket is not initialized or connected.");
+        //return NIL_VAL;
+    }
+
+    int port = AS_NUMBER(args[0]);
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    // 1. bind the socket to the port
+    if (bind(so->fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        runtimeError("Could not bind to port.");
+        return errorResult("%s", "Could not bind to port.");
+        //return NIL_VAL;
+    }
+
+    // 2. start listening (backlog of 10-128 is typical)
+    if (listen(so->fd, 10) < 0) {
+        runtimeError("Could not listen on socket.");
+        return errorResult("Could not listen on socket.");
+        //return NIL_VAL;
+    }
+
+    return okResult(args[-1]);
+    //return args[-1];
 }
 
 static Value ioBindNative(int argCount, Value* args) {
+}
+
+static Value ioAcceptNative(int argCount, Value* args) {
+    //if (argCount < 1 || !IS_STRING(args[0])) {
+    //    runtimeError("Accept() expects a port number as the first argument.");
+    //    return NIL_VAL;
+    //}
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1 || !so->connected) {
+        runtimeError("Socket is not initialized or connected.");
+        return errorResult("%s", "Socket is not initialized or connected.");
+        //return NIL_VAL;
+    }
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    
+    // this blocks unless you've set the socket to non-blocking
+    int client_fd = accept(so->fd, (struct sockaddr*)&client_addr, &client_len);
+
+    if (client_fd < 0) {
+        runtimeError("Accept failed.");
+        return errorResult("%s", "Accept failed.");
+        //return NIL_VAL;
+    }
+
+    // 1. create a new IO.tcp instance
+    ObjClass* tcpClass = instance->obj.klass;
+    ObjInstance* client_instance = newInstance(tcpClass);
+    push(OBJ_VAL(client_instance));
+
+
+    SocketInternal* client_so = ALLOCATE(SocketInternal, 1);
+    client_so->fd = client_fd;
+    client_so->type = SOCK_STREAM;
+    client_so->connected = true;
+    client_instance->foreignPtr = client_so;
+
+    return okResult(pop());
 }
 
 static Value ioReadableNative(int argCount, Value* args) {
@@ -2527,132 +2747,122 @@ static Value structPackNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[1]);
     bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : true;
 
-    int totalSize = 0;
+    const char* f = format;
     int val_index = 0;
-    for (const char* f = format; *f != '\0'; f++) {
-        if (isspace(*f)) continue;
-        switch (*f) {
+    int totalSize = 0;
+    while (*f != '\0') {
+        if (isspace(*f)) {
+            f++;
+            continue;
+        }
+
+        //printf("char: %c\n", *f);
+        int width = 0;
+        bool hasWidth = false;
+        while (isdigit(*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        switch (type) {
             case 'B': totalSize += 1; val_index++; break;
             case 'H': totalSize += 2; val_index++; break;
             case 'I': totalSize += 4; val_index++; break;
             case 'Q': totalSize += 8; val_index++; break;
             case 's':
-                      {
-                          int width = 0;
-                          while (isdigit(*(f + 1))) {
-                              width = width * 10 + (*(++f) - '0');
-                          }
-                          if (width == 0) width = AS_STRING(array->values[val_index])->length;
-                          totalSize += width;
-                          val_index++;
-                      }
-                      break;
+                {
+                    Value val = array->values[val_index++];
+                    if (!IS_STRING(val)) {
+                        runtimeError("Expect string for 's' format.");
+                        return NIL_VAL;
+                    }
+                    ObjString* str = AS_STRING(val);
+
+                    int finalWidth = hasWidth ? width : str->length;
+                    totalSize += finalWidth;
+                }
+                break;
+            default:
+                      runtimeError("Unknown format specifier '%c'.", *f);
+                      return NIL_VAL;
         }
+        if (*f != '\0') f++;
     }
 
     uint8_t* buffer = (uint8_t*)calloc(1, totalSize);
-    int offset = 0;
+    uint8_t* cursor = buffer;
+    f = format;
     val_index = 0;
 
-    for (const char* f = format; *f != '\0'; f++) {
-        if (isspace(*f)) continue;
-        int width = 0;
-        if (*f == 'B') width = 1;
-        else if (*f == 'H') width = 2;
-        else if (*f == 'I') width = 4;
-        else if (*f == 'Q') width = 8;
-
-        if (width > 0 && *f != 's') {
-            Value val = array->values[val_index++];
-            if (*f == 'Q' && IS_STRING(val)) {
-                ObjString* s = AS_STRING(val);
-                memcpy(buffer + offset, s->chars, (s->length < 8) ? s->length : 8);
-            } else {
-                uint64_t num = (uint64_t)AS_NUMBER(val);
-                for (int b = 0; b < width; b++) {
-                    int byte_index = bigend ? (width - 1 - b) : b;
-                    buffer[offset + byte_index] = (uint8_t)(num >> (b * 8));
-                }
-            }
-            offset += width;
-        } else if (*f == 's') {
-            int target_len = 0;
-            while (isdigit(*(f + 1))) {
-                target_len = target_len * 10 + (*(++f) - '0');
-            }
-
-            ObjString* s = AS_STRING(array->values[val_index++]);
-            int pack_len = (target_len > 0) ? target_len : s->length;
-
-            int bytes = (s->length < pack_len) ? s->length : pack_len;
-            memcpy(buffer + offset, s->chars, bytes);
-
-            offset += pack_len;
-
-            val_index++;
+    while (*f != '\0') {
+        if (isspace(*f)) {
+            f++;
+            continue;
         }
-    }
 
+        int width = 0;
+        bool hasWidth = false;
 
-    /*
-        switch (*f) {
-            case 'B': 
+        while (isdigit(*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        switch (type) {
+            case 'B':
+                *cursor++ = (uint8_t)AS_NUMBER(array->values[val_index++]);
+                break;
             case 'H':
+                {
+                    uint16_t val = (uint16_t)AS_NUMBER(array->values[val_index++]);
+                    *cursor++ = (val >> 8) & 0xff;
+                    *cursor++ = val & 0xff;
+                }
+                break;
             case 'I':
                 {
-                    uint64_t val;
-                    ObjString* str;
-                    if (*f == 'B')
-                        width = 1;
-                    if (*f == 'H')
-                        width = 2;
-                    if (*f == 'I')
-                        width = 4;
-                    val = (uint64_t)AS_NUMBER(array->values[val_index++]);
-                    for (int b = 0; b < width; b++) {
-                        buffer[offset + (width - 1 - b)] = (uint8_t)(val >> (b * 8));
-                    }
-                    offset += width;
-
+                    uint32_t val = (uint32_t)AS_NUMBER(array->values[val_index++]);
+                    *cursor++ = (val >> 24) & 0xff;
+                    *cursor++ = (val >> 16) & 0xff;
+                    *cursor++ = (val >> 8) & 0xff;
+                    *cursor++ = val & 0xff;
                 }
                 break;
             case 'Q':
                 {
-                    int width = 8;
-                    Value val = array->values[val_index++];
-                    
-                    if (IS_STRING(val)) {
-                        ObjString* s = AS_STRING(val);
-                        int to_copy = (s->length < 8) ? s->length : 8;
-                        memcpy(buffer + offset, s->chars, to_copy);
-                    } else {
-                        uint64_t num = (uint64_t)AS_NUMBER(val);
-                        for (int b = 0; b < 8; b++) {
-                            buffer[offset + (7 - b)] = (uint8_t)(num >> (b * 8));
-                        }
-                    }
-                    offset += 8;
+                    uint64_t val = (uint64_t)AS_NUMBER(array->values[val_index++]);
+                    *cursor++ = (val >> 56) & 0xff;
+                    *cursor++ = (val >> 48) & 0xff;
+                    *cursor++ = (val >> 40) & 0xff;
+                    *cursor++ = (val >> 32) & 0xff;
+                    *cursor++ = (val >> 24) & 0xff;
+                    *cursor++ = (val >> 16) & 0xff;
+                    *cursor++ = (val >> 8) & 0xff;
+                    *cursor++ = val & 0xff;
                 }
                 break;
             case 's':
                 {
-                    int target_len = 0;
-                    while (isdigit(*(f + 1))) {
-                        target_len = target_len * 10 + (*(++f) - '0');
-                    }
-
                     ObjString* s = AS_STRING(array->values[val_index++]);
-                    int pack_len = (target_len > 0) ? target_len : s->length;
+                    int finalWidth = hasWidth ? width : s->length;
+                    int copyLen = (s->length < finalWidth) ? s->length : finalWidth;
 
-                    int bytes = (s->length < pack_len) ? s->length : pack_len;
-                    memcpy(buffer + offset, s->chars, bytes);
+                    memcpy(cursor, s->chars, copyLen);
+                    cursor += copyLen;
 
-                    offset += pack_len;
+                    if (copyLen < finalWidth) {
+                        memset(cursor, 0, finalWidth - copyLen);
+                        cursor += (finalWidth - copyLen);
+                    }
                 }
                 break;
         }
+        if (*f != '\0') f++;
     }
-    */
 
     ObjString* result = copyString((const char*)buffer, totalSize);
     free(buffer);
@@ -2786,6 +2996,7 @@ void initIOClass() {
     defineNativeMethod(ioClass, "send", ioSendNative);
     defineNativeMethod(ioClass, "recv", ioRecvNative);
     defineNativeMethod(ioClass, "listen", ioListenNative);
+    defineNativeMethod(ioClass, "accept", ioAcceptNative);
     defineNativeMethod(ioClass, "bind", ioBindNative);
     defineNativeMethod(ioClass, "readable", ioReadableNative);
     defineNativeMethod(ioClass, "close", ioCloseNative);
@@ -2804,6 +3015,8 @@ void initStringClass() {
     vm.stringClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
     push(OBJ_VAL(vm.stringClass));
+    ObjString* empty = copyString("", 0);
+    empty->obj.klass = vm.stringClass;
 
     //defineNativeMethod(vm.stringClass, "init", stringInitMethod);
     defineNativeMethod(vm.stringClass, "trim", stringTrimNative);
@@ -2885,6 +3098,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.strings);
     //initTable(&vm.giTypes);
 
+    clearLastError();
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
     vm.toString = NULL;
@@ -2922,6 +3136,12 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass = newClass(string);
     vm.objectClass->superclass = NULL;
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
+
+    string = copyString("Result", 6);
+    ObjClass* resultClass = newClass(string);
+    resultClass->superclass = vm.objectClass;
+    push(OBJ_VAL(resultClass));
+    tableSet(&vm.globals, string, OBJ_VAL(resultClass));
 
     /*
     string = copyString("Number", 6);
@@ -3622,6 +3842,7 @@ InterpretResult run() {
                     } 
 
                     ObjClass* klass = getClassForValue(receiver);
+                    printf("OP_GET_PROPERTY: %s", klass->name->chars);
                     if (klass != NULL) {
                         Value method;
                         if (findMethod(klass, name, &method)) {
