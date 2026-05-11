@@ -80,6 +80,7 @@ typedef struct ClassCompiler {
 typedef struct Loop {
     struct Loop* enclosing;
     int scopeDepth;
+    int continueTarget;
     int firstLocalSlot;
     int* breakJumps;
     int breakCount;
@@ -1354,6 +1355,7 @@ static void forStatement() {
     loop.scopeDepth = current->scopeDepth;
     loop.firstLocalSlot = current->localCount;
     loop.enclosing = currentLoop;
+    loop.continueTarget = loopStart;
     loop.breakCount = 0;
     loop.breakJumps = jumps;
     currentLoop = &loop;
@@ -1361,6 +1363,7 @@ static void forStatement() {
     if (!match(TOKEN_RIGHT_PAREN)) {
         int bodyJump = emitJump(OP_JUMP);
         int incrementStart = currentChunk()->count;
+        loop.continueTarget = incrementStart;
         expression();
         emitByte(OP_POP);
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
@@ -1481,6 +1484,25 @@ static void returnStatement() {
     }
 }
 
+static void continueStatement() {
+    if (currentLoop == NULL) {
+        error("Can't use 'continue' outside of a loop.");
+        return;
+    }
+
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'continue.");
+
+    for (int i = current->localCount - 1; i >= currentLoop->firstLocalSlot; i--) {
+        if (current->locals[i].isCaptured) {
+            emitByte(OP_CLOSE_UPVALUE);
+        } else {
+            emitByte(OP_POP);
+        }
+    }
+
+    emitLoop(currentLoop->continueTarget);
+}
+
 static void breakStatement() {
     if (currentLoop == NULL) {
         error("Can't use 'break' outside of a loop.");
@@ -1521,6 +1543,7 @@ static void whileStatement() {
     Loop loop;
     loop.scopeDepth = current->scopeDepth;
     loop.firstLocalSlot = current->localCount;
+    loop.continueTarget = loopStart;
     loop.enclosing = currentLoop;
     loop.breakCount = 0;
     loop.breakJumps = jumps;
@@ -1597,6 +1620,8 @@ static void statement() {
         whileStatement();
     } else if (match(TOKEN_BREAK)) {
         breakStatement();
+    } else if (match(TOKEN_CONTINUE)) {
+        continueStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();
