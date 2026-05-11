@@ -80,6 +80,7 @@ typedef struct ClassCompiler {
 typedef struct Loop {
     struct Loop* enclosing;
     int scopeDepth;
+    int firstLocalSlot;
     int* breakJumps;
     int breakCount;
 } Loop;
@@ -1327,6 +1328,8 @@ static void foreachStatement() {
 
 static void forStatement() {
     beginScope();
+    int jumps[255];
+
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
     if (match(TOKEN_SEMICOLON)) {
         // none
@@ -1337,14 +1340,23 @@ static void forStatement() {
     }
 
     int loopStart = currentChunk()->count;
+
     int exitJump = -1;
     if (!match(TOKEN_SEMICOLON)) {
         expression();
-        consume(TOKEN_SEMICOLON, "Expect ';' after loop doncition.");
+        consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
 
         exitJump = emitJump(OP_JUMP_IF_FALSE);
         emitByte(OP_POP);
     }
+
+    Loop loop;
+    loop.scopeDepth = current->scopeDepth;
+    loop.firstLocalSlot = current->localCount;
+    loop.enclosing = currentLoop;
+    loop.breakCount = 0;
+    loop.breakJumps = jumps;
+    currentLoop = &loop;
 
     if (!match(TOKEN_RIGHT_PAREN)) {
         int bodyJump = emitJump(OP_JUMP);
@@ -1365,6 +1377,11 @@ static void forStatement() {
         patchJump(exitJump);
         emitByte(OP_POP);
     }
+
+    for (int i = 0; i < loop.breakCount; i++) {
+        patchJump(loop.breakJumps[i]);
+    }
+    currentLoop = loop.enclosing;
 
     endScope();
 }
@@ -1464,24 +1481,57 @@ static void returnStatement() {
     }
 }
 
+static void breakStatement() {
+    if (currentLoop == NULL) {
+        error("Can't use 'break' outside of a loop.");
+        return;
+    }
+
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'break'.");
+
+    /*
+    int locals = current->localCount - currentLoop->firstLocalSlot;
+    if (locals > 0) {
+        emitBytes(OP_POPN, locals);
+    }
+    */
+    for (int i = current->localCount - 1; i >= currentLoop->firstLocalSlot; i--) {
+        if (current->locals[i].isCaptured) {
+            emitByte(OP_CLOSE_UPVALUE);
+        } else {
+            emitByte(OP_POP);
+        }
+    }
+
+    currentLoop->breakJumps[currentLoop->breakCount++] = emitJump(OP_JUMP);
+}
+
 static void whileStatement() {
-    Loop loop;
-    loop.scopeDepth = current->scopeDepth;
-    loop.enclosing = currentLoop;
-    loop.breakCount = 0;
     int jumps[255];
-    loop.breakJumps = jumps;
-    currentLoop = &loop;
 
     int loopStart = currentChunk()->count;
+
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
     int exitJump = emitJump(OP_JUMP_IF_FALSE);
     emitByte(OP_POP);
+
+    Loop loop;
+    loop.scopeDepth = current->scopeDepth;
+    loop.firstLocalSlot = current->localCount;
+    loop.enclosing = currentLoop;
+    loop.breakCount = 0;
+    loop.breakJumps = jumps;
+    currentLoop = &loop;
+
     statement();
     emitLoop(loopStart);
+    for (int i = 0; i < loop.breakCount; i++) {
+        patchJump(loop.breakJumps[i]);
+    }
+    currentLoop = loop.enclosing;
 
     patchJump(exitJump);
     emitByte(OP_POP);
@@ -1545,6 +1595,8 @@ static void statement() {
         switchStatement();
     } else if (match(TOKEN_WHILE)) {
         whileStatement();
+    } else if (match(TOKEN_BREAK)) {
+        breakStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();
