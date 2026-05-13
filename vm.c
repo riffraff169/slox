@@ -20,6 +20,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/stat.h>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -568,7 +569,7 @@ static Value arrayReduceNative(int argCount, Value* args) {
     return acc;
 }
 
-static Value arraySelectNative(int argCount, Value* args) {
+static Value arrayFilterNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         return NIL_VAL;
     }
@@ -1219,24 +1220,24 @@ static Value systemMemNative(int argCount, Value* args) {
 }
 
 static Value fileCloseNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     if (inst->foreignPtr == stdout || inst->foreignPtr == stderr) return NIL_VAL;
     if (inst->foreignPtr != NULL) {
         fclose((FILE*)inst->foreignPtr);
         inst->foreignPtr = NULL;
     }
-    return NIL_VAL;
+    return okResult(NIL_VAL);
 }
 
 static Value fileReadNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
-    if  (!handle) return NIL_VAL;
+    if (!handle) return errorResult("%s", "No file handle.");
 
     int length = -1;
 
-    if (argCount >= 1 && IS_NUMBER(args[1])) {
-        length = (int)AS_NUMBER(args[1]);
+    if (argCount >= 1 && IS_NUMBER(args[0])) {
+        length = (int)AS_NUMBER(args[0]);
     } else {
         fseek(handle, 0L, SEEK_END);
         length = ftell(handle);
@@ -1248,49 +1249,63 @@ static Value fileReadNative(int argCount, Value* args) {
 
     if (bytesRead == 0) {
         free(buffer);
-        return NIL_VAL;
+        return errorResult("%s", "No bytes read.");
+        //return NIL_VAL;
     }
 
     ObjString* result = copyString(buffer, (int)bytesRead);
     free(buffer);
 
-    return OBJ_VAL(result);
+    return okResult(OBJ_VAL(result));
 }
 
 static Value fileReadlineNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
     if (!handle) return NIL_VAL;
 
     char lineBuffer[1024];
     if (fgets(lineBuffer, sizeof(lineBuffer), handle) == NULL) {
-        return NIL_VAL;
+        return errorResult("%s", "Unable to read line.");
     }
 
-    return OBJ_VAL(copyString(lineBuffer, (int)strlen(lineBuffer)));
+    return okResult(OBJ_VAL(copyString(lineBuffer, (int)strlen(lineBuffer))));
 }
 
 static Value fileWriteNative(int argCount, Value* args) {
-    if (argCount <= 1) {
+    if (argCount < 1) {
         runtimeError("File.write() expects 1 string argument (data).");
         return NIL_VAL;
     }
 
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
 
-    if (handle) {
-        fprintf(handle, "%s", AS_CSTRING(args[1]));
+    if (handle == NULL) {
+        //runtimeError("File handle is NULL.");
+        return errorResult("%s", "File handle is NULL.");
     }
+
+    if (!IS_STRING(args[0])) {
+        return errorResult("%s", "Argument to write() must be a string.");
+    }
+
+    ObjString* str = AS_STRING(args[0]);
+
+    size_t written = fwrite(str->chars, 1, str->length, handle);
+
+    fflush(handle);
+
+    return okResult(NUMBER_VAL((double)written));
     //return args[0]; // return self for chaining
-    return NIL_VAL;
+    //return NIL_VAL;
 }
 
 static Value fileFlushNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     FILE* stream = (FILE*)instance->foreignPtr;
     if (stream) fflush(stream);
-    return NIL_VAL;
+    return okResult(NIL_VAL);
 }
 
 static Value fileStderrNative(int argCount, Value* args) {
@@ -1305,16 +1320,16 @@ static Value fileStderrNative(int argCount, Value* args) {
 }
 
 static Value fileOpenNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("File.open() expects t least a path string.");
         return NIL_VAL;
     }
-    const char* path = AS_CSTRING(args[1]);
+    const char* path = AS_CSTRING(args[0]);
     const char* mode = "r";
     FILE* handle = NULL;
 
-    if (argCount >= 2 && IS_STRING(args[2])) {
-        mode = AS_CSTRING(args[2]);
+    if (argCount >= 1 && IS_STRING(args[1])) {
+        mode = AS_CSTRING(args[1]);
     }
 
     if (strcmp(path, "STDOUT") == 0) {
@@ -1339,11 +1354,30 @@ static Value fileOpenNative(int argCount, Value* args) {
     }
     */
 
-    ObjClass* fileClass = AS_CLASS(args[0]);
+    ObjClass* fileClass = AS_CLASS(args[-1]);
     ObjInstance* fileInst = newInstance(fileClass);
     fileInst->foreignPtr = handle;
 
     return OBJ_VAL(fileInst);
+}
+
+static Value fileMkdirNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("mkdir() expects a path string.");
+        return NIL_VAL;
+    }
+    int mode = 0755;
+    if (argCount > 1 && IS_NUMBER(args[1])) {
+        mode = (int)AS_NUMBER(args[1]);
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+
+    if (mkdir(path, mode) == 0) {
+        return BOOL_VAL(true);
+    }
+    setLastError(errno, "%s", strerror(errno));
+    return BOOL_VAL(false);
 }
 
 static Value fileLoadNative(int argCount, Value* args) {
@@ -1382,50 +1416,50 @@ static Value fileLoadNative(int argCount, Value* args) {
 }
 
 static Value fileSeekNative(int argCount, Value* args) {
-    if (argCount <= 2 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+    if (argCount <= 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
         runtimeError("File.seek() requires 2 numbers");
         return NIL_VAL;
     }
 
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return NIL_VAL;
+    if (!handle) return errorResult("%s", "No file handle.");
 
-    long offset = (long)AS_NUMBER(args[1]);
-    int whence = (int)AS_NUMBER(args[2]);
+    long offset = (long)AS_NUMBER(args[0]);
+    int whence = (int)AS_NUMBER(args[1]);
 
     int result = fseek(handle, offset, whence);
-    return NUMBER_VAL(result);
+    return okResult(NUMBER_VAL(result));
 }
 
 static Value fileTellNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[0]);
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return NIL_VAL;
+    if (!handle) return errorResult("%s", "No file handle.");
 
-    return NUMBER_VAL((double)ftell(handle));
+    return okResult(NUMBER_VAL((double)ftell(handle)));
 }
 
 static Value fileSaveNative(int argCount, Value* args) {
-    if (argCount <= 2 || !IS_STRING(args[1]) || !IS_STRING(args[2])) {
+    if (argCount <= 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         runtimeError("File.read() expects (path, content).");
         return NIL_VAL;
     }
 
-    const char* path = AS_STRING(args[1])->chars;
-    const char* content = AS_STRING(args[2])->chars;
+    const char* path = AS_STRING(args[0])->chars;
+    const char* content = AS_STRING(args[1])->chars;
 
     FILE* file = fopen(path, "w");
-    if (file == NULL) return BOOL_VAL(false);
+    if (file == NULL) return errorResult("%s", "Unable to open file.");
 
     fprintf(file, "%s", content);
     fclose(file);
-    return BOOL_VAL(true);
+    return okResult(BOOL_VAL(true));
 }
 
 static Value fileExistsNative(int argCount, Value* args) {
-    if (argCount <= 1 || !IS_STRING(args[1])) return BOOL_VAL(false);
-    FILE* file = fopen(AS_STRING(args[1])->chars, "r");
+    if (argCount <= 1 || !IS_STRING(args[0])) return BOOL_VAL(false);
+    FILE* file = fopen(AS_STRING(args[0])->chars, "r");
     if (file) {
         fclose(file);
         return BOOL_VAL(true);
@@ -1434,16 +1468,16 @@ static Value fileExistsNative(int argCount, Value* args) {
 }
 
 static Value fileListNative(int argCount, Value* args) {
-    if (argCount <= 1 || !IS_STRING(args[1])) {
+    if (argCount <= 1 || !IS_STRING(args[0])) {
         runtimeError("File.read() expects 1 string argument (directory path).");
-        return NIL_VAL;
+        return errorResult("%s", "File.read() expects 1 string argument (directory path).");
     }
 
-    const char* path = AS_STRING(args[1])->chars;
+    const char* path = AS_STRING(args[0])->chars;
     DIR* dir = opendir(path);
 
     if (dir == NULL) {
-        return NIL_VAL;
+        return errorResult("%s", "Unable to open dir.");
     }
 
     ObjArray* fileList = newArray();
@@ -1462,7 +1496,7 @@ static Value fileListNative(int argCount, Value* args) {
     }
 
     closedir(dir);
-    return pop();
+    return okResult(pop());
 }
 
 static Value regexTestNative(int argCount, Value* args) {
@@ -2107,6 +2141,7 @@ void initFileLibrary() {
     defineNativeMethod(fileClass, "tell", fileTellNative);
     defineNativeMethod(fileClass, "stderr", fileStderrNative);
     defineNativeMethod(fileClass, "flush", fileFlushNative);
+    defineNativeMethod(fileClass, "mkdir", fileMkdirNative);
 
     tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
@@ -2489,14 +2524,85 @@ static Value ioConnectNative(int argCount, Value* args) {
     //return BOOL_VAL(true);
 }
 
+static Value ioPollNative(int argCount, Value* args) {
+    // 1. guard: ensure i's called as IO.poll([...])
+    if (!IS_CLASS(args[-1])) {
+        return errorResult("%s", "poll() must be called on the IO class.");
+    }
+
+    // 2. guard: ensure the first argument is an array
+    if (argCount < 1 || !IS_ARRAY(args[0])) {
+        return errorResult("%s", "poll() must have an array of sockets.");
+    }
+
+    ObjArray* socket_array = AS_ARRAY(args[0]);
+    struct pollfd fds[socket_array->count];
+    int valid_fd_count = 0;
+
+    // 3. extract fds from the slox socket instances
+    for (int i = 0; i < socket_array->count; i++) {
+        Value item = socket_array->values[i];
+        // just in case, but they all should be
+        if (!IS_INSTANCE(item)) continue;
+
+        ObjInstance* instance = AS_INSTANCE(item);
+        SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+        if (so != NULL && so->fd != -1) {
+            fds[valid_fd_count].fd = so->fd;
+            fds[valid_fd_count].events = POLLIN;
+            valid_fd_count++;
+        }
+    }
+
+    int timeout = (argCount > 1 && IS_NUMBER(args[1])) ? AS_NUMBER(args[1]) : -1;
+    int pollResult = poll(fds, valid_fd_count, timeout);
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    if (pollResult > 0) {
+        int fds_idx = 0;
+
+        for (int i = 0; i < socket_array->count; i++) {
+            Value item = socket_array->values[i];
+            // just in case, but they all should be
+            if (!IS_INSTANCE(item)) continue;
+
+            ObjInstance* instance = AS_INSTANCE(item);
+            SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+            if (so != NULL && so->fd != -1) {
+                if (fds[fds_idx].revents & POLLIN) {
+                    arrayAppend(array, item);
+                }
+                fds_idx++;
+            }
+        }
+    } else if (pollResult < 0) {
+        pop();
+        return errorResult("Poll failed: %s", strerror(errno));
+    }
+
+    pop();
+    return okResult(OBJ_VAL(array));
+}
+
 static Value ioCloseNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_INSTANCE(args[-1])) {
+        return NIL_VAL;
+    }
+
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
 
-    if (strcmp(instance->obj.klass->name->chars, "tcp") == 0) {
-        shutdown(so->fd, SHUT_RDWR);
-    }
+    if (so == NULL) return NIL_VAL;
+
     if (so != NULL && so->fd != -1) {
+        if (so->type == SOCK_STREAM && so->connected) {
+            shutdown(so->fd, SHUT_RDWR);
+        }
+
         close(so->fd);
         so->fd = -1;
         so->connected = false;
@@ -2702,7 +2808,7 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "map", arrayMapNative);
     defineNativeMethod(vm.arrayClass, "dup", arrayDupNative);
     defineNativeMethod(vm.arrayClass, "is_empty", arrayIsEmptyNative);
-    defineNativeMethod(vm.arrayClass, "select", arraySelectNative);
+    defineNativeMethod(vm.arrayClass, "filter", arrayFilterNative);
     defineNativeMethod(vm.arrayClass, "reduce", arrayReduceNative);
     defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
     defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
@@ -3000,6 +3106,7 @@ void initIOClass() {
     defineNativeMethod(ioClass, "bind", ioBindNative);
     defineNativeMethod(ioClass, "readable", ioReadableNative);
     defineNativeMethod(ioClass, "close", ioCloseNative);
+    defineNativeMethod(ioClass, "poll", ioPollNative);
     defineNativeMethod(ioClass, "set_recv_timeout", ioSetRecvTimeoutNative);
 
     ioClass->destructor = ioDestructor;
