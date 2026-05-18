@@ -956,7 +956,7 @@ static Value arrayStringNative(int argCount, Value* args) {
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[0])) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("join() expects 1 string argument (separator).");
         return NIL_VAL;
     }
@@ -3249,6 +3249,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     resultClass->superclass = vm.objectClass;
     push(OBJ_VAL(resultClass));
     tableSet(&vm.globals, string, OBJ_VAL(resultClass));
+    pop();
 
     /*
     string = copyString("Number", 6);
@@ -3292,6 +3293,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.moduleClass = newClass(copyString("Module", 6));
+    vm.moduleClass->superclass = vm.objectClass;
 
     defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
     defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
@@ -4682,7 +4684,7 @@ InterpretResult run() {
                         return INTERPRET_RUNTIME_ERROR;
                     }
                     //tableSet(&vm.globals, moduleName, peek(0));
-                    pop();
+                    //pop();
                 }
                 break;
             case OP_CALL_SPLAT:
