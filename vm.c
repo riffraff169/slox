@@ -47,8 +47,11 @@ void setLastError(int errorNum, const char* format, ...) {
     char buffer[1024];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
+    int len = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
+
+    if (len < 0) len = 0;
+    if (len >= (int)sizeof(buffer)) len = sizeof(buffer) - 1;
 
     tableSet(&vm.globals,
             copyString("errno", 5),
@@ -56,7 +59,7 @@ void setLastError(int errorNum, const char* format, ...) {
 
     tableSet(&vm.globals,
             copyString("errstr", 6),
-            OBJ_VAL(copyString(buffer, strlen(buffer))));
+            OBJ_VAL(copyString(buffer, len)));
 }
 
 void clearLastError() {
