@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -2398,6 +2399,11 @@ static Value ioInitNative(int argCount, Value* args) {
     int sockType = (strcmp(klass->name->chars, "udp") == 0) ? SOCK_DGRAM : SOCK_STREAM;
 
     int fd = socket(AF_INET, sockType, 0);
+    if (sockType == SOCK_STREAM) {
+        int opt = 1;
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    }
+
     if (fd == -1) {
         runtimeError("Could not create OS socket.");
         return NIL_VAL;
