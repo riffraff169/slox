@@ -463,6 +463,23 @@ static Value arraySliceNative(int argCount, Value* args) {
     return pop();
 }
 
+static Value arrayHasNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("Expected 1 argument for has().");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    Value target = args[0];
+
+    for (int i = 0; i < array->count; i++) {
+        if (valuesEqual(array->values[i], target)) {
+            return BOOL_VAL(true);
+        }
+    }
+    return BOOL_VAL(false);
+}
+
 static Value arrayFindNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) return NIL_VAL;
     ObjArray* array = AS_ARRAY(args[-1]);
@@ -1420,8 +1437,8 @@ static Value fileLoadNative(int argCount, Value* args) {
 }
 
 static Value fileSeekNative(int argCount, Value* args) {
-    if (argCount <= 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
-        runtimeError("File.seek() requires 2 numbers");
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("File.seek() requires at least 1 number");
         return NIL_VAL;
     }
 
@@ -1430,7 +1447,9 @@ static Value fileSeekNative(int argCount, Value* args) {
     if (!handle) return errorResult("%s", "No file handle.");
 
     long offset = (long)AS_NUMBER(args[0]);
-    int whence = (int)AS_NUMBER(args[1]);
+    int whence = 0;
+    if (argCount == 2) 
+      whence = (int)AS_NUMBER(args[1]);
 
     int result = fseek(handle, offset, whence);
     return okResult(NUMBER_VAL(result));
@@ -2822,6 +2841,7 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "join", arrayJoinNative);
     defineNativeMethod(vm.arrayClass, "each", arrayEachNative);
     defineNativeMethod(vm.arrayClass, "find", arrayFindNative);
+    defineNativeMethod(vm.arrayClass, "has", arrayHasNative);
     defineNativeMethod(vm.arrayClass, "slice", arraySliceNative);
     defineNativeMethod(vm.arrayClass, "sort", arraySortNative);
     defineNativeMethod(vm.arrayClass, "sort_slice", arraySortSliceNative);
@@ -4126,6 +4146,22 @@ InterpretResult run() {
                         vm.stackTop = stackStart;
                         popn(2);
                         push(result);
+                    } else if (IS_ARRAY(peek(0)) && IS_ARRAY(peek(1))) {
+                        ObjArray* b = AS_ARRAY(peek(0));
+                        ObjArray* a = AS_ARRAY(peek(1));
+
+                        ObjArray *result = newArray();
+                        push(OBJ_VAL(result));
+
+                        for (int i = 0; i < a->count; i++) {
+                            arrayAppend(result, a->values[i]);
+                        }
+
+                        for (int i = 0; i < b->count; i++) {
+                            arrayAppend(result, b->values[i]);
+                        }
+                        vm.stackTop[-3] = vm.stackTop[-1];
+                        popn(2);
                     } else {
                         runtimeError("Invalid operands.");
                         return INTERPRET_RUNTIME_ERROR;
