@@ -218,12 +218,24 @@ static bool isHexDigit(char c) {
         (c >= 'A' && c <= 'F');
 }
 
+static bool isOctalDigit(char c) {
+    return c >= '0' && c <= '7';
+}
+
 static Token number() {
     if (peek() == '0' && (peekNext() == 'x' || peekNext() == 'X')) {
         advance();
         advance();
 
         while (isHexDigit(peek())) advance();
+        return makeToken(TOKEN_NUMBER);
+    }
+
+    if (peek() == '0' && (peekNext() == 'o' || peekNext() == 'O')) {
+        advance();
+        advance();
+        
+        while (isOctalDigit(peek())) advance();
         return makeToken(TOKEN_NUMBER);
     }
 
