@@ -1,0 +1,6 @@
+class Brunch {
+  init(food, drink) { }
+}
+
+Brunch("eggs", "coffee");
+

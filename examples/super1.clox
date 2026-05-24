@@ -1,0 +1,12 @@
+class Donut {
+  cook() {
+    print "Dunk in the fryer.";
+  }
+}
+
+class Cruller < Donut {
+  finish() {
+    print "Glaze with icing.";
+  }
+}
+

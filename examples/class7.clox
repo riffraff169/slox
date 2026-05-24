@@ -1,0 +1,8 @@
+class Brunch {
+  bacon() { return 2; }
+  eggs() { return 5; }
+}
+
+var br = Brunch();
+print br.bacon();
+print br.eggs();

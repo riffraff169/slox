@@ -1,0 +1,24 @@
+var x = 12;
+var y = 0;
+
+switch (x) {
+  case 1:
+    print "one";
+    y = 11;
+  case 2:
+    print "two";
+    y = 22;
+  case 3:
+    print "three";
+    y = 33;
+  case 3:
+    print "four";
+    y = 44;
+  default:
+    print "none";
+    y = -1;
+}
+
+print y;
+//print "y=" + y;
+//print y;

@@ -1,0 +1,5 @@
+print this;
+
+fun notMethoc() {
+  print this;
+}

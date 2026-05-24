@@ -1,0 +1,9 @@
+fun areWeHavingItYet(a, b, c) {
+  print "Yes we are!";
+  print a;
+  print b;
+  print c;
+}
+
+print areWeHavingItYet;
+areWeHavingItYet(1, 2, 3);
