@@ -1,0 +1,6 @@
+for (var i = 0; i < 10000000; i = i + 1) {
+  var v = Vec3(i, i, i).unit().cross(Vec3(1,2,3));
+  if (i % 1000000 == 0) {
+    print System.mem();
+  }
+}

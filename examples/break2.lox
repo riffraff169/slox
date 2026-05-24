@@ -1,0 +1,11 @@
+var closure;
+while (true) {
+  var x = "captured";
+  closure = fun() { print x; };
+
+  if (true) {
+    break;
+  }
+}
+
+closure();

@@ -1,0 +1,9 @@
+class Calculator {
+  add(a, b, c) {
+    print a + b + c;
+  }
+}
+
+var calc = Calculator();
+var nums = [10, 20];
+calc.add(*nums, 5);

@@ -1,0 +1,17 @@
+class Mixin {
+  test() { print "from mixin"; }
+}
+
+class Local {
+  include Mixin;
+  test() { print "from local"; }
+}
+
+class L2 {
+  include Mixin;
+  notest() { print "notest"; }
+}
+
+Local().test();
+L2().test();
+L2().notest();

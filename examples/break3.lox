@@ -1,0 +1,10 @@
+var i = 0;
+var j = 0;
+for (var i = 0; i < 30; i = i + 1) {
+  print i;
+  if (i == 20) {
+    j = i + 5;
+    break;
+  }
+}
+print "j: ", j;

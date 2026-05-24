@@ -1,0 +1,2459 @@
+head	1.8;
+access;
+symbols;
+locks
+	riffraff:1.8; strict;
+comment	@# @;
+
+
+1.8
+date	2026.05.24.19.36.20;	author riffraff;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2026.05.22.22.22.22;	author riffraff;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2026.05.22.13.55.32;	author riffraff;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2026.05.18.15.47.34;	author riffraff;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2026.05.10.23.58.29;	author riffraff;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2026.05.05.22.35.26;	author riffraff;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2026.05.04.17.15.11;	author riffraff;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2026.05.04.17.14.52;	author riffraff;	state Exp;
+branches;
+next	;
+
+
+desc
+@bittorrent client
+@
+
+
+1.8
+log
+@single peer download
+@
+text
+@import "sha1";
+import "ssl";
+
+class Bencode {
+  init(data) {
+    this.data = data;
+    this.pos = 0;
+    this.info = "";
+  }
+
+  get_info_string() {
+    
+  }
+
+  peek() { return this.data[this.pos]; }
+  advance() {
+    var char = this.peek();
+    this.pos = this.pos + 1;
+    return char;
+  }
+
+  decode() {
+    var b = this.peek();
+    if (b == 105) return this.parse_int();
+    if (b == 108) return this.parse_list();
+    if (b == 100) return this.parse_dict();
+    if (b >= 48 and b <= 57) return this.parse_string();
+    return nil;
+  }
+
+  parse_int() {
+    this.pos = this.pos + 1;
+    var start = this.pos;
+    while (this.data[this.pos] != 101) {
+      this.pos = this.pos + 1;
+    }
+    //var val = Math.to_number(this.data.slice(start, this.pos));
+    var res = this.data.slice(start, this.pos);
+    this.pos = this.pos + 1;
+    //return val;
+    return Math.to_number(res);
+  }
+
+  parse_list() {
+    this.pos = this.pos + 1; // skip 'l'
+    var list = [];
+    
+    while (this.data[this.pos] != 101) { // 101 is 'e'
+      list.push(this.decode());
+    }
+
+    this.pos = this.pos + 1; // skip 'e'
+    return list;
+  }
+
+  parse_dict() {
+    var start = this.pos;
+    this.pos = this.pos + 1; // skip 'd'
+    var dict = {};
+
+    while (this.data[this.pos] != 101) { // 101 is 'e'
+      var key = this.decode();
+      var val = this.decode();
+      dict[key] = val;
+    }
+
+    this.pos = this.pos + 1; // skip 'e'
+    var end = this.pos;
+    // start, end
+    return dict;
+  }
+
+  parse_string() {
+    var start = this.pos;
+    while (this.data[this.pos] != 58) {
+      this.pos = this.pos + 1;
+    }
+
+    var lenStr = this.data.slice(start, this.pos);
+    var len = Math.to_number(lenStr);
+
+    this.pos = this.pos + 1;
+
+    var str = this.data.slice(this.pos, this.pos + len);
+
+    this.pos = this.pos + len;
+
+    return str;
+  }
+}
+
+/*
+class Result {
+  init(ok, val, err) {
+    this.ok = ok;
+    this.val = val;
+    this.err = err;
+  }
+
+  fail(message) {
+    return Result(false, nil, message);
+  }
+
+  pass(data) {
+    return Result(true, data, nil);
+  }
+
+  unwrap() {
+    if (!this.ok) {
+      print "Panic: Tried to unwrap a failed Result! Error: ", this.err;
+      return this.CRASH_VM;
+    }
+    return this.val;
+  }
+}
+*/
+
+class Peer {
+  init(ip, port, socket) {
+    this.ip = ip;
+    this.port = port;
+    this.sock = socket;
+    this.is_choked = true;
+    this.am_interested = false;
+    this.bitfield = nil;
+    this.last_seen = System.time();
+  }
+
+  send_interested() {
+    var msg = Struct.pack("I B", [1, 2]);
+    this.sock.send(msg);
+    this.am_interested = true;
+  }
+
+  send_request(index, begin, length) {
+    // mesage id 6: request
+    // payload: index (4), begin (4), length (4)
+    var msg = Struct.pack("I B I I I", [13, 6, index, begin, length]);
+    this.sock.send(msg);
+  }
+
+  to_string() {
+    return "Peer(" + this.ip + ", " + str(this.port) + ")";
+  }
+}
+
+class DownloadManager {
+  init(torrent) {
+    this.torrent = torrent;
+    this.pieces_needed = [];
+    this.in_flight = {};
+  }
+
+  get_next_request() {
+    // 1. look at peer.bitfield to see what they have
+    // 2. cross reference with this.pieces_needed
+    // 3. ensure the block isn't already in_flight
+    // 4. return [index, begin, length]
+  }
+
+  handle_block(index, begin, data) {
+    // 1. seek and write to the file
+    // 2. remove from in_flight
+    // 3. check if the whole piece is done
+    // 4. if yes, sha1-verify and remove from pieces_needed
+  }
+
+  write_block(global_offset, data) {
+    var bytes_written = 0;
+    var data_to_write = data;
+    var current_offset = global_offset;
+
+    for (var i = 0; i < this.file_manifest.len(); i = i + 1) {
+      var f = this.file_manifest[i];
+
+      // does this block start before the file end ands end after the file starts
+      if (current_offset < f.end and (current_offset + data_to_write.len()) > f.start) {
+        // calculate where to start in the file and whre to start in the data buffer
+        var file_seek = 0;
+        if (current_offset > f.start) {
+          file_seek = current_offset - f.start;
+        }
+
+        var buffer_offset = 0;
+        if (current_offset < f.start) {
+          buffer_offset = f.start - current_offset;
+        }
+
+        var write_len = data_to_write.len() - buffer_offset;
+        if ((file_seek + write_len) > f.length) {
+          write_len = f.length - file_seek;
+        }
+
+        // write
+        this.write_to_disk(f.path, file_seek, data_to_write.slice(buffer_offset, write_len));
+      }
+    }
+  }
+}
+
+class Piece {
+  init(index, total_size) {
+    this.index = index;
+    this.total_size = total_size;
+    this.data = "";
+    this.blocks_received = 0;
+    this.expected_blocks = -Math.floor(-(total_size / 16384));
+  }
+
+  add_block(offset, block_data) {
+  }
+
+  is_complete() {
+    return this.blocks_received == this.expected_blocks;
+  }
+}
+
+fun compare_hashes(h1, h2) {
+  if (h1.len() != h2.len()) return false;
+  for (var i = 0; i < h1.len(); i = i + 1) {
+    if (h1[i] != h2[i]) return false;
+  }
+  return true;
+}
+
+class BT {
+  init(file) {
+    this.file = file;
+    this.data = File.load(this.file);
+    this.decoder = Bencode(this.data);
+    this.torrent = this.decoder.decode();
+    this.announce = this.torrent["announce"];
+    this.info = this.torrent["info"];
+    this.files = this.info["files"];
+    this.name = this.info["name"];
+    this.pieces_str = this.info["pieces"];
+    this.piece_length = this.info["piece length"];
+    //this.peer_id_str = "-GM0001-123456789012";
+    this.peer_id = [0; 20];
+    this.peer_id[0] = '-';
+    this.peer_id[1] = 'G';
+    this.peer_id[2] = 'M';
+    this.peer_id[3] = '0';
+    this.peer_id[4] = '1';
+    this.peer_id[5]  = '0';
+    this.peer_id[6] = '2';
+    this.peer_id[7] = '-';
+    for (var i = 8; i < 20; i = i + 1) {
+      this.peer_id[i] = (i * Math.random()) % 10 + '0';
+    }
+    this.peer_id_str = this.peer_id.to_string();
+    this.peers = nil;
+    this.get_tracker_urls();
+    this.create_pieces();
+    this.create_info_str();
+    //this.generate_transaction_id();
+    this.verbose = false;
+    this.active_peers = [];
+    this.peer_timeout = 120;
+    //this.piece_store = [];
+
+    this.create_file_map();
+    this.prepare_files();
+  }
+
+  write_piece(piece_index, data) {
+    var global_start = piece_index * this.piece_length;
+    var data_ptr = 0;
+
+    for (var i = 0; i < this.files.len(); i = i + 1) {
+      var f = this.file[i];
+
+      var intersect_start = Math.max(global_start, f.start);
+      var intersect_end = Math.min(global_start + data.len(), f.end);
+
+      if (intersect_start < intersect_end) {
+        var write_size = intersect_end - intersect_start;
+        var file_offset = intersect_start - f.start;
+        var buffer_offset = intersect_start - global_start;
+
+        var file_handle = File.open(f.full_path, "rb+");
+        file_handle.seek(file_offset);
+        file_handle.write(data.slice(buffer_offset, write_size));
+        file_handle.close();
+
+        print "Wrote ", write_size, " bytes to ", f.path;
+      }
+    }
+  }
+
+  prepare_files() {
+    for (var i = 0; i < this.file_map.len(); i = i + 1) {
+      var f_info = this.file_map[i];
+      var full_path = f_info["path"];
+
+      this.ensure_directories(full_path);
+
+      var f_res = File.open(full_path, "r+b");
+      //if (!f_res.ok) {
+      if (!f_res) {
+        // file doesn exist yet
+        if (this.verbose) print "Creating and preallocating: ", full_path;
+
+        var create_res = File.open(full_path, "wb");
+        //if (create_res.ok) {
+        if (create_res) {
+          var f = create_res.unwrap();
+          if (f_info["length"] > 0) {
+            // seek to the final byte and write a single null padding byte
+            f.seek(f_info["length"] - 1, 0);
+            f.write("\0");
+          }
+          f.close();
+        }
+      } else {
+        // file exists, close safely
+        if (this.verbose) print "Found existing file structure: ", full_path;
+        var f = f_res.unwrap();
+        f.close();
+      }
+
+      if (this.verbose) {
+        print "Preallocated target structure: ", full_path, " (", f_info["length"], " bytes)";
+      }
+    }
+  }
+
+  ensure_directories(path_string) {
+    var parts = path_string.split("/");
+    var current_path = "";
+
+    for (var i = 0; i < parts.len() - 1; i = i + 1) {
+      if (i == 0) {
+        current_path = parts[i];
+      } else {
+        current_path = current_path + "/" + parts[i];
+      }
+
+      if (File.mkdir(current_path)) {
+      }
+    }
+  }
+
+  create_file_map() {
+    this.file_map = [];
+    var current_offset = 0;
+
+    for (var i = 0; i < this.files.len(); i = i + 1) {
+      var f_info = this.files[i];
+
+      var full_path = this.name + "/" + f_info["path"].join("/");
+
+      this.file_map.push({
+        "path": full_path,
+        "length": f_info["length"],
+        "start": current_offset,
+        "end": current_offset + f_info["length"]
+      });
+      current_offset = current_offset + f_info["length"];
+    }
+    this.total_torrent_size = current_offset;
+    this.total_pieces = this.pieces.len();
+  }
+
+  create_pieces() {
+    this.pieces = [];
+    for (var i = 0; i < this.pieces_str.len() / 20; i = i + 1) {
+      this.pieces.push(this.pieces_str.slice(i * 20, i * 20 + 20));
+    }
+  }
+
+  create_info_str() {
+    var start = this.data.find("4:info") + 6;
+    var i = start;
+    var depth = 0;
+    var total_len = this.data.len();
+    var info_str = this.data.slice(start, -1);
+    var searching = true;
+
+    while (i < total_len and searching) {
+      var char = this.data[i];
+
+      if (char == 'd' or char == 'l') { // d or l
+        depth = depth + 1;
+        i = i + 1;
+      } else if (char == 'e') { // e
+        depth = depth - 1;
+        i = i + 1;
+        if (depth == 0) searching = false;
+      } else if (char == 'i') { // i
+        i = i + 1;
+        while (i < total_len and this.data[i] != 'e') { // e
+          i = i + 1;
+        }
+        i = i + 1; // skip e
+      } else if (char >= '0' and char <= '9') { // 0 - 9
+        var colon_pos = i;
+        while (colon_pos < total_len and this.data[colon_pos] != ':') { // :
+          colon_pos = colon_pos + 1;
+        }
+        var num_str = this.data.slice(i, colon_pos);
+        var num = Math.to_number(num_str);
+        i = colon_pos + 1 + num;
+      } else {
+        i = i + 1;
+      }
+    }
+
+    this.info_str = this.data.slice(start, i);
+    var sha1 = SHA1();
+    sha1.update(this.info_str);
+    var hash_array = sha1.final();
+    this.info_hash = Struct.pack("I I I I I", hash_array, true);
+    //this.info_hash = sha1.final();
+  }
+
+  get_tracker_urls() {
+    this.trackers = [];
+    var urls = [];
+
+    // 1. check for the extension list first
+    if (this.torrent.has("announce-list")) {
+      var list = this.torrent["announce-list"];
+      for (var i = 0; i < list.len(); i = i + 1) {
+        urls.push(list[i][0]);
+      }
+    }
+
+    // 2. always add the primary announce if not already there
+    if (this.torrent.has("announce")) {
+      var primary = this.torrent["announce"];
+
+      if (!urls.has(primary))
+        urls.push(primary);
+    }
+
+    var udplist = urls.filter(fun(url) { return url.slice(0, 3) == "udp"; });
+    var httplist = urls.filter(fun(url) { return url.slice(0, 4) == "http"; });
+    this.trackers = udplist + httplist;
+  }
+
+  get_http_list() {
+    //print this.torrent["announce"];
+    var httplist = this.urls.find(fun(a) { return a.slice(0,4) == "http"; });
+    return httplist;
+  }
+
+  get_udp_list() {
+    var udplist = this.urls.find(fun(a) { return a.slice(0,4) == "udp:"; });
+    return udplist;
+  }
+
+  get_name() {
+    return this.name;
+  }
+    
+  get_info() {
+    return this.info;
+  }
+
+  get_info_str() {
+    return this.info_str;
+  }
+
+  get_info_hash() {
+    return this.info_hash;
+  }
+
+  get_pieces() {
+    return this.pieces;
+  }
+
+  get_piece(i) {
+    return this.pieces[i];
+  }
+
+  get_files() {
+    return this.info["files"];
+  }
+
+  total_length() {
+    var tl = this.info["files"].reduce(fun(a, x) { return a + x["length"]; }, 0);
+    return tl;
+  }
+
+  generate_transaction_id() {
+    //this.trans_id = Math.floor(Math.random() * 0x3FFFFFFF);
+    this.trans_id = Math.floor(Math.random() * 0x7fffffff) & 0xffffffff;
+  }
+
+  generate_key() {
+    this.key = Math.floor(Math.random() * 0xffffffff);
+  }
+
+  preallocate() {
+    var total_size = this.pieces.len() * this.piece_length;
+
+    var f = File.open(this.name, "wb");
+    if (f) {
+      f.seek(total_size - 1);
+      f.write("\0");
+      f.close();
+      if (this.verbose) print "Preallocated ", total_size, " bytes for ", this.name;
+    }
+  }
+
+  write_to_storage(global_offset, data) {
+    var bytes_written = 0;
+    var data_len = data.len();
+    var current_global = global_offset;
+
+    for (var i = 0; i < this.file_map.len(); i = i + 1) {
+      var f_info = this.file_map[i];
+      var f_start = f_info["start"];
+      var f_end = f_start + f_info["length"];
+
+      if (current_global < f_end and (current_global + (data_len - bytes_written)) > f_start) {
+        var local_offset = 0;
+        if (current_global > f_start) {
+          local_offset = current_global - f_start;
+        }
+
+        var available_space = f_end - (f_start + local_offset);
+        var remaining_data = data_len - bytes_written;
+
+        var write_size = remaining_data;
+        if (available_space < write_size) {
+          write_size = available_space; // clamp to file edge
+        }
+
+        var chunk = data.slice(bytes_written, bytes_written + write_size);
+
+        // open, seek, write, close natively
+        var f_res = File.open(f_info["path"], "r+b");
+        if (f_res) {
+          //print "local_offset: ", local_offset;
+          //print typeof(local_offset);
+          var f = f_res.unwrap();
+          f.seek(local_offset);
+          f.write(chunk);
+          f.close();
+        }
+
+        bytes_written = bytes_written + write_size;
+        current_global = current_global + write_size;
+
+        if (bytes_written >= data_len) break;
+      }
+    }
+  }
+
+  create_udp_socket() {
+    this.sock = IO.udp();
+  }
+
+  create_tcp_socket() {
+    this.sock = IO.tcp();
+  }
+
+  connect_udp(host, port) {
+    this.create_udp_socket();
+    this.generate_transaction_id();
+    this.generate_key();
+
+    if (!this.sock.connect(host, port)) {
+      return Result(false, nil, "UDP connection failed");
+    }
+
+    for (var attempts = 1; attempts < 4; attempts = attempts + 1) {
+      print "Sending UDP connect request (Attempt", attempts, ")...";
+
+      var packet = Struct.pack("Q I I", [0x41727101980, 0, this.trans_id]);
+      this.sock.send(packet);
+      this.sock.set_recv_timeout(5000);
+
+      var response = this.sock.recv(5000);
+      if (response.ok) {
+        this.trans_data = Struct.unpack("I I 8s", response.val);
+
+        if (this.trans_data[1] != this.trans_id) {
+          print "Warning: Transaction ID mismatch. Retrying...";
+          continue;
+        }
+
+        this.connection_id = this.trans_data[2];
+        return Result(true, "UDP Connection success", nil);
+      }
+      this.trans_id = this.trans_id + 1;
+    }
+    return Result(false, nil, "UDP handshake timed out");
+  }
+
+  connect_http(protocol, host, port, path) {
+    print "connect_http via ", protocol;
+    this.create_tcp_socket();
+
+    if (!this.sock.connect(host, port)) {
+      return Result(false, nil, protocol + " connection failed");
+    }
+
+    var is_ssl = (protocol == "https");
+    var sec = nil;
+
+    if (is_ssl) {
+      if (this.verbose) print "Wrapping TCP socket with BearSSL layer...";
+      sec = SSL(host, this.sock);
+
+      if (errno == 62) {
+        print "SSL Handshake failure. errno: ", errno, " -> ", errstr;
+        return Result(false, nil, "TLS Handshake Failed");
+      }
+    }
+
+    var escaped_hash = url_encode(this.info_hash);
+    var escaped_peer = url_encode(this.peer_id_str);
+
+    var query = path + "?info_hash=" + escaped_hash +
+                       "&peer_id=" + escaped_peer +
+                       "&port=6881&uploaded=0&downloaded=0&left=0&compact=1";
+
+    var http_req = "GET " + query + " HTTP/1.1\r\n" +
+                   "Host: " + host + "\r\n" +
+                   "User-Agent: GM0101/1.0\r\n" + 
+                   "Connection: close\r\n\r\n";
+
+    //print "query: ", query;
+    //print "req: ", http_req;
+    if (is_ssl) {
+      sec.write(http_req);
+    } else {
+      this.sock.send(http_req);
+    }
+
+    var response_str = "";
+    if (is_ssl) {
+      while (true) {
+        var chunk = sec.read();
+        if (chunk == nil) break;
+        response_str = response_str + chunk;
+      }
+    } else {
+      var response = this.sock.recv(8192);
+      if (!response.ok) {
+        return Result(false, nil, "HTTP payload receipt failed");
+      }
+      response_str = response.val;
+    }
+
+    print "after response...";
+    if (this.verbose) {
+      print "================";
+      print response_str;
+      print "================";
+    }
+     
+    var body_offset = response_str.find("\r\n\r\n");
+    if (body_offset == -1) {
+      return Result(false, nil, "Malformed HTTP response header");
+    }
+    body_offset = body_offset + 4;
+    var body = response_str.slice(body_offset);
+
+    if (response_str.find("Transfer-Encoding: chunked") != -1) {
+      var first_line_end = body.find("\r\n");
+      if (first_line_end != nil) {
+        //print body;
+        //print body.len();
+        //print first_line_end;
+        body = body.slice(first_line_end + 2);
+      }
+    }
+    this.http_response_body = body;
+    return Result(true, "HTTP Tracker endpoint validated", nil);
+    //return Result(false, nil, "HTTP Scrape failed");
+  }
+
+  connect() {
+    if (this.trackers.len() == 0) {
+      this.trackers = [this.announce];
+    }
+
+    var hostre = Regex("^([a-zA-Z]+)://([^:/]+):?([0-9]+)?(/.*)?$");
+
+    for (var i = 0; i < this.trackers.len(); i = i + 1) {
+      var url = this.trackers[i];
+      var matches = hostre.match(url);
+
+      if (matches == nil) {
+        print "Skipping malformed tracker URL:", url;
+        continue;
+      }
+
+      var protocol = matches[1];
+      var host = matches[2];
+
+      var port = 80;
+      if (protocol == "https") port = 443;
+      if (protocol == "udp") port = 6969;
+
+      if (matches[3]) {
+        port = Math.to_number(matches[3]);
+      }
+
+      var path = "/announce";
+      if (matches[4]) path = matches[4];
+
+      print "Attempting tracker connection (", protocol, "):", host, ":", port;
+      var result = nil;
+
+      if (protocol == "udp") {
+        result = this.connect_udp(host,port);
+        print "udp test...";
+      } else if (protocol == "http" or protocol == "https") {
+        result = this.connect_http(protocol, host, port, path);
+        print "http test...";
+      } else {
+        print "Invalid protocol";
+        continue;
+      }
+
+      if (result != nil and result.ok) {
+        this.active_protocol = protocol;
+        this.active_host = host;
+        this.active_port = port;
+        this.active_path = path;
+        return result;
+      }
+
+      print "Tracker failed. Moving to fallback target...";
+    }
+
+    return Result(false, nil, "All trackers exhausted. Unable to connect.");
+  }
+
+  connect1() {
+    print "1...";
+    this.create_connect_socket();
+    print "2...";
+    var http_hosts = this.get_http_list();
+    print "3...";
+    print this.urls;
+    print "4...";
+    print this.announce;
+    print "5...";
+    print http_hosts;
+    print "6...";
+    //var udp_host = this.get_udp_list()[0];
+    print "7...";
+    var hostre = Regex("^([a-zA-Z]+)://([^:/]+):?([0-9]+)?(/.*)?$");
+    var matches = hostre.match(udp_host);
+    var host = matches[2];
+    var port = Math.to_number(matches[3]);
+    this.generate_transaction_id();
+    this.generate_key();
+    var response;
+    var connected = false;
+
+    if (this.sock.connect(host, port)) {
+      print "Connected to", host;
+
+      for (var attempts = 1; attempts < 4; attempts = attempts + 1) {
+        print "Sending connect request (Attempt", attempts, ")...";
+
+        var packet = Struct.pack("Q I I", [0x41727101980, 0, this.trans_id]);
+        if (this.verbose) print packet.to_array();
+        this.sock.send(packet);
+        this.sock.set_recv_timeout(5000);
+
+        response = this.sock.recv(5000);
+
+        if (response.ok) {
+          this.trans_data = Struct.unpack("I I 8s", response.val);
+
+          if (this.trans_data[1] != this.trans_id) {
+            print "Error: Transaction ID mismatch";
+            System.exit(1);
+          }
+
+          this.connection_id = this.trans_data[2];
+          print "Success! Connection ID received.";
+
+          if (this.verbose) print "Connection ID: ", this.trans_data[2].to_array();
+          return Result(true, "Connection success", nil);
+        }
+        this.trans_id = this.trans_id + 1;
+      }
+      return Result(false, nil, "Unable to connect");
+    } else {
+      print "Unable to connect";
+      System.exit(3);
+    }
+  }
+
+  announce_udp(event = 0) {
+    if (this.verbose) print "Executing UDP announce, event id: ", event;
+
+    var announce_packet = Struct.pack("8s I I 20s 20s Q Q Q I I I I H", [
+      this.connection_id, // 64bit connection id
+      1,                  // action 1 = announce
+      this.trans_id,      // transaction id to verify response matching
+      this.info_hash,     // 20 byte torrent info hash
+      this.peer_id_str,   // 20 byte unique client peer id
+      0, 0, 0,            // downloaded, left, upload offsets (64 bit)
+      event,              // current swarm event flag
+      0,                  // ip address (0 means tracker uses sender ip)
+      this.key,           // unique extensions key
+      -1,                 // nu_want (-1 means default chunk size)
+      6881                // the port your client listens on for inbound peers
+    ]);
+
+    this.sock.send(announce_packet);
+    var aresponse = this.sock.recv(1024);
+
+    if (aresponse != nil and aresponse.ok) {
+      this.peers = [];
+      var header = Struct.unpack("I I I I I", aresponse.val);
+      var action = header[0];
+      var ret_tid = header[1];
+      var interval = header[2];
+      var leechers = header[3];
+      var seeders = header[4];
+
+      if (action == 1) {
+        if (this.verbose) print "Seeders: ", seeders, " Leechers: ", leechers;
+
+        for (var i = 20; i < aresponse.val.len(); i = i + 6) {
+          var ip = str(aresponse.val[i]) + "." +
+                   str(aresponse.val[i + 1]) + "." +
+                   str(aresponse.val[i + 2]) + "." +
+                   str(aresponse.val[i + 3]);
+
+          var p = (aresponse.val[i + 4] << 8) | aresponse.val[i + 5];
+
+          if (this.verbose) print "Found UDP peer: ", ip, ":", p;
+          this.peers.push([ip, p]);
+        }
+        return true;
+      } else if (action == 3) {
+        var error_msg = Struct.unpack("s", aresponse.val.slice(8));
+        print "Tracker UDP Protocol Error: ", error_msg;
+        return false;
+      }
+    } else {
+      print "UDP Announce failed: No response or socket error.";
+    }
+    return false;
+  }
+
+  announce_http(event = 0) {
+    print "announce_http...";
+    var benc = Bencode(this.http_response_body);
+    var tracker_dict = benc.decode();
+
+    if (tracker_dict.has("failure reason")) {
+      print "Tracker Error: ", tracker_dict["failure reason"];
+      return nil;
+    }
+
+    this.peers = [];
+    var raw_peers = tracker_dict["peers"];
+
+    if (typeof(raw_peers) == "String") {
+      for (var i = 0; i < raw_peers.len(); i = i + 6) {
+        var ip = str(raw_peers[i]) + "." + str(raw_peers[i+1]) + "." +
+                 str(raw_peers[i+2]) + "." + str(raw_peers[i+3]);
+        var p = (raw_peers[i+4] << 8) | raw_peers[i+5];
+
+        if (this.verbose) print "Found HTTP peer: ", ip, ":", p;
+        this.peers.push([ip, p]);
+      }
+    }
+  }
+
+  announce(event = 0) {
+    if (this.active_protocol == "udp") {
+      return this.announce_udp(event);
+    } else if (this.active_protocol == "http" or this.active_protocol == "https") {
+      return this.announce_http(event);
+    }
+    return nil;
+  }
+
+  announce1(event = 0) {
+    var announce_packet = Struct.pack("8s I I 20s 20s Q Q Q I I I I H", [
+      this.connection_id,
+      1,
+      this.trans_id,
+      this.info_hash,
+      this.peer_id_str,
+      0, 0, 0,
+      0,
+      event,
+      this.key,
+      -1,
+      6881
+    ]);
+
+    this.sock.send(announce_packet);
+
+    var aresponse = this.sock.recv(1024);
+
+    if (aresponse.ok) {
+      this.peers = [];
+      var header = Struct.unpack("I I I I I", aresponse.val);
+      var action = header[0];
+      var ret_tid = header[1];
+      var interval = header[2];
+      var leechers = header[3];
+      var seeders = header[4];
+
+
+      if (action == 1) {
+        if (this.verbose) print "Seeders:", seeders, "Leechers:", leechers;
+
+        for (var i = 20; i < aresponse.val.len(); i = i + 6) {
+          var ip = str(aresponse.val[i]) + "." + str(aresponse.val[i+1]) + "." + str(aresponse.val[i+2]) + "." + str(aresponse.val[i+3]);
+          var p = (aresponse.val[i+4] << 8) | aresponse.val[i+5];
+          if (this.verbose) print "Found peer: " + ip + ":" + str(p);
+          this.peers.push([ip, p]);
+        }
+      } else if (action == 3) {
+        var error_msg = Struct.unpack("s", aresponse.val.slice(8));
+        print "Tracker Error: ", error_msg;
+      }
+    } else { 
+      print "Response == nil";
+    }
+  }
+
+  create_connect_socket() {
+    this.sock = IO.udp();
+  }
+
+  peer_connection() {
+    for (var i = 0; i < this.peers.len(); i = i + 1) {
+      var peer_info = this.peers[i];
+      var ip = peer_info[0];
+      var port = peer_info[1];
+
+      print "Attempting connect to ", ip, ":", port, "...";
+
+      this.p_sock = IO.tcp();
+      if (this.p_sock.connect(ip, port, 2).ok) {
+        print "Connected to peer: ", ip;
+
+        this.p_sock.set_recv_timeout(5000);
+
+        var handshake = Struct.pack("B 19s 8s 20s 20s", [
+          19,
+          "BitTorrent protocol",
+          "\0\0\0\0\0\0\0\0",
+          this.info_hash,
+          this.peer_id_str
+        ]);
+        this.p_sock.send(handshake);
+
+        var response = this.p_sock.recv(68);
+
+        if (response.ok and response.val.len() == 68) {
+            //print "Received handshake hex: ", res.val.hex();
+            if (this.verbose == true) {
+              print "Handshake successful!";
+            }
+            var new_peer = Peer(ip, port, this.p_sock);
+            this.active_peers.push(new_peer);
+        } else {
+          if (this.verbose == true) {
+            print "Handshake failed.";
+            print response.err;
+          }
+        }
+      } else {
+        if (errno == 111) {
+          print "Skipping ", ip, " - peer is not accepting connections.";
+        } else {
+          if (this.verbose) print "Peer", ip, "unreachable,  trying next...";
+        }
+      }
+    }
+  }
+
+  manage_loop() {
+  }
+
+  download() {
+    print "Starting download loop with ", this.active_peers.len(), " peers.";
+
+    while (this.active_peers.len() > 0) {
+      var result = IO.poll(this.active_peers, 1000);
+
+      if (!result.ok) {
+        print "Poll error: ", result.err;
+        break;
+      }
+
+      var ready = result.val;
+      for (var i = 0; i < ready.len(); i = i + 1) {
+        var peer = ready[i];
+        if (!this.handle_peer(peer)) {
+          this.active_peers = this.active_peers.filter(fun(p) {
+            return p.ip != peer.ip;
+          });
+        }
+      }
+
+      this.request_blocks();
+    }
+  }
+
+  fetch_peers_http(host, port, path) {
+    var sock = IO.tcp();
+    var res = sock.connect(host, port);
+    if (res.ok) {
+      var request = "GET " + path + "HTTP/1.1\r\n" +
+                    "Host: " + host + "\r\n" +
+                    "User-Agent: GM0101/1.0\r\n" +
+                    "Connection: closer\n\r\n";
+      sock.send(request);
+
+      var response = "";
+      while (true) {
+        var chunk = sock.recv(4096);
+        if  (chunk.ok) {
+          if (chunk.val.len() == 0) break;
+          response = response + chunk;
+        } else {
+          return Result(false, nil, "Bad response");
+        }
+      }
+      sock.close();
+      return Result(true, nil, response);
+    }
+  }
+
+  recv_all(socket, size) {
+    var buffer = "";
+    while (buffer.len() < size) {
+      var res = socket.recv(size - buffer.len());
+
+      if (!res.ok) {
+        return Result(false, nil, "Socket recv error: " + res.err);
+      }
+
+      if (res.val == nil) {
+        return Result(false, nil, "Peer disconnected cleanly (received nil)");
+      }
+
+      if (res.val.len() == 0) {
+        return Result(false, nil, "Peer disconnected cleanly (received 0 bytes)");
+      }
+
+      buffer = buffer + res.val;
+    }
+    return Result(true, buffer, nil);
+  }
+
+  download_all() {
+    print "Starting sequential download for ", this.total_pieces, " pieces...";
+
+    for (var i = 0; i  < this.total_pieces; i = i + 1) {
+      print "------------------------------------------------";
+      print "PROGRESS: Processing Piece", i, "/", this.total_pieces - 1;
+      print "------------------------------------------------";
+
+      var success = this.download_piece(i);
+
+      if (success) {
+        print "Successfully secured and verified Piece:", i;
+      } else {
+        print "FATAL: Failed to download Piece", i, ". Aborting pipeline.";
+        return false;
+      }
+    }
+
+    print "================================================";
+    print "DOWNLOAD COMPLETE: ALl pieces verified successfully!";
+    print "================================================";
+    return true;
+  }
+
+  download_piece(piece_index) {
+    var BLOCK_SIZE = 16384;
+    var piece_size = this.piece_length;
+
+    // handle the last piece of the torrent being smaller
+    if (piece_index == this.total_pieces - 1) {
+      piece_size = this.total_torrent_size % this.piece_length;
+      if (piece_size == 0) piece_size = this.piece_length;
+    }
+
+    if (this.active_peers.len() < 1) return false;
+    var peer = this.active_peers[0];
+
+    peer.send_interested();
+    if (this.verbose) print "Targeting: ", peer.ip, " for Piece#", piece_index;
+
+    var next_offset = 0;
+    this.piece_store = {};
+    var start_time = clock();
+
+    if (peer.is_choked == false) {
+      if (this.verbose) print "Peer already unchoked. Bootstrapping initial block for Piece#", piece_index;
+      peer.send_request(piece_index, next_offset, BLOCK_SIZE);
+    } else {
+      peer.send_interested();
+    }
+
+    while (next_offset < piece_size) {
+      var res = peer.sock.recv(4);
+      if (!res) break;
+
+      var len = Struct.unpack("I", res.unwrap())[0];
+      if (len == 0) continue; // keep alive
+
+      var payload_res = this.recv_all(peer.sock, len);
+      if (!payload_res) break;
+
+      var payload = payload_res.unwrap();
+      var id = payload[0];
+
+      if (id == 0) { // choke
+        if (this.verbose) print "Peer choked us.";
+        peer.is_choked = true;
+
+      } else if (id == 1) { // unchoke
+        // GUARD 1: Only request the initial block if we weren't already unchoked
+        if (peer.is_choked == true) {
+          peer.is_choked = false;
+          //start_time = clock();
+          if (this.verbose) print "Peer unchoked us! Requesting initial block...";
+          peer.send_request(piece_index, next_offset, BLOCK_SIZE);
+        } else {
+          if (this.verbose) print "Peer sent redundant unchoke frame. Ignoring request trigger.";
+        }
+
+      } else if (id == 7) { // piece payload
+        // extract index (4 bytes) and begin offset (4 bytes) safely
+        var info = Struct.unpack("I I", payload.slice(1, 9));
+        var r_piece = info[0];
+        var r_begin = info[1];
+        var data = payload.slice(9);
+
+        // GUARD 2: If we already captured this block offset, it's a network duplicate. Skip
+        if (this.piece_store.has(str(r_begin))) {
+          if (this.verbose) print "Ignored duplicate block packet at offset: ", r_begin;
+          continue;
+        }
+
+        print "Received block: Offset ", r_begin, " Size: ", data.len();
+
+        // write this block directly into our multi-file mapping system
+        var global_offset = (r_piece * this.piece_length) + r_begin;
+        this.write_to_storage(global_offset, data);
+
+        // cache for piece validation
+        this.piece_store[str(r_begin)] = data;
+
+        // advance our offset state machine to grab the next block
+        if (r_begin == next_offset) {
+          next_offset = next_offset + data.len();
+        }
+
+        if (next_offset < piece_size) {
+          // request next chunk
+          var remaining = piece_size - next_offset;
+          var next_len = BLOCK_SIZE;
+          if (remaining < next_len) next_len = remaining;
+
+          peer.send_request(piece_index, next_offset, next_len);
+        } else if (id == 4 or id == 5) {
+          // ignore runtime HAVE or BITFIELD frames inside this download loop
+        }
+      }
+    }
+
+    //entire piece loop finished, now verify
+    print "Piece extraction finished. Assembling hash...";
+    var duration = clock() - start_time;
+    var full_piece = "";
+
+    for (var offset = 0; offset < piece_size; offset = offset + BLOCK_SIZE) {
+      var block = this.piece_store[str(offset)];
+      if (block == nil) {
+        print "CRITICAL ERROR: Missing block data at offset ", offset, ". Aborting piece.";
+        return false;
+      }
+      full_piece = full_piece + block;
+    }
+
+    var sha1 = SHA1();
+    sha1.update(full_piece);
+    var my_hash = sha1.final();
+    var expected_hash = this.pieces[piece_index];
+    var expected = Struct.unpack("I I I I I", this.pieces[piece_index]);
+
+    //if (my_hash == expected_hash) {
+    if (my_hash[0] == expected[0] and
+        my_hash[1] == expected[1] and
+        my_hash[2] == expected[2] and
+        my_hash[3] == expected[3] and
+        my_hash[4] == expected[4]) {
+      print "SUCCESS: Piece ", piece_index, " is valid!";
+      return true;
+    } else {
+      print "CRITICAL ERROR: Piece hash mismatch. Data corrupted.";
+      return false;
+    }
+  }
+
+  request_blocks() {
+    if (this.active_peers.len() <1) return false;
+    var peer = this.active_peers[0];
+    if (this.verbose) print "Targeting peer: ", peer.ip;
+
+    peer.send_interested();
+    if (this.verbose) print "Sent INTERESTED to ", peer.ip;
+
+    var downloaded = false;
+    while (!downloaded) {
+      var res = peer.sock.recv(4);
+      if (!res.ok) break;
+      
+      var len = Struct.unpack("I", res.val)[0];
+      if (this.verbose) print "Len: ", len;
+      if (len == 0) { // keep-alive
+        print "Keep-alive";
+        continue;
+      }
+
+      var payload_res = this.recv_all(peer.sock, len);
+      if (!payload_res.ok) break;
+
+      var payload = payload_res.val;
+      var id = payload[0];
+
+      if (this.verbose) print "Full Message - Len: ", len, " ID: ", id;
+
+      if (id == 1) { // unchoke
+        if (this.verbose) print "Peer unchoked us!  Requesting block...";
+
+        // id 6, piece 0, offset 0, length 16384
+        // format: "B I I I" -> id, index, begin, length
+        var request = Struct.pack("I B I I I", [13, 6, 0, 0, 16384]);
+        peer.sock.send(request);
+      } else if (id == 4) {
+        if (this.verbose) print "Peer sent HAVE message, ID: ", id;
+      } else if (id == 5) {
+        if (this.verbose) print "Received Bitfield (", len - 1, " bytes)";
+      } else if (id == 7) { // piece
+        // payload for id 7 is [index(4), begin(4), data(X)]
+        var info = Struct.unpack("I I", payload.slice(1, 8));
+        var piece_index = info[0];
+        var block_offset = info[1];
+        var global_offset = (piece_index * this.piece_length) + block_offset;
+
+        var data = payload.slice(9);
+
+        if (this.verbose) {
+          print "SUCCESS! Received block for Piece ", info[0];
+          print "Block size: ", data.len(), "bytes";
+        }
+
+        if (!this.piece_store.has(index)) {
+          this.piece_store[index] = {};
+        }
+
+        this.piece_store[index][begin] = block_data;
+
+        if (this.piece_store[index].len() == blocks_needed) {
+          var full_piece = this.piece_store[index][0] + this.piece_store[index][16384];
+
+          var sha1 = SHA1();
+          sha1.update(full_piece);
+          var my_hash = sha1.final();
+
+          var expected = Struct.unpack("I I I I I", this.pieces[index]);
+
+          if (my_hash == expected) { // real array compare
+            this.write_to_files(index, full_piece);
+            //this.piece_store.remove(index);
+          }
+        }
+        var f = File.open("piece_0.bin", "wb");
+        f.seek(global_offset);
+        f.write(data);
+        f.close();
+
+        downloaded = true;
+        break;
+
+      } else if (id == 20) {
+        if (this.verbose) print "Peer sent Extended handshake.";
+      } else {
+        if (this.verbose) print "Ignoring Message ID: ", id;
+      }
+    }
+  }
+
+  write_to_files(piece_index, data) {
+    var piece_start = piece_index * this.piece_length;
+    var piece_end = piece_start + data.len();
+
+    for  (var i = 0; i < this.files.len(); i = i +  1) {
+      var f = this.files[i]; //{path, length, start, end}
+
+      var overlap_start = Math.max(piece_start, f.start);
+      var overlap_end = Math.min(piece_end, f.end);
+
+      if (overlap_start < overlap_end) {
+        var slice_start = overlap_start - piece_start;
+        var slice_len = overlap_end - overlap_start;
+        var file_offset = overlap_start - f.start;
+
+        var chunk = data.slice(slice_start, slice_len);
+
+        var fh = File.open(f.full_path, "rb+");
+        fh.seek(file_offset);
+        fh.write(chunk);
+        fh.close();
+
+        print "Saved piece ", piece_index, " fragment to ", f.path;
+      }
+    }
+  }
+
+  main_loop() {
+  }
+
+  peer_listen() {
+    this.running = true;
+
+    while (this.running) {
+      var res = IO.poll(this.active_peers, 1000);
+
+      if (!res.ok) {
+        print "Poll Error: ", res.err;
+        break;
+      }
+
+      var ready_peers = res.val;
+      for (var i = 0; i < read_peers.len(); i = i + 1) {
+        var peer_sock = ready_peers[i];
+
+        // this will not block because poll said it's ready
+        var msg_res = peer_sock.recv(4096);
+
+        if (msg_res.ok) {
+          this.process_data(peer_sock, msg_res.val);
+        } else {
+          print "Peer disconnected.";
+          peer_sock.close();
+        }
+      }
+    }
+  }
+
+  message_loop() {
+    while (true) {
+      var header = this.p_sock.recv(4);
+      if (!header.ok) break;
+
+      var length = Struct.unpack("I", header.val)[0];
+      if (length == 0) continue; // keep-alive
+
+      var payloadRes = this.p_sock.recv(length);
+      if (!payloadRes.ok) break;
+
+      var payload = payloadRes.val;
+      var msgid = payload[0];
+
+      if (msgid == 5) { // bitfield
+        this.handle_bitfield(payload);
+        peer.send_interested();
+      } else if (msgid == 1) { // unchoke
+        this.is_choked = false;
+        break;
+      }
+    }
+  }
+  
+  handle_bitfield(payload) {
+    // payload[0] is the id (5), bytes start at payload[1]
+    for (var i = 0; i < this.total_pieces; i = i + 1) {
+      var byteIdx = Math.floor(i / 8) + 1;
+      var bitIdx = 7 - (i % 8);
+      var res = (payload[byteIdx] >> bitIdx) & 1;
+
+      if (res == 1) {
+        this.peer_pieces[i] = true;
+      }
+    }
+  }
+
+  remove_zombies() {
+    var now = System.time();
+    this.active_peers = this.active_peers.filter(fun(p) {
+      if (now - p.last_seen > this.peer_timeout) {
+        p.sock.close();
+        return false;
+      }
+      return true;
+    });
+  }
+
+}
+
+fun url_encode(bytes) {
+  var result = "";
+  //var hex_chars = "0123456789abcdef";
+
+  for (var i = 0; i < bytes.len(); i = i + 1) {
+    var c = bytes[i];
+
+    //var high = (b >> 4) & 0x0f;
+    //var low = b & 0x0f;
+    result = result + "%" + Math.hex(c, 2, false);
+  }
+  return result;
+}
+
+System.set_notation(0);
+GC.type(0);
+GC.bump_size(1024 * 1024 * 8);
+
+var bt = BT("test.torrent");
+//var bt = BT("Fedora-Xfce-Live-x86_64-44.torrent");
+bt.verbose = true;
+//print bt.info_hash;
+//print bt.info_hash.to_array();
+var res = bt.connect();
+if (!res.ok) {
+  print res.err;
+  System.exit(1);
+}
+
+print res.val;
+//print bt.http_response_body;
+res = bt.announce();
+if (bt.peers == nil) {
+  print "Announce failed.";
+  System.exit(1);
+}
+print bt.peers;
+bt.peer_connection();
+
+
+//for (var i = 0; i < bt.active_peers.len(); i = i + 1) {
+//  print bt.active_peers[i];
+//}
+
+//bt.request_blocks();
+//bt.download_piece(0);
+bt.download_all();
+@
+
+
+1.7
+log
+@download 1 piece
+@
+text
+@d92 1
+d107 8
+d116 1
+d298 3
+a300 2
+      var f = File.open(full_path, "r+b");
+      if (!f) {
+d304 4
+a307 2
+        f = File.open(full_path, "wb");
+        if (f) {
+d318 1
+d534 2
+a535 2
+        var f = File.open(f_info["path"], "r+b");
+        if (f) {
+d538 1
+d638 1
+a638 1
+        if (chunk == nil) brea;
+a1036 1
+    var result = Result(true, nil, nil);
+d1039 1
+a1041 3
+        //result.ok = false;
+        //result.err = chunk_res.err;
+        //return result;
+d1043 9
+d1055 24
+a1078 3
+    //result.val = buffer;
+    //return buffer;
+    //return result;
+d1099 8
+a1106 1
+    peer.is_choked = true;
+d1110 1
+a1110 1
+      if (!res.ok) break;
+d1112 1
+a1112 1
+      var len = Struct.unpack("I", res.val)[0];
+d1116 1
+a1116 1
+      if (!payload_res.ok) break;
+d1118 1
+a1118 1
+      var payload = payload_res.val;
+d1129 1
+d1178 1
+d1180 1
+d1182 6
+a1187 5
+      print "offset: ", offset;
+      print "piece_size: ", piece_size;
+      print "full_piece: ", full_piece;
+      print "this_piece: ", this.piece_store[str(offset)];
+      full_piece = full_piece + this.piece_store[str(offset)];
+d1422 3
+d1452 2
+a1453 1
+bt.download_piece(0);
+@
+
+
+1.6
+log
+@more
+@
+text
+@d2 1
+d250 1
+d282 3
+a284 5
+    for (var i = 0; i < this.files.len(); i = i + 1) {
+      var file_info = this.files[i];
+      print this.name;
+      print file_info["path"];
+      var full_path = this.name + "/" + file_info["path"].join("/");
+d288 19
+a306 2
+      var f = File.open(full_path, "ab");
+      f.close();
+d308 3
+a310 1
+      print "Prepared: ", full_path;
+d333 1
+d336 3
+d340 1
+a340 1
+        "path": f_info["path"],
+d347 2
+d493 44
+d548 1
+d555 1
+a555 1
+      print "Sending UPP connect request (Attempt", attempts, ")...";
+d578 2
+a579 2
+  connect_http(host, port, path) {
+    print "connect_http";
+d583 14
+a596 1
+      return Result(false, nil, "HTTP connection failed");
+a598 1
+    print "info_hash: ", this.info_hash;
+a599 1
+    print "escaped_hash: ", escaped_hash;
+a600 1
+    print "escaped_peer: ", escaped_peer;
+d611 22
+a632 3
+    print "query: ", query;
+    print "req: ", http_req;
+    this.sock.send(http_req);
+a633 1
+    var response = this.sock.recv(8192);
+d635 1
+a635 2
+    if (response.ok) {
+      print "response ok...";
+d637 1
+a637 1
+      print response.val;
+a638 11
+      var body_offset = response.val.find("\r\n\r\n") + 4;
+      var body = response.val.slice(body_offset);
+
+      if (response.val.find("Transfer-Encoding: chunked") != -1) {
+        var first_line_end = body.find("\r\n") + 2;
+        body = body.slice(first_line_end);
+      }
+      this.http_response_body = body;
+      //this.http_response_body = response.val.slice(body_offset);
+
+      return Result(true, "HTTP Tracker endpoint validated", nil);
+d640 20
+a659 2
+
+    return Result(false, nil, "HTTP Scrape failed");
+d699 1
+a699 1
+        result = this.connect_http(host, port, path);
+d703 1
+d780 52
+a831 1
+    print "announce_udp...";
+d836 2
+a837 1
+    var tracker_dict = Bencode.decode(this.http_response_body);
+d1039 118
+d1210 1
+a1210 1
+        if (!this.piiece_store.exists(index)) {
+d1227 1
+a1227 1
+            this.piece_store.remove(index);
+d1382 7
+a1388 7
+//bt.announce();
+//if (bt.peers == nil) {
+//  print "Announce failed.";
+//  System.exit(1);
+//}
+//print bt.peers;
+//bt.peer_connection();
+d1396 1
+@
+
+
+1.5
+log
+@latest
+@
+text
+@d1 2
+a90 169
+class SHA1 {
+  init() {
+    this.reset();
+  }
+
+  reset() {
+    this.h0 = 0x67452301;
+    this.h1 = 0xefcdab89;
+    this.h2 = 0x98badcfe;
+    this.h3 = 0x10325476;
+    this.h4 = 0xc3d2e1f0;
+    this.buffer = "";
+    this.length = 0;
+  }
+
+  processBuffer() {
+    var block_str = this.buffer.slice(0, 64);
+    this.buffer = this.buffer.slice(64);
+
+    var W = [];
+    for (var i = 0; i < 64; i = i + 4) {
+      W.push(this.packWord(block_str, i));
+    }
+    this.processBlock(this.expandSchedule(W));
+  }
+
+  update(data) {
+    if (data == "") return;
+    this.length = this.length + data.len();
+    this.buffer = this.buffer + data;
+
+    while (this.buffer.len() >= 64) {
+      this.processBuffer();
+    }
+  }
+
+  final() {
+    var bit_length = this.length * 8;
+
+    this.buffer = this.buffer + [128].to_string();
+
+    var remaining_space = (this.buffer.len() % 64);
+    var padding_needed = 0;
+
+    if (remaining_space <= 56) {
+      padding_needed = 56 - remaining_space;
+    } else {
+      padding_needed = (64 - remaining_space) + 56;
+    }
+
+    if (padding_needed > 0) {
+      var zeros = [0; padding_needed];
+      this.buffer = this.buffer + zeros.to_string();
+    }
+
+    this.buffer = this.buffer + this.pack32(0);
+    this.buffer = this.buffer + this.pack32(bit_length);
+
+    this.processBuffer();
+    var scanning = true;
+    while (scanning) {
+      if (this.buffer == "") {
+        scanning = false;
+      } else {
+        if (this.buffer.len() >= 64) {
+          this.processBuffer();
+          this.buffer = this.buffer.slice(64);
+        } else {
+          this.processBuffer();
+          this.buffer = "";
+          scanning = false;
+        }
+      }
+    }
+
+    return [this.h0, this.h1, this.h2, this.h3, this.h4];
+    //return Math.hex(this.h0, 8, false)
+    //  + Math.hex(this.h1, 8, false)
+    //  + Math.hex(this.h2, 8, false)
+    //  + Math.hex(this.h3, 8, false)
+    //  + Math.hex(this.h4, 8, false);
+  }
+
+  pack32(value) {
+    var b1 = (value >> 24) & 0xff;
+    var b2 = (value >> 16) & 0xff;
+    var b3 = (value >> 8) & 0xff;
+    var b4 = value & 0xff;
+
+    return [b1, b2, b3, b4].to_string();
+  }
+
+  packWord(bytes, offset) {
+    return (bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      (bytes[offset + 3]);
+  }
+
+  expandSchedule(block) {
+    var W = [];
+
+    for (var i = 0; i < 16; i = i + 1) {
+      W.push(block[i]);
+    }
+
+    for (var i = 16; i < 80; i = i + 1) {
+      var v1 = W[i - 3];
+      var v2 = W[i - 8];
+      var v3 = W[i - 14];
+      var v4 = W[i - 16];
+      var res = v1 ^ v2 ^ v3 ^ v4;
+      
+      var expanded = this.rotl(res, 1) & 0xffffffff;
+      W.push(expanded);
+    }
+
+    return W;
+  }
+
+  processBlock(W) {
+    var a = this.h0;
+    var b = this.h1;
+    var c = this.h2;
+    var d = this.h3;
+    var e = this.h4;
+    var temp = 0;
+
+    for (var i = 0; i < 80; i = i + 1) {
+      var f = 0;
+      var k = 0;
+
+      if (i < 20) {
+        f = ((b & c) | ((~b) & d));
+        k = 0x5a827999;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 0x6ed9eba1;
+      } else if (i < 60) {
+        f = (b & c) | (b & d) | (c & d);
+        k = 0x8f1bbcdc;
+      } else {
+        f = b ^ c ^ d;
+        k = 0xca62c1d6;
+      }
+
+      temp = ((this.rotl(a, 5) & 0xffffffff) + f) & 0xffffffff;
+      temp = (temp + e) & 0xffffffff;
+      temp = (temp + k) & 0xffffffff;
+      temp = (temp + W[i]) & 0xffffffff;
+      e = d;
+      d = c;
+      c = this.rotl(b, 30);
+      b = a;
+      a = temp;
+    }
+
+    this.h0 = (this.h0 + a) & 0xFFFFFFFF;
+    this.h1 = (this.h1 + b) & 0xFFFFFFFF;
+    this.h2 = (this.h2 + c) & 0xFFFFFFFF;
+    this.h3 = (this.h3 + d) & 0xFFFFFFFF;
+    this.h4 = (this.h4 + e) & 0xFFFFFFFF;
+  }
+
+  rotl(value, shift) {
+    return ((value << shift) | (value >> (32 - shift))) & 0xFFFFFFFF;
+  }
+}
+
+a217 1
+    print "A1...";
+a218 1
+    print "A2...";
+a219 1
+    print "A3...";
+a220 1
+    print "A4...";
+a241 1
+    print "L1...";
+a242 1
+    print "L2...";
+a243 1
+    print "L3...";
+a244 1
+    print "L4...";
+a250 1
+    print "L5...";
+a251 1
+    print "L6...";
+a333 1
+    print "B1...";
+a334 1
+    print "B2...";
+a339 1
+    print "B3...";
+a369 1
+    print "B4...";
+a370 1
+    print "B5...";
+a371 1
+    print "B6...";
+a372 1
+    print "B7...";
+a373 1
+    print "B8...";
+a374 1
+    print "B9...";
+d379 2
+a380 1
+    this.urls = [];
+d386 1
+a386 1
+        this.urls.push(list[i][0]);
+d393 3
+a395 1
+      this.urls.push(primary);
+d397 4
+d405 1
+a405 1
+    var httplist = this.urls.find(fun(a) { return a.slice(0,5) == "http:"; });
+d468 90
+d559 57
+d674 28
+d703 9
+d1081 2
+d1086 3
+a1088 8
+    if ((c >= 'a' and c <= 'z') or
+      (c >= 'A' and c <= 'Z') or
+      (c >= '0' and c <= '9') or
+      c == '-' or c == '_' or c == '.' or c == '~') {
+        result = result + chr(c);
+    } else {
+      result = result + "%" + Math.hex(c, 2, false);
+    }
+d1094 2
+a1095 2
+//var bt = BT("test.torrent");
+var bt = BT("Fedora-Xfce-Live-x86_64-44.torrent");
+d1100 7
+a1106 4
+//if (!res.ok) {
+//  print res.err;
+//  System.exit(1);
+//}
+@
+
+
+1.4
+log
+@connect to peers
+@
+text
+@d258 124
+d385 1
+d387 1
+d389 1
+d391 2
+d394 1
+d405 2
+a406 2
+    this.peer_id[5] = '0';
+    this.peer_id[6] = '1';
+d413 3
+d417 1
+d419 1
+d422 79
+d511 1
+d513 1
+d519 1
+d550 1
+d552 1
+d554 1
+d556 1
+d558 1
+d560 1
+d564 22
+a585 3
+  get_tcp_list() {
+    var tcplist = this.torrent["announce-list"].find(fun(a) { return a[0].slice(0,4) == "tcp:"; });
+    return tcplist;
+d589 1
+a589 1
+    var udplist = this.torrent["announce-list"].find(fun(a) { return a[0].slice(0,4) == "udp:"; });
+d635 12
+d648 1
+d650 11
+a660 1
+    var udp_host = this.get_udp_list()[0];
+d673 1
+a673 1
+      for (var attempts = 1; attempts < 4 and connected == false; attempts = attempts + 1) {
+d675 1
+d680 1
+d682 1
+a682 1
+        //if (response != nil) {
+a683 1
+          connected = true;
+d690 1
+a692 1
+          print "Connection ID: ", this.trans_data[2].to_array();
+d694 2
+a695 3
+        } else {
+          print "TIMEOUT!";
+          System.exit(2);
+d699 1
+a724 1
+    //if (aresponse != nil) {
+a781 1
+        //if (response != nil and response.len() == 68) {
+d783 1
+d787 2
+a788 1
+            return true;
+a802 1
+    return false;
+d804 268
+d1092 2
+a1093 1
+var bt = BT("test.torrent");
+d1095 19
+a1113 11
+print bt.info_hash;
+print bt.info_hash.to_array();
+bt.connect();
+bt.announce();
+if (bt.peers == nil) {
+  print "Announce failed.";
+  System.exit(1);
+}
+print bt.peers;
+bt.peer_connection();
+
+d1115 1
+@
+
+
+1.3
+log
+@hashing
+@
+text
+@a115 1
+    print "Update received bytes: ", data.len();
+a146 2
+    //print "typeof(buffer): ", typeof(this.buffer);
+    //print "len: ", this.buffer.len();
+d164 6
+a169 5
+    return Math.hex(this.h0, 8, false)
+      + Math.hex(this.h1, 8, false)
+      + Math.hex(this.h2, 8, false)
+      + Math.hex(this.h3, 8, false)
+      + Math.hex(this.h4, 8, false);
+a265 1
+    //this.pieces = this.info["pieces"];
+d268 15
+a282 1
+    //this.info_str = this.data.slice(this.torrent[0]["info"][1], this.torrent[0]["info"][2]);
+d285 2
+d307 1
+a307 1
+      if (char == 100 or char == 108) { // d or l
+d310 1
+a310 1
+      } else if (char == 101) { // e
+d314 1
+a314 1
+      } else if (char == 105) { // i
+d316 1
+a316 1
+        while (i < total_len and this.data[i] != 101) { // e
+d320 1
+a320 1
+      } else if (char >= 48 and char <= 57) { // 0 - 9
+d322 1
+a322 1
+        while (colon_pos < total_len and this.data[colon_pos] != 58) { // :
+d336 13
+a348 1
+    this.info_hash = sha1.final();
+a382 1
+}
+d384 113
+a496 3
+//var data = File.load("test.torrent");
+//var decoder = Bencode(data);
+//var torrent = decoder.decode();
+d498 1
+a498 2
+//var info = torrent["info"];
+//var pieces = info["pieces"];
+d500 3
+a502 1
+//print "Pieces string length: ", pieces.len();
+d504 1
+a504 2
+//var firstHash = pieces.slice(0, 20);
+//var bytes = firstHash.to_array();
+d506 8
+a513 1
+//print "First hash (first 3 bytes): ", bytes[0], bytes[1], bytes[2];
+d515 1
+a515 3
+//print info["piece length"];
+//print info["name"];
+//print info["files"];
+d517 23
+a539 5
+print 0;
+System.set_notation(0);
+print 1;
+var bt = BT("test.torrent");
+print 3;
+d541 13
+a553 54
+print bt.get_name();
+print bt.get_files();
+print bt.total_length();
+print bt.get_piece(0);
+print bt.get_pieces().len();
+
+print bt.get_info();
+
+var sha1 = SHA1();
+//sha1.update(bt.get_info());
+//print typeof(bt.get_info_str());
+
+var start = bt.data.find("4:info") + 6;
+var i = start;
+var depth = 0;
+var total_len = bt.data.len();
+var info_str = bt.data.slice(start, -1);
+var data = bt.data;
+var searching = true;
+
+print "start: ", start, " i: ", i, " end: ", total_len;
+print "start char: ", data.slice(start, start + 1);
+while (i < total_len and searching) {
+  var char = data[i];
+
+  if (char == 100 or char == 108) { // d or l
+    depth = depth + 1;
+    i = i + 1;
+  } else if (char == 101) { // e
+    depth = depth - 1;
+    i = i + 1;
+    if (depth == 0) {
+      searching = false;
+    }
+  } else if (char == 105) { // i
+    i = i + 1;
+    while (i < total_len and data[i] != 101) {
+      i = i + 1;
+    }
+    i = i + 1; // skip e
+  } else if (char >= 48 and char <= 57) { // 0 - 9
+    var colon_pos = i;
+    while (colon_pos < total_len and data[colon_pos] != 58) { // :
+      colon_pos = colon_pos + 1;
+    }
+    var num_str = data.slice(i, colon_pos);
+    var num = Math.to_number(num_str);
+    if (num > 1000) print "BIG JUMP DETECTED: ", num;
+    print "NUM: ", num;
+
+    i = colon_pos + 1 + num;
+    print "i: ", i;
+  } else {
+    i = i + 1;
+d555 1
+d558 10
+a567 43
+print "start: ", start, " i: ", i, " end: ", total_len;
+info_str = data.slice(start, i );
+print "info_str: ", info_str;
+print "info_str.end: ", info_str.slice(-30);
+print "info_str.len: ", info_str.len();
+print "i: ", i;
+print "end char: ", info_str.slice(-4, -1);
+print "pieces len: ", bt.pieces.len();
+print "pieces length: ", bt.info["piece length"];
+
+
+sha1.update(info_str);
+var s1 = sha1.final();
+print "sha1: ", s1;
+//print sha1.final();
+
+//print "=========================";
+//print bt.get_info();
+//print "=========================";
+
+var testSha = SHA1();
+testSha.update("abc");
+var result = testSha.final();
+print result;
+
+
+print bt.torrent;
+print bt.torrent.keys().sort();
+
+//print bt.pieces.slice(0, 20);
+print bt.pieces[0];
+print bt.pieces[0].len();
+print bt.pieces[1];
+print bt.pieces[1].len();
+print bt.pieces[0][bt.pieces[0].len()-1] == bt.pieces[1][0];
+print bt.pieces.len();
+
+print info_str.slice(0,10); //.to_hex();
+print info_str.slice(-10);
+
+for (var i = 0; i < bt.pieces.len(); i = i + 1) {
+  if (bt.pieces[i].len() != 20)
+    print "piece ", i, " is != 20";
+d569 2
+a571 4
+//print "=========================";
+//print bt.torrent;
+//print "=========================";
+//print bt.data;
+a572 2
+print bt.get_info_str();
+print bt.get_info_hash();
+@
+
+
+1.2
+log
+@fixed sha1
+@
+text
+@d5 5
+d54 1
+a60 2
+      //print "key: ", key;
+      //print "rest of data: ", this.data.slice(this.pos, this.pos + len);
+d65 2
+d91 4
+d104 11
+d116 8
+d127 54
+a197 3
+      //print W[i - 3], W[i - 8], W[i - 14], W[i - 16];
+      //var val = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
+      //print val;
+a201 2
+      //print v1, v2, v3, v4;
+      //var expanded = ((val << 1) | (val >> 31)) & 0xffffffff;
+a202 1
+      //print res;
+d204 2
+a205 1
+      W.push(res);
+a222 5
+      if (i == 1) {
+        print Math.hex(a, 8), Math.hex(b, 8), Math.hex(c, 8), Math.hex(d, 8), Math.hex(e, 8);
+        print Math.hex(temp, 8);
+      }
+
+a223 6
+        //if (i == 0) {
+        //  print "ROUND 0";
+        //  print "b: ", Math.hex(b, 8);
+        //  print "c: ", Math.hex(c, 8);
+        //  print "d: ", Math.hex(d, 8);
+        //}
+a224 1
+        if (i == 0) print "k: ", Math.hex(f, 8);
+a225 1
+        if (i == 0) print "k: ", Math.hex(k, 8);
+a236 1
+      //temp = this.rotl(a, 5) + f + e + k + W[i] & 0xffffffff;
+a237 3
+      //if (i == 0) {
+      //  print "temp: ", Math.hex(temp, 8);
+      //}
+a238 3
+      //if (i == 0) {
+      //  print "temp: ", Math.hex(temp, 8);
+      //}
+a239 3
+      //if (i == 0) {
+      //  print "temp: ", Math.hex(temp, 8);
+      //}
+a240 6
+      //if (i == 0) {
+      //  print "temp: ", Math.hex(temp, 8);
+      //}
+      //if (i == 0) {
+      //  print "f: ", Math.hex(f, 8);
+      //}
+a245 8
+      //if (i == 0) {
+      //  print "a: ", Math.hex(a);
+      //  print "b: ", Math.hex(b);
+      //  print "c: ", Math.hex(c);
+      //  print "d: ", Math.hex(d);
+      //  print "e: ", Math.hex(e);
+      //  print "f: ", Math.hex(f);
+      //}
+d260 22
+a281 3
+var data = File.load("test.torrent");
+var decoder = Bencode(data);
+var torrent = decoder.decode();
+d283 36
+a318 2
+var info = torrent["info"];
+var pieces = info["pieces"];
+d320 5
+a324 1
+print "Pieces string length: ", pieces.len();
+d326 11
+a336 2
+var firstHash = pieces.slice(0, 20);
+var bytes = firstHash.to_array();
+d338 3
+a340 1
+print "First hash (first 3 bytes): ", bytes[0], bytes[1], bytes[2];
+d342 7
+a348 9
+var sha1 = SHA1();
+var bytes = [0; 64];
+for (var i = 0; i < 64; i = i + 1)
+  bytes.push(i);
+
+var W = [];
+for (var i = 0; i < 64; i = i + 4) {
+  W.push(sha1.packWord(bytes, i));
+}
+d350 3
+a352 3
+print W;
+var val = sha1.expandSchedule(W);
+print val;
+d354 5
+a358 1
+print "W[0] (Packed): ", val[0];
+d360 3
+a362 1
+print "W[16] (First Expanded): ", val[16];
+d364 2
+a365 1
+print "W length:", val.len();
+d367 1
+a367 4
+sha1.processBlock(val);
+var res =  sha1.h0;
+if (res < 0 ) res = res + 4294967296;
+print res;
+d369 2
+a370 15
+var sha1 = SHA1();
+bytes = [0; 64];
+bytes[0] = 0x61;
+bytes[1] = 0x62;
+bytes[2] = 0x63;
+bytes[3] = 0x80;
+bytes[63] = 24;
+print bytes;
+W = [];
+for (var i = 0; i < 64; i = i + 4) {
+  W.push(sha1.packWord(bytes, i));
+}
+print W;
+var val = sha1.expandSchedule(W);
+print val;
+d372 1
+a372 1
+print "W[0] (Packed): ", val[0];
+d374 3
+a376 1
+print "W[16] (First Expanded): ", val[16];
+d378 5
+a382 1
+print "W length:", val.len();
+d384 5
+a388 4
+sha1.processBlock(val);
+//var res =  sha1.h0;
+//if (res < 0 ) res = res + 4294967296;
+print Math.hex(sha1.h0, 8), Math.hex(sha1.h1, 8), Math.hex(sha1.h2, 8), Math.hex(sha1.h3, 8), Math.hex(sha1.h4, 8);
+d390 1
+a390 3
+var h1 = 0xefcdab89;
+var c = sha1.rotl(h1, 30);
+print Math.hex(c, 8);
+d392 3
+a394 1
+print Math.hex(val[0], 8);
+d396 44
+a439 2
+var a = 0x67452301;
+print Math.hex(sha1.rotl(a, 5), 8);
+d441 44
+a484 5
+var left = a << 5;
+var right = a >> 27;
+print "Left: ", Math.hex(left, 8);
+print "Right: ", Math.hex(right, 8);
+print "Or: ", Math.hex(left | right, 8);
+d486 4
+a489 3
+var sum = 0xe8a4602c + 0x78ba7cfe + 0xc3d2e1f0 + 0x5a827999 + 0x61626380;
+print "Full Sum: ", sum;
+print "Masked: ", Math.hex(sum & 0xffffffff, 8);
+d491 2
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d16 1
+a16 6
+    if (b == 105) {
+      print "found int";
+      var res = this.parse_int();
+      //return this.parse_int();
+      return res;
+    }
+d83 137
+a219 2
+//var data = File.load("test.torrent");
+var data = "i1024e4:test";
+d221 16
+a236 4
+var first = decoder.decode();
+print first;
+var second = decoder.decode();
+print second;
+d238 50
+a287 3
+data = "d8:announce3:url14:info_hash_test10:binarydatae";
+decoder = Bencode(data);
+var torrent = decoder.decode();
+d289 1
+a289 2
+print torrent["announce"];
+print torrent["info_hash_test"];
+d291 2
+a292 3
+data = "d4:infod4:name4:testee";
+decoder = Bencode(data);
+torrent = decoder.decode();
+d294 5
+a298 1
+print torrent["info"]["name"];
+d300 3
+a302 1
+//print b.data;
+a303 3
+//var pieces = torrent["info"]["pieces"];
+//var piecesArray = pieces.to_array();
+//print piecesArray.length();
+@

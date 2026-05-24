@@ -1,0 +1,26 @@
+class Iterable {
+  iter() {
+    this._index = 0;
+    return this;
+  }
+  done() {
+    return this._index >= this.len();
+  }
+  next() {
+    var item = this.get(this._index);
+    this._index = this._index + 1;
+    return item;
+  }
+}
+
+class Mystack {
+  include Iterable;
+  init() { this.data = [10, 20, 30]; }
+  len() { return this.data.len(); }
+  get(i) { return this.data[i]; }
+}
+
+var stack = Mystack();
+
+print stack.iter;  
+

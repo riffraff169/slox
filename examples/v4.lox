@@ -1,0 +1,7 @@
+fun add4(a, b, c, d) {
+  print a + b + c + d;
+}
+
+var pair1 = [1, 2];
+var pair2 = [3, 4];
+add4(*pair1, *pair2);

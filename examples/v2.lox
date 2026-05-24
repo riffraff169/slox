@@ -1,0 +1,17 @@
+fun logger(prefix, level = "INFO", ...messages) {
+  print "[" + level + "] " + prefix + ":";
+  
+  // Assuming you have a length() method or similar for your ObjArray
+  for (var i = 0; i < messages.len(); i = i + 1) {
+    print "  - " + messages[i];
+  }
+}
+
+print "--- Test 1: Full arguments ---";
+logger("Render", "DEBUG", "Ray 1 hit", "Ray 2 miss");
+
+print "--- Test 2: Using default level ---";
+logger("System", "Service started", "Memory OK");
+
+print "--- Test 3: Only required arg ---";
+logger("Cleanup");

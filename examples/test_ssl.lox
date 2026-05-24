@@ -1,0 +1,52 @@
+import "ssl";
+
+var host = "www.riffraff169.org";
+var port = 443;
+
+print "1. Creating raw TCP socket...";
+var tcp = IO.tcp();
+
+print "2. Connecting to ", host, " on port ", port, "...";
+if (!tcp.connect(host, port)) {
+  print "Error: TCP connection failed.";
+  System.exit(1);
+}
+print "   TCP connected successfully! (OS fd is live)";
+
+var sec = SSL(host, tcp);
+print "   TLS Handshake complete! Connection is now encrypted.";
+
+print "   sec: ", sec;
+print errno;
+if (errno == 62) {
+  print "errno: ", errno;
+  print "errstr: ", errstr;
+  System.exit(1);
+}
+
+print "4. Writing encrypted HTTP request...";
+var req = "GET / HTTP/1.1\r\n" +
+          "Host: " + host + "\r\n" +
+          "User-Agent: slox/1.0\r\n" +
+          "Connection: close\r\n\r\n";
+
+sec.write(req);
+print "   Request sent.";
+
+print "5. Reading and decrypting server response...";
+var response = "";
+while (true) {
+  var chunk = sec.read();
+  if (chunk == nil) break;
+  response = response + chunk;
+}
+
+print "\n--- SUCCESS! DECRYPTED RESPONSE RECEIVED ---";
+print response;
+/*
+print "--------------------------------------------";
+*/
+
+print "6. Cleaning up sockets...";
+tcp.close();
+print "   Done.";

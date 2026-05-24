@@ -1,0 +1,28 @@
+// Constructor Test
+var v1 = Vec3(1, 2, 3);
+var v2 = Vec3(4, 5, 6);
+
+print "Testing Properties:";
+print v1.x; // 1
+print v1.y; // 2
+print v1.z; // 3
+
+print "Testing Addition & Commutative Math:";
+var v3 = v1 + v2;       // Vec3(5, 7, 9)
+var v4 = v1 + 10;       // Vec3(11, 12, 13)
+var v5 = 10 + v1;       // Vec3(11, 12, 13)
+print v3; print v4; print v5;
+
+print "Testing Dot & Cross:";
+print dot(v1, v2);      // (1*4 + 2*5 + 3*6) = 32
+print v1.dot(v2);       // 32
+var c = v1.cross(v2);   // Vec3(-3, 6, -3)
+print c;
+
+print "Testing Unit & Length:";
+var vUnit = Vec3(5, 0, 0).unit(); 
+print vUnit;            // Vec3(1, 0, 0)
+print vUnit.length();   // 1.0
+
+print "Testing Negation:";
+print -v1;              // Vec3(-1, -2, -3)

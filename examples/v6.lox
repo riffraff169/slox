@@ -1,0 +1,7 @@
+fun greet(name, ...varargs) {
+  print "Hello, " + name;
+}
+
+var nothing = [];
+greet("World", *nothing);
+greet("Life", "foo");
