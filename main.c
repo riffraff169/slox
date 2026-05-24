@@ -33,7 +33,7 @@ static void repl() {
     write_history(history_file);
 }
 
-static char* readFile(const char* path) {
+char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
         fprintf(stderr, "Could not open file \"%s\".\n", path);

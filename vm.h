@@ -35,7 +35,7 @@ typedef struct {
     ObjString* yString;
     ObjString* zString;
 
-    Table arrayMethods;
+    //Table arrayMethods;
 
     bool isGC;
     size_t bytesAllocated;
@@ -70,7 +70,15 @@ typedef struct {
     void** moduleHandles;
 
     int lastErrno;
-    //ObjString* lastError;
+
+    ObjString* errnoString;
+    ObjString* errstrString;
+
+    ObjClass* resultClass;
+    ObjString* okString;
+    ObjString* valString;
+    ObjString* errString;
+    ObjClass* optionClass;
 } VM;
 
 typedef enum {

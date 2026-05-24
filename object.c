@@ -194,16 +194,18 @@ void arrayAppend(ObjArray* array, Value value) {
 
 ObjArray* duplicateArray(ObjArray* original) {
     ObjArray* copy = newArray();
+    push(OBJ_VAL(copy));
+
     if (original->count > 0) {
         Value* entries = ALLOCATE(Value, original->count);
         copy->values = entries;
         copy->capacity = original->count;
         copy->count = original->count;
+        memcpy(copy->values, original->values, sizeof(Value) * original->count);
     }
 
-    memcpy(copy->values, original->values, sizeof(Value) * original->count);
 
-    return copy;
+    return AS_ARRAY(pop());
 }
 
 static ObjRegex* allocateRegex(pcre2_code* code, ObjString* pattern) {

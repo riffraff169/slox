@@ -690,6 +690,10 @@ static void number(bool canAssign) {
 
     if (length > 2 && start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
         value = (double)strtoul(start, NULL, 16);
+    } else if (length > 2 && start[0] == '0' && (start[1] == 'o' || start[1] == 'O')) {
+        value = (double)strtoul(start + 2, NULL, 8);
+    } else if (length > 1 && start[0] == '0' && start[1] != '.') {
+        value = (double)strtoul(start, NULL, 8);
     } else {
         value = strtod(start, NULL);
     }

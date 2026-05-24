@@ -6,5 +6,6 @@
 
 ObjFunction* compile(const char* source);
 void markCompilerRoots();
+char* readFile(const char* path);
 
 #endif

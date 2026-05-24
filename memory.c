@@ -265,8 +265,16 @@ static void markRoots() {
     markObject((Obj*)vm.moduleClass);
     markObject((Obj*)vm.regexClass);
     markObject((Obj*)vm.mathClass);
-    //markObject((Obj*)vm.vec3Class);
     markObject((Obj*)vm.gcClass);
+    markObject((Obj*)vm.numberClass);
+    markObject((Obj*)vm.boolClass);
+    markObject((Obj*)vm.nilClass);
+    markObject((Obj*)vm.errnoString);
+    markObject((Obj*)vm.errstrString);
+    markObject((Obj*)vm.resultClass);
+    markObject((Obj*)vm.okString);
+    markObject((Obj*)vm.valString);
+    markObject((Obj*)vm.errString);
 }
 
 static void traceReferences() {

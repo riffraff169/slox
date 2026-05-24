@@ -35,6 +35,32 @@
 
 #define MAX32 4294967296.0
 
+
+// 1. Setup phase: Capture the original depth and current stack pointer
+#define VM_CALLBACK_INIT() \
+    int _oldExitDepth = vm.nativeExitDepth; \
+    Value* _callbackStackStart = vm.stackTop
+
+// 2. Execute phase: Tell the vm where to return when the callback yields
+#define VM_CALLBACK_ENTER() \
+    vm.nativeExitDepth = vm.frameCount
+
+// 3. Error Guard: Abort immediately if the loop encountered a runtime panic
+#define VM_CALLBACK_CHECK_ERROR(resultState) \
+    if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
+        vm.nativeExitDepth = _oldExitDepth; \
+        return NIL_VAL; \
+    }
+
+// 4. Iteration reset: Clear the stack back to the stable start point for the next loop
+#define VM_CALLBACK_RESET_STACK() \
+    vm.stackTop = _callbackStackStart
+
+// 5. Final Teardown: Restore the exit depth before returning a final value
+#define VM_CALLBACK_EXIT() \
+    vm.nativeExitDepth = _oldExitDepth
+
+
 VM vm;
 InterpretResult run();
 //void initArrayMethods();
@@ -54,20 +80,48 @@ void setLastError(int errorNum, const char* format, ...) {
     if (len < 0) len = 0;
     if (len >= (int)sizeof(buffer)) len = sizeof(buffer) - 1;
 
-    tableSet(&vm.globals,
-            copyString("errno", 5),
-            NUMBER_VAL((double)errorNum));
+    tableSet(&vm.globals, vm.errnoString, NUMBER_VAL((double)errorNum));
 
-    tableSet(&vm.globals,
-            copyString("errstr", 6),
-            OBJ_VAL(copyString(buffer, len)));
+    ObjString* errstrVal = copyString(buffer, len);
+    push(OBJ_VAL(errstrVal));
+
+    tableSet(&vm.globals, vm.errstrString, OBJ_VAL(errstrVal));
+    pop();
 }
 
 void clearLastError() {
     setLastError(0, "%s", "Success");
 }
 
+static Value resultInitNative(int argCount, Value* args) {
+    /*
+    printf("\n--- Result.init() Stack Layout ---\n");
+    for (int i = -2; i <= argCount; i++) {
+        printf("  args[%d]: ", i);
+        printValue(args[i]);
+        printf("\n");
+    }
+    printf("----------------------------------\n");
+
+    if (argCount != 3) {
+        runtimeError("Result.init() expects exactly 3 arguments (ok, val, err).");
+        return NIL_VAL;
+    }
+    */
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    tableSet(&instance->fields, vm.okString, args[0]);
+    tableSet(&instance->fields, vm.valString, args[1]);
+    tableSet(&instance->fields, vm.errString, args[2]);
+
+    return args[-1];
+}
+
 static Value createResult(Value value, Value errval, bool isok) {
+    push(value);
+    push(errval);
+
     Value resultValue;
 
     if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
@@ -80,9 +134,12 @@ static Value createResult(Value value, Value errval, bool isok) {
         tableSet(&result->fields, copyString("err", 3), errval);
 
         pop();
+        popn(2);
         return OBJ_VAL(result);
     }
     // shouldnt happen, class is defined in initVM()
+    
+    popn(2);
     return NIL_VAL;
 }
 
@@ -94,14 +151,61 @@ static Value errorResult(const char* format, ...) {
     va_end(args);
 
     ObjString* errstr = copyString(buffer, (int)strlen(buffer));
-    push(OBJ_VAL(errstr));
     Value res = createResult(NIL_VAL, OBJ_VAL(errstr), false);
-    pop();
     return res;
 }
 
 static Value okResult(Value value) {
     return createResult(value, NIL_VAL, true);
+}
+
+static Value resultUnwrapNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("Result.unwrap() called on a non-instance object.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    Value okVal;
+
+    tableGet(&instance->fields, vm.okString, &okVal);
+
+    if (isFalsey(okVal)) {
+        Value errVal;
+        tableGet(&instance->fields, vm.errString, &errVal);
+
+        if (IS_STRING(errVal)) {
+            runtimeError("Panic: Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
+        } else {
+            runtimeError("Panic: Tried to unwrap an error Result.");
+        }
+        return NIL_VAL;
+    }
+
+    Value successVal;
+    tableGet(&instance->fields, vm.valString, &successVal);
+
+    return successVal;
+}
+
+static Value resultUnwrapOrNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("Result.unwrap_or() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    Value okVal;
+
+    tableGet(&instance->fields, vm.okString, &okVal);
+
+    if (!isFalsey(okVal)) {
+        Value successVal;
+        tableGet(&instance->fields, vm.valString, &successVal);
+        return successVal;
+    }
+
+    return args[1];
 }
 
 static uint32_t valueToUint32(Value value) {
@@ -132,6 +236,77 @@ static Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
+static Value objectEachNative(int argCount, Value* args) {
+    if (argCount < 1 | !IS_CLOSURE(args[0])) {
+        runtimeError("Expected a closure callback.");
+        return NIL_VAL;
+    }
+
+    Value receiver = args[-1];
+    ObjClosure* callback = AS_CLOSURE(args[0]);
+
+    Value iterMethod;
+    if (tableGet(&vm.strings, copyString("iter", 4), &iterMethod)) {
+        // invoke iter via vmcall and run() to get the iterator object
+    }
+    Value iteratorObj = pop();
+
+    int oldExitDepth = vm.nativeExitDepth;
+
+    while (true) {
+        // call iteratorObj.done()
+        // if it returns true, break;
+
+        // call iteratorObj.next() to get the current item
+        Value item = pop();
+
+        push(OBJ_VAL(callback));
+        push(item);
+        vm.nativeExitDepth = vm.frameCount;
+
+        if (vmCall(callback, 1)) {
+            InterpretResult state = run();
+            if (state == INTERPRET_RUNTIME_ERROR) {
+                vm.nativeExitDepth = oldExitDepth;
+                return NIL_VAL;
+            }
+            pop();
+        }
+    }
+
+    vm.nativeExitDepth = oldExitDepth;
+    return NIL_VAL;
+}
+
+ObjClass* compileToClass(char* source, char* filename) {
+    return NULL;
+}
+
+static Value compileFileNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("compile_file() expects a string filename argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* filename = AS_STRING(args[0]);
+
+    char* source = readFile(filename->chars);
+    if (source == NULL) {
+        runtimeError("Could not open or read file '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    ObjClass* compiledClass = compileToClass(source, filename->chars);
+
+    free(source);
+
+    if (compiledClass == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(compiledClass);
+}
+
 static Value strNative(int argCount, Value* args) {
     if (argCount != 1) return NIL_VAL;
 
@@ -152,19 +327,6 @@ static Value strNative(int argCount, Value* args) {
 
     return OBJ_VAL(copyString(buffer, len));
 }
-
-/*
-static bool callNative(ObjNative* native, int argCount) {
-    Value* argsStart = vm.stackTop - argCount - 1;
-    Value result = native->function(argCount, argsStart);
-
-    //vm.stackTop -= argCount + 1;
-    vm.stackTop = argsStart;
-    printValue(result);
-    push(result);
-    return true;
-}
-*/
 
 static Value hasMethodNative(int argCount, Value* args) {
     if (argCount < 2 || (!IS_INSTANCE(args[-1])) || !IS_STRING(args[0])) {
@@ -381,10 +543,17 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
     push(valA);
     push(valB);
 
+    Value *stackStart = vm.stackTop;
+    int oldExitDepth = vm.nativeExitDepth;
     vm.nativeExitDepth = vm.frameCount;
 
     if (vmCall(callback, 2)) {
-        run();
+        InterpretResult state = run();
+        if (state == INTERPRET_RUNTIME_ERROR) {
+            vm.nativeExitDepth = oldExitDepth;
+            return 0;
+        }
+
         Value result = pop();
 
         vm.stackTop = comparisonStackBase;
@@ -481,34 +650,40 @@ static Value arrayHasNative(int argCount, Value* args) {
 }
 
 static Value arrayFindNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) return NIL_VAL;
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
+        runtimeError("Expected a closure callback argument for find().");
+        return NIL_VAL;
+    }
+
     ObjArray* array = AS_ARRAY(args[-1]);
     ObjClosure* callback = AS_CLOSURE(args[0]);
 
-    Value* stackStart = vm.stackTop;
+    VM_CALLBACK_INIT();
 
     for (int i = 0; i < array->count; i++) {
 
+        push(OBJ_VAL(callback));
         push(array->values[i]);
 
-        vm.nativeExitDepth = vm.frameCount; // - 1;
-
+        VM_CALLBACK_ENTER();
 
         if (vmCall(callback, 1)) {
-            InterpretResult result_state = run();
+            InterpretResult state = run();
+
+            VM_CALLBACK_CHECK_ERROR(state);
 
             Value result = pop();
 
-
             if (!isFalsey(result)) {
-                vm.stackTop = stackStart;
+                VM_CALLBACK_RESET_STACK();
+                VM_CALLBACK_EXIT();
                 return array->values[i];
             }
         }
-        vm.stackTop = stackStart;
+        VM_CALLBACK_RESET_STACK();
     }
 
-    vm.stackTop = stackStart;
+    VM_CALLBACK_EXIT();
     return NIL_VAL;
 }
 
@@ -519,20 +694,24 @@ static Value arrayEachNative(int argCount, Value* args) {
     push(OBJ_VAL(array));
     ObjClosure* callback = AS_CLOSURE(args[0]);
 
-    Value* stackStart = vm.stackTop;
+    VM_CALLBACK_INIT();
 
     for (int i = 0; i < array->count; i++) {
         push(args[0]);
         push(array->values[i]);
 
-        vm.nativeExitDepth = vm.frameCount;
+        VM_CALLBACK_ENTER();
 
         if (vmCall(callback, 1)) {
-            run();
+            InterpretResult state = run();
+
+            VM_CALLBACK_CHECK_ERROR(state);
         }
 
-        vm.stackTop = stackStart;
+        VM_CALLBACK_RESET_STACK();
     }
+
+    VM_CALLBACK_EXIT();
     return pop();
 }
 
@@ -573,21 +752,42 @@ static Value arrayReduceNative(int argCount, Value* args) {
         acc = array->values[0];
     }
 
+    // 1. pin the accumulator
+    push(acc);
+
+    // 2. init macro: captures vm.stackStop after acc has been pinned
+    VM_CALLBACK_INIT();
+
     for (int i = startindex; i < array->count; i++) {
         push(callback);
-        push(acc);
+
+        // safely read the current accumulator from its pinned stack slot.
+        // Since _callbackStackStart points right after acc,
+        // _callbackStackStart[-1] is always our up-to-date accumulator.
+        push(_callbackStackStart[-1]);
         push(array->values[i]);
 
-        if (callValue(callback, 2)) {
-            vm.nativeExitDepth = vm.frameCount - 1;
+        // set the exit depth before the call pushes the new frame
+        VM_CALLBACK_ENTER();
 
+        if (callValue(callback, 2)) {
             InterpretResult res = run();
 
-            acc = pop();
+            // guard against runtime panics inside the closure
+            VM_CALLBACK_CHECK_ERROR(res);
+
+            // update our pinned accumulator slot with the callback's return value
+            _callbackStackStart[-1] = peek(0);
         }
+
+        // instantly clears the callback elements and return values
+        VM_CALLBACK_RESET_STACK();
     }
 
-    return acc;
+    // 3. teardown: restore the original native exit depth;
+    VM_CALLBACK_EXIT();
+
+    return pop();
 }
 
 static Value arrayFilterNative(int argCount, Value* args) {
@@ -597,23 +797,33 @@ static Value arrayFilterNative(int argCount, Value* args) {
 
     ObjArray* original = AS_ARRAY(args[-1]);
     Value callback = args[0];
+    
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
+
+    VM_CALLBACK_INIT();
 
     for (int i = 0; i < original->count; i++) {
         push(callback);
         push(original->values[i]);
 
-        if (callValue(callback, 1)) {
-            vm.nativeExitDepth = vm.frameCount - 1;
+        VM_CALLBACK_ENTER();
 
+        if (callValue(callback, 1)) {
             InterpretResult res = run();
 
+            VM_CALLBACK_CHECK_ERROR(res);
+            
             if (!isFalsey(pop())) {
                 arrayAppend(result, original->values[i]);
             }
         }
+
+        VM_CALLBACK_RESET_STACK();
     }
+
+    VM_CALLBACK_EXIT();
+
     return pop();
 }
 
@@ -632,30 +842,40 @@ static Value arrayIsEmptyNative(int argCount, Value* args) {
 
 static Value arrayMapNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
+        runtimeError("Expected a closure callback argument for map().");
         return NIL_VAL;
     }
 
     ObjArray* original = AS_ARRAY(args[-1]);
-    Value callback = args[0];
+    ObjClosure* callback = AS_CLOSURE(args[0]);
+    
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
+    VM_CALLBACK_INIT();
+
     for (int i = 0; i < original->count; i++) {
-        push(callback);
+        push(OBJ_VAL(callback));
         push(original->values[i]);
 
-        if (callValue(callback, 1)) {
-            vm.nativeExitDepth = vm.frameCount - 1;
+        VM_CALLBACK_ENTER();
 
+        //if (callValue(callback, 1)) {
+        if (vmCall(callback, 1)) {
             InterpretResult res = run();
+
+            VM_CALLBACK_CHECK_ERROR(res);
 
             Value testResult = peek(0);
             arrayAppend(result, testResult);
-            pop();
         }
+
+        VM_CALLBACK_RESET_STACK();
     }
-    pop();
-    return OBJ_VAL(result);
+
+    VM_CALLBACK_EXIT();
+
+    return pop();
 }
 
 static Value arrayReverseNative(int argCount, Value* args) {
@@ -675,11 +895,24 @@ static Value arrayReverseNative(int argCount, Value* args) {
     return args[-1];
 }
 
+static void flattenDeepHelper(ObjArray* result, ObjArray* current) {
+    for (int i = 0; i < current->count; i++)  {
+        Value item = current->values[i];
+
+        if (IS_ARRAY(item)) {
+            flattenDeepHelper(result, AS_ARRAY(item));
+        } else {
+            arrayAppend(result, item);
+        }
+    }
+}
+
 static Value arrayFlattenNative(int argCount, Value* args) {
     ObjArray* source = AS_ARRAY(args[-1]);
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
+    /*
     for (int i = 0; i < source->count; i++) {
         Value item = source->values[i];
 
@@ -692,6 +925,10 @@ static Value arrayFlattenNative(int argCount, Value* args) {
             arrayAppend(result, item);
         }
     }
+    */
+
+    flattenDeepHelper(result, source);
+
     return pop();
 }
 
@@ -813,8 +1050,9 @@ static Value stringSplitNative(int argCount, Value* args) {
     }
 
     Value val = args[0];
+    ObjString* receiver = AS_STRING(args[-1]);
+
     if (IS_STRING(val)) {
-        ObjString* receiver = AS_STRING(args[-1]);
         ObjString* sep = AS_STRING(args[0]);
 
         ObjArray* result = newArray();
@@ -824,7 +1062,9 @@ static Value stringSplitNative(int argCount, Value* args) {
         if (sep->length == 0) {
             for (int i = 0; i < receiver->length; i++) {
                 ObjString* charStr = copyString(receiver->chars + i, 1);
+                push(OBJ_VAL(charStr));
                 arrayAppend(result, OBJ_VAL(charStr));
+                pop();
             }
             return pop();
         }
@@ -845,16 +1085,18 @@ static Value stringSplitNative(int argCount, Value* args) {
         }
 
         ObjString* lastSegment = copyString(text, (int)strlen(text));
+        push(OBJ_VAL(lastSegment));
         arrayAppend(result, OBJ_VAL(lastSegment));
+        pop();
+
         return pop();
     } else if (IS_NUMBER(val)) {
         int split_size = (int)AS_NUMBER(val);
-        if (split_size < 0) {
+        if (split_size <= 0) {
             runtimeError("split size must be > 0.");
             return NIL_VAL;
         }
 
-        ObjString* receiver = AS_STRING(args[-1]);
         ObjArray* array = newArray();
         push(OBJ_VAL(array));
         
@@ -865,12 +1107,17 @@ static Value stringSplitNative(int argCount, Value* args) {
             int current_size = (rem < split_size) ? rem : split_size;
 
             ObjString* str = copyString(&receiver->chars[index], current_size);
+            push(OBJ_VAL(str));
             arrayAppend(array, OBJ_VAL(str));
+            pop();
+
             index += split_size;
         }
 
         return pop();
     }
+    runtimeError("split() expects a string or positive number argument.");
+    return NIL_VAL;
 }
 
 static Value stringTrimNative(int argCount, Value* args) {
@@ -956,6 +1203,11 @@ static Value stringLenNative(int argCount, Value* args) {
 static Value arrayStringNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
+
+    if (count == 0) {
+        return OBJ_VAL(copyString("", 0));
+    }
+
     uint8_t* buffer = ALLOCATE(uint8_t, count);
 
     for (int i = 0; i < count; i++) {
@@ -973,7 +1225,10 @@ static Value arrayStringNative(int argCount, Value* args) {
         }
         buffer[i] = (uint8_t)num;
     }
-    return OBJ_VAL(takeString((char*)buffer, count));
+    ObjString* string = copyString((char*)buffer, count);
+    FREE_ARRAY(uint8_t, buffer, count);
+
+    return OBJ_VAL(string);
 }
 
 static Value arrayJoinNative(int argCount, Value* args) {
@@ -987,43 +1242,40 @@ static Value arrayJoinNative(int argCount, Value* args) {
 
     if (array->count == 0) return OBJ_VAL(copyString("", 0));
 
-    int totalLength = 0;
+    int capacity = 32;
+    int length = 0;
+    char* buffer = ALLOCATE(char, capacity);
+
     for (int i = 0; i < array->count; i++) {
         Value item = array->values[i];
 
         ObjString* s = valueToString(item);
         push(OBJ_VAL(s));
-        totalLength += s->length;
 
-        if (i < array->count - 1) {
-            totalLength += sep->length;
+        int sepLen = (i < array->count - 1) ? sep->length : 0;
+        int neededCapacity = length + s->length + sepLen + 1;
+
+        if (neededCapacity > capacity) {
+            int oldCapacity = capacity;
+            capacity = neededCapacity * 2;
+            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
+        }
+
+        memcpy(buffer + length, s->chars, s->length);
+        length += s->length;
+
+        pop();
+
+        if (sepLen > 0) {
+            memcpy(buffer + length, sep->chars, sepLen);
+            length += sepLen;
         }
     }
 
-    char* buffer = (char*)malloc(totalLength + 1);
-    if (buffer == NULL) {
-        runtimeError("Unable to allocate memory.");
-        exit(1);
-    }
-    char* current = buffer;
+    buffer = GROW_ARRAY(char, buffer, capacity, length + 1);
+    buffer[length] = '\0';
 
-    for (int i = 0; i < array->count; i++) {
-        Value itemStr = vm.stackTop[-array->count + i];
-        ObjString* s = AS_STRING(itemStr);
-
-        memcpy(current, s->chars, s->length);
-        current += s->length;
-
-        if (i < array->count - 1) {
-            memcpy(current, sep->chars, sep->length);
-            current += sep->length;
-        }
-    }
-    *current = '\0';
-
-    ObjString* result = takeString(buffer, totalLength);
-
-    popn(array->count);
+    ObjString* result = takeString(buffer, length);
 
     return OBJ_VAL(result);
 
@@ -1081,7 +1333,6 @@ void defineGlobal(const char* name, Value value) {
 void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
-    //tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
     tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
 
     pop();
@@ -1126,7 +1377,7 @@ static Value systemExitNative(int argCount, Value* args) {
         code = (int)AS_NUMBER(args[1]);
     }
     exit(code);
-    return NIL_VAL; // technically never reached
+    //return NIL_VAL; // technically never reached
 }
 
 static Value systemGCNative(int argCount, Value* args) {
@@ -1169,21 +1420,29 @@ static Value systemMemNative(int argCount, Value* args) {
     if (!f) {
         int errsv = errno;
         char *errmsg = strerror(errsv);
+        setLastError(errsv, "%s", errmsg);
         runtimeError("Error reading statm: %s\n", errmsg);
         pop();
         return NIL_VAL;
     }
 
-    if (7 != fscanf(f, "%ld %ld %ld %ld %ld %ld %ld",
+    if (7 != fscanf(f, "%lu %lu %lu %lu %lu %lu %lu",
                 &res.size, &res.resident, &res.share, &res.text,
                 &res.lib, &res.data, &res.dt)) {
         int errsv = errno;
         char *errmsg = strerror(errsv);
+        setLastError(errsv, "%s", errmsg);
         runtimeError("Error parsing statm: %s\n", errmsg);
+        fclose(f);
+        pop();
         return NIL_VAL;
     }
+
+    fclose(f);
+
     ObjString* key;
     double val;
+
     key = copyString("size", 4);
     push(OBJ_VAL(key));
     val = res.size;
@@ -1236,14 +1495,12 @@ static Value systemMemNative(int argCount, Value* args) {
     tableSet(&memmap->items, key, NUMBER_VAL(val));
     popn(2);
     */
-    pop();
-    return OBJ_VAL(memmap);
+    return pop();
 }
 
 static Value fileCloseNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
-    if (inst->foreignPtr == stdout || inst->foreignPtr == stderr) return NIL_VAL;
-    if (inst->foreignPtr != NULL) {
+    if (inst->foreignPtr != stdout && inst->foreignPtr != stderr && inst->foreignPtr != NULL) {
         fclose((FILE*)inst->foreignPtr);
         inst->foreignPtr = NULL;
     }
@@ -1259,19 +1516,31 @@ static Value fileReadNative(int argCount, Value* args) {
 
     if (argCount >= 1 && IS_NUMBER(args[0])) {
         length = (int)AS_NUMBER(args[0]);
+        if (length < 0) {
+            return errorResult("%s", "Read length cannot be negative.");
+        }
     } else {
-        fseek(handle, 0L, SEEK_END);
-        length = ftell(handle);
+        if (fseek(handle, 0L, SEEK_END) != 0) {
+            return errorResult("%s", "Cannot seek file stream.");
+        }
+        long tellsize = ftell(handle);
+        if (tellsize < 0) {
+            return errorResult("%s", "Cannot determine stream size.");
+        }
+        length = (int)tellsize;
         rewind(handle);
     }
 
     char* buffer = (char*)malloc(length + 1);
+    if (buffer == NULL) {
+        return errorResult("%s", "Could not allocate read buffer.");
+    }
+
     size_t bytesRead = fread(buffer, 1, length, handle);
 
-    if (bytesRead == 0) {
+    if (bytesRead == 0 && ferror(handle)) {
         free(buffer);
-        return errorResult("%s", "No bytes read.");
-        //return NIL_VAL;
+        return errorResult("%s", "Error reading data from file descriptor.");
     }
 
     ObjString* result = copyString(buffer, (int)bytesRead);
@@ -1283,11 +1552,15 @@ static Value fileReadNative(int argCount, Value* args) {
 static Value fileReadlineNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return NIL_VAL;
+
+    if (!handle) return errorResult("%s", "No file handle.");
 
     char lineBuffer[1024];
     if (fgets(lineBuffer, sizeof(lineBuffer), handle) == NULL) {
-        return errorResult("%s", "Unable to read line.");
+        if (ferror(handle)) {
+            return errorResult("%s", "Error reading data from file stream.");
+        }
+        return okResult(OBJ_VAL(copyString("", 0)));
     }
 
     return okResult(OBJ_VAL(copyString(lineBuffer, (int)strlen(lineBuffer))));
@@ -1303,7 +1576,6 @@ static Value fileWriteNative(int argCount, Value* args) {
     FILE* handle = (FILE*)inst->foreignPtr;
 
     if (handle == NULL) {
-        //runtimeError("File handle is NULL.");
         return errorResult("%s", "File handle is NULL.");
     }
 
@@ -1315,41 +1587,65 @@ static Value fileWriteNative(int argCount, Value* args) {
 
     size_t written = fwrite(str->chars, 1, str->length, handle);
 
-    fflush(handle);
+    //fflush(handle);
 
     return okResult(NUMBER_VAL((double)written));
-    //return args[0]; // return self for chaining
-    //return NIL_VAL;
 }
 
 static Value fileFlushNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     FILE* stream = (FILE*)instance->foreignPtr;
-    if (stream) fflush(stream);
+
+    if (!stream) {
+        return errorResult("%s", "File handle is NULL.");
+    }
+
+    if (fflush(stream) == EOF) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to flush stream: %s", strerror(errsv));
+    }
+
     return okResult(NIL_VAL);
 }
 
 static Value fileStderrNative(int argCount, Value* args) {
     Value fileClass;
     if (!tableGet(&vm.globals, copyString("File", 4), &fileClass)) {
+        runtimeError("Core 'File' class could not be found during stderr initialization.");
+        return NIL_VAL;
+    }
+
+    if (!IS_CLASS(fileClass)) {
+        runtimeError("Global 'File' identifier has been corrupted and is no longer a Class.");
         return NIL_VAL;
     }
 
     ObjInstance* instance = newInstance(AS_CLASS(fileClass));
     instance->foreignPtr = stderr;
+
     return OBJ_VAL(instance);
 }
 
 static Value fileOpenNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("File.open() expects t least a path string.");
+    /*
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("File.open() must be called as a class method.");
         return NIL_VAL;
     }
+
+    */
+    ObjClass* fileClass = AS_CLASS(args[-1]);
+
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        return errorResult("%s", "File.open() expects at least a path string.");
+    }
+
     const char* path = AS_CSTRING(args[0]);
     const char* mode = "r";
     FILE* handle = NULL;
 
-    if (argCount >= 1 && IS_STRING(args[1])) {
+    if (argCount >= 2 && IS_STRING(args[1])) {
         mode = AS_CSTRING(args[1]);
     }
 
@@ -1375,11 +1671,16 @@ static Value fileOpenNative(int argCount, Value* args) {
     }
     */
 
-    ObjClass* fileClass = AS_CLASS(args[-1]);
+    if (handle == NULL) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to open file '%s': %s", path, strerror(errsv));
+    }
+
     ObjInstance* fileInst = newInstance(fileClass);
     fileInst->foreignPtr = handle;
 
-    return OBJ_VAL(fileInst);
+    return okResult(OBJ_VAL(fileInst));
 }
 
 static Value fileMkdirNative(int argCount, Value* args) {
@@ -1388,6 +1689,7 @@ static Value fileMkdirNative(int argCount, Value* args) {
         return NIL_VAL;
     }
     int mode = 0755;
+
     if (argCount > 1 && IS_NUMBER(args[1])) {
         mode = (int)AS_NUMBER(args[1]);
     }
@@ -1397,15 +1699,23 @@ static Value fileMkdirNative(int argCount, Value* args) {
     if (mkdir(path, mode) == 0) {
         return BOOL_VAL(true);
     }
+
     setLastError(errno, "%s", strerror(errno));
     return BOOL_VAL(false);
 }
 
 static Value fileLoadNative(int argCount, Value* args) {
-    Value pathValue;
+    if (argCount < 1) {
+        runtimeError("File.load() expects a string path.");
+        return NIL_VAL;
+    }
+
+
+    Value pathValue = NIL_VAL;
+
     if (IS_STRING(args[0])) {
         pathValue = args[0];
-    } else if (argCount >= 1 && IS_STRING(args[1])) {
+    } else if (argCount >= 2 && IS_STRING(args[1])) {
         pathValue = args[1];
     } else {
         runtimeError("File.load() expects a string path.");
@@ -1415,11 +1725,24 @@ static Value fileLoadNative(int argCount, Value* args) {
     const char* path = AS_CSTRING(pathValue);
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
+        setLastError(errno, "%s", "Failed to seek file stream.");
         return NIL_VAL;
     }
 
-    fseek(file, 0L, SEEK_END);
-    size_t fileSize = ftell(file);
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        fclose(file);
+        setLastError(errno, "%s", "Failed to seek file stream.");
+        return NIL_VAL;
+    }
+
+    long signedSize = ftell(file);
+    if (signedSize < 0) {
+        fclose(file);
+        setLastError(errno, "%s", "Invalid file stream length or directory handle.");
+        return NIL_VAL;
+    }
+
+    size_t fileSize = (size_t)signedSize;
     rewind(file);
 
     char* buffer = (char*)malloc(fileSize + 1);
@@ -3062,7 +3385,9 @@ static Value structUnpackNative(int argCount, Value* args) {
                     }
                     */
                     ObjString* qstr = copyString((const char*)buffer + offset, 8);
+                    push(OBJ_VAL(qstr));
                     arrayAppend(results, OBJ_VAL(qstr));
+                    pop();
                     offset += 8;
                 }
                 break;
@@ -3077,7 +3402,9 @@ static Value structUnpackNative(int argCount, Value* args) {
                     if (offset + width > data->length) width = data->length - offset;
 
                     ObjString* str = copyString((const char*)buffer + offset, width);
+                    push(OBJ_VAL(str));
                     arrayAppend(results, OBJ_VAL(str));
+                    pop();
                     offset += width;
                 }
                 break;
@@ -3209,6 +3536,27 @@ static Value chrNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(c_str, 1));
 }
 
+void initResultClass() {
+    ObjString* className = copyString("Result", 6);
+    push(OBJ_VAL(className));
+
+    vm.resultClass = newClass(className);
+    vm.resultClass->kind = CLASS_RESULT;
+    vm.resultClass->superclass = vm.objectClass;
+    push(OBJ_VAL(vm.resultClass));
+
+    tableSet(&vm.globals, className, OBJ_VAL(vm.resultClass));
+
+    defineNativeMethod(vm.resultClass, "init", resultInitNative);
+    defineNativeMethod(vm.resultClass, "unwrap", resultUnwrapNative);
+    defineNativeMethod(vm.resultClass, "unwrap_or", resultUnwrapOrNative);
+
+    vm.okString = copyString("ok", 2);
+    vm.valString = copyString("val", 3);
+    vm.errString = copyString("err", 3);
+    popn(2);
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -3234,7 +3582,10 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.strings);
     //initTable(&vm.giTypes);
 
+    vm.errnoString = copyString("errno", 5);
+    vm.errstrString = copyString("errstr", 6);
     clearLastError();
+
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
     vm.toString = NULL;
@@ -3273,12 +3624,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass->superclass = NULL;
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
 
-    string = copyString("Result", 6);
-    ObjClass* resultClass = newClass(string);
-    resultClass->superclass = vm.objectClass;
-    push(OBJ_VAL(resultClass));
-    tableSet(&vm.globals, string, OBJ_VAL(resultClass));
-    pop();
 
     /*
     string = copyString("Number", 6);
@@ -3332,6 +3677,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
     defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
+    initResultClass();
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
     initFileLibrary();
@@ -3343,7 +3689,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initStringClass();
     initIOClass();
     initStructClass();
-
 }
 
 void freeVM() {
@@ -3518,11 +3863,45 @@ static bool callValue(Value callee, int argCount) {
 }
 
 static bool isFalsey(Value value) {
-    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+    if (IS_NIL(value)) return true;
+    if (IS_BOOL(value)) return !AS_BOOL(value);
+
+    if (IS_INSTANCE(value)) {
+        ObjInstance* instance = AS_INSTANCE(value);
+
+        if (instance->obj.klass->kind = CLASS_RESULT) {
+            Value okVal;
+
+            if (tableGet(&instance->fields, vm.okString, &okVal)) {
+                return isFalsey(okVal);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool isTruthy(Value value) {
-    return !IS_NIL(value) || (IS_BOOL(value) && AS_BOOL(value));
+    if (IS_NIL(value)) return true;
+    if (IS_BOOL(value)) return AS_BOOL(value);
+
+    if (IS_INSTANCE(value)) {
+        ObjInstance* instance = AS_INSTANCE(value);
+        Value resultValue;
+
+        if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
+            //if (instance->obj.klass == AS_CLASS(resultValue)->obj.klass) {
+            if (instance->obj.klass == AS_CLASS(resultValue)) {
+                Value okVal;
+
+                if (tableGet(&instance->fields, vm.okString, &okVal)) {
+                    return isTruthy(okVal);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
@@ -5025,8 +5404,9 @@ InterpretResult run() {
                             return INTERPRET_RUNTIME_ERROR;
                         }
                         tableSet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), newValue);
-                        popn(3);
-                        push(newValue);
+                        vm.stackTop[-3] = newValue;
+                        popn(2);
+                        //push(newValue);
                         break;
                     } else if (!IS_ARRAY(targetValue)) {
                         runtimeError("Only maps and arrays support subscript assignment.");

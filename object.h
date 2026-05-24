@@ -109,10 +109,17 @@ typedef Value (*ForeignGetFn)(ObjInstance* instance, ObjString* name);
 typedef bool (*ForeignSetFn)(ObjInstance* instance, ObjString* name, Value value);
 typedef void (*DestructorFn)(ObjInstance* instance);
 
+typedef enum {
+    CLASS_USER_DEFINED,
+    CLASS_RESULT,
+    CLASS_OPTION
+} ClassKind;
+
 typedef struct ObjClass {
     Obj obj;
     ObjString* name;
     Table methods;
+    ClassKind kind;
     struct ObjClass* superclass;
 
     void* foreignData;
