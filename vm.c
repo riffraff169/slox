@@ -69,6 +69,7 @@ static bool callValue(Value callee, int argCount);
 Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
+static bool isTruthy(Value value);
 
 void setLastError(int errorNum, const char* format, ...) {
     char buffer[1024];
@@ -205,7 +206,52 @@ static Value resultUnwrapOrNative(int argCount, Value* args) {
         return successVal;
     }
 
-    return args[1];
+    return args[0];
+}
+
+static Value optionInitNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    tableSet(&instance->fields, copyString("is_some", 7), args[0]);
+    tableSet(&instance->fields, copyString("val", 3), args[1]);
+
+    return args[-1];
+}
+
+static Value optionUnwrapNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    Value is_some;
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+
+    if (!AS_BOOL(is_some)) {
+        runtimeError("CRITICAL ERROR: Attempted to unwrap a 'None' Option.");
+        return NIL_VAL;
+    }
+
+    Value val;
+    tableGet(&instance->fields, copyString("val", 3), &val);
+    return val;
+}
+
+static Value optionUnwrapOrNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("Result.unwrap_or() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    Value is_some;
+
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+
+    if (isTruthy(is_some)) {
+        Value val;
+        tableGet(&instance->fields, vm.valString, &val);
+        return val;
+    }
+
+    return args[0];
 }
 
 static uint32_t valueToUint32(Value value) {
@@ -3536,6 +3582,25 @@ static Value chrNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(c_str, 1));
 }
 
+void  initOptionClass() {
+    ObjString* className = copyString("Option", 6);
+    push(OBJ_VAL(className));
+
+    vm.optionClass = newClass(className);
+    vm.optionClass->kind = CLASS_OPTION;
+    vm.optionClass->superclass = vm.objectClass;
+    push(OBJ_VAL(vm.optionClass));
+
+    tableSet(&vm.globals, className, OBJ_VAL(vm.optionClass));
+
+    defineNativeMethod(vm.optionClass, "init", optionInitNative);
+    defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
+    defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
+    vm.isSomeString = copyString("is_some", 7);
+
+    popn(2);
+}
+
 void initResultClass() {
     ObjString* className = copyString("Result", 6);
     push(OBJ_VAL(className));
@@ -3678,6 +3743,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initResultClass();
+    initOptionClass();
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
     initFileLibrary();
@@ -3869,7 +3935,7 @@ static bool isFalsey(Value value) {
     if (IS_INSTANCE(value)) {
         ObjInstance* instance = AS_INSTANCE(value);
 
-        if (instance->obj.klass->kind = CLASS_RESULT) {
+        if (instance->obj.klass->kind == CLASS_RESULT) {
             Value okVal;
 
             if (tableGet(&instance->fields, vm.okString, &okVal)) {
@@ -3877,27 +3943,43 @@ static bool isFalsey(Value value) {
             }
             return true;
         }
+        if (instance->obj.klass->kind == CLASS_OPTION) {
+            Value is_some;
+
+            if (tableGet(&instance->fields, copyString("is_some", 7), &is_some)) {
+                return isFalsey(is_some);
+            }
+        }
     }
     return false;
 }
 
 static bool isTruthy(Value value) {
-    if (IS_NIL(value)) return true;
+    if (IS_NIL(value)) return false;
     if (IS_BOOL(value)) return AS_BOOL(value);
 
     if (IS_INSTANCE(value)) {
         ObjInstance* instance = AS_INSTANCE(value);
-        Value resultValue;
 
-        if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
-            //if (instance->obj.klass == AS_CLASS(resultValue)->obj.klass) {
-            if (instance->obj.klass == AS_CLASS(resultValue)) {
-                Value okVal;
+        if (instance->obj.klass->kind = CLASS_RESULT) {
+            Value resultValue;
 
-                if (tableGet(&instance->fields, vm.okString, &okVal)) {
-                    return isTruthy(okVal);
+            if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
+                if (instance->obj.klass == AS_CLASS(resultValue)) {
+                    Value okVal;
+
+                    if (tableGet(&instance->fields, vm.okString, &okVal)) {
+                        return isTruthy(okVal);
+                    }
+                    return false;
                 }
-                return false;
+            }
+        }
+        if (instance->obj.klass->kind == CLASS_OPTION) {
+            Value is_some;
+
+            if (tableGet(&instance->fields, vm.isSomeString, &is_some)) {
+                return isTruthy(is_some);
             }
         }
     }

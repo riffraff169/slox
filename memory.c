@@ -272,9 +272,11 @@ static void markRoots() {
     markObject((Obj*)vm.errnoString);
     markObject((Obj*)vm.errstrString);
     markObject((Obj*)vm.resultClass);
+    markObject((Obj*)vm.optionClass);
     markObject((Obj*)vm.okString);
     markObject((Obj*)vm.valString);
     markObject((Obj*)vm.errString);
+    markObject((Obj*)vm.isSomeString);
 }
 
 static void traceReferences() {

@@ -79,6 +79,7 @@ typedef struct {
     ObjString* valString;
     ObjString* errString;
     ObjClass* optionClass;
+    ObjString* isSomeString;
 } VM;
 
 typedef enum {
