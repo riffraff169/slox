@@ -3949,41 +3949,14 @@ static bool isFalsey(Value value) {
             if (tableGet(&instance->fields, copyString("is_some", 7), &is_some)) {
                 return isFalsey(is_some);
             }
+            return true;
         }
     }
     return false;
 }
 
 static bool isTruthy(Value value) {
-    if (IS_NIL(value)) return false;
-    if (IS_BOOL(value)) return AS_BOOL(value);
-
-    if (IS_INSTANCE(value)) {
-        ObjInstance* instance = AS_INSTANCE(value);
-
-        if (instance->obj.klass->kind = CLASS_RESULT) {
-            Value resultValue;
-
-            if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
-                if (instance->obj.klass == AS_CLASS(resultValue)) {
-                    Value okVal;
-
-                    if (tableGet(&instance->fields, vm.okString, &okVal)) {
-                        return isTruthy(okVal);
-                    }
-                    return false;
-                }
-            }
-        }
-        if (instance->obj.klass->kind == CLASS_OPTION) {
-            Value is_some;
-
-            if (tableGet(&instance->fields, vm.isSomeString, &is_some)) {
-                return isTruthy(is_some);
-            }
-        }
-    }
-    return true;
+    return !isFalsey(value);
 }
 
 static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
