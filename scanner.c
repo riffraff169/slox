@@ -9,6 +9,7 @@ typedef struct {
     const char* current;
     int line;
     int interpolationDepth;
+    const char* filename;
 } Scanner;
 
 Scanner scanner;
@@ -61,6 +62,7 @@ static Token makeToken(TokenType type) {
     token.start = scanner.start;
     token.length = (int)(scanner.current - scanner.start);
     token.line = scanner.line;
+    token.filename = scanner.filename;
     return token;
 }
 

@@ -69,6 +69,7 @@ ObjFunction* newFunction() {
     function->isVariadic = false;
     function->upvalueCount = 0;
     function->name = NULL;
+    function->filename = NULL;
     initChunk(&function->chunk);
 
     initValueArray(&function->defaults);

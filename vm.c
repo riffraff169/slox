@@ -1356,7 +1356,10 @@ void runtimeError(const char* format, ...) {
         ObjFunction* function = frame->closure->function;
         size_t instruction = frame->ip - function->chunk.code - 1;
         line = getLine(&function->chunk, instruction);
-        fprintf(stderr, "[line %d] in ", line);
+
+        const char* file = function->filename ? function->filename->chars : "unknown";
+
+        fprintf(stderr, "[%s:%d] in ", file, line);
         if (function->name == NULL) {
             fprintf(stderr, "script\n");
         } else {
@@ -1364,7 +1367,7 @@ void runtimeError(const char* format, ...) {
         }
     }
 
-    fprintf(stderr, "[line %d] in script\n", line);
+    //fprintf(stderr, "[line %d] in script\n", line);
     resetStack();
 }
 
@@ -3912,7 +3915,7 @@ static bool callValue(Value callee, int argCount) {
                     //printf("[CALLVALUE] OBJ_NATIVE\n");
                     NativeFn native = AS_NATIVE(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
-                    //if (vm.frameCount == 0) return false;
+                    if (vm.frameCount == 0) return false;
 
                     vm.stackTop -= argCount + 1;
                     push(result);
@@ -5046,6 +5049,8 @@ InterpretResult run() {
                         if (IS_CLASS(receiver)) {
                             ObjClass* klass = AS_CLASS(receiver);
                             if (invokeFromClass(klass, method, argCount)) {
+                                if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+
                                 frame = &vm.frames[vm.frameCount - 1];
                                 break;
                             }
@@ -5053,10 +5058,17 @@ InterpretResult run() {
 
                         // 2. Otherwise, look at the methods if its class (Instance call)
                         if (invokeFromClass(obj->klass, method, argCount)) {
+                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+
                             frame = &vm.frames[vm.frameCount - 1];
-                        } else if (!invoke(method, argCount) || vm.frameCount == 0) {
-                            return INTERPRET_RUNTIME_ERROR;
                         } else {
+                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+
+                            if (!invoke(method, argCount)) {
+                                return INTERPRET_RUNTIME_ERROR;
+                            }
+                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+
                             frame = &vm.frames[vm.frameCount - 1];
                         }
                         break;
@@ -5498,8 +5510,43 @@ InterpretResult run() {
 #undef BINARY_OP
 }
 
-InterpretResult interpret(const char* source) {
-    ObjFunction* function = compile(source);
+InterpretResult interpret(const char* source, const char* filename) {
+    const char* line = source;
+    while (strncmp(line, "include ", 8) == 0) {
+        char* startQuote = strchr(line, '"');
+        char* endQuote = startQuote ? strchr(startQuote + 1, '"') : NULL;
+
+        if (startQuote && endQuote) {
+            int len = endQuote - startQuote - 1;
+            char* incPath = malloc(len + 1);
+            if (incPath == NULL) {
+                fprintf(stderr, "Fatal Error: Out of memory allocating include path buffer.\n");
+                exit(74);
+            }
+
+            strncpy(incPath, startQuote + 1, len);
+            incPath[len] = '\0';
+
+            char* incSource = readFile(incPath);
+            if (incSource != NULL) {
+                interpret(incSource, incPath);
+                free(incSource);
+            }
+            free(incPath);
+        }
+
+        while (*line != '\n' && *line != '\0') line++;
+        if (*line == '\n') line++;
+    }
+
+    vm.frameCount = 0;
+    vm.stackTop = vm.stack;
+
+    ObjString* fileObj = copyString(filename, (int)strlen(filename));
+    push(OBJ_VAL(fileObj));
+
+    ObjFunction* function = compile(source, fileObj);
+    pop();
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
     push(OBJ_VAL(function));

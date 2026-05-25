@@ -26,7 +26,7 @@ static void repl() {
             add_history(line);
         }
 
-        interpret(line);
+        interpret(line, "repl");
         free(line);
         free(myhist);
     }
@@ -37,7 +37,8 @@ char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
         fprintf(stderr, "Could not open file \"%s\".\n", path);
-        exit(74);
+        return NULL;
+        //exit(74);
     }
 
     fseek(file, 0L, SEEK_END);
@@ -64,8 +65,10 @@ char* readFile(const char* path) {
 
 static void runFile(const char* path) {
     char* source = readFile(path);
-    InterpretResult result = interpret(source);
-    //free(source);
+    if (source == NULL) return;
+
+    InterpretResult result = interpret(source, path);
+    free(source);
 
     if (result == INTERPRET_COMPILE_ERROR) exit(65);
     if (result == INTERPRET_RUNTIME_ERROR) exit(70);
@@ -73,6 +76,14 @@ static void runFile(const char* path) {
 
 int main(int argc, const char* argv[], const char* env[]) {
     initVM(argc, argv, env);
+
+    char* stdlibSource = readFile("stdlib.lox");
+    if (stdlibSource != NULL) {
+        interpret(stdlibSource, "stdlib.lox");
+        free(stdlibSource);
+    } else {
+        printf("Warning: stdlib.lox not found. Proceeding with clean environment.\n");
+    }
 
     if (argc == 1) {
         repl();

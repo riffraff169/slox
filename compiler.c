@@ -234,6 +234,13 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
+
+    if (current != NULL) {
+        compiler->function->filename = current->function->filename;
+    } else {
+        //compiler->function->filename = "
+    }
+
     current = compiler;
     if (type != TYPE_SCRIPT) {
         current->function->name = copyString(parser.previous.start,
@@ -1635,16 +1642,26 @@ static void statement() {
     }
 }
 
-ObjFunction* compile(const char* source) {
+ObjFunction* compile(const char* source, ObjString* filename) {
     initScanner(source);
     Compiler compiler;
     initCompiler(&compiler, TYPE_SCRIPT);
+    current->function->filename = filename;
 
     parser.hadError = false;
     parser.panicMode = false;
 
     advance();
 
+    // 1. include phase
+    // the compiler ensure includes only happen at the top, but assumes the host
+    // environment already ran them
+    while (match(TOKEN_INCLUDE)) {
+        consume(TOKEN_STRING, "Expect string after 'include'.");
+        consume(TOKEN_SEMICOLON, "Expect ';' after include path.");
+    }
+
+    // 2. main compilation phase
     while (!match(TOKEN_EOF)) {
         declaration();
     }

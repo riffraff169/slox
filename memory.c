@@ -129,6 +129,10 @@ static void blackenObject(Obj* object) {
                 markObject((Obj*)function->name);
                 markArray(&function->defaults);
                 markArray(&function->chunk.constants);
+
+                if (function->filename != NULL) {
+                    markObject((Obj*)function->filename);
+                }
             }
             break;
         case OBJ_INSTANCE:

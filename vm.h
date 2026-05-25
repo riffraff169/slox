@@ -96,7 +96,7 @@ void initVM(int argc, const char* argv[], const char* env[]);
 void freeVM();
 bool vmCall(ObjClosure* closure, int argCount);
 InterpretResult run();
-InterpretResult interpret(const char* source);
+InterpretResult interpret(const char* source, const char* filename);
 void push(Value value);
 Value pop();
 Value peek(int distance);
