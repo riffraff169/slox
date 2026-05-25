@@ -38,6 +38,7 @@ ObjClass* newClass(ObjString* name) {
     klass->name = name;
     klass->superclass = vm.objectClass;
     initTable(&klass->methods);
+    initTable(&klass->fields);
 
     klass->foreignData = NULL;
     klass->callHandler = NULL;
@@ -70,6 +71,7 @@ ObjFunction* newFunction() {
     function->upvalueCount = 0;
     function->name = NULL;
     function->filename = NULL;
+    function->obj.klass = vm.functionClass;
     initChunk(&function->chunk);
 
     initValueArray(&function->defaults);
@@ -88,6 +90,7 @@ ObjNative* newNative(NativeFn function) {
     ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
     native->function = function;
     native->foreignData = NULL;
+    native->obj.klass = vm.nativeFunctionClass;
     return native;
 }
 

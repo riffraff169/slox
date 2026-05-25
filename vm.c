@@ -70,6 +70,7 @@ Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
 static bool isTruthy(Value value);
+static ObjClass* getClassForValue(Value value);
 
 void setLastError(int errorNum, const char* format, ...) {
     char buffer[1024];
@@ -375,24 +376,42 @@ static Value strNative(int argCount, Value* args) {
 }
 
 static Value hasMethodNative(int argCount, Value* args) {
-    if (argCount < 2 || (!IS_INSTANCE(args[-1])) || !IS_STRING(args[0])) {
-        runtimeError("has_method() expects an instance");
+    if (argCount != 1) {
+        runtimeError("has_method() expects exactly 1 argument (the method name).");
         return BOOL_VAL(false);
     }
-    Value instance = args[-1];
-    Value name = args[0];
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("has_method() expects a string argument for the method name.");
+        return BOOL_VAL(false);
+    }
+
+    Value receiver = args[-1];
+    ObjString* methodName = AS_STRING(args[0]);
+
+    ObjClass* klass = getClassForValue(receiver);
+    if (klass == NULL) {
+        return BOOL_VAL(false);
+    }
+
+    ObjClass* current = klass;
     Value method;
 
-    if (tableGet(&AS_INSTANCE(instance)->obj.klass->methods, AS_STRING(name), &method)) {
-        return BOOL_VAL(true);
+    while (current != NULL) {
+        if (tableGet(&current->methods, methodName, &method)) {
+            return BOOL_VAL(true);
+        }
+        current = current->superclass;
     }
     return BOOL_VAL(false);
 }
 
 static Value getMethodsNative(int argCount, Value* args) {
     Value receiver = args[-1];
-    ObjClass* klass = NULL;
+    ObjClass* klass = getClassForValue(receiver);
+    //ObjClass* klass = NULL;
 
+    /*
     if (IS_INSTANCE(receiver)) {
         klass = AS_INSTANCE(receiver)->obj.klass;
     } else if (IS_CLASS(receiver)) {
@@ -400,6 +419,7 @@ static Value getMethodsNative(int argCount, Value* args) {
     } else if (IS_OBJ(receiver)) {
         klass = AS_OBJ(receiver)->klass;
     }
+    */
 
     if (klass == NULL) {
         runtimeError("Cannot get methods of a non-object/non-class.");
@@ -1334,12 +1354,22 @@ static void resetStack() {
 }
 
 static ObjClass* getClassForValue(Value value) {
+    if (IS_NUMBER(value)) return vm.numberClass;
+    if (IS_BOOL(value)) return vm.boolClass;
+    if (IS_NIL(value)) return vm.nilClass;
+    if (IS_STRING(value)) return vm.stringClass;
+    if (IS_VEC3(value)) return vm.vec3Class;
+
+    if (IS_OBJ(value)) {
+        if (IS_CLASS(value)) return AS_CLASS(value);
+
+        return AS_OBJ(value)->klass;
+    }
+
     if (IS_INSTANCE(value)) return AS_INSTANCE(value)->obj.klass;
     if (IS_CLASS(value)) return AS_CLASS(value)->obj.klass;
-    if (IS_OBJ(value)) return AS_OBJ(value)->klass;
     if (IS_MAP(value)) return vm.mapClass;
     //if (IS_ARRAY(value)) return vm.arrayClass;
-    if (IS_STRING(value)) return vm.stringClass;
     return NULL;
 }
 
@@ -2034,20 +2064,26 @@ static Value getFieldNative(int argCount, Value* args) {
 
     Value receiver = args[-1];
     ObjString* fieldName = AS_STRING(args[0]);
+    Value value;
 
     if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-        Value value;
-        if (tableGet(&instance->fields, fieldName, &value)) {
+        if (tableGet(&AS_INSTANCE(receiver)->fields, fieldName, &value)) {
             return value;
         }
+    } else if (IS_CLASS(receiver)) {
+        if (tableGet(&AS_CLASS(receiver)->fields, fieldName, &value)) {
+            return value;
+        }
+    } else {
+        runtimeError("Only instance and classes can have fields.");
+        return NIL_VAL;
     }
 
     return NIL_VAL;
 }
 
 static Value setFieldNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_STRING(args[-1])) {
+    if (argCount != 2 || !IS_STRING(args[0])) {
         runtimeError("get_field() expects string, value arguments.");
         return NIL_VAL;
     }
@@ -2057,13 +2093,19 @@ static Value setFieldNative(int argCount, Value* args) {
     Value value = args[1];
 
     if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-        tableSet(&instance->fields, fieldName, value);
-        return value;
+        tableSet(&AS_INSTANCE(receiver)->fields, fieldName, value);
+    } else if (IS_CLASS(receiver)) {
+        tableSet(&AS_CLASS(receiver)->fields, fieldName, value);
+    } else {
+        runtimeError("Only instance and classes can have fields.");
+        return NIL_VAL;
     }
+    return value;
 
+    /*
     runtimeError("Cannot set fields on built-in types.");
     return NIL_VAL;
+    */
 }
 
 static Value getSuperclassNative(int argCount, Value* args) {
@@ -2073,21 +2115,57 @@ static Value getSuperclassNative(int argCount, Value* args) {
         return NIL_VAL;
     }
     */
-    Obj* obj = AS_OBJ(args[0]);
-    ObjClass* klass = NULL;
+    //printValue(args[-1]);
+    //printf("\n");
 
-    if (!IS_OBJ(args[0])) {
+    Value receiver = args[-1];
+    ObjClass* klass = getClassForValue(receiver);
+    //Obj* obj = AS_OBJ(args[-1]);
+
+    /*
+    if (IS_INSTANCE(receiver)) {
+        klass = AS_INSTANCE(receiver)->obj.klass;
+    } else if (IS_CLASS(receiver)) {
+        klass = AS_CLASS(receiver);
+    } else if (IS_OBJ(receiver)) {
+        klass = AS_OBJ(receiver)->klass;
+    }
+    */
+
+    if (klass == NULL) {
+        runtimeError("Cannot get superclass of a non-object type.");
+        return NIL_VAL;
+    }
+
+    if (klass->superclass != NULL) {
+        return OBJ_VAL(klass->superclass);
+    }
+
+    return NIL_VAL;
+
+    /*
+    if (!IS_OBJ(args[-1])) {
         runtimeError("get_superclass() expects an object.");
         return NIL_VAL;
     }
     
-    if (IS_CLASS(args[0])) {
-        klass = AS_CLASS(args[0]);
+    if (IS_CLASS(args[-1])) {
+        klass = AS_CLASS(args[-1]);
     }
 
-    if (IS_INSTANCE(args[0])) {
-        ObjInstance* instance = AS_INSTANCE(args[0]);
+    if (IS_INSTANCE(args[-1])) {
+        ObjInstance* instance = AS_INSTANCE(args[-1]);
         klass = instance->obj.klass;
+    }
+
+    if (obj->klass == NULL) {
+        printf("klass == NULL\n");
+        return NIL_VAL;
+    }
+
+    if (obj->klass->superclass == NULL) {
+        printf("superclass == NULL\n");
+        return NIL_VAL;
     }
 
     if (obj->klass != NULL)
@@ -2098,6 +2176,7 @@ static Value getSuperclassNative(int argCount, Value* args) {
     }
 
     return NIL_VAL;
+    */
 }
 
 static Value fromHexNative(int argCount, Value* args) {
@@ -3692,24 +3771,35 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass->superclass = NULL;
     tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
 
+    string = copyString("Function", 8);
+    vm.functionClass = newClass(string);
+    vm.functionClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.functionClass));
 
-    /*
+    string = copyString("Native", 6);
+    vm.nativeFunctionClass = newClass(string);
+    vm.nativeFunctionClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.nativeFunctionClass));
+
     string = copyString("Number", 6);
     vm.numberClass = newClass(string);
-    vm.numberClass->superclass = NULL;
+    vm.numberClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
 
-    string = copyString("Bool", 5);
+    string = copyString("Bool", 4);
     vm.boolClass = newClass(string);
-    vm.boolClass->superclass = NULL;
+    vm.boolClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
 
-    string = copyString("Nil", 5);
+    string = copyString("Nil", 3);
     vm.nilClass = newClass(string);
-    vm.nilClass->superclass = NULL;
+    vm.nilClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
-    */
 
+    string = copyString("Vec3", 4);
+    vm.vec3Class = newClass(string);
+    vm.vec3Class->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.vec3Class));
     //defineNative("get_class", objectClassMethod);
     
     /*
@@ -3743,7 +3833,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "get_methods", getMethodsNative);
     defineNativeMethod(vm.objectClass, "has_method", hasMethodNative);
     defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
-    defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
+    defineNativeMethod(vm.objectClass, "get_superclass", getSuperclassNative);
+    //defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initResultClass();
     initOptionClass();
@@ -3877,6 +3968,14 @@ static bool callValue(Value callee, int argCount) {
             case OBJ_CLASS:
                 {
                     ObjClass* klass = AS_CLASS(callee);
+
+                    if (klass == vm.arrayClass) {
+                        vm.stackTop[-argCount - 1] = OBJ_VAL(newArray());
+                        return true;
+                    } else if (klass == vm.mapClass) {
+                        vm.stackTop[-argCount - 1] = OBJ_VAL(newMap());
+                        return true;
+                    }
 
                     if (klass->callHandler != NULL) {
                         Value result = klass->callHandler(argCount, vm.stackTop - argCount);
@@ -4948,10 +5047,17 @@ InterpretResult run() {
                         ? READ_STRING()
                         : READ_STRING_LONG();
                     int argCount = READ_BYTE();
-                    int receiverIndex = (vm.stackTop - vm.stack) - 1 - argCount;
+
                     Value receiver = peek(argCount);
+                    ObjClass* klass = getClassForValue(receiver);
+
+                    if (klass == NULL) {
+                        runtimeError("Method calls are not supported on this type.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
 
                     /*
+                    int receiverIndex = (vm.stackTop - vm.stack) - 1 - argCount;
                     printf("[INVOKE]: %s with %d args. Receiver type: %d\n", method->chars, argCount, receiver.type);
                     printf("[INVOKE]: %s | Args: %d | Stack Depth: %ld | Looking at Index: %d | Type: %d\n",
                             method->chars, argCount, (vm.stackTop - vm.stack), receiverIndex, receiver.type);
@@ -5041,7 +5147,24 @@ InterpretResult run() {
                         break;
                     }
 
-                    if (IS_OBJ(receiver)) {
+                    if (invokeFromClass(klass, method, argCount)) {
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
+                    } else if (IS_OBJ(receiver)) {
+                        if (!invoke(method, argCount)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
+                    } else {
+                        runtimeError("Undefined method '%s' for primitive type.", method->chars);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    break;
+                }
+
+
+                /*
                         //printValue(receiver);
                         Obj* obj = AS_OBJ(receiver);
 
@@ -5076,6 +5199,7 @@ InterpretResult run() {
                     printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
                     return INTERPRET_RUNTIME_ERROR;
                 }
+                */
                 break;
             case OP_INVOKE_SPLAT:
                 {

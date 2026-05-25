@@ -80,6 +80,10 @@ typedef struct {
     ObjString* errString;
     ObjClass* optionClass;
     ObjString* isSomeString;
+
+    ObjClass* functionClass;
+    ObjClass* nativeFunctionClass;
+    ObjClass* vec3Class;
 } VM;
 
 typedef enum {

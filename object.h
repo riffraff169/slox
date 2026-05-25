@@ -120,6 +120,7 @@ typedef struct ObjClass {
     Obj obj;
     ObjString* name;
     Table methods;
+    Table fields;
     ClassKind kind;
     struct ObjClass* superclass;
 
