@@ -328,6 +328,12 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return invokeInstruction("OP_INVOKE_SPLAT", chunk, offset, false);
         case OP_INCLUDE:
             return simpleInstruction("OP_INCLUDE", offset);
+        case OP_TRY:
+            return jumpInstruction("OP_TRY", 1, chunk, offset);
+        case OP_END_TRY:
+            return jumpInstruction("OP_END_TRY", 1, chunk, offset);
+        case OP_THROW:
+            return simpleInstruction("OP_THROW", offset);
         default:
             printf("Unknown opcode %d (Hex: 0x%02x)\n", instruction, instruction);
             return offset + 1;

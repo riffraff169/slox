@@ -136,7 +136,12 @@ static TokenType identifierType() {
         case 'c':
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
-                          case 'a': return checkKeyword(2, 2, "se", TOKEN_CASE);
+                          case 'a': 
+                              {
+                                  int res = checkKeyword(2, 2, "se", TOKEN_CASE);
+                                  if (res == TOKEN_CASE) return res;
+                                  return checkKeyword(2, 3, "tch", TOKEN_CATCH);
+                              }
                           case 'l': return checkKeyword(2, 3, "ass", TOKEN_CLASS);
                           case 'o': return checkKeyword(2, 6, "ntinue", TOKEN_CONTINUE);
                       }
@@ -188,8 +193,18 @@ static TokenType identifierType() {
         case 't':
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
-                          case 'h': return checkKeyword(2, 2, "is", TOKEN_THIS);
-                          case 'r': return checkKeyword(2, 2, "ue", TOKEN_TRUE);
+                          case 'h': 
+                              {
+                                  int res = checkKeyword(2, 3, "row", TOKEN_THROW);
+                                  if (res == TOKEN_THROW) return res;
+                                  return checkKeyword(2, 2, "is", TOKEN_THIS);
+                              }
+                          case 'r': 
+                              {
+                                  int res = checkKeyword(2, 1, "y", TOKEN_TRY);
+                                  if (res == TOKEN_TRY) return res;
+                                  return checkKeyword(2, 2, "ue", TOKEN_TRUE);
+                              }
                       }
                   }
                   break;

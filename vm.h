@@ -15,6 +15,14 @@ typedef struct {
 } CallFrame;
 
 typedef struct {
+    int frameCount;
+    Value* stackTop;
+    uint8_t* catchIp;
+} TryBlock;
+
+#define TRY_STACK_MAX 64
+
+typedef struct {
     CallFrame frames[FRAMES_MAX];
     int frameCount;
 
@@ -84,6 +92,10 @@ typedef struct {
     ObjClass* functionClass;
     ObjClass* nativeFunctionClass;
     ObjClass* vec3Class;
+
+    TryBlock tryStack[TRY_STACK_MAX];
+    int tryCount;
+    bool exceptionThrown;
 } VM;
 
 typedef enum {
@@ -95,7 +107,7 @@ typedef enum {
 extern VM vm;
 
 void defineNative(const char* name, NativeFn function);
-void runtimeError(const char* format, ...);
+bool runtimeError(const char* format, ...);
 void initVM(int argc, const char* argv[], const char* env[]);
 void freeVM();
 bool vmCall(ObjClosure* closure, int argCount);

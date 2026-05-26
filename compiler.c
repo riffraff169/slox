@@ -1338,6 +1338,45 @@ static void foreachStatement() {
     endScope();
 }
 
+static void throwStatement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Expect ';' after throw value.");
+
+    emitByte(OP_THROW);
+}
+
+static void tryStatement() {
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before try body.");
+
+    int tryJump = emitJump(OP_TRY);
+
+    block();
+
+    int endTryJump = emitJump(OP_END_TRY);
+
+    patchJump(tryJump);
+
+    consume(TOKEN_CATCH, "Expect 'catch' after try block.");
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
+    consume(TOKEN_IDENTIFIER, "Expect exception variable name.");
+
+    Token exceptionVar = parser.previous;
+
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
+
+    beginScope();
+
+    addLocal(exceptionVar);
+    markInitialized();
+
+    block();
+
+    endScope();
+
+    patchJump(endTryJump);
+}
+
 static void forStatement() {
     beginScope();
     int jumps[255];
@@ -1633,6 +1672,10 @@ static void statement() {
         breakStatement();
     } else if (match(TOKEN_CONTINUE)) {
         continueStatement();
+    } else if (match(TOKEN_TRY)) {
+        tryStatement();
+    } else if (match(TOKEN_THROW)) {
+        throwStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();

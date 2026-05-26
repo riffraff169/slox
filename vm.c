@@ -61,6 +61,14 @@
     vm.nativeExitDepth = _oldExitDepth
 
 
+#define RUNTIME_ERROR(...) \
+    do { \
+        if (runtimeError(__VA_ARGS__)) { \
+            return INTERPRET_RUNTIME_ERROR; \
+        } \
+        frame = &vm.frames[vm.frameCount - 1]; \
+    } while (false)
+
 VM vm;
 InterpretResult run();
 //void initArrayMethods();
@@ -159,6 +167,27 @@ static Value errorResult(const char* format, ...) {
 
 static Value okResult(Value value) {
     return createResult(value, NIL_VAL, true);
+}
+
+void raiseException(Value exceptionValue) {
+    vm.exceptionThrown = true;
+    if (vm.tryCount == 0) {
+        fprintf(stderr, "Unhandled Exception: ");
+        printValue(exceptionValue);
+        fprintf(stderr, "\n");
+        exit(70);
+    }
+
+    vm.tryCount--;
+    TryBlock target = vm.tryStack[vm.tryCount];
+
+    vm.stackTop = target.stackTop;
+    vm.frameCount = target.frameCount;
+
+    push(exceptionValue);
+
+    CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
+    currentFrame->ip = target.catchIp;
 }
 
 static Value resultUnwrapNative(int argCount, Value* args) {
@@ -1373,9 +1402,34 @@ static ObjClass* getClassForValue(Value value) {
     return NULL;
 }
 
-void runtimeError(const char* format, ...) {
+bool runtimeError(const char* format, ...) {
+    printf("[DEBUG] runtimeError triggered! tryCount: %d, format: %s\n", vm.tryCount, format);
+
     va_list args;
     va_start(args, format);
+
+    if (vm.tryCount > 0) {
+        char buffer[1024];
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+
+        TryBlock block = vm.tryStack[--vm.tryCount];
+
+        //raiseException(OBJ_VAL(errorMsg));
+        vm.frameCount = block.frameCount;
+        vm.stackTop = block.stackTop;
+
+        ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
+
+        push(OBJ_VAL(errorMsg));
+
+        vm.frames[vm.frameCount -1].ip = block.catchIp;
+
+        printf("in try...\n");
+        vm.exceptionThrown = true;
+        return false;
+    }
+
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
@@ -1399,6 +1453,7 @@ void runtimeError(const char* format, ...) {
 
     //fprintf(stderr, "[line %d] in script\n", line);
     resetStack();
+    return true;
 }
 
 void defineGlobal(const char* name, Value value) {
@@ -2106,6 +2161,17 @@ static Value setFieldNative(int argCount, Value* args) {
     runtimeError("Cannot set fields on built-in types.");
     return NIL_VAL;
     */
+}
+
+bool isInstanceOf(Value value, ObjClass* targetClass) {
+    if (!IS_INSTANCE(value)) return false;
+
+    ObjClass* klass = AS_INSTANCE(value)->obj.klass;
+    while (klass != NULL) {
+        if (klass == targetClass) return true;
+        klass = klass->superclass;
+    }
+    return false;
 }
 
 static Value getSuperclassNative(int argCount, Value* args) {
@@ -3944,13 +4010,20 @@ bool vmCall(ObjClosure* closure, int argCount) {
 }
 
 static bool callValue(Value callee, int argCount) {
+    vm.exceptionThrown = false;
+
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
             case OBJ_BOUND_METHOD:
                 {
                     ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
                     vm.stackTop[-argCount - 1] = bound->receiver;
-                    return callValue(bound->method, argCount);
+                    int res = callValue(bound->method, argCount);
+                    if (vm.exceptionThrown) {
+                        vm.exceptionThrown = false;
+                        return false;
+                    }
+                    return res;
                     /*
                     vm.stackTop[-argCount - 1] = bound->receiver;
                     if (IS_CLOSURE(bound->method)) {
@@ -3979,6 +4052,11 @@ static bool callValue(Value callee, int argCount) {
 
                     if (klass->callHandler != NULL) {
                         Value result = klass->callHandler(argCount, vm.stackTop - argCount);
+                        if (vm.exceptionThrown) {
+                            vm.exceptionThrown = false;
+
+                            return false;
+                        }
 
                         if (vm.frameCount == 0) return false;
 
@@ -3994,12 +4072,21 @@ static bool callValue(Value callee, int argCount) {
                         if (IS_NATIVE(initializer)) {
                             NativeFn native = AS_NATIVE(initializer);
                             Value result = native(argCount, vm.stackTop - argCount);
+                            if (vm.exceptionThrown) {
+                                vm.exceptionThrown = false;
+                                return false;
+                            }
 
                             vm.stackTop -= argCount + 1;
                             push(result);
                             return true;
                         } else {
-                            return vmCall(AS_CLOSURE(initializer), argCount);
+                            int res = vmCall(AS_CLOSURE(initializer), argCount);
+                            if (vm.exceptionThrown) {
+                                vm.exceptionThrown = false;
+                                return false;
+                            }
+                            return res;
                         }
                     } else if (argCount != 0) {
                         runtimeError("Expect 0 arguments but got %d.", argCount);
@@ -4014,6 +4101,10 @@ static bool callValue(Value callee, int argCount) {
                     //printf("[CALLVALUE] OBJ_NATIVE\n");
                     NativeFn native = AS_NATIVE(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
+                    if (vm.exceptionThrown) {
+                        vm.exceptionThrown = false;
+                        return false;
+                    }
                     if (vm.frameCount == 0) return false;
 
                     vm.stackTop -= argCount + 1;
@@ -4082,7 +4173,12 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     while (current != NULL) {
         //printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
         if (tableGet(&current->methods, name, &method)) {
-            return callValue(method, argCount);
+            int res = callValue(method, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
         }
         current = current->superclass;
     }
@@ -4108,6 +4204,10 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 
         // 5. call the function (total args is now argCoutn + 1)
         Value result = native(argCount + 1, vm.stackTop - argCount - 1);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
 
         // 6. cleanup
         vm.stackTop -= (argCount + 2);
@@ -4132,10 +4232,20 @@ static bool invoke(ObjString* name, int argCount) {
         Value value;
         if (tableGet(&instance->fields, name, &value)) {
             vm.stackTop[-argCount - 1] = value;
-            return callValue(value, argCount);
+            int res = callValue(value, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
         }
 
-        return invokeFromClass(instance->obj.klass, name, argCount);
+        int res =  invokeFromClass(instance->obj.klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
     }
 
     if (!IS_OBJ(receiver) && !IS_ARRAY(receiver) && !IS_STRING(receiver) && !IS_MAP(receiver)) {
@@ -4161,12 +4271,22 @@ static bool invoke(ObjString* name, int argCount) {
     else if (IS_REGEX(receiver)) klass = vm.regexClass;
 
     if (klass != NULL) {
-        return invokeFromClass(klass, name, argCount);
+        int res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
     }
 
     if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
-        return invokeFromClass(klass, name, argCount);
+        int res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
     }
 
     runtimeError("Only instances and collections have methods.");
@@ -4286,8 +4406,10 @@ InterpretResult run() {
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
-            runtimeError("Operands must be numbers."); \
-            return INTERPRET_RUNTIME_ERROR; \
+            if (runtimeError("Operands must be numbers.")) { \
+                return INTERPRET_RUNTIME_ERROR; \
+            } \
+            break; \
         } \
         double b = AS_NUMBER(pop()); \
         double a = AS_NUMBER(pop()); \
@@ -4346,7 +4468,8 @@ InterpretResult run() {
                     } else if (IS_NIL(value)) {
                         length = snprintf(buffer, sizeof(buffer), "nil");
                     } else {
-                        runtimeError("Cannot convert value to string.");
+                        RUNTIME_ERROR("Cannot convert value to string.");
+                        break;
                     }
 
                     pop();
@@ -4402,8 +4525,8 @@ InterpretResult run() {
                     ObjString* name = READ_STRING();
                     Value value;
                     if (!tableGet(&vm.globals, name, &value)) {
-                        runtimeError("Undefined variable '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        break;
                     }
                     push(value);
                 }
@@ -4413,8 +4536,8 @@ InterpretResult run() {
                     ObjString* name = READ_STRING_LONG();
                     Value value;
                     if (!tableGet(&vm.globals, name, &value)) {
-                        runtimeError("Undefined variable '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        break;
                     }
                     push(value);
                 }
@@ -4440,8 +4563,8 @@ InterpretResult run() {
                     ObjString* name = READ_STRING();
                     if (tableSet(&vm.globals, name, peek(0))) {
                         tableDelete(&vm.globals, name);
-                        runtimeError("Undefined variable '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        break;
                     }
                 }
                 break;
@@ -4450,8 +4573,8 @@ InterpretResult run() {
                     ObjString* name = READ_STRING_LONG();
                     if (tableSet(&vm.globals, name, peek(0))) {
                         tableDelete(&vm.globals, name);
-                        runtimeError("Undefined variable '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        break;
                     }
                 }
                 break;
@@ -4483,8 +4606,8 @@ InterpretResult run() {
                         ObjInstance* instance = AS_INSTANCE(receiver);
 
                         if (instance->obj.klass == NULL) {
-                            runtimeError("Instance has no class.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Instance has no class.");
+                            break;
                         }
 
                         Value value;
@@ -4511,12 +4634,12 @@ InterpretResult run() {
                                 break;
                             }
                         }
-                        runtimeError("Undefined property '%s'.", name->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined property '%s'.", name->chars);
+                        break;
                     } 
 
                     ObjClass* klass = getClassForValue(receiver);
-                    printf("OP_GET_PROPERTY: %s", klass->name->chars);
+                    //printf("OP_GET_PROPERTY: %s", klass->name->chars);
                     if (klass != NULL) {
                         Value method;
                         if (findMethod(klass, name, &method)) {
@@ -4528,8 +4651,8 @@ InterpretResult run() {
                         }
                     }
 
-                    runtimeError("Property '%s' not found.", name->chars);
-                    return INTERPRET_RUNTIME_ERROR;
+                    RUNTIME_ERROR("Property '%s' not found.", name->chars);
+                    break;
                 }
                 break;
             case OP_SET_PROPERTY:
@@ -4537,8 +4660,8 @@ InterpretResult run() {
                 {
                     if (!IS_INSTANCE(peek(1))) { // && !IS_VEC3(peek(1))) 
                     //if (!IS_INSTANCE(peek(1)))
-                        runtimeError("Only instances have fields.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Only instances have fields.");
+                        break;
                     }
 
                     ObjInstance* instance = AS_INSTANCE(peek(1));
@@ -4600,7 +4723,8 @@ InterpretResult run() {
                     ObjClass* superclass = AS_CLASS(pop());
 
                     if (!bindMethod(superclass, name)) {
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Can't bind method.");
+                        break;
                     }
                 }
                 break;
@@ -4699,8 +4823,8 @@ InterpretResult run() {
                         vm.stackTop[-3] = vm.stackTop[-1];
                         popn(2);
                     } else {
-                        runtimeError("Invalid operands.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Invalid operands.");
+                        break;
                     }
                 }
                 break;
@@ -4743,8 +4867,8 @@ InterpretResult run() {
                         popn(2);
                         push(result);
                     } else {
-                        runtimeError("Invalid operands.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Invalid operands.");
+                        break;
                     }
                 }
                 break;
@@ -4795,8 +4919,8 @@ InterpretResult run() {
                         popn(2);
                         push(result);
                     } else {
-                        runtimeError("Invalid operands.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Invalid operands.");
+                        break;
                     }
                 }
                 break;
@@ -4831,8 +4955,8 @@ InterpretResult run() {
                         popn(2);
                         push(result);
                     } else {
-                        runtimeError("Invalid operands.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Invalid operands.");
+                        break;
                     }
                 }
                 break;
@@ -4842,8 +4966,8 @@ InterpretResult run() {
             case OP_POW:
                 {
                     if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        runtimeError("Operands must be numbers.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Operands must be numbers.");
+                        break;
                     }
                     Value b = pop();
                     Value a = pop();
@@ -4853,8 +4977,8 @@ InterpretResult run() {
             case OP_XOR:
                 {
                     if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        runtimeError("Operands must be numbers.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Operands must be numbers.");
+                        break;
                     }
                     uint32_t b = valueToUint32(pop());
                     uint32_t a = valueToUint32(pop());
@@ -4866,15 +4990,15 @@ InterpretResult run() {
             case OP_MOD:
                 {
                     if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        runtimeError("Operands must be numbers.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Operands must be numbers.");
+                        break;
                     }
                     double b = AS_NUMBER(pop());
                     double a = AS_NUMBER(pop());
 
                     if (b == 0) {
-                        runtimeError("Division by zero.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Division by zero.");
+                        break;
                     }
 
                     push(NUMBER_VAL(fmod(a, b)));
@@ -4936,8 +5060,8 @@ InterpretResult run() {
                         vm.stackTop = stackStart;
                         push(result);
                     } else {
-                        runtimeError("Operand must be a number.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Operand must be a number.");
+                        break;
                     }
                 }
                 break;
@@ -4995,6 +5119,36 @@ InterpretResult run() {
                     printf("\n");
                 }
                 break;
+            case OP_TRY:
+                {
+                    uint16_t offset = READ_SHORT();
+                    if (vm.tryCount >= TRY_STACK_MAX) {
+                        RUNTIME_ERROR("Stack overflow: too many nested try blocks.");
+                        break;
+                    }
+
+                    TryBlock* block = &vm.tryStack[vm.tryCount++];
+                    block->frameCount = vm.frameCount;
+                    block->stackTop = vm.stackTop;
+                    block->catchIp = frame->ip + offset;
+                }
+                break;
+            case OP_END_TRY:
+                {
+                    vm.tryCount--;
+                    uint16_t catchOffset = READ_SHORT();
+
+                    frame->ip += catchOffset;
+                }
+                break;
+            case OP_THROW:
+                {
+                    Value exception = pop();
+                    raiseException(exception);
+
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
             case OP_JUMP:
                 {
                     uint16_t offset = READ_SHORT();
@@ -5022,11 +5176,24 @@ InterpretResult run() {
             case OP_DUP:
                 push(peek(0));
                 break;
+            case OP_INSTANCEOF:
+                {
+                    if (!IS_CLASS(peek(0))) {
+                        runtimeError("Right-hand side of type check must be a class.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    ObjClass* targetClass = AS_CLASS(pop());
+                    Value instance = pop();
+
+                    push(BOOL_VAL(isInstanceOf(instance, targetClass)));
+                }
+                break;
             case OP_CALL:
                 {
                     int argCount = READ_BYTE();
                     if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Call failed.");
+                        break;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
                 }
@@ -5052,8 +5219,8 @@ InterpretResult run() {
                     ObjClass* klass = getClassForValue(receiver);
 
                     if (klass == NULL) {
-                        runtimeError("Method calls are not supported on this type.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Method calls are not supported on this type.");
+                        break;
                     }
 
                     /*
@@ -5068,8 +5235,8 @@ InterpretResult run() {
 
                         if (method->length == 6 && memcmp(method->chars, "length", 6) == 0) {
                             if (argCount != 0) {
-                                runtimeError("method length() expects 0 arguments.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("method length() expects 0 arguments.");
+                                break;
                             }
 
                             double len = sqrt(vec.x * vec.x +
@@ -5079,8 +5246,8 @@ InterpretResult run() {
                             break;
                         } else if (method->length == 14 && memcmp(method->chars, "length_squared", 14) == 0) {
                             if (argCount != 0) {
-                                runtimeError("method length() expects 0 arguments.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("method length() expects 0 arguments.");
+                                break;
                             }
                             
                             double len = vec.x * vec.x +
@@ -5090,8 +5257,8 @@ InterpretResult run() {
                             break;
                         } else if (method->length == 5 && memcmp(method->chars, "cross", 5) == 0) {
                             if (argCount != 1) {
-                                runtimeError("method cross() expects 1 Vec3 argument.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("method cross() expects 1 Vec3 argument.");
+                                break;
                             }
 
                             Vec3 b = AS_VEC3(pop());
@@ -5104,8 +5271,8 @@ InterpretResult run() {
                             break;
                         } else if (method->length == 4 && memcmp(method->chars, "unit", 4) == 0) {
                             if (argCount != 0) {
-                                runtimeError("method unit() expects 0 arguments.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("method unit() expects 0 arguments.");
+                                break;
                             }
 
                             double mag2 = vec.x * vec.x + vec.y * vec.y +
@@ -5127,12 +5294,12 @@ InterpretResult run() {
                             }
                         } else if (method->length == 3 && memcmp(method->chars, "dot", 3) == 0) {
                             if (argCount != 1) {
-                                runtimeError("Method dot() expects 1 argument.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("Method dot() expects 1 argument.");
+                                break;
                             }
                             if (!IS_VEC3(peek(0))) {
-                                runtimeError("Dot product argument must be a Vec3.");
-                                return INTERPRET_RUNTIME_ERROR;
+                                RUNTIME_ERROR("Dot product argument must be a Vec3.");
+                                break;
                             }
 
                             Vec3 other = AS_VEC3(pop());
@@ -5141,8 +5308,8 @@ InterpretResult run() {
                                 (vec.y * other.y) + (vec.z * other.z);
                             push(NUMBER_VAL(result));
                         } else {
-                            runtimeError("Method %s does not exist.", method->chars);
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Method %s does not exist.", method->chars);
+                            break;
                         }
                         break;
                     }
@@ -5150,15 +5317,21 @@ InterpretResult run() {
                     if (invokeFromClass(klass, method, argCount)) {
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                         frame = &vm.frames[vm.frameCount - 1];
+                    } else if (vm.exceptionThrown) {
+                        vm.exceptionThrown = false;
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
                     } else if (IS_OBJ(receiver)) {
                         if (!invoke(method, argCount)) {
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("No method.");
+                            break;
                         }
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                         frame = &vm.frames[vm.frameCount - 1];
                     } else {
-                        runtimeError("Undefined method '%s' for primitive type.", method->chars);
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Undefined method '%s' for primitive type.", method->chars);
+                        break;
                     }
                     break;
                 }
@@ -5226,13 +5399,14 @@ InterpretResult run() {
                     Value receiver = peek(totalArgs);
 
                     if (!IS_INSTANCE(receiver)) {
-                        runtimeError("Only instances have methods.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Only instances have methods.");
+                        break;
                     }
 
                     ObjInstance* instance = AS_INSTANCE(receiver);
                     if (!invokeFromClass(instance->obj.klass, method, totalArgs)) {
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Call failed.");
+                        break;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
                 }
@@ -5243,7 +5417,8 @@ InterpretResult run() {
                     int argCount = READ_BYTE();
                     ObjClass* superclass = AS_CLASS(pop());
                     if (!invokeFromClass(superclass, method, argCount)) {
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Call failed.");
+                        break;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
                 }
@@ -5295,8 +5470,8 @@ InterpretResult run() {
 
                     void* handle = loadModule(moduleName->chars);
                     if (handle == NULL) {
-                        runtimeError("Could not load module.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Could not load module.");
+                        break;
                     }
                     //tableSet(&vm.globals, moduleName, peek(0));
                     //pop();
@@ -5326,7 +5501,8 @@ InterpretResult run() {
 
                     Value callee = peek(totalArgs);
                     if (!callValue(callee, totalArgs)) {
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Call failed.");
+                        break;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
                 }
@@ -5335,8 +5511,8 @@ InterpretResult run() {
                 {
                     Value value = peek(0);
                     if (!IS_ARRAY(value)) {
-                        runtimeError("Can only splat arrays.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Can only splat arrays.");
+                        break;
                     }
 
                     ObjArray* array = AS_ARRAY(value);
@@ -5349,8 +5525,8 @@ InterpretResult run() {
                     }
 
                     if (vm.stackTop + array->count >= vm.stack + STACK_MAX) {
-                        runtimeError("Stack overflow during splat.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Stack overflow during splat.");
+                        break;
                     }
 
                     for (int i = 0; i < array->count; i++) {
@@ -5368,8 +5544,8 @@ InterpretResult run() {
                     Value targetVal = peek(1);
 
                     if (!IS_CLASS(mixinVal) || !IS_CLASS(targetVal)) {
-                        runtimeError("Only classes can be included.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Only classes can be included.");
+                        break;
                     }
 
                     ObjClass* mixin = AS_CLASS(mixinVal);
@@ -5410,8 +5586,8 @@ InterpretResult run() {
                 {
                     Value superclass = peek(1);
                     if (!IS_CLASS(superclass)) {
-                        runtimeError("Superclass must be a class.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Superclass must be a class.");
+                        break;
                     }
 
                     ObjClass* subclass = AS_CLASS(peek(0));
@@ -5439,8 +5615,8 @@ InterpretResult run() {
                         Value key = peek(2);
 
                         if (!IS_STRING(key)) {
-                            runtimeError("Map keys must be strings.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Map keys must be strings.");
+                            break;
                         }
                         tableSet(&map->items, AS_STRING(key), value);
                         Value mapVal = pop();
@@ -5479,8 +5655,8 @@ InterpretResult run() {
                     Value element = peek(1);
 
                     if (!IS_NUMBER(sizeVal)) {
-                        runtimeError("Array size must be a number.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Array size must be a number.");
+                        break;
                     }
 
                     int count = (int)AS_NUMBER(sizeVal);
@@ -5507,8 +5683,8 @@ InterpretResult run() {
 
                     if (IS_MAP(targetValue)) {
                         if (!IS_STRING(indexValue)) {
-                            runtimeError("Map index must be a string.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Map index must be a string.");
+                            break;
                         }
 
                         Value result;
@@ -5522,14 +5698,14 @@ InterpretResult run() {
 
                     if (IS_VEC3(targetValue)) {
                         if (!IS_NUMBER(indexValue)) {
-                            runtimeError("Vec3 index must be a number.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Vec3 index must be a number.");
+                            break;
                         }
 
                         int index = (int)AS_NUMBER(indexValue);
                         if (index < 0 || index > 2) {
-                            runtimeError("Array index out of bounds.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Array index out of bounds.");
+                            break;
                         }
                         Vec3 vec3 = AS_VEC3(targetValue);
                         if (index == 0)
@@ -5545,14 +5721,14 @@ InterpretResult run() {
                         ObjArray* array = AS_ARRAY(targetValue);
 
                         if (!IS_NUMBER(indexValue)) {
-                            runtimeError("Array index must be a number.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Array index must be a number.");
+                            break;
                         }
 
                         int index = (int)AS_NUMBER(indexValue);
                         if (index < 0 || index >= array->count) {
-                            runtimeError("Array index out of bounds.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Array index out of bounds.");
+                            break;
                         }
 
                         push(array->values[index]);
@@ -5561,16 +5737,16 @@ InterpretResult run() {
 
                     if (IS_STRING(targetValue)) {
                         if (!IS_NUMBER(indexValue)) {
-                            runtimeError("String index must be a number.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("String index must be a number.");
+                            break;
                         }
 
                         ObjString* string = AS_STRING(targetValue);
                         int index = AS_NUMBER(indexValue);
 
                         if (index < 0 || index >= string->length) {
-                            runtimeError("String index out of bounds.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("String index out of bounds.");
+                            break;
                         }
 
                         push(NUMBER_VAL((double)(uint8_t)string->chars[index]));
@@ -5578,9 +5754,7 @@ InterpretResult run() {
                         break;
                     }
 
-                    runtimeError("Only vec3s, maps and arrays support subscripting.");
-                    return INTERPRET_RUNTIME_ERROR;
-
+                    RUNTIME_ERROR("Only vec3s, maps and arrays support subscripting.");
                 }
                 break;
             case OP_SET_INDEX:
@@ -5591,8 +5765,8 @@ InterpretResult run() {
 
                     if (IS_MAP(targetValue)) {
                         if (!IS_STRING(indexValue)) {
-                            runtimeError("Map keys must be strings.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            RUNTIME_ERROR("Map keys must be strings.");
+                            break;
                         }
                         tableSet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), newValue);
                         vm.stackTop[-3] = newValue;
@@ -5600,21 +5774,21 @@ InterpretResult run() {
                         //push(newValue);
                         break;
                     } else if (!IS_ARRAY(targetValue)) {
-                        runtimeError("Only maps and arrays support subscript assignment.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Only maps and arrays support subscript assignment.");
+                        break;
                     }
 
                     ObjArray* array = AS_ARRAY(targetValue);
 
                     if (!IS_NUMBER(indexValue)) {
-                        runtimeError("Array index must be a number.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Array index must be a number.");
+                        break;
                     }
 
                     int index = (int)AS_NUMBER(indexValue);
                     if (index < 0 || index >= array->count) {
-                        runtimeError("Array index out of bounds.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Array index out of bounds.");
+                        break;
                     }
 
                     array->values[index] = newValue;
