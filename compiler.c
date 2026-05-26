@@ -203,6 +203,93 @@ static int makeConstant(Value value) {
     return (int)constant;
 }
 
+static void emitGetHelper(uint8_t getOp, int nameArg) {
+    if (nameArg > 255) {
+        emitByte(getOp);
+        emitByte((uint8_t)((nameArg >> 16) & 0xff));
+        emitByte((uint8_t)((nameArg >> 8) & 0xff));
+        emitByte((uint8_t)(nameArg & 0xff));
+    } else {
+        emitBytes(getOp, (uint8_t)nameArg);
+    }
+}
+
+static void emitSetHelper(uint8_t setOp, int nameArg) {
+    if (nameArg > 255) {
+        emitByte(setOp);
+        emitByte((uint8_t)((nameArg >> 16) & 0xff));
+        emitByte((uint8_t)((nameArg >> 8) & 0xff));
+        emitByte((uint8_t)(nameArg & 0xff));
+    } else {
+        emitBytes(setOp, (uint8_t)nameArg);
+    }
+}
+
+static void emitGetProp(int nameArg) {
+    if (nameArg > 255) {
+        emitByte(OP_GET_PROPERTY_LONG);
+        emitByte((uint8_t)((nameArg >> 16) & 0xff));
+        emitByte((uint8_t)((nameArg >> 8) & 0xff));
+        emitByte((uint8_t)(nameArg & 0xff));
+    } else {
+        emitBytes(OP_GET_PROPERTY, (uint8_t)nameArg);
+    }
+}
+
+static void emitSetProp(int nameArg) {
+    if (nameArg > 255) {
+        emitByte(OP_SET_PROPERTY_LONG);
+        emitByte((uint8_t)((nameArg >> 16) & 0xff));
+        emitByte((uint8_t)((nameArg >> 8) & 0xff));
+        emitByte((uint8_t)(nameArg & 0xff));
+    } else {
+        emitBytes(OP_SET_PROPERTY, (uint8_t)nameArg);
+    }
+}
+
+static void emitInvokeHelper(int nameArg, uint8_t argCount) {
+    if (nameArg > 255) {
+        emitByte(OP_INVOKE_LONG);
+        emitByte((uint8_t)((nameArg >> 16) & 0xff));
+        emitByte((uint8_t)((nameArg >> 8) & 0xff));
+        emitByte((uint8_t)(nameArg & 0xff));
+        emitByte(argCount);
+    } else {
+        emitBytes(OP_INVOKE, (uint8_t)nameArg);
+        emitByte(argCount);
+    }
+}
+
+static void emitGetVar(uint8_t getOp, int arg) {
+    if (getOp == OP_GET_GLOBAL_LONG || getOp == OP_GET_LOCAL_LONG) {
+        emitByte(getOp);
+        emitByte((uint8_t)((arg >> 16) & 0xff));
+        emitByte((uint8_t)((arg >> 8) & 0xff));
+        emitByte((uint8_t)(arg & 0xff));
+    } else if (getOp == OP_GET_UPVALUE) {
+        emitByte(getOp);
+        emitByte((uint8_t)((arg >> 8) & 0xff));
+        emitByte((uint8_t)(arg & 0xff));
+    } else {
+        emitBytes(getOp, (uint8_t)arg);
+    }
+}
+
+static void emitSetVar(uint8_t setOp, int arg) {
+    if (setOp == OP_SET_GLOBAL_LONG || setOp == OP_SET_LOCAL_LONG) {
+        emitByte(setOp);
+        emitByte((uint8_t)((arg >> 16) & 0xff));
+        emitByte((uint8_t)((arg >> 8) & 0xff));
+        emitByte((uint8_t)(arg & 0xff));
+    } else if (setOp == OP_SET_UPVALUE) {
+        emitByte(setOp);
+        emitByte((uint8_t)((arg >> 8) & 0xff));
+        emitByte((uint8_t)(arg & 0xff));
+    } else {
+        emitBytes(setOp, (uint8_t)arg);
+    }
+}
+
 static void emitConstant(Value value) {
     int constant = makeConstant(value);
 
@@ -557,6 +644,8 @@ static void dot(bool canAssign) {
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
+        emitSetProp(name);
+        /*
         if (name < 256) {
             emitBytes(OP_SET_PROPERTY, (uint8_t)name);
         } else {
@@ -565,6 +654,27 @@ static void dot(bool canAssign) {
             emitByte((uint8_t)((name >> 8) & 0xff));
             emitByte((uint8_t)(name & 0xff));
         }
+        */
+    } else if (canAssign && (match(TOKEN_PLUS_EQUAL) || match(TOKEN_MINUS_EQUAL) ||
+                match(TOKEN_STAR_EQUAL) || match(TOKEN_SLASH_EQUAL) ||
+                match(TOKEN_PERCENT_EQUAL))) {
+        TokenType opType = parser.previous.type;
+
+        emitByte(OP_DUP);
+        //emitBytes(OP_GET_PROPERTY, name);
+        emitGetProp(name);
+
+        expression();
+
+        switch (opType) {
+            case TOKEN_PLUS_EQUAL: emitByte(OP_ADD); break;
+            case TOKEN_MINUS_EQUAL: emitByte(OP_SUBTRACT); break;
+            case TOKEN_STAR_EQUAL: emitByte(OP_MULTIPLY); break;
+            case TOKEN_SLASH_EQUAL: emitByte(OP_DIVIDE); break;
+            case TOKEN_PERCENT_EQUAL: emitByte(OP_MOD); break;
+            default: return;
+        }
+        emitSetProp(name);
     } else if (match(TOKEN_LEFT_PAREN)) {
         ArgResult args = argumentList();
         if (name < 256) {
@@ -583,6 +693,8 @@ static void dot(bool canAssign) {
             emitByte(args.totalSlots);
         }
     } else {
+        emitGetProp(name);
+        /*
         if (name < 256) {
             emitBytes(OP_GET_PROPERTY, (uint8_t)name);
         } else {
@@ -591,6 +703,7 @@ static void dot(bool canAssign) {
             emitByte((uint8_t)((name >> 8) & 0xff));
             emitByte((uint8_t)(name & 0xff));
         }
+        */
     }
 }
 
@@ -788,7 +901,9 @@ static void namedVariable(Token name, bool canAssign) {
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
+        /*
         if (setOp == OP_SET_GLOBAL_LONG || setOp == OP_SET_LOCAL_LONG) {
+            //emitSetHelper(setOp, arg);
             emitByte(setOp);
             emitByte((uint8_t)((arg >> 16) & 0xff));
             emitByte((uint8_t)((arg >> 8) & 0xff));
@@ -800,8 +915,31 @@ static void namedVariable(Token name, bool canAssign) {
         } else {
             emitBytes(setOp, (uint8_t)arg);
         }
+        */
+        emitSetVar(setOp, arg);
+    } else if (canAssign && (match(TOKEN_PLUS_EQUAL) || match(TOKEN_MINUS_EQUAL) ||
+                match(TOKEN_STAR_EQUAL) || match(TOKEN_SLASH_EQUAL) ||
+                match(TOKEN_PERCENT_EQUAL))) {
+        TokenType opType = parser.previous.type;
+
+        emitGetVar(getOp, arg);
+        //emitGetHelper(getOp, arg);
+        expression();
+        switch(opType) {
+            case TOKEN_PLUS_EQUAL: emitByte(OP_ADD); break;
+            case TOKEN_MINUS_EQUAL: emitByte(OP_SUBTRACT); break;
+            case TOKEN_STAR_EQUAL: emitByte(OP_MULTIPLY); break;
+            case TOKEN_SLASH_EQUAL: emitByte(OP_DIVIDE); break;
+            case TOKEN_PERCENT_EQUAL: emitByte(OP_MOD); break;
+            default: return;
+        }
+        emitSetVar(setOp, arg);
+        //emitSetHelper(setOp, arg);
     } else {
+        emitGetVar(getOp, arg);
+        /*
         if (getOp == OP_GET_GLOBAL_LONG || getOp == OP_GET_LOCAL_LONG) {
+            //emitGetHelper(setOp, arg);
             emitByte(getOp);
             emitByte((uint8_t)((arg >> 16) & 0xff));
             emitByte((uint8_t)((arg >> 8) & 0xff));
@@ -813,6 +951,7 @@ static void namedVariable(Token name, bool canAssign) {
         } else {
             emitBytes(getOp, (uint8_t)arg);
         }
+        */
     }
 }
 

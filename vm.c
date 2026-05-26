@@ -1403,7 +1403,7 @@ static ObjClass* getClassForValue(Value value) {
 }
 
 bool runtimeError(const char* format, ...) {
-    printf("[DEBUG] runtimeError triggered! tryCount: %d, format: %s\n", vm.tryCount, format);
+    //printf("[DEBUG] runtimeError triggered! tryCount: %d, format: %s\n", vm.tryCount, format);
 
     va_list args;
     va_start(args, format);
