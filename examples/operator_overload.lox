@@ -7,7 +7,7 @@ class A {
     return this;
   }
 
-  display() {
+  to_string() {
     return "A(${this.a})";
   }
 }

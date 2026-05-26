@@ -58,10 +58,34 @@ sqrt, abs, floor, ceil, random, pi, exp, hex, oct, bin, `bit_test`, parse, `from
 load, save, exists, list (directory), open, read, readline, write, close, seek, tell, stderr, flush
 
 #### Regex ops
-test, exec
+test, match
 
+#### Result type:
+```
+if (res.ok) { print res.val; } else { print res.err; }
+```
+or
+```
+if (res) {
+  print res.unwrap();
+} else {
+  print res.err;
+}
+```
+also
+```
+var x = res.unwrap_or(default_value);
+```
+
+#### Option type:
+```
+var o = Option(true, [1, 2, 3]);
+if (o) print o.unwrap();
+var b = Option(false, "nothing here");
+print b.wrap_or(25);
+```
 #### GI Module
-GTK4 through gi module:
+GTK4 through gi module.  I refactored dynamic loading and broke this, so I have to fix it.
 ```
 import "gi";
 var Gdk = gi.load("Gdk");

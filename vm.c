@@ -265,12 +265,12 @@ static Value optionUnwrapNative(int argCount, Value* args) {
 }
 
 static Value optionUnwrapOrNative(int argCount, Value* args) {
-    if (argCount != 1) {
+    if (argCount < 2) {
         runtimeError("Result.unwrap_or() expects exactly 1 argument.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    ObjInstance* instance = AS_INSTANCE(args[0]);
     Value is_some;
 
     tableGet(&instance->fields, vm.isSomeString, &is_some);
@@ -281,7 +281,7 @@ static Value optionUnwrapOrNative(int argCount, Value* args) {
         return val;
     }
 
-    return args[0];
+    return args[1];
 }
 
 static uint32_t valueToUint32(Value value) {
@@ -1410,6 +1410,7 @@ bool runtimeError(const char* format, ...) {
     char buffer[1024];
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
+    //printf("runtimeError: buffer: %s\n", buffer);
 
     if (vm.tryCount > 0) {
 
@@ -1449,14 +1450,13 @@ bool runtimeError(const char* format, ...) {
 
         vm.frames[vm.frameCount -1].ip = block.catchIp;
 
-        printf("in try...\n");
+        //printf("in try...\n");
         vm.exceptionThrown = true;
         return false;
     }
 
-    vfprintf(stderr, format, args);
-    va_end(args);
-    fputs("\n", stderr);
+    //fputs("\n", stderr);
+    fprintf(stderr, "%s\n", buffer);
     int line = 0;
 
     for (int i = vm.frameCount - 1; i >= 0; i--) {
@@ -4193,10 +4193,55 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     ObjClass* current = klass;
     Value method;
+    //printf("[INVOKEFROMCLASS] name: %s\n", name->chars);
 
     while (current != NULL) {
         //printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
         if (tableGet(&current->methods, name, &method)) {
+
+            //printValue(method);
+            //printf("\n");
+
+            if (IS_NATIVE(method)) {
+                //printf("invokeFromClass: here 1...\n");
+                NativeFn native = AS_NATIVE(method);
+
+                // 1. Capture the receiver (currently at -argCount - 1)
+                Value receiver = vm.stackTop[-argCount - 1];
+
+                // 2. Put the method obj where the reciver was (this becomes args[-1])
+                vm.stackTop[-argCount - 1] = method;
+
+                // 3. shift, move all exist arguments up one slot
+                // we go backward from the top
+                for (int i = 0; i < argCount; i++) {
+                    vm.stackTop[-i] = vm.stackTop[-i - 1];
+                }
+        
+                // 4. place the receiver in the now vacant first argument slot
+                vm.stackTop[-argCount] = receiver;
+                vm.stackTop++;
+
+                // 5. call the function (total args is now argCoutn + 1)
+                Value result = native(argCount + 1, vm.stackTop - argCount - 1);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                vm.stackTop -= (argCount + 2);
+                push(result);
+                return true;
+            }
+            if (IS_CLOSURE(method)) {
+                //printf("invokeFromClass: here 2...\n");
+                int res = vmCall(AS_CLOSURE(method), argCount);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                return res;
+            }
+
             int res = callValue(method, argCount);
             if (vm.exceptionThrown) {
                 vm.exceptionThrown = false;
@@ -4207,42 +4252,12 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         current = current->superclass;
     }
 
-    if (IS_NATIVE(method)) {
-        NativeFn native = AS_NATIVE(method);
-
-        // 1. Capture the receiver (currently at -argCount - 1)
-        Value receiver = vm.stackTop[-argCount - 1];
-
-        // 2. Put the method obj where the reciver was (this becomes args[-1])
-        vm.stackTop[-argCount - 1] = method;
-
-        // 3. shift, move all exist arguments up one slot
-        // we go backward from the top
-        for (int i = 0; i < argCount; i++) {
-            vm.stackTop[-i] = vm.stackTop[-i - 1];
-        }
-        
-        // 4. place the receiver in the now vacant first argument slot
-        vm.stackTop[-argCount] = receiver;
-        vm.stackTop++;
-
-        // 5. call the function (total args is now argCoutn + 1)
-        Value result = native(argCount + 1, vm.stackTop - argCount - 1);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-
-        // 6. cleanup
-        vm.stackTop -= (argCount + 2);
-        push(result);
-        return true;
-    }
-
-    if (IS_CLOSURE(method)) {
-        return vmCall(AS_CLOSURE(method), argCount);
-    }
-
+    /*
+    printf("1...\n");
+    printValue(OBJ_VAL(name));
+    printf("2...\n");
+    printf("name->chars: %s\n", name->chars);
+    */
     runtimeError("Undefined property '%s'.", name->chars);
     return false;
 }
@@ -4250,7 +4265,26 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 static bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
-    if (IS_INSTANCE(receiver) || IS_VEC3(receiver)) {
+    if (!IS_OBJ(receiver) && !IS_VEC3(receiver)) {
+        runtimeError("Undefined method '%s' for primitive type.", name->chars);
+        return false;
+    }
+
+    if (IS_VEC3(receiver)) {
+        ObjClass* vec3Class = vm.vec3Class;
+        if (vec3Class != NULL) {
+            int res = invokeFromClass(vec3Class, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
+        }
+        runtimeError("Vec3 class is not initialized.");
+        return false;
+    }
+
+    if (IS_INSTANCE(receiver)) {
         ObjInstance* instance = AS_INSTANCE(receiver);
 
         Value value;
@@ -4272,28 +4306,51 @@ static bool invoke(ObjString* name, int argCount) {
         return res;
     }
 
+    if (IS_ARRAY(receiver) || IS_STRING(receiver) || IS_MAP(receiver) || IS_STRING(receiver)) {
+        Obj* obj = AS_OBJ(receiver);
+        ObjClass* klass = obj->klass;
+        if (klass != NULL) {
+            int res = invokeFromClass(klass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
+        }
+    }
+    /*
     if (!IS_OBJ(receiver) && !IS_ARRAY(receiver) && !IS_STRING(receiver) && !IS_MAP(receiver)) {
         //printf("type: %d\n", receiver.type);
         runtimeError("Only objects have methods.");
         return false;
     }
+    */
 
-    Obj* obj = AS_OBJ(receiver);
-    ObjClass* klass = NULL;
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        int res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
+    }
 
+    /*
     if (IS_ARRAY(receiver)) {
         klass = AS_ARRAY(receiver)->obj.klass;
-    }
-
-    if (obj->klass != NULL) {
         return invokeFromClass(obj->klass, name, argCount);
     }
+    */
 
-    //if (IS_ARRAY(receiver)) klass = vm.arrayClass;
+    /*
     if (IS_MAP(receiver)) klass = vm.mapClass;
+    else if (IS_ARRAY(receiver)) klass = vm.arrayClass;
     else if (IS_STRING(receiver)) klass = vm.stringClass;
     else if (IS_REGEX(receiver)) klass = vm.regexClass;
+    */
 
+    /*
     if (klass != NULL) {
         int res = invokeFromClass(klass, name, argCount);
         if (vm.exceptionThrown) {
@@ -4312,6 +4369,7 @@ static bool invoke(ObjString* name, int argCount) {
         }
         return res;
     }
+    */
 
     runtimeError("Only instances and collections have methods.");
     return false;
@@ -5367,9 +5425,11 @@ InterpretResult run() {
                         break;
                     }
 
+                    /*
                     if (invokeFromClass(klass, method, argCount)) {
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                         frame = &vm.frames[vm.frameCount - 1];
+                        break;
                     } else if (vm.exceptionThrown) {
                         vm.exceptionThrown = false;
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
@@ -5382,10 +5442,19 @@ InterpretResult run() {
                         }
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                         frame = &vm.frames[vm.frameCount - 1];
+                        break;
                     } else {
                         RUNTIME_ERROR("Undefined method '%s' for primitive type.", method->chars);
                         break;
                     }
+                    */
+                    if (!invoke(method, argCount)) {
+                        //RUNTIME_ERROR("Undefined method '%s'.", method->chars);
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                     break;
                 }
 

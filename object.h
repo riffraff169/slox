@@ -50,7 +50,8 @@ typedef enum {
     OBJ_ARRAY,
     OBJ_MAP,
     OBJ_FOREIGN,
-    OBJ_REGEX
+    OBJ_REGEX,
+    OBJ_VEC3
 } ObjType;
 
 struct Obj {
