@@ -5167,7 +5167,35 @@ InterpretResult run() {
                 break;
             case OP_THROW:
                 {
-                    Value exception = pop();
+                    Value exception = peek(0);
+
+                    if (IS_STRING(exception)) {
+                        Value errorClassVal;
+                        ObjString* errorName = copyString("Error", 5);
+
+                        if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
+                            pop();
+
+                            ObjClass* errorClass = AS_CLASS(errorClassVal);
+                            ObjInstance* errorInstance = newInstance(errorClass);
+                            push(OBJ_VAL(errorInstance));
+
+                            ObjString* messageKey = copyString("message", 7);
+                            push(OBJ_VAL(messageKey));
+
+                            Value stringMsg = peek(2);
+                            tableSet(&errorInstance->fields, messageKey, stringMsg);
+
+                            pop(); // messageKey
+                            pop(); // errorInstance
+                            pop(); // the origin string
+
+                            push(OBJ_VAL(errorInstance));
+                        } else {
+                            pop();
+                        }
+                    }
+                    Value exeption = pop();
                     raiseException(exception);
 
                     frame = &vm.frames[vm.frameCount - 1];
