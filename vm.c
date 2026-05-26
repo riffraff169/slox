@@ -1552,6 +1552,24 @@ static Value systemSetNotationNative(int argCount, Value* args) {
     return NUMBER_VAL(style);
 }
 
+static Value systemDebugPrintNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_BOOL(args[1])) {
+        runtimeError("Expected a boolean argument (true/false).");
+        return BOOL_VAL(false);
+    }
+    vm.debugPrintCode = AS_BOOL(args[1]);
+    return BOOL_VAL(vm.debugPrintCode);
+}
+
+static Value systemTraceNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_BOOL(args[1])) {
+        runtimeError("Expected a boolean argument (true/false).");
+        return BOOL_VAL(false);
+    }
+    vm.debugTraceExecution = AS_BOOL(args[1]);
+    return BOOL_VAL(vm.debugTraceExecution);
+}
+
 static Value systemShowStackNative(int argCount, Value* args) {
     printf("[SHOW_STACK]: stack: %d\n", (int)(vm.stackTop - vm.stack));
     return NIL_VAL;
@@ -2629,6 +2647,8 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
     defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
     defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
+    defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
+    defineNativeMethod(systemClass, "trace", systemTraceNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -3939,6 +3959,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initStringClass();
     initIOClass();
     initStructClass();
+
+    vm.debugPrintCode = false;
+    vm.debugTraceExecution = false;
 }
 
 void freeVM() {
@@ -4499,17 +4522,17 @@ InterpretResult run() {
     } while (false)
 
     for (;;) {
-#ifdef DEBUG_TRACE_EXECUTION
-        printf("        ");
-        for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
-            printf("[ ");
-            printValue(*slot);
-            printf(" ]");
+        if (vm.debugTraceExecution) {
+            printf("        ");
+            for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+                printf("[ ");
+                printValue(*slot);
+                printf(" ]");
+            }
+            printf("\n");
+            disassembleInstruction(&frame->closure->function->chunk,
+                    (int)(frame->ip - frame->closure->function->chunk.code));
         }
-        printf("\n");
-        disassembleInstruction(&frame->closure->function->chunk,
-                (int)(frame->ip - frame->closure->function->chunk.code));
-#endif
 
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {

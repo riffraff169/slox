@@ -96,6 +96,9 @@ typedef struct {
     TryBlock tryStack[TRY_STACK_MAX];
     int tryCount;
     bool exceptionThrown;
+
+    bool debugPrintCode;
+    bool debugTraceExecution;
 } VM;
 
 typedef enum {

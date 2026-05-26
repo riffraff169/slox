@@ -7,9 +7,7 @@
 #include "memory.h"
 #include "scanner.h"
 
-#ifdef DEBUG_PRINT_CODE
 #include "debug.h"
-#endif
 
 typedef struct {
     Token current;
@@ -350,12 +348,12 @@ static ObjFunction* endCompiler() {
     emitReturn();
     ObjFunction* function = current->function;
 
-#ifdef DEBUG_PRINT_CODE
-    if (!parser.hadError) {
-        disassembleChunk(currentChunk(), function->name != NULL
-                ? function->name->chars : "<script>");
+    if (vm.debugPrintCode) {
+        if (!parser.hadError) {
+            disassembleChunk(currentChunk(), function->name != NULL
+                    ? function->name->chars : "<script>");
+        }
     }
-#endif
 
     current = current->enclosing;
     return function;
