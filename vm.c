@@ -1407,21 +1407,45 @@ bool runtimeError(const char* format, ...) {
 
     va_list args;
     va_start(args, format);
+    char buffer[1024];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
 
     if (vm.tryCount > 0) {
-        char buffer[1024];
-        vsnprintf(buffer, sizeof(buffer), format, args);
-        va_end(args);
 
         TryBlock block = vm.tryStack[--vm.tryCount];
 
-        //raiseException(OBJ_VAL(errorMsg));
         vm.frameCount = block.frameCount;
         vm.stackTop = block.stackTop;
 
         ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
-
         push(OBJ_VAL(errorMsg));
+
+        Value errorClassVal;
+        ObjString* errorClassName = copyString("Error", 5);
+        push(OBJ_VAL(errorClassName));
+
+        bool hasErrorClass = tableGet(&vm.globals, errorClassName, &errorClassVal);
+        pop();
+
+        if (hasErrorClass && IS_CLASS(errorClassVal)) {
+            ObjClass* errorClass = AS_CLASS(errorClassVal);
+            ObjInstance* errorInstance = newInstance(errorClass);
+            pop(); // errorMsg
+            push(OBJ_VAL(errorInstance));
+
+            ObjString* messageKey = copyString("message", 7);
+            push(OBJ_VAL(messageKey));
+            push(OBJ_VAL(errorMsg));
+
+            tableSet(&errorInstance->fields, messageKey, OBJ_VAL(errorMsg));
+
+            pop();
+            pop();
+        } else {
+            ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
+            push(OBJ_VAL(errorMsg));
+        }
 
         vm.frames[vm.frameCount -1].ip = block.catchIp;
 
@@ -5179,8 +5203,9 @@ InterpretResult run() {
             case OP_INSTANCEOF:
                 {
                     if (!IS_CLASS(peek(0))) {
-                        runtimeError("Right-hand side of type check must be a class.");
-                        return INTERPRET_RUNTIME_ERROR;
+                        RUNTIME_ERROR("Right-hand side of type check must be a class.");
+                        break;
+                        //return INTERPRET_RUNTIME_ERROR;
                     }
                     ObjClass* targetClass = AS_CLASS(pop());
                     Value instance = pop();
