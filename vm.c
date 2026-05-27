@@ -74,6 +74,7 @@ InterpretResult run();
 //void initArrayMethods();
 
 static bool callValue(Value callee, int argCount);
+static bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
 Value peek(int distance);
 Value popn(int n);
 static bool isFalsey(Value value);
@@ -381,6 +382,54 @@ static Value compileFileNative(int argCount, Value* args) {
     }
 
     return OBJ_VAL(compiledClass);
+}
+
+static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argCount) {
+    Value method;
+    ObjClass* currentClass = klass;
+    bool found = false;
+
+    while (currentClass != NULL) {
+        if (tableGet(&currentClass->methods, vm.methodMissingString, &method)) {
+            found = true;
+            break;
+        }
+        currentClass = currentClass->superclass;
+    }
+
+    if (!found) {
+        runtimeError("Undefined method '%s'.", originalName->chars);
+        return false;
+    }
+
+    //push(OBJ_VAL(originalName));
+    Value* argsStart = vm.stackTop - argCount;
+    ObjArray* argsArray = newArray();
+    push(OBJ_VAL(argsArray));
+
+    for (int i = 0; i < argCount; i++) {
+        arrayAppend(argsArray, argsStart[i]);
+    }
+
+    vm.stackTop = argsStart;
+
+    push(OBJ_VAL(originalName));
+    push(OBJ_VAL(argsArray));
+
+    if (IS_NATIVE(method)) {
+        NativeFn native = AS_NATIVE(method);
+        Value result = native(2, vm.stackTop - 2);
+        vm.stackTop -= 3;
+        push(result);
+        return true;
+    }
+
+    bool res = invokeFromClass(currentClass, vm.methodMissingString, 2);
+    if (vm.exceptionThrown) {
+        vm.exceptionThrown = false;
+        return false;
+    }
+    return res;
 }
 
 static Value objectToStringNative(int argCount, Value* args) {
@@ -3923,7 +3972,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
     initStringClass();
 
+    vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
+    vm.errstrString = NULL;
     vm.errstrString = copyString("errstr", 6);
     clearLastError();
 
@@ -3944,6 +3995,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.xString = copyString("x", 1);
     vm.yString = copyString("y", 1);
     vm.zString = copyString("z", 1);
+
+    vm.methodMissingString = NULL;
+    vm.methodMissingString = copyString("method_missing", 14);
 
     defineNative("clock", clockNative);
     defineNative("str", strNative);
@@ -4311,19 +4365,13 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     ObjClass* current = klass;
     Value method;
-    //printf("[INVOKEFROMCLASS] name: %s\n", name->chars);
 
     while (current != NULL) {
-        //printf("Looking for '%s' in class '%s'\n", name->chars, current->name->chars);
         if (tableGet(&current->methods, name, &method)) {
-
-            //printValue(method);
-            //printf("\n");
-
             if (IS_NATIVE(method)) {
-                //printf("invokeFromClass: here 1...\n");
                 NativeFn native = AS_NATIVE(method);
 
+                /*
                 // 1. Capture the receiver (currently at -argCount - 1)
                 Value receiver = vm.stackTop[-argCount - 1];
 
@@ -4339,19 +4387,20 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
                 // 4. place the receiver in the now vacant first argument slot
                 vm.stackTop[-argCount] = receiver;
                 vm.stackTop++;
+                */
 
                 // 5. call the function (total args is now argCoutn + 1)
-                Value result = native(argCount + 1, vm.stackTop - argCount - 1);
+                //Value result = native(argCount + 1, vm.stackTop - argCount - 1);
+                Value result = native(argCount, vm.stackTop - argCount);
                 if (vm.exceptionThrown) {
                     vm.exceptionThrown = false;
                     return false;
                 }
-                vm.stackTop -= (argCount + 2);
+                vm.stackTop -= (argCount + 1);
                 push(result);
                 return true;
             }
             if (IS_CLOSURE(method)) {
-                //printf("invokeFromClass: here 2...\n");
                 int res = vmCall(AS_CLOSURE(method), argCount);
                 if (vm.exceptionThrown) {
                     vm.exceptionThrown = false;
@@ -4370,12 +4419,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
         current = current->superclass;
     }
 
-    /*
-    printf("1...\n");
-    printValue(OBJ_VAL(name));
-    printf("2...\n");
-    printf("name->chars: %s\n", name->chars);
-    */
     runtimeError("Undefined property '%s'.", name->chars);
     return false;
 }
@@ -4398,37 +4441,40 @@ static bool invoke(ObjString* name, int argCount) {
 
         while (currentClass != NULL) {
             if (tableGet(&currentClass->methods, name, &method)) {
-                found = true;
-                break;
+                if (IS_NATIVE(method)) {
+                    NativeFn native = AS_NATIVE(method);
+                    Value result = native(argCount, vm.stackTop - argCount);
+                    vm.stackTop -= (argCount + 1);
+                    push(result);
+                    return true;
+                }
+                bool res = invokeFromClass(currentClass, name, argCount);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                return res;
             }
             currentClass = currentClass->superclass;
         }
 
-        if (!found && vm.objectClass != NULL) {
-            if (tableGet(&vm.objectClass->methods, name, &method)) {
-                currentClass = vm.objectClass;
-                found = true;
+        if (vm.objectClass != NULL && tableGet(&vm.objectClass->methods, name, &method)) {
+            if (IS_NATIVE(method)) {
+                NativeFn native = AS_NATIVE(method);
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= (argCount + 1);
+                push(result);
+                return true;
             }
+            bool res = invokeFromClass(currentClass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
         }
 
-        if (!found) {
-            runtimeError("Undefined method '%s' for Vec3.", name->chars);
-            return false;
-        }
-
-        if (IS_NATIVE(method)) {
-            NativeFn native = AS_NATIVE(method);
-            Value result = native(argCount, vm.stackTop - argCount);
-            vm.stackTop -= (argCount + 1);
-            push(result);
-            return true;
-        }
-        bool res =  invokeFromClass(currentClass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
+        return callMethodMissing(vm.vec3Class ? vm.vec3Class : vm.objectClass, name, argCount);
     }
 
     if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
@@ -4448,8 +4494,7 @@ static bool invoke(ObjString* name, int argCount) {
             }
             return res;
         }
-        runtimeError("Undefined method '%s' for primitive type.", name->chars);
-        return false;
+        return callMethodMissing(vm.objectClass, name, argCount);
     }
 
     if (IS_INSTANCE(receiver)) {
@@ -4460,12 +4505,21 @@ static bool invoke(ObjString* name, int argCount) {
             vm.stackTop[-argCount - 1] = field;
             return callValue(field, argCount);
         }
-        bool res = invokeFromClass(instance->obj.klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
+
+        ObjClass* currentClass = instance->obj.klass;
+        while (currentClass != NULL) {
+            Value method;
+            if (tableGet(&currentClass->methods, name, &method)) {
+                bool res = invokeFromClass(instance->obj.klass, name, argCount);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                return res;
+            }
+            currentClass = currentClass->superclass;
         }
-        return res;
+        return callMethodMissing(instance->obj.klass, name, argCount);
     }
 
     if (IS_CLASS(receiver)) {
@@ -4475,9 +4529,20 @@ static bool invoke(ObjString* name, int argCount) {
             vm.exceptionThrown = false;
             return false;
         }
-        return res;
+        return callMethodMissing(klass, name, argCount);
+        //return res;
     }
 
+    if (klass != NULL) {
+        bool res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        if (!res)
+            return callMethodMissing(klass, name, argCount);
+        return true;
+    }
     runtimeError("Only instances and primitives have methods.");
     return false;
     /*
@@ -4961,7 +5026,6 @@ InterpretResult run() {
                     } 
 
                     ObjClass* klass = getClassForValue(receiver);
-                    //printf("OP_GET_PROPERTY: %s", klass->name->chars);
                     if (klass != NULL) {
                         Value method;
                         if (findMethod(klass, name, &method)) {
@@ -5699,6 +5763,7 @@ InterpretResult run() {
                         frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
+                    frame = &vm.frames[vm.frameCount - 1];
                     if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                     break;
                 }

@@ -88,6 +88,7 @@ typedef struct {
     ObjString* errString;
     ObjClass* optionClass;
     ObjString* isSomeString;
+    ObjString* methodMissingString;
 
     ObjClass* functionClass;
     ObjClass* nativeFunctionClass;
