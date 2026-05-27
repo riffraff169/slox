@@ -383,6 +383,31 @@ static Value compileFileNative(int argCount, Value* args) {
     return OBJ_VAL(compiledClass);
 }
 
+static Value objectToStringNative(int argCount, Value* args) {
+    if (argCount != 0) {
+        return NIL_VAL;
+    }
+
+    Value receiver = args[-1];
+
+    char buffer[64];
+    int len = 0;
+
+    if (IS_NUMBER(receiver)) {
+        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(receiver));
+    } else if (IS_BOOL(receiver)) {
+        len = snprintf(buffer, sizeof(buffer), AS_BOOL(receiver) ? "true" : "false");
+    } else if (IS_NIL(receiver)) {
+        len = snprintf(buffer, sizeof(buffer), "nil");
+    } else if (IS_STRING(receiver)) {
+        return receiver; // already a string
+    } else {
+        len = snprintf(buffer, sizeof(buffer), "<object>");
+    }
+
+    return OBJ_VAL(copyString(buffer, len));
+}
+
 static Value strNative(int argCount, Value* args) {
     if (argCount != 1) return NIL_VAL;
 
@@ -1386,19 +1411,25 @@ static ObjClass* getClassForValue(Value value) {
     if (IS_NUMBER(value)) return vm.numberClass;
     if (IS_BOOL(value)) return vm.boolClass;
     if (IS_NIL(value)) return vm.nilClass;
-    if (IS_STRING(value)) return vm.stringClass;
+    //if (IS_STRING(value)) return vm.stringClass;
     if (IS_VEC3(value)) return vm.vec3Class;
 
     if (IS_OBJ(value)) {
-        if (IS_CLASS(value)) return AS_CLASS(value);
+        Obj* obj = AS_OBJ(value);
 
-        return AS_OBJ(value)->klass;
+        if (obj->type == OBJ_INSTANCE) {
+            return ((ObjInstance*)obj)->obj.klass;
+        }
+        //if (IS_CLASS(value)) return AS_CLASS(value);
+
+        //return AS_OBJ(value)->klass;
+        return obj->klass;
     }
 
     if (IS_INSTANCE(value)) return AS_INSTANCE(value)->obj.klass;
     if (IS_CLASS(value)) return AS_CLASS(value)->obj.klass;
-    if (IS_MAP(value)) return vm.mapClass;
-    //if (IS_ARRAY(value)) return vm.arrayClass;
+    //if (IS_MAP(value)) return vm.mapClass;
+    if (IS_ARRAY(value)) return vm.arrayClass;
     return NULL;
 }
 
@@ -2349,23 +2380,29 @@ static Value vec3InitNative(int argCount, Value* args) {
 }
 
 static Value vec3DotNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_VEC3(args[0]) || !IS_VEC3(args[1])) {
+    if (argCount < 1) {
+        runtimeError("dot() expects 1 argument.");
         return NIL_VAL;
     }
 
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b = AS_VEC3(args[1]);
+    if (!IS_VEC3(args[0])) {
+        runtimeError("Argument must be a Vec3.");
+        return NIL_VAL;
+    }
+
+    Vec3 a = AS_VEC3(args[-1]);
+    Vec3 b = AS_VEC3(args[0]);
 
     return NUMBER_VAL((a.x * b.x) +
             (a.y * b.y) + (a.z * b.z));
 }
 
 static Value vec3UnitNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        runtimeError("unit() expects 1 Vec3 argument.");
+    if (argCount != 0) {
+        runtimeError("unit() expects 0 arguments.");
         return NIL_VAL;
     }
-    Vec3 a = AS_VEC3(args[0]);
+    Vec3 a = AS_VEC3(args[-1]);
 
     double mag2 = a.x * a.x + a.y * a.y + a.z * a.z;
     if (mag2 > 0) {
@@ -2381,17 +2418,45 @@ static Value vec3UnitNative(int argCount, Value* args) {
 }
 
 static Value vec3CrossNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_VEC3(args[0]) || !IS_VEC3(args[1])) {
-        runtimeError("cross() expects 2 Vec3 arguments.");
+    if (argCount < 1) {
+        runtimeError("cross() expects 1 Vec3 argument.");
         return NIL_VAL;
     }
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b = AS_VEC3(args[1]);
+
+    if (!IS_VEC3(args[0])) {
+        runtimeError("Argument must be a Vec3.");
+        return NIL_VAL;
+    }
+
+    Vec3 a = AS_VEC3(args[-1]);
+    Vec3 b = AS_VEC3(args[0]);
     Vec3 c;
     c.x = a.y * b.z - a.z * b.y;
     c.y = a.z * b.x - a.x * b.z;
     c.z = a.x * b.y - a.y * b.x;
     return VEC3_VAL(c);
+}
+
+static Value vec3LengthNative(int argCount, Value* args) {
+    if (argCount != 0) {
+        runtimeError("length() expects 0 arguments.");
+        return NIL_VAL;
+    }
+
+    Vec3 vec = AS_VEC3(args[-1]);
+    double len = sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
+    return NUMBER_VAL(len);
+}
+
+static Value vec3LengthSquaredNative(int argCount, Value* args) {
+    if (argCount != 0) {
+        runtimeError("length_squared() expects 0 arguments.");
+        return NIL_VAL;
+    }
+
+    Vec3 vec = AS_VEC3(args[-1]);
+    double len = vec.x * vec.x + vec.y * vec.y + vec.z * vec.z;
+    return NUMBER_VAL(len);
 }
 
 static Value vec3AddNative(int argCount, Value* args) {
@@ -2733,10 +2798,19 @@ void initFileLibrary() {
 }
 
 void initVec3Library() {
-    defineNative("Vec3", vec3InitNative);
-    defineNative("dot", vec3DotNative);
-    defineNative("cross", vec3CrossNative);
-    defineNative("unit", vec3UnitNative);
+    ObjString* name = copyString("Vec3", 4);
+    push(OBJ_VAL(name));
+
+    vm.vec3Class = newClass(name);
+    vm.vec3Class->superclass = vm.objectClass;
+    tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
+    
+    //defineNativeMethod(vm.vec3Class, "init", vec3InitNative);
+    defineNativeMethod(vm.vec3Class, "dot", vec3DotNative);
+    defineNativeMethod(vm.vec3Class, "cross", vec3CrossNative);
+    defineNativeMethod(vm.vec3Class, "unit", vec3UnitNative);
+    defineNativeMethod(vm.vec3Class, "length", vec3LengthNative);
+    defineNativeMethod(vm.vec3Class, "length_squared", vec3LengthSquaredNative);
 }
 
 static Value hgfGCNative(int argCount, Value* args) {
@@ -2895,10 +2969,6 @@ static Value arrayInitMethod(int argCount, Value* args) {
     }
 
     ObjArray* array = newArray();
-    array->obj.klass = vm.arrayClass;
-    array->count = 0;
-    array->capacity = 0;
-    array->values = NULL;
     return OBJ_VAL(array);
 }
 
@@ -2923,7 +2993,7 @@ static Value objectClassMethod(int argCount, Value* args) {
 
 static Value arrayNativeConstructor(int argCount, Value* args) {
     ObjArray* array = newArray();
-    array->obj.klass = vm.arrayClass;
+    //array->obj.klass = vm.arrayClass;
 
     if (argCount > 0) {
         array->values = ALLOCATE(Value, argCount);
@@ -3709,13 +3779,7 @@ void initIOClass() {
 }
 
 void initStringClass() {
-    ObjString* string = NULL;
 
-    string = copyString("String", 6);
-    vm.stringClass = newClass(string);
-    vm.stringClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
-    push(OBJ_VAL(vm.stringClass));
     ObjString* empty = copyString("", 0);
     empty->obj.klass = vm.stringClass;
 
@@ -3839,6 +3903,26 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.strings);
     //initTable(&vm.giTypes);
 
+    ObjString* name = copyString("String", 6);
+    push(OBJ_VAL(name));
+    vm.stringClass = newClass(name);
+    name->obj.klass = vm.stringClass;
+    pop();
+
+    ObjString* string = NULL;
+
+    ObjString* objectName = copyString("Object", 6);
+    push(OBJ_VAL(objectName));
+    vm.objectClass = newClass(objectName);
+    vm.objectClass->superclass = NULL;
+    pop();
+
+    vm.stringClass->superclass = vm.objectClass;
+
+    tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
+    tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
+    initStringClass();
+
     vm.errnoString = copyString("errno", 5);
     vm.errstrString = copyString("errstr", 6);
     clearLastError();
@@ -3874,12 +3958,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     //defineNative("packByte", packByte);
     defineNative("chr", chrNative);
 
-    ObjString* string = NULL;
-
-    string = copyString("Object", 6);
-    vm.objectClass = newClass(string);
-    vm.objectClass->superclass = NULL;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.objectClass));
 
     string = copyString("Function", 8);
     vm.functionClass = newClass(string);
@@ -3906,10 +3984,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.nilClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
 
-    string = copyString("Vec3", 4);
-    vm.vec3Class = newClass(string);
-    vm.vec3Class->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.vec3Class));
     //defineNative("get_class", objectClassMethod);
     
     /*
@@ -3944,6 +4018,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "has_method", hasMethodNative);
     defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
     defineNativeMethod(vm.objectClass, "get_superclass", getSuperclassNative);
+    defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
     //defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initResultClass();
@@ -3956,7 +4031,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initGCLibrary();
     initArrayClass();
     initMapClass();
-    initStringClass();
     initIOClass();
     initStructClass();
 
@@ -4095,6 +4169,29 @@ static bool callValue(Value callee, int argCount) {
                     } else if (klass == vm.mapClass) {
                         vm.stackTop[-argCount - 1] = OBJ_VAL(newMap());
                         return true;
+                    } else if (klass == vm.vec3Class) {
+                        if (argCount != 3) {
+                            runtimeError("Vec3 construct expects 3 arguments.");
+                            return false;
+                        }
+
+                        Value x = vm.stackTop[-3];
+                        Value y = vm.stackTop[-2];
+                        Value z = vm.stackTop[-1];
+
+                        if (!IS_NUMBER(x) || !IS_NUMBER(y) || !IS_NUMBER(z)) {
+                            runtimeError("Vec3 arguments must be numbers.");
+                            return false;
+                        }
+
+                        Vec3 v;
+                        v.x = AS_NUMBER(x);
+                        v.y = AS_NUMBER(y);
+                        v.z = AS_NUMBER(z);
+
+                        vm.stackTop[-argCount - 1] = VEC3_VAL(v);
+                        vm.stackTop -= argCount;
+                        return true;
                     }
 
                     if (klass->callHandler != NULL) {
@@ -4145,7 +4242,6 @@ static bool callValue(Value callee, int argCount) {
                 return vmCall(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE:
                 {
-                    //printf("[CALLVALUE] OBJ_NATIVE\n");
                     NativeFn native = AS_NATIVE(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
                     if (vm.exceptionThrown) {
@@ -4156,7 +4252,6 @@ static bool callValue(Value callee, int argCount) {
 
                     vm.stackTop -= argCount + 1;
                     push(result);
-                    //printf("[CALLVALUE] OBJ_NATIVE done\n");
 
                     return true;
                 }
@@ -4288,14 +4383,120 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 static bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
+    /*
     if (!IS_OBJ(receiver) && !IS_VEC3(receiver)) {
         runtimeError("Undefined method '%s' for primitive type.", name->chars);
         return false;
     }
+    */
 
+    ObjClass* klass = getClassForValue(receiver);
     if (IS_VEC3(receiver)) {
-        ObjClass* vec3Class = vm.vec3Class;
+        Value method;
+        ObjClass* currentClass = vm.vec3Class;
+        bool found = false;
+
+        while (currentClass != NULL) {
+            if (tableGet(&currentClass->methods, name, &method)) {
+                found = true;
+                break;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        if (!found && vm.objectClass != NULL) {
+            if (tableGet(&vm.objectClass->methods, name, &method)) {
+                currentClass = vm.objectClass;
+                found = true;
+            }
+        }
+
+        if (!found) {
+            runtimeError("Undefined method '%s' for Vec3.", name->chars);
+            return false;
+        }
+
+        if (IS_NATIVE(method)) {
+            NativeFn native = AS_NATIVE(method);
+            Value result = native(argCount, vm.stackTop - argCount);
+            vm.stackTop -= (argCount + 1);
+            push(result);
+            return true;
+        }
+        bool res =  invokeFromClass(currentClass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
+    }
+
+    if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
+        Value method;
+        if (vm.objectClass != NULL && tableGet(&vm.objectClass->methods, name, &method)) {
+            if (IS_NATIVE(method)) {
+                NativeFn native = AS_NATIVE(method);
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= (argCount + 1);
+                push(result);
+                return true;
+            }
+            bool res = invokeFromClass(vm.objectClass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            return res;
+        }
+        runtimeError("Undefined method '%s' for primitive type.", name->chars);
+        return false;
+    }
+
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+
+        Value field;
+        if (tableGet(&instance->fields, name, &field)) {
+            vm.stackTop[-argCount - 1] = field;
+            return callValue(field, argCount);
+        }
+        bool res = invokeFromClass(instance->obj.klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
+    }
+
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        bool res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
+    }
+
+    runtimeError("Only instances and primitives have methods.");
+    return false;
+    /*
         if (vec3Class != NULL) {
+            Value method;
+            if (!tableGet(&vec3Class->methods, name, &method)) {
+                runtimeError("Undefined method '%s' for Vec3.", name->chars);
+                return false;
+            }
+
+            if (IS_NATIVE(method)) {
+                NativeFn native = AS_NATIVE(method);
+
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= (argCount + 1);
+                push(result);
+                return true;
+            }
+
             int res = invokeFromClass(vec3Class, name, argCount);
             if (vm.exceptionThrown) {
                 vm.exceptionThrown = false;
@@ -4306,7 +4507,9 @@ static bool invoke(ObjString* name, int argCount) {
         runtimeError("Vec3 class is not initialized.");
         return false;
     }
+    */
 
+    /*
     if (IS_INSTANCE(receiver)) {
         ObjInstance* instance = AS_INSTANCE(receiver);
 
@@ -4328,6 +4531,20 @@ static bool invoke(ObjString* name, int argCount) {
         }
         return res;
     }
+
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass != NULL) {
+        int res = invokeFromClass(klass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        return res;
+    }
+
+    runtimeError("Type is not invokable.");
+    return false;
 
     if (IS_ARRAY(receiver) || IS_STRING(receiver) || IS_MAP(receiver) || IS_STRING(receiver)) {
         Obj* obj = AS_OBJ(receiver);
@@ -4916,6 +5133,7 @@ InterpretResult run() {
                         ObjArray* a = AS_ARRAY(peek(1));
 
                         ObjArray *result = newArray();
+                        //result->obj.klass = vm.arrayClass;
                         push(OBJ_VAL(result));
 
                         for (int i = 0; i < a->count; i++) {
@@ -5335,6 +5553,7 @@ InterpretResult run() {
             case OP_INVOKE:
             case OP_INVOKE_LONG:
                 {
+                    
                     /*
                     printf("[DEBUG STACK]: ");
                     for (int i = 0; i < (vm.stackTop - vm.stack); i++) {
@@ -5343,6 +5562,7 @@ InterpretResult run() {
                     }
                     printf("\n");
                     */
+                    
 
                     ObjString* method = (instruction == OP_INVOKE)
                         ? READ_STRING()
@@ -5364,6 +5584,7 @@ InterpretResult run() {
                             method->chars, argCount, (vm.stackTop - vm.stack), receiverIndex, receiver.type);
                     */
 
+                    /*
                     if (IS_VEC3(receiver)) {
                         Vec3 vec = AS_VEC3(peek(argCount));
 
@@ -5447,6 +5668,7 @@ InterpretResult run() {
                         }
                         break;
                     }
+                */
 
                     /*
                     if (invokeFromClass(klass, method, argCount)) {
@@ -5775,7 +5997,7 @@ InterpretResult run() {
                     uint8_t count = READ_BYTE();
                     
                     ObjArray* array = newArray();
-                    array->obj.klass = vm.arrayClass;
+                    //array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
 
                     if (count > 0) {
@@ -5806,7 +6028,7 @@ InterpretResult run() {
 
                     int count = (int)AS_NUMBER(sizeVal);
                     ObjArray* array = newArray();
-                    array->obj.klass = vm.arrayClass;
+                    //array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
                     if (count > 0) {
                         Value* entries = ALLOCATE(Value, count);

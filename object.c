@@ -152,6 +152,7 @@ ObjUpvalue* newUpvalue(Value* slot) {
 
 ObjMap* newMap() {
     ObjMap* map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
+    ((Obj*)map)->klass = vm.mapClass;
 
     initTable(&map->items);
 
@@ -175,6 +176,7 @@ ObjVec3* newVec3(Value x, Value y, Value z) {
 
 ObjArray* newArray() {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
+    ((Obj*)array)->klass = vm.arrayClass;
 
     array->count = 0;
     array->capacity = 0;
