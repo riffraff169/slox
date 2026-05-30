@@ -397,6 +397,10 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
         currentClass = currentClass->superclass;
     }
 
+    /*
+    printf("DEBUG: Looking for method '%s' on Class '%s' (Type Enum: %d)\n",
+            originalName->chars, klass->name->chars, 0);
+            */
     if (!found) {
         runtimeError("Undefined method '%s'.", originalName->chars);
         return false;
@@ -1457,29 +1461,62 @@ static void resetStack() {
 }
 
 static ObjClass* getClassForValue(Value value) {
+    Obj* obj = AS_OBJ(value);
+
+    // 1. Handle primitive immediate values
     if (IS_NUMBER(value)) return vm.numberClass;
     if (IS_BOOL(value)) return vm.boolClass;
     if (IS_NIL(value)) return vm.nilClass;
-    //if (IS_STRING(value)) return vm.stringClass;
+    if (IS_STRING(value)) return vm.stringClass;
     if (IS_VEC3(value)) return vm.vec3Class;
 
     if (IS_OBJ(value)) {
+        switch (OBJ_TYPE(value)) {
+            case OBJ_STRING:
+                return vm.stringClass;
+            case OBJ_ARRAY:
+                return vm.arrayClass;
+            case OBJ_MAP:
+                return vm.mapClass;
+            case OBJ_CLASS:
+                return (ObjClass*)AS_OBJ(value);
+                //return AS_CLASS(value)->obj.klass;
+            case OBJ_INSTANCE:
+                return AS_INSTANCE(value)->obj.klass;
+            default:
+                return AS_OBJ(value)->klass;
+        }
+    }
+    return NULL;
+
+    /*
+    {
+
         Obj* obj = AS_OBJ(value);
+
+        if (obj->type == OBJ_CLASS) {
+            return (ObjClass*)obj;
+        }
 
         if (obj->type == OBJ_INSTANCE) {
             return ((ObjInstance*)obj)->obj.klass;
         }
-        //if (IS_CLASS(value)) return AS_CLASS(value);
 
-        //return AS_OBJ(value)->klass;
+        if (obj->type == OBJ_ARRAY) return vm.arrayClass;
+        if (obj->type == OBJ_VEC3) return vm.vec3Class;
+        if (obj->type == OBJ_MAP) return vm.mapClass;
+
         return obj->klass;
     }
 
+    if (IS_CLASS(value)) {
+        return AS_CLASS(value)->obj.klass;
+    }
     if (IS_INSTANCE(value)) return AS_INSTANCE(value)->obj.klass;
-    if (IS_CLASS(value)) return AS_CLASS(value)->obj.klass;
-    //if (IS_MAP(value)) return vm.mapClass;
+    if (IS_MAP(value)) return vm.mapClass;
     if (IS_ARRAY(value)) return vm.arrayClass;
     return NULL;
+    */
 }
 
 bool runtimeError(const char* format, ...) {
@@ -1642,11 +1679,11 @@ static Value systemDebugPrintNative(int argCount, Value* args) {
 }
 
 static Value systemTraceNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_BOOL(args[1])) {
+    if (argCount < 1 || !IS_BOOL(args[0])) {
         runtimeError("Expected a boolean argument (true/false).");
         return BOOL_VAL(false);
     }
-    vm.debugTraceExecution = AS_BOOL(args[1]);
+    vm.debugTraceExecution = AS_BOOL(args[0]);
     return BOOL_VAL(vm.debugTraceExecution);
 }
 
@@ -3830,6 +3867,7 @@ void initIOClass() {
 void initStringClass() {
 
     ObjString* empty = copyString("", 0);
+    push(OBJ_VAL(empty));
     empty->obj.klass = vm.stringClass;
 
     //defineNativeMethod(vm.stringClass, "init", stringInitMethod);
@@ -3842,6 +3880,7 @@ void initStringClass() {
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.stringClass, "slice", stringSliceNative);
     defineNativeMethod(vm.stringClass, "to_array", stringToarrayNative);
+
     pop();
 }
 
@@ -4434,6 +4473,22 @@ static bool invoke(ObjString* name, int argCount) {
     */
 
     ObjClass* klass = getClassForValue(receiver);
+    /*
+    printf("DEBUG: Looking for method '%s' on Class '%s' %d\n",
+            name->chars, klass->name->chars, klass);
+    printf("String class: %d\n", vm.stringClass);
+    */
+
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        Value field;
+        if (tableGet(&instance->fields, name, &field)) {
+            vm.stackTop[-argCount - 1] = field;
+            return callValue(field, argCount);
+        }
+    }
+
+    //ObjClass* 
     if (IS_VEC3(receiver)) {
         Value method;
         ObjClass* currentClass = vm.vec3Class;
@@ -4478,23 +4533,29 @@ static bool invoke(ObjString* name, int argCount) {
     }
 
     if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
+        ObjClass* currentClass = (IS_STRING(receiver)) ? vm.stringClass : vm.objectClass;
         Value method;
-        if (vm.objectClass != NULL && tableGet(&vm.objectClass->methods, name, &method)) {
-            if (IS_NATIVE(method)) {
-                NativeFn native = AS_NATIVE(method);
-                Value result = native(argCount, vm.stackTop - argCount);
-                vm.stackTop -= (argCount + 1);
-                push(result);
-                return true;
+
+        while (currentClass != NULL) {
+            if (tableGet(&currentClass->methods, name, &method)) {
+                if (IS_NATIVE(method)) {
+                    NativeFn native = AS_NATIVE(method);
+                    Value result = native(argCount, vm.stackTop - argCount);
+                    vm.stackTop -= (argCount + 1);
+                    push(result);
+                    return true;
+                }
+
+                bool res = invokeFromClass(vm.objectClass, name, argCount);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                return res;
             }
-            bool res = invokeFromClass(vm.objectClass, name, argCount);
-            if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
-            }
-            return res;
+            currentClass = currentClass->superclass;
         }
-        return callMethodMissing(vm.objectClass, name, argCount);
+        return callMethodMissing(vm.stringClass, name, argCount);
     }
 
     if (IS_INSTANCE(receiver)) {
@@ -4529,7 +4590,9 @@ static bool invoke(ObjString* name, int argCount) {
             vm.exceptionThrown = false;
             return false;
         }
-        return callMethodMissing(klass, name, argCount);
+        if (!res)
+            return callMethodMissing(klass, name, argCount);
+        return true;
         //return res;
     }
 
@@ -6285,6 +6348,12 @@ InterpretResult interpret(const char* source, const char* filename) {
     push(OBJ_VAL(closure));
     vmCall(closure, 0);
 
-    return run();
+    //return run();
+    InterpretResult result = run();
+    if (result == INTERPRET_RUNTIME_ERROR) {
+        resetStack();
+    }
+
+    return result;
 }
 

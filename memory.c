@@ -211,6 +211,7 @@ static void freeObject(Obj* object) {
             break;
         case OBJ_INSTANCE:
             {
+                //printf("freeing instance...\n");
                 ObjInstance* instance = (ObjInstance*)object;
                 if (instance->obj.klass != NULL && instance->obj.klass->destructor != NULL) {
                     instance->obj.klass->destructor(instance);

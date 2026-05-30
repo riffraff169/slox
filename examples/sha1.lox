@@ -1,8 +1,9 @@
 System.set_notation(0);
+//System.trace(true);
 import "sha1";
 var sha1 = SHA1();
 print sha1;
-var x = SHA1.sha1("this is a string");
+var x = sha1.sha1("this is a string");
 print x;
 var y = SHA1("this is a string");
 print y;

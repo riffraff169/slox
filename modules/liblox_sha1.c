@@ -247,7 +247,7 @@ void lox_module_init(VM* vm) {
     ObjString* str = copyString("SHA1", 4);
     push(OBJ_VAL(str));
     ObjClass* sha1Class = newClass(str);
-    sha1Class->superclass = vm->moduleClass;
+    sha1Class->superclass = vm->objectClass;
     push(OBJ_VAL(sha1Class));
     tableSet(&vm->globals, str, OBJ_VAL(sha1Class));
     sha1Class->destructor = sha1Destructor;
