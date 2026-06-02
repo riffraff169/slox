@@ -48,6 +48,7 @@
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
 #define VM_CALLBACK_CHECK_ERROR(resultState) \
     if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
+        vm.stackTop = _callbackStackStart; \
         vm.nativeExitDepth = _oldExitDepth; \
         return NIL_VAL; \
     }
@@ -135,23 +136,16 @@ static Value createResult(Value value, Value errval, bool isok) {
 
     Value resultValue;
 
-    if (tableGet(&vm.globals, copyString("Result", 6), &resultValue)) {
-        ObjClass* resultClass = AS_CLASS(resultValue);
-        ObjInstance* result = newInstance(resultClass);
-        push(OBJ_VAL(result));
+    ObjInstance* result = newInstance(vm.resultClass);
+    push(OBJ_VAL(result));
 
-        tableSet(&result->fields, copyString("ok", 2), BOOL_VAL(isok));
-        tableSet(&result->fields, copyString("val", 3), value);
-        tableSet(&result->fields, copyString("err", 3), errval);
+    tableSet(&result->fields, vm.okString, BOOL_VAL(isok));
+    tableSet(&result->fields, vm.valString, value);
+    tableSet(&result->fields, vm.errString, errval);
 
-        pop();
-        popn(2);
-        return OBJ_VAL(result);
-    }
-    // shouldnt happen, class is defined in initVM()
-    
+    pop();
     popn(2);
-    return NIL_VAL;
+    return OBJ_VAL(result);
 }
 
 static Value errorResult(const char* format, ...) {
@@ -266,12 +260,12 @@ static Value optionUnwrapNative(int argCount, Value* args) {
 }
 
 static Value optionUnwrapOrNative(int argCount, Value* args) {
-    if (argCount < 2) {
-        runtimeError("Result.unwrap_or() expects exactly 1 argument.");
+    if (argCount < 1) {
+        runtimeError("Option.unwrap_or() expects exactly 1 argument.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     Value is_some;
 
     tableGet(&instance->fields, vm.isSomeString, &is_some);
@@ -282,7 +276,7 @@ static Value optionUnwrapOrNative(int argCount, Value* args) {
         return val;
     }
 
-    return args[1];
+    return args[0];
 }
 
 static uint32_t valueToUint32(Value value) {
@@ -314,7 +308,7 @@ static Value clockNative(int argCount, Value* args) {
 }
 
 static Value objectEachNative(int argCount, Value* args) {
-    if (argCount < 1 | !IS_CLOSURE(args[0])) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Expected a closure callback.");
         return NIL_VAL;
     }
@@ -433,6 +427,7 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
         vm.exceptionThrown = false;
         return false;
     }
+    vm.stackTop -= 3;
     return res;
 }
 
@@ -587,30 +582,55 @@ void* loadModule(const char* name) {
     return handle;
 }
 
+#define EXTRACT_MATH_OP(outVar, funcName) \
+    double outVar; \
+    if (IS_NUMBER(args[-1])) { \
+        outVar = AS_NUMBER(args[-1]); \
+    } else if (argCount > 0 && IS_NUMBER(args[0])) { \
+        outVar = AS_NUMBER(args[0]); \
+    } else { \
+        runtimeError(funcName "() expects a number receiver or a number argument."); \
+        return NIL_VAL; \
+    }
+
 static Value mathSqrtNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) {
+    /*
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
         runtimeError("sqrt() expects 1 number argument.");
         return NIL_VAL;
     }
-    return NUMBER_VAL(sqrt(AS_NUMBER(args[1])));
+    */
+    EXTRACT_MATH_OP(val, "sqrt");
+    //return NUMBER_VAL(sqrt(AS_NUMBER(args[0])));
+    return NUMBER_VAL(sqrt(val));
 }
 
 static Value mathAbsNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) {
+    /*
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
         runtimeError("sqrt() expects 1 number argument.");
         return NIL_VAL;
     }
-    return NUMBER_VAL(fabs(AS_NUMBER(args[1])));
+    */
+    EXTRACT_MATH_OP(val, "abs");
+    return NUMBER_VAL(fabs(val));
 }
 
 static Value toNumberNative(int argCount, Value* args) {
-    if (argCount < 1) return NUMBER_VAL(0);
+    Value value = NUMBER_VAL(0);
 
-    if (IS_NUMBER(args[0])) return args[0];
-    if (!IS_STRING(args[0])) return NUMBER_VAL(0);
+    if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) || IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
+        value = args[-1];
+    } else {
+        if (argCount < 1) return NUMBER_VAL(0);
+        value = args[0];
+    }
+
+    if (IS_NUMBER(value)) return value;
+    if (!IS_STRING(value)) return NUMBER_VAL(0);
 
     char* end;
-    const char* str = AS_CSTRING(args[0]);
+    const char* str = AS_CSTRING(value);
     double number = strtod(str, &end);
 
     if (str == end) {
@@ -621,43 +641,66 @@ static Value toNumberNative(int argCount, Value* args) {
 }
 
 static Value mathSinNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(sin(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "sin");
+    return NUMBER_VAL(sin(val));
 }
 
 static Value mathCosNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(cos(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(cos(val));
 }
 
 static Value mathAcosNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(acos(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(acos(val));
 }
 
 static Value mathTanNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(tan(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(tan(val));
 }
 
 static Value mathAtan2Native(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) return NIL_VAL;
-    return NUMBER_VAL(atan2(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
+    double y, x;
+
+    if (IS_NUMBER(args[-1])) {
+        if (argCount < 1 || !IS_NUMBER(args[0])) {
+            runtimeError("atan2() expects a number argument when called as a method.");
+            return NIL_VAL;
+        }
+        y = AS_NUMBER(args[-1]);
+        x = AS_NUMBER(args[0]);
+    } else {
+        if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+            runtimeError("atan2() expects two number arguments when called as statically.");
+            return NIL_VAL;
+        }
+        y = AS_NUMBER(args[0]);
+        x = AS_NUMBER(args[1]);
+    }
+    return NUMBER_VAL(atan2(y, x));
 }
 
 static Value mathRoundNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(round(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(round(val));
 }
 
 static Value mathFloorNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    return NUMBER_VAL(floor(AS_NUMBER(args[0])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(floor(val));
 }
 
 static Value mathCeilNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
-    return NUMBER_VAL(ceil(AS_NUMBER(args[1])));
+    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+    EXTRACT_MATH_OP(val, "cos");
+    return NUMBER_VAL(ceil(val));
 }
 
 static Value mathRandomNative(int argCount, Value* args) {
@@ -674,8 +717,21 @@ static Value mathPiNative(int argCount, Value* args) {
 }
 
 static Value mathExpNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_NUMBER(args[1])) return NUMBER_VAL(exp(1.0));
-    return NUMBER_VAL(exp(AS_NUMBER(args[1])));
+    double val;
+
+    if (IS_NUMBER(args[-1])) {
+        val = AS_NUMBER(args[-1]);
+    } else if (argCount >= 1 && IS_NUMBER(args[0])) {
+        val = AS_NUMBER(args[0]);
+    } else {
+        return NUMBER_VAL(exp(1.0));
+    }
+
+    return NUMBER_VAL(exp(val));
+    /*
+    if (argCount < 1 || !IS_NUMBER(args[0])) return NUMBER_VAL(exp(1.0));
+    return NUMBER_VAL(exp(AS_NUMBER(args[0])));
+    */
 }
 
 static int defaultSortComparator(const void* a, const void* b) {
@@ -723,6 +779,7 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
     if (vmCall(callback, 2)) {
         InterpretResult state = run();
         if (state == INTERPRET_RUNTIME_ERROR) {
+            vm.stackTop = comparisonStackBase;
             vm.nativeExitDepth = oldExitDepth;
             return 0;
         }
@@ -754,14 +811,14 @@ static Value arraySortSliceNative(int argCount, Value* args) {
 
     Value* sliceStart = &array->values[start];
     int count = end - start;
-    if (argCount >= 4 && IS_CLOSURE(args[2])) {
+    if (argCount >= 3 && IS_CLOSURE(args[2])) {
         qsort_r(sliceStart, count, sizeof(Value),
                 loxSortComparator, AS_CLOSURE(args[2]));
     } else {
         qsort(sliceStart, count, sizeof(Value),
                 defaultSortComparator);
     }
-    return args[0];
+    return args[-1];
 }
 
 static Value arraySortNative(int argCount, Value* args) {
@@ -1150,7 +1207,7 @@ static Value mapRemoveNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    if (!IS_STRING(args[1])) {
+    if (!IS_STRING(args[0])) {
         runtimeError("Map keys must be strings.");
         return NIL_VAL;
     }
@@ -2616,14 +2673,20 @@ static Value bitTestNative(int argCount, Value* args) {
 }
 
 static Value hexNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        return NIL_VAL;
+    uint64_t num;
+    int precision = 1;
+    bool prefix = true;
+
+    if (IS_NUMBER(args[-1])) {
+        num = (uint64_t)AS_NUMBER(args[-1]);
+        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
+        if (argCount >= 2 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
+    } else {
+        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+        num = (uint64_t)AS_NUMBER(args[0]);
+        if (argCount >= 2 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
+        if (argCount >= 3 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
     }
-
-    uint64_t num = (uint64_t)AS_NUMBER(args[0]);
-
-    int precision = (argCount >= 2 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : 1;
-    int prefix = (argCount >= 3 && IS_BOOL(args[2])) ? AS_BOOL(args[2]) : true;
 
     char buffer[64];
     if (prefix)
@@ -2635,10 +2698,17 @@ static Value hexNative(int argCount, Value* args) {
 }
 
 static Value octNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    uint64_t num;
+    int precision = 1;
 
-    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
-    int precision = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+    if (IS_NUMBER(args[-1])) {
+        num = (uint64_t)AS_NUMBER(args[-1]);
+        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
+    } else {
+        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+        num = (uint64_t)AS_NUMBER(args[0]);
+        if (argCount >= 2 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
+    }
 
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "0%.*llo", precision, (unsigned long long)num);
@@ -2647,10 +2717,17 @@ static Value octNative(int argCount, Value* args) {
 }
 
 static Value binNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) return NIL_VAL;
+    uint64_t num;
+    int min_bits = 1;
 
-    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
-    int min_bits = (argCount == 3 && IS_NUMBER(args[2])) ? (int)AS_NUMBER(args[2]) : 1;
+    if (IS_NUMBER(args[-1])) {
+        num = (uint64_t)AS_NUMBER(args[-1]);
+        if (argCount >= 1 && IS_NUMBER(args[0])) min_bits = (int)AS_NUMBER(args[0]);
+    } else {
+        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
+        num = (uint64_t)AS_NUMBER(args[0]);
+        if (argCount >= 2 && IS_NUMBER(args[1])) min_bits = (int)AS_NUMBER(args[1]);
+    }
 
     if (min_bits > 64) min_bits = 64;
     if (min_bits < 1) min_bits = 1;
@@ -2752,15 +2829,23 @@ void initMathLibrary() {
     push(OBJ_VAL(mathClass));
 
     defineNativeMethod(mathClass, "sqrt", mathSqrtNative);
+    defineNativeMethod(vm.numberClass, "sqrt", mathSqrtNative);
     defineNativeMethod(mathClass, "abs", mathAbsNative);
+    defineNativeMethod(vm.numberClass, "abs", mathAbsNative);
     defineNativeMethod(mathClass, "floor", mathFloorNative);
+    defineNativeMethod(vm.numberClass, "floor", mathFloorNative);
     defineNativeMethod(mathClass, "ceil", mathCeilNative);
+    defineNativeMethod(vm.numberClass, "ceil", mathCeilNative);
     defineNativeMethod(mathClass, "random", mathRandomNative);
     defineNativeMethod(mathClass, "pi", mathPiNative);
     defineNativeMethod(mathClass, "exp", mathExpNative);
+    defineNativeMethod(vm.numberClass, "exp", mathExpNative);
     defineNativeMethod(mathClass, "hex", hexNative);
+    defineNativeMethod(vm.numberClass, "hex", hexNative);
     defineNativeMethod(mathClass, "oct", octNative);
+    defineNativeMethod(vm.numberClass, "oct", octNative);
     defineNativeMethod(mathClass, "bin", binNative);
+    defineNativeMethod(vm.numberClass, "bin", binNative);
     defineNativeMethod(mathClass, "bit_test", bitTestNative);
     defineNativeMethod(mathClass, "min", mathMinNative);
     defineNativeMethod(mathClass, "max", mathMaxNative);
@@ -2771,11 +2856,15 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "round", mathRoundNative);
     defineNativeMethod(mathClass, "to_number", toNumberNative);
     defineNativeMethod(mathClass, "sin", mathSinNative);
+    defineNativeMethod(vm.numberClass, "sin", mathSinNative);
     defineNativeMethod(mathClass, "tan", mathTanNative);
+    defineNativeMethod(vm.numberClass, "tan", mathTanNative);
     defineNativeMethod(mathClass, "atan2", mathAtan2Native);
+    defineNativeMethod(vm.numberClass, "atan2", mathAtan2Native);
     defineNativeMethod(mathClass, "cos", mathCosNative);
+    defineNativeMethod(vm.numberClass, "cos", mathCosNative);
     defineNativeMethod(mathClass, "acos", mathAcosNative);
-    defineNativeMethod(mathClass, "tan", mathTanNative);
+    defineNativeMethod(vm.numberClass, "acos", mathAcosNative);
 
 
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
@@ -3533,6 +3622,7 @@ static Value ioAcceptNative(int argCount, Value* args) {
 }
 
 static Value ioReadableNative(int argCount, Value* args) {
+    return okResult(BOOL_VAL(true));
 }
 
 void initArrayClass() {
@@ -3747,6 +3837,7 @@ static Value structUnpackNative(int argCount, Value* args) {
             case 'B':
                 {
                     uint8_t val = (uint8_t)buffer[offset];
+                    arrayAppend(results, NUMBER_VAL((double)val));
                     offset++;
                 }
                 break;
@@ -3835,13 +3926,17 @@ void initIOClass() {
 
     string = copyString("tcp", 3);
     ObjClass* tcpClass = newClass(string);
+    push(OBJ_VAL(tcpClass));
     tcpClass->superclass = ioClass;
     tableSet(&ioClass->methods, string, OBJ_VAL(tcpClass));
+    pop();
 
     string = copyString("udp", 3);
     ObjClass* udpClass = newClass(string);
+    push(OBJ_VAL(udpClass));
     udpClass->superclass = ioClass;
     tableSet(&ioClass->methods, string, OBJ_VAL(udpClass));
+    pop();
 
     // init is not inherited
     defineNativeMethod(ioClass, "init", ioInitNative);
@@ -3880,6 +3975,7 @@ void initStringClass() {
     defineNativeMethod(vm.stringClass, "split", stringSplitNative);
     defineNativeMethod(vm.stringClass, "slice", stringSliceNative);
     defineNativeMethod(vm.stringClass, "to_array", stringToarrayNative);
+    defineNativeMethod(vm.stringClass, "to_number", toNumberNative);
 
     pop();
 }
@@ -4153,11 +4249,19 @@ void freeVM() {
 }
 
 void push(Value value) {
+    if (vm.stackTop - vm.stack >= STACK_MAX) {
+        fprintf(stderr, "Stack overflow error.");
+        exit(1);
+    }
     *vm.stackTop = value;
     vm.stackTop++;
 }
 
 Value pop() {
+    if (vm.stackTop - vm.stack <= 0) {
+        fprintf(stderr, "Stack underflow error.");
+        exit(1);
+    }
     vm.stackTop--;
     return *vm.stackTop;
 }
@@ -4465,21 +4569,25 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 static bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
+    
     /*
     if (!IS_OBJ(receiver) && !IS_VEC3(receiver)) {
         runtimeError("Undefined method '%s' for primitive type.", name->chars);
         return false;
     }
     */
+    
 
     ObjClass* klass = getClassForValue(receiver);
+    
     /*
     printf("DEBUG: Looking for method '%s' on Class '%s' %d\n",
             name->chars, klass->name->chars, klass);
-    printf("String class: %d\n", vm.stringClass);
+    printf("Number class: %d\n", vm.numberClass);
     */
 
     if (IS_INSTANCE(receiver)) {
+        printf("is instance...\n");
         ObjInstance* instance = AS_INSTANCE(receiver);
         Value field;
         if (tableGet(&instance->fields, name, &field)) {
@@ -4488,7 +4596,6 @@ static bool invoke(ObjString* name, int argCount) {
         }
     }
 
-    //ObjClass* 
     if (IS_VEC3(receiver)) {
         Value method;
         ObjClass* currentClass = vm.vec3Class;
@@ -4532,7 +4639,8 @@ static bool invoke(ObjString* name, int argCount) {
         return callMethodMissing(vm.vec3Class ? vm.vec3Class : vm.objectClass, name, argCount);
     }
 
-    if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
+    //if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
+    if (IS_STRING(receiver)) {
         ObjClass* currentClass = (IS_STRING(receiver)) ? vm.stringClass : vm.objectClass;
         Value method;
 
@@ -5704,122 +5812,6 @@ InterpretResult run() {
                         break;
                     }
 
-                    /*
-                    int receiverIndex = (vm.stackTop - vm.stack) - 1 - argCount;
-                    printf("[INVOKE]: %s with %d args. Receiver type: %d\n", method->chars, argCount, receiver.type);
-                    printf("[INVOKE]: %s | Args: %d | Stack Depth: %ld | Looking at Index: %d | Type: %d\n",
-                            method->chars, argCount, (vm.stackTop - vm.stack), receiverIndex, receiver.type);
-                    */
-
-                    /*
-                    if (IS_VEC3(receiver)) {
-                        Vec3 vec = AS_VEC3(peek(argCount));
-
-                        if (method->length == 6 && memcmp(method->chars, "length", 6) == 0) {
-                            if (argCount != 0) {
-                                RUNTIME_ERROR("method length() expects 0 arguments.");
-                                break;
-                            }
-
-                            double len = sqrt(vec.x * vec.x +
-                                    vec.y * vec.y + vec.z * vec.z);
-                            popn(argCount + 1);
-                            push(NUMBER_VAL(len));
-                            break;
-                        } else if (method->length == 14 && memcmp(method->chars, "length_squared", 14) == 0) {
-                            if (argCount != 0) {
-                                RUNTIME_ERROR("method length() expects 0 arguments.");
-                                break;
-                            }
-                            
-                            double len = vec.x * vec.x +
-                                    vec.y * vec.y + vec.z * vec.z;
-                            popn(argCount + 1);
-                            push(NUMBER_VAL(len));
-                            break;
-                        } else if (method->length == 5 && memcmp(method->chars, "cross", 5) == 0) {
-                            if (argCount != 1) {
-                                RUNTIME_ERROR("method cross() expects 1 Vec3 argument.");
-                                break;
-                            }
-
-                            Vec3 b = AS_VEC3(pop());
-                            Vec3 a = AS_VEC3(pop());
-                            Vec3 c;
-                            c.x = a.y * b.z - a.z * b.y;
-                            c.y = a.z * b.x - a.x * b.z;
-                            c.z = a.x * b.y - a.y * b.x;
-                            push(VEC3_VAL(c));
-                            break;
-                        } else if (method->length == 4 && memcmp(method->chars, "unit", 4) == 0) {
-                            if (argCount != 0) {
-                                RUNTIME_ERROR("method unit() expects 0 arguments.");
-                                break;
-                            }
-
-                            double mag2 = vec.x * vec.x + vec.y * vec.y +
-                                    vec.z * vec.z;
-                            if (mag2 > 0) {
-                                double invMag = 1.0 / sqrt(mag2);
-                                Vec3 a;
-                                a.x = vec.x * invMag;
-                                a.y = vec.y * invMag;
-                                a.z = vec.z * invMag;
-                                pop();
-                                push(VEC3_VAL(a));
-                                break;
-                            } else {
-                                pop();
-                                Vec3 a = {.x = 0, .y = 0, .z = 0};
-                                push(VEC3_VAL(a));
-                                break;
-                            }
-                        } else if (method->length == 3 && memcmp(method->chars, "dot", 3) == 0) {
-                            if (argCount != 1) {
-                                RUNTIME_ERROR("Method dot() expects 1 argument.");
-                                break;
-                            }
-                            if (!IS_VEC3(peek(0))) {
-                                RUNTIME_ERROR("Dot product argument must be a Vec3.");
-                                break;
-                            }
-
-                            Vec3 other = AS_VEC3(pop());
-                            pop();
-                            double result = (vec.x * other.x) +
-                                (vec.y * other.y) + (vec.z * other.z);
-                            push(NUMBER_VAL(result));
-                        } else {
-                            RUNTIME_ERROR("Method %s does not exist.", method->chars);
-                            break;
-                        }
-                        break;
-                    }
-                */
-
-                    /*
-                    if (invokeFromClass(klass, method, argCount)) {
-                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    } else if (vm.exceptionThrown) {
-                        vm.exceptionThrown = false;
-                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    } else if (IS_OBJ(receiver)) {
-                        if (!invoke(method, argCount)) {
-                            RUNTIME_ERROR("No method.");
-                            break;
-                        }
-                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    } else {
-                        RUNTIME_ERROR("Undefined method '%s' for primitive type.", method->chars);
-                        break;
-                    }
-                    */
                     if (!invoke(method, argCount)) {
                         //RUNTIME_ERROR("Undefined method '%s'.", method->chars);
                         if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
@@ -5830,44 +5822,6 @@ InterpretResult run() {
                     if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                     break;
                 }
-
-
-                /*
-                        //printValue(receiver);
-                        Obj* obj = AS_OBJ(receiver);
-
-                        // 1. If its a class, look at its own methods (Static Call)
-                        if (IS_CLASS(receiver)) {
-                            ObjClass* klass = AS_CLASS(receiver);
-                            if (invokeFromClass(klass, method, argCount)) {
-                                if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-
-                                frame = &vm.frames[vm.frameCount - 1];
-                                break;
-                            }
-                        }
-
-                        // 2. Otherwise, look at the methods if its class (Instance call)
-                        if (invokeFromClass(obj->klass, method, argCount)) {
-                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-
-                            frame = &vm.frames[vm.frameCount - 1];
-                        } else {
-                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-
-                            if (!invoke(method, argCount)) {
-                                return INTERPRET_RUNTIME_ERROR;
-                            }
-                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-
-                            frame = &vm.frames[vm.frameCount - 1];
-                        }
-                        break;
-                    }
-                    printf("CRASH PREVENTED: Receiver is not an object! Type: %d\n", receiver.type);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-                */
                 break;
             case OP_INVOKE_SPLAT:
                 {
