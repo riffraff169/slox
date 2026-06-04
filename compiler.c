@@ -1896,6 +1896,14 @@ ObjFunction* compile(const char* source, ObjString* filename) {
 
     // 2. main compilation phase
     while (!match(TOKEN_EOF)) {
+        if (match(TOKEN_END_MARKER)) {
+            Token dataToken = parser.previous;
+            
+            ObjString* dataStr = copyString(dataToken.start, dataToken.length);
+
+            tableSet(&vm.globals, copyString("DATA", 4), OBJ_VAL(dataStr));
+            break;
+        }
         declaration();
     }
 

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "scanner.h"
+#include "object.h"
 
 typedef struct {
     const char* start;
@@ -10,6 +11,7 @@ typedef struct {
     int line;
     int interpolationDepth;
     const char* filename;
+    bool atstartofline;
 } Scanner;
 
 Scanner scanner;
@@ -19,6 +21,7 @@ void initScanner(const char* source) {
     scanner.current = source;
     scanner.line = 1;
     scanner.interpolationDepth = 0;
+    scanner.atstartofline = true;
 }
 
 static bool isAlpha(char c) {
@@ -86,6 +89,7 @@ static void skipWhitespace() {
                 break;
             case '\n':
                 scanner.line++;
+                scanner.atstartofline = true;
                 advance();
                 break;
             case '/':
@@ -131,6 +135,7 @@ static TokenType checkKeyword(int start, int length,
 
 static TokenType identifierType() {
     switch (scanner.start[0]) {
+        case '_': return checkKeyword(1, 6, "_END__", TOKEN_END_MARKER);
         case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);
         case 'b': return checkKeyword(1, 4, "reak", TOKEN_BREAK);
         case 'c':
@@ -333,6 +338,10 @@ Token scanToken() {
     skipWhitespace();
     scanner.start = scanner.current;
 
+    bool isstart = scanner.atstartofline;
+
+    scanner.atstartofline = false;
+
     if (isAtEnd()) return makeToken(TOKEN_EOF);
 
     char c = advance();
@@ -340,7 +349,22 @@ Token scanToken() {
         scanner.interpolationDepth--;
         return continueString();
     }
-    if (isAlpha(c)) return identifier();
+    if (isAlpha(c)) {
+        Token token = identifier();
+
+        if (token.type == TOKEN_END_MARKER) {
+            if (isstart) {
+                token.start = scanner.current;
+                token.length = (int)strlen(scanner.current);
+                scanner.current += token.length;
+                return token;
+            } else {
+                token.type = TOKEN_IDENTIFIER;
+            }
+        }
+        return token;
+    }
+
     if (isDigit(c)) {
         if (c == '0' && (peek() == 'x' || peek() == 'X')) {
             advance();

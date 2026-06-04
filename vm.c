@@ -5223,27 +5223,32 @@ InterpretResult run() {
                             break;
                         }
 
-                        if (instance->obj.klass->getter != NULL) {
-                            value = instance->obj.klass->getter(instance, name);
-                            if (!IS_NIL(value)) {
+                        ObjClass* klass = getClassForValue(receiver);
+                        //if (instance->obj.klass != NULL) {
+                        if (klass != NULL) {
+                            //if (findMethod(instance->obj.klass, name, &value)) {
+                            if (findMethod(klass, name, &value)) {
+                                ObjBoundMethod* bound = newBoundMethod(peek(0), value);
+                                pop();
+                                push(OBJ_VAL(bound));
+                                break;
+                            }
+
+                            //if (instance->obj.klass->getter != NULL) {
+                            if (klass->getter != NULL) {
+                                //value = instance->obj.klass->getter(instance, name);
+                                value = klass->getter(instance, name);
                                 pop();
                                 push(value);
                                 break;
                             }
                         }
 
-                        if (instance->obj.klass != NULL) {
-                            if (findMethod(instance->obj.klass, name, &value)) {
-                                ObjBoundMethod* bound = newBoundMethod(peek(0), value);
-                                pop();
-                                push(OBJ_VAL(bound));
-                                break;
-                            }
-                        }
                         RUNTIME_ERROR("Undefined property '%s'.", name->chars);
                         break;
                     } 
 
+                    /*
                     ObjClass* klass = getClassForValue(receiver);
                     if (klass != NULL) {
                         Value method;
@@ -5255,6 +5260,7 @@ InterpretResult run() {
                             break;
                         }
                     }
+                    */
 
                     RUNTIME_ERROR("Property '%s' not found.", name->chars);
                     break;
