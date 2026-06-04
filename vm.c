@@ -2753,29 +2753,56 @@ static Value binNative(int argCount, Value* args) {
 
     return OBJ_VAL(copyString(buffer, (int)(p - buffer)));
 }
+static inline Value getCheckTarget(int argCount, Value* args) {
+    /*
+    if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) ||
+            IS_BOOL(args[-1]) || IS_NIL(args[-1]) ||
+            IS_INSTANCE(args[-1]) || IS_CLOSURE(args[-1]) ||
+            IS_VEC3(args[-1])) {
+        return args[-1];
+    }
+    return (argCount > 0) ? args[0] : NIL_VAL;
+    */
+    if (IS_NATIVE(args[-1])) {
+        return (argCount > 0) ? args[0] : NIL_VAL;
+    }
+    return args[-1];
+}
 
 static Value isNumberNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_NUMBER(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_NUMBER(target));
+    //return BOOL_VAL(argCount > 0 && IS_NUMBER(args[0]));
 }
 
 static Value isStringNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_STRING(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_STRING(target));
+    //return BOOL_VAL(argCount > 0 && IS_STRING(args[0]));
 }
 
 static Value isBoolNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_BOOL(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_BOOL(target));
+    //return BOOL_VAL(argCount > 0 && IS_BOOL(args[0]));
 }
 
 static Value isNilNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_NIL(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_NIL(target));
+    //return BOOL_VAL(argCount > 0 && IS_NIL(args[0]));
 }
 
 static Value isClassNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_CLASS(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_CLASS(target));
+    //return BOOL_VAL(argCount > 0 && IS_CLASS(args[0]));
 }
 
 static Value isInstanceNative(int argCount, Value* args) {
-    return BOOL_VAL(argCount > 0 && IS_INSTANCE(args[0]));
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_INSTANCE(target));
+    //return BOOL_VAL(argCount > 0 && IS_INSTANCE(args[0]));
 }
 
 static Value typeofNative(int argCount, Value* args) {
@@ -4138,40 +4165,56 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("str", strNative);
     defineNative("typeof", typeofNative);
     defineNative("isnumber", isNumberNative);
+    defineNativeMethod(vm.objectClass, "isnumber", isNumberNative);
     defineNative("isstring", isStringNative);
+    defineNativeMethod(vm.objectClass, "isstring", isStringNative);
     defineNative("isbool", isBoolNative);
+    defineNativeMethod(vm.objectClass, "isbool", isBoolNative);
     defineNative("isnil", isNilNative);
+    defineNativeMethod(vm.objectClass, "isnil", isNilNative);
     defineNative("isclass", isClassNative);
+    defineNativeMethod(vm.objectClass, "isclass", isClassNative);
     defineNative("isinstance", isInstanceNative);
+    defineNativeMethod(vm.objectClass, "isinstance", isInstanceNative);
     //defineNative("packInt32", packInt32);
     //defineNative("packByte", packByte);
     defineNative("chr", chrNative);
 
 
     string = copyString("Function", 8);
+    push(OBJ_VAL(string));
     vm.functionClass = newClass(string);
     vm.functionClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.functionClass));
+    pop();
 
     string = copyString("Native", 6);
+    push(OBJ_VAL(string));
     vm.nativeFunctionClass = newClass(string);
     vm.nativeFunctionClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nativeFunctionClass));
+    pop();
 
     string = copyString("Number", 6);
+    push(OBJ_VAL(string));
     vm.numberClass = newClass(string);
     vm.numberClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
+    pop();
 
     string = copyString("Bool", 4);
+    push(OBJ_VAL(string));
     vm.boolClass = newClass(string);
     vm.boolClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
+    pop();
 
     string = copyString("Nil", 3);
+    push(OBJ_VAL(string));
     vm.nilClass = newClass(string);
     vm.nilClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
+    pop();
 
     //defineNative("get_class", objectClassMethod);
     
@@ -4197,8 +4240,11 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
     */
 
-    vm.moduleClass = newClass(copyString("Module", 6));
+    string = copyString("Module", 6);
+    push(OBJ_VAL(string));
+    vm.moduleClass = newClass(string);
     vm.moduleClass->superclass = vm.objectClass;
+    pop();
 
     defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
     defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
