@@ -457,7 +457,8 @@ static Value objectToStringNative(int argCount, Value* args) {
 }
 
 static Value strNative(int argCount, Value* args) {
-    if (argCount != 1) return NIL_VAL;
+    //if (argCount != 1) return NIL_VAL;
+    if (argCount != 1) return OBJ_VAL(copyString("", 0));
 
     char buffer[64];
     int len = 0;
@@ -2999,12 +3000,26 @@ void initFileLibrary() {
     popn(2);
 }
 
+Value vec3CallHandler(int argCount, Value* args) {
+    if (argCount != 3) {
+        runtimeError("Vec3 construct expects 3 arguments.");
+        return NIL_VAL;
+    }
+    if (!IS_NUMBER(args[0]) || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+        runtimeError("Vec3 arguments must be numbers.");
+        return NIL_VAL;
+    }
+    Vec3 v = { AS_NUMBER(args[0]), AS_NUMBER(args[1]), AS_NUMBER(args[2]) };
+    return VEC3_VAL(v);
+}
+
 void initVec3Library() {
     ObjString* name = copyString("Vec3", 4);
     push(OBJ_VAL(name));
 
     vm.vec3Class = newClass(name);
     vm.vec3Class->superclass = vm.objectClass;
+    vm.vec3Class->callHandler = vec3CallHandler;
     tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
     
     //defineNativeMethod(vm.vec3Class, "init", vec3InitNative);
@@ -3013,6 +3028,7 @@ void initVec3Library() {
     defineNativeMethod(vm.vec3Class, "unit", vec3UnitNative);
     defineNativeMethod(vm.vec3Class, "length", vec3LengthNative);
     defineNativeMethod(vm.vec3Class, "length_squared", vec3LengthSquaredNative);
+    pop();
 }
 
 static Value hgfGCNative(int argCount, Value* args) {
@@ -3652,12 +3668,26 @@ static Value ioReadableNative(int argCount, Value* args) {
     return okResult(BOOL_VAL(true));
 }
 
+static Value arrayCallHandler(int argCount, Value* args) {
+    return OBJ_VAL(newArray());
+}
+
+static Value mapCallHandler(int argCount, Value* args) {
+    return OBJ_VAL(newMap());
+}
+
+static Value boolCallHandler(int argCount, Value* args) {
+    if (argCount < 1) return BOOL_VAL(false);
+    return BOOL_VAL(isTruthy(args[0]));
+}
+
 void initArrayClass() {
     ObjString* string = NULL;
 
     string = copyString("Array", 5);
     vm.arrayClass = newClass(string);
     vm.arrayClass->superclass = vm.objectClass;
+    vm.arrayClass->callHandler = arrayCallHandler;
     tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
     push(OBJ_VAL(vm.arrayClass));
 
@@ -3685,13 +3715,13 @@ void initArrayClass() {
     pop();
 }
 
-
 void initMapClass() {
     ObjString* string = NULL;
 
     string = copyString("Map", 3);
     vm.mapClass = newClass(string);
     vm.mapClass->superclass = vm.objectClass;
+    vm.mapClass->callHandler = mapCallHandler;
     tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
     push(OBJ_VAL(vm.mapClass));
 
@@ -4117,6 +4147,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     ObjString* name = copyString("String", 6);
     push(OBJ_VAL(name));
     vm.stringClass = newClass(name);
+    vm.stringClass->callHandler = strNative;
+    vm.stringClass->superclass = vm.objectClass;
     name->obj.klass = vm.stringClass;
     pop();
 
@@ -4128,7 +4160,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass->superclass = NULL;
     pop();
 
-    vm.stringClass->superclass = vm.objectClass;
 
     tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
     tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
@@ -4199,6 +4230,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     push(OBJ_VAL(string));
     vm.numberClass = newClass(string);
     vm.numberClass->superclass = vm.objectClass;
+    vm.numberClass->callHandler = toNumberNative;
     tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
     pop();
 
@@ -4206,6 +4238,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     push(OBJ_VAL(string));
     vm.boolClass = newClass(string);
     vm.boolClass->superclass = vm.objectClass;
+    vm.boolClass->callHandler = boolCallHandler;
     tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
     pop();
 
@@ -4405,37 +4438,6 @@ static bool callValue(Value callee, int argCount) {
             case OBJ_CLASS:
                 {
                     ObjClass* klass = AS_CLASS(callee);
-
-                    if (klass == vm.arrayClass) {
-                        vm.stackTop[-argCount - 1] = OBJ_VAL(newArray());
-                        return true;
-                    } else if (klass == vm.mapClass) {
-                        vm.stackTop[-argCount - 1] = OBJ_VAL(newMap());
-                        return true;
-                    } else if (klass == vm.vec3Class) {
-                        if (argCount != 3) {
-                            runtimeError("Vec3 construct expects 3 arguments.");
-                            return false;
-                        }
-
-                        Value x = vm.stackTop[-3];
-                        Value y = vm.stackTop[-2];
-                        Value z = vm.stackTop[-1];
-
-                        if (!IS_NUMBER(x) || !IS_NUMBER(y) || !IS_NUMBER(z)) {
-                            runtimeError("Vec3 arguments must be numbers.");
-                            return false;
-                        }
-
-                        Vec3 v;
-                        v.x = AS_NUMBER(x);
-                        v.y = AS_NUMBER(y);
-                        v.z = AS_NUMBER(z);
-
-                        vm.stackTop[-argCount - 1] = VEC3_VAL(v);
-                        vm.stackTop -= argCount;
-                        return true;
-                    }
 
                     if (klass->callHandler != NULL) {
                         Value result = klass->callHandler(argCount, vm.stackTop - argCount);
