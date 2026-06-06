@@ -107,9 +107,18 @@ typedef struct ObjInstance ObjInstance;
 typedef struct ObjClass ObjClass;
 
 typedef Value (*ClassCallFn)(int argCount, Value* args);
+/*
 typedef Value (*ForeignGetFn)(ObjInstance* instance, ObjString* name);
 typedef bool (*ForeignSetFn)(ObjInstance* instance, ObjString* name, Value value);
+*/
+typedef Value (*ForeignGetFn)(Value receiver, ObjString* name);
+typedef Value (*ForeignSetFn)(Value receiver, ObjString* name, Value value);
 typedef void (*DestructorFn)(ObjInstance* instance);
+
+typedef struct HookNode {
+    Value callable;
+    struct HookNode* next;
+} HookNode;
 
 typedef enum {
     CLASS_USER_DEFINED,
@@ -130,6 +139,9 @@ typedef struct ObjClass {
     ForeignGetFn getter;
     ForeignSetFn setter;
     DestructorFn destructor;
+
+    Value vGetter;
+    Value vSetter;
 } ObjClass;
 
 typedef struct ObjInstance {

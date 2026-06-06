@@ -164,6 +164,12 @@ static Value okResult(Value value) {
     return createResult(value, NIL_VAL, true);
 }
 
+bool isResultOk(Value value) {
+}
+
+Value getResultvalue(Value value) {
+}
+
 void raiseException(Value exceptionValue) {
     vm.exceptionThrown = true;
     if (vm.tryCount == 0) {
@@ -3013,6 +3019,24 @@ Value vec3CallHandler(int argCount, Value* args) {
     return VEC3_VAL(v);
 }
 
+Value universalClassGetter(Value receiver, ObjString* name) {
+    if (name == copyString("class", 5)) {
+        ObjClass* klass = getClassForValue(receiver);
+        return OBJ_VAL(klass);
+    }
+    return NIL_VAL;
+}
+
+Value vec3GetterNative(Value receiver, ObjString* name) {
+    Vec3 vec = AS_VEC3(receiver);
+
+    if (name == vm.xString) return NUMBER_VAL(vec.x);
+    if (name == vm.yString) return NUMBER_VAL(vec.y);
+    if (name == vm.zString) return NUMBER_VAL(vec.z);
+
+    return NIL_VAL;
+}
+
 void initVec3Library() {
     ObjString* name = copyString("Vec3", 4);
     push(OBJ_VAL(name));
@@ -3020,6 +3044,7 @@ void initVec3Library() {
     vm.vec3Class = newClass(name);
     vm.vec3Class->superclass = vm.objectClass;
     vm.vec3Class->callHandler = vec3CallHandler;
+    vm.vec3Class->getter = vec3GetterNative;
     tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
     
     //defineNativeMethod(vm.vec3Class, "init", vec3InitNative);
@@ -5193,6 +5218,94 @@ InterpretResult run() {
                     
                     Value receiver = peek(0);
 
+                    // 1. Dynamic local fields (Exclusive to heap-allocated instances)
+                    if (IS_INSTANCE(receiver)) {
+                        ObjInstance* instance = AS_INSTANCE(receiver);
+                        if (instance->obj.klass == NULL) {
+                            RUNTIME_ERROR("Instance has no class.");
+                            break;
+                        }
+
+                        Value value; 
+                        if (tableGet(&instance->fields, name, &value)) {
+                            pop();
+                            push(value);
+                            break;
+                        }
+                    }
+
+                    // 2. Unified metadata pipeline (primitives, vec3, arrays, instances)
+                    ObjClass* klass = getClassForValue(receiver);
+                    if (klass != NULL) {
+                        ObjClass* currentClass = klass;
+                        Value getterValue = NIL_VAL;
+
+                        while (currentClass != NULL) {
+                            if (!IS_NIL(currentClass->vGetter)) {
+                                getterValue = currentClass->vGetter;
+                                break;
+                            }
+                            currentClass = currentClass->superclass;
+                        }
+
+                        if (!IS_NIL(getterValue)) {
+                            // prepare stack [getterValue, receiver, name]
+                            pop();
+                            push(getterValue);
+                            push(receiver);
+                            push(OBJ_VAL(name));
+
+                            if (callValue(getterValue, 2)) {
+                                // it's a lox script closure, a new callframe was pushed
+                                // exit the opcode immediately to execute the getter bytecodde
+                                break;
+                            }
+
+                            // native function
+                            Value resultInstance = peek(0);
+
+                            if (isResultOk(resultInstance)) {
+                                // wrap the result instance and a fallback in a temp c array
+                                // index 0: resultInstance (receiver slot for args[-1])
+                                // index 1: NIL_VAL (argument array slot for args[0])
+                                Value fakeStack[2] = { resultInstance, NIL_VAL };
+
+                                // call native unwrap function
+                                Value unwrappedVal  = resultUnwrapOrNative(1, &fakeStack[1]);
+                                pop(); // pop result instance
+                                push(unwrappedVal); // push the actual unpacked property value
+                                break; // success
+                            } else {
+                                // the getter explicitly returned an Err, declining to handle it
+                                pop(); // pop result instance
+                                push(receiver);
+                                // fall through
+                            }
+                        }
+                            
+
+                        Value value;
+                        // check for defined methods
+                        if (findMethod(klass, name, &value)) {
+                            ObjBoundMethod* bound = newBoundMethod(receiver, value);
+                            pop();
+                            push(OBJ_VAL(bound));
+                            break;
+                        }
+
+                        // fallback to legacy direct c pointer getters (bridge phase)
+                        if (klass->getter != NULL) {
+                            value = klass->getter(receiver, name);
+                            pop();
+                            push(value);
+                            break;
+                        }
+                    }
+
+                    RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
+                    break;
+
+                    /*
                     if (IS_VEC3(receiver)) {
                         Vec3 vec = AS_VEC3(receiver);
                         if (name == vm.xString) {
@@ -5248,7 +5361,6 @@ InterpretResult run() {
                         break;
                     } 
 
-                    /*
                     ObjClass* klass = getClassForValue(receiver);
                     if (klass != NULL) {
                         Value method;
@@ -5260,72 +5372,47 @@ InterpretResult run() {
                             break;
                         }
                     }
-                    */
 
                     RUNTIME_ERROR("Property '%s' not found.", name->chars);
                     break;
+                    */
                 }
+
                 break;
             case OP_SET_PROPERTY:
             case OP_SET_PROPERTY_LONG:
                 {
-                    if (!IS_INSTANCE(peek(1))) { // && !IS_VEC3(peek(1))) 
-                    //if (!IS_INSTANCE(peek(1)))
-                        RUNTIME_ERROR("Only instances have fields.");
-                        break;
-                    }
-
-                    ObjInstance* instance = AS_INSTANCE(peek(1));
                     ObjString* name = (instruction == OP_SET_PROPERTY)
                         ? READ_STRING()
                         : READ_STRING_LONG();
 
                     Value value = peek(0);
+                    Value receiver = peek(1);
 
-                    //if (IS_VEC3(peek(1))) {
-                        /*
-                        Vec3 vec = AS_VEC3(peek(1));
-
-                        if (name->length == 1) {
-                            double val = AS_NUMBER(value);
-                            switch (name->chars[0]) {
-                                case 'x':
-                                    vec.x = val;
-                                    break;
-                                case 'y':
-                                    vec.y = val;
-                                    break;
-                                case 'z':
-                                    vec.z = val;
-                                    break;
-                                default:
-                                    runtimeError("Vec3 properties are restricted to x, y, z.");
-                                    break;
-                            }
-                            popn(2);
-                            push(value);
-                            break;
-                        } else {
-                        */
-                        //popn(2);
-                        //runtimeError("Vec3 properties are read-only.");
-                        //return INTERPRET_RUNTIME_ERROR;
-                        //}
-                        //break;
-                    //}
-                    if (instance->obj.klass->setter != NULL) {
-                        if (instance->obj.klass->setter(instance, name, value)) {
+                    // 1. intercept via native class setter (primitives, vec3, instances)
+                    ObjClass* klass = getClassForValue(receiver);
+                    if (klass != NULL && klass->setter != NULL) {
+                        Value result = klass->setter(receiver, name, value);
+                        if (isTruthy(result)) {
                             pop();
                             pop();
-                            push(value);
+                            push(result);
                             break;
                         }
                     }
 
-                    tableSet(&instance->fields, name, value);
-                    pop();
-                    pop();
-                    push(value);
+                    // 2. fall back to local dynamic fields
+                    if (IS_INSTANCE(receiver)) {
+                        ObjInstance* instance = AS_INSTANCE(receiver);
+
+                        tableSet(&instance->fields, name, value);
+                        pop();
+                        pop();
+                        push(value);
+                        break;
+                    }
+                    RUNTIME_ERROR("Properties cannot be set on type '%s'.",
+                            klass ? klass->name->chars : "Unknown");
                     break;
                 }
             case OP_GET_SUPER:
