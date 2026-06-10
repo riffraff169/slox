@@ -12,6 +12,8 @@ typedef struct {
     ObjClosure* closure;
     uint8_t* ip;
     Value* slots;
+    bool isGetter;
+    bool isSetter;
 } CallFrame;
 
 typedef struct {
@@ -86,6 +88,7 @@ typedef struct {
     ObjString* okString;
     ObjString* valString;
     ObjString* errString;
+    ObjString* classString;
     ObjClass* optionClass;
     ObjString* isSomeString;
     ObjString* methodMissingString;

@@ -45,6 +45,8 @@ ObjClass* newClass(ObjString* name) {
     klass->getter = NULL;
     klass->setter = NULL;
     klass->destructor = NULL;
+    klass->vGetter = NIL_VAL;
+    klass->vSetter = NIL_VAL;
 
     return klass;
 }

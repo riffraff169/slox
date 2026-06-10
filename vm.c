@@ -82,6 +82,12 @@ static bool isFalsey(Value value);
 static bool isTruthy(Value value);
 static ObjClass* getClassForValue(Value value);
 
+typedef enum {
+    PROP_FOUND,
+    PROP_ASYNC,
+    PROP_NOT_FOUND
+} PropertyResult;
+
 void setLastError(int errorNum, const char* format, ...) {
     char buffer[1024];
     va_list args;
@@ -165,6 +171,16 @@ static Value okResult(Value value) {
 }
 
 bool isResultOk(Value value) {
+    if (!IS_INSTANCE(value)) return false;
+
+    ObjInstance* instance = AS_INSTANCE(value);
+    Value okVal;
+
+    if (tableGet(&instance->fields, vm.okString, &okVal)) {
+        return isTruthy(okVal);
+    }
+
+    return false;
 }
 
 Value getResultvalue(Value value) {
@@ -3234,6 +3250,19 @@ static Value objectClassMethod(int argCount, Value* args) {
     return OBJ_VAL(obj->klass);
 }
 
+static Value objectRootGetter(int argCount, Value* args) {
+    ObjString* name = AS_STRING(args[0]);
+
+    if (name == vm.classString) {
+        Value receiver = args[-1];
+        ObjClass* klass = getClassForValue(receiver);
+
+        return okResult(OBJ_VAL(klass));
+    }
+
+    return errorResult("Value '%s' not found", name);
+}
+
 static Value arrayNativeConstructor(int argCount, Value* args) {
     ObjArray* array = newArray();
     //array->obj.klass = vm.arrayClass;
@@ -4104,7 +4133,194 @@ static Value chrNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(c_str, 1));
 }
 
-void  initOptionClass() {
+static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
+    ObjClass* current = klass;
+    int i = 0;
+    while (current != NULL) {
+        if (tableGet(&current->methods, name, method)) {
+            return true;
+        }
+        current = current->superclass;
+        i++;
+    }
+    return false;
+}
+
+bool isResultInstance(Value value) {
+    if (!IS_INSTANCE(value)) return false;
+    ObjInstance* instance = AS_INSTANCE(value);
+    return instance->obj.klass == vm.resultClass;
+}
+
+PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
+    // 1. dynamic local fields (exclusive to heap instances; no class check needed)
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        if (tableGet(&instance->fields, name, result)) {
+            return PROP_FOUND;
+        }
+    }
+
+    // 2. unified metadata pipeline (primitives, vectors, classes)
+    ObjClass* klass = getClassForValue(receiver);
+    if (klass != NULL) {
+        // step a: search up the inheritance chain for a polymorphic Value getter
+        ObjClass* currentClass = klass;
+        Value getterValue = NIL_VAL;
+        while (currentClass != NULL) {
+            if (!IS_NIL(currentClass->vGetter)) {
+                getterValue = currentClass->vGetter;
+                break;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        if (!IS_NIL(getterValue)) {
+            // Set up stack frames for callValue: [getterValue, receiver, name]
+            // note: receiver is currently sitting at peek(0) on the vm eval stack
+            push(getterValue);
+            push(receiver);
+            push(OBJ_VAL(name));
+
+            if (callValue(getterValue, 2)) {
+                // its a lox script closure, a new callframe is now active
+                // control flow inverted, return immediately so the main loop can run it
+                vm.frames[vm.frameCount - 1].isGetter = true;
+                return PROP_ASYNC;
+            }
+
+            // it was a native function, executed synchronously, result is at peek(0)
+            Value getterReturnVal = peek(0);
+            if (isResultInstance(getterReturnVal)) {
+                // returned result instance
+                if (isResultOk(getterReturnVal)) {
+                    Value fakeStack[2] = { getterReturnVal, NIL_VAL };
+                    *result = resultUnwrapOrNative(1, &fakeStack[1]);
+                    pop();
+                    return PROP_FOUND;
+                } else {
+                    pop();
+                    push(receiver);
+                }
+            } else {
+                // returned direct value
+                *result = getterReturnVal;
+                pop();
+                return PROP_FOUND;
+            }
+        }
+
+        // step b: check for first-class bound methods (method tear-offs)
+        if (findMethod(klass, name, result)) {
+            *result = OBJ_VAL(newBoundMethod(receiver, *result));
+            return PROP_FOUND;
+        }
+
+        // step c: fallback to legacy direct c pointer getters
+        if (klass->getter != NULL) {
+            *result = klass->getter(receiver, name);
+            return PROP_FOUND;
+        }
+    }
+    return PROP_NOT_FOUND;
+}
+
+Value getPropertySync(Value receiver, ObjString* name) {
+    Value result;
+    PropertyResult res = getProperty(receiver, name, &result);
+
+    if (res == PROP_FOUND) {
+        return result;
+    }
+
+    if (res == PROP_NOT_FOUND) {
+        return NIL_VAL;
+    }
+
+    int oldExitDepth = vm.nativeExitDepth;
+
+    vm.nativeExitDepth = vm.frameCount - 1;
+    InterpretResult intresult = run();
+    vm.nativeExitDepth = oldExitDepth;
+    if (intresult == INTERPRET_OK) {
+        return pop();
+    }
+
+    return NIL_VAL;
+}
+
+PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        tableSet(&instance->fields, name, value);
+        *result = value;
+        return PROP_FOUND;
+    }
+
+
+    ObjClass* klass = getClassForValue(receiver);
+    if (klass != NULL) {
+        ObjClass* currentClass = klass;
+        Value setterVal = NIL_VAL;
+        while (currentClass != NULL) {
+            if (!IS_NIL(currentClass->vSetter)) {
+                setterVal = currentClass->vSetter;
+                break;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        if (!IS_NIL(setterVal)) {
+            pop();
+            pop();
+
+            push(setterVal);
+            push(receiver);
+            push(OBJ_VAL(name));
+            push(value);
+
+            if (callValue(setterVal, 3)) {
+                return PROP_ASYNC;
+            }
+
+            pop();
+            *result = value;
+            return PROP_FOUND;
+        }
+
+        if (klass->setter != NULL) {
+            klass->setter(receiver, name, value);
+            *result = value;
+            return PROP_FOUND;
+        }
+    }
+    return PROP_NOT_FOUND;
+}
+
+Value setPropertySync(Value receiver, ObjString* name, Value value) {
+    Value result;
+    PropertyResult res = setProperty(receiver, name, value, &result);
+    
+    if (res == PROP_FOUND) {
+        return result;
+    }
+
+    if (res == PROP_NOT_FOUND) {
+        return NIL_VAL;
+    }
+
+    int oldExitDepth = vm.nativeExitDepth;
+    vm.nativeExitDepth = vm.frameCount - 1;
+    InterpretResult intresult = run();
+    vm.nativeExitDepth = oldExitDepth;
+    if (intresult == INTERPRET_OK) {
+        return pop();
+    }
+
+    return NIL_VAL;
+}
+
+void initOptionClass() {
     ObjString* className = copyString("Option", 6);
     push(OBJ_VAL(className));
 
@@ -4210,9 +4426,14 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.str_div = copyString("__div__", 7);
     vm.str_neg = NULL;
     vm.str_neg = copyString("__neg__", 7);
+    vm.xString = NULL;
     vm.xString = copyString("x", 1);
+    vm.yString = NULL;
     vm.yString = copyString("y", 1);
+    vm.zString = NULL;
     vm.zString = copyString("z", 1);
+    vm.classString = NULL;
+    vm.classString = copyString("class", 5);
 
     vm.methodMissingString = NULL;
     vm.methodMissingString = copyString("method_missing", 14);
@@ -4312,6 +4533,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
     defineNativeMethod(vm.objectClass, "get_superclass", getSuperclassNative);
     defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
+    defineNativeMethod(vm.objectClass, "class", objectClassMethod);
     //defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initResultClass();
@@ -4378,6 +4600,23 @@ bool vmCall(ObjClosure* closure, int argCount) {
     ObjFunction* function = closure->function;
     int namedArity = function->isVariadic ? function->arity - 1 : function->arity;
 
+    // 1. validate argument bounds first
+    // check if the user passed fewer than the absolute minimum required args
+    if (function->isVariadic) {
+        if (argCount < function->minArity) {
+            runtimeError("Expected at least %d arguments but got %d.",
+                    function->minArity, argCount);
+            return false;
+        }
+    } else {
+        if (argCount < function->minArity || argCount > function->arity) {
+            runtimeError("Expected between %d and %d arguments but got %d.",
+                    function->minArity, function->arity, argCount);
+            return false;
+        }
+    }
+
+    // 2. fill in default args safely
     if (argCount < namedArity) {
         int missing = namedArity - argCount;
         for (int i = 0; i < missing; i++) {
@@ -4387,6 +4626,8 @@ bool vmCall(ObjClosure* closure, int argCount) {
         argCount = namedArity;
     }
 
+    // 3. handle variadic rest parameters
+    /*
     if (function->isVariadic) {
         if (argCount < function->minArity) {
             runtimeError("Expected at least %d arguments but got %d.",
@@ -4400,6 +4641,7 @@ bool vmCall(ObjClosure* closure, int argCount) {
             return false;
         }
     }
+    */
 
     if (function->isVariadic) {
         int numRest = argCount - namedArity;
@@ -4409,7 +4651,6 @@ bool vmCall(ObjClosure* closure, int argCount) {
         push(OBJ_VAL(restArray));
 
         for (int i = 0; i < numRest; i++) {
-            //Value val = peek(numRest - i + 1);
             Value val = vm.stackTop[-(numRest + 1) + i];
             arrayAppend(restArray, val);
         }
@@ -4427,7 +4668,9 @@ bool vmCall(ObjClosure* closure, int argCount) {
     CallFrame* frame = &vm.frames[vm.frameCount++];
     frame->closure = closure;
     frame->ip = closure->function->chunk.code;
-    frame->slots = vm.stackTop - closure->function->arity - 1;
+
+    //frame->slots = vm.stackTop - closure->function->arity - 1;
+    frame->slots = vm.stackTop - argCount - 1;
     return true;
 }
 
@@ -4564,19 +4807,6 @@ static bool isTruthy(Value value) {
     return !isFalsey(value);
 }
 
-static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
-    ObjClass* current = klass;
-    int i = 0;
-    while (current != NULL) {
-        if (tableGet(&current->methods, name, method)) {
-            return true;
-        }
-        current = current->superclass;
-        i++;
-    }
-    return false;
-}
-
 static bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     ObjClass* current = klass;
@@ -4642,15 +4872,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
 static bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
-    
-    /*
-    if (!IS_OBJ(receiver) && !IS_VEC3(receiver)) {
-        runtimeError("Undefined method '%s' for primitive type.", name->chars);
-        return false;
-    }
-    */
-    
-
     ObjClass* klass = getClassForValue(receiver);
     
     /*
@@ -4659,20 +4880,34 @@ static bool invoke(ObjString* name, int argCount) {
     printf("Number class: %d\n", vm.numberClass);
     */
 
+    // 1. Standard lox instances
     if (IS_INSTANCE(receiver)) {
-        printf("is instance...\n");
         ObjInstance* instance = AS_INSTANCE(receiver);
         Value field;
+
         if (tableGet(&instance->fields, name, &field)) {
             vm.stackTop[-argCount - 1] = field;
             return callValue(field, argCount);
         }
-    }
 
-    if (IS_VEC3(receiver)) {
-        Value method;
+        ObjClass* currentClass = instance->obj.klass;
+        while (currentClass != NULL) {
+            Value method;
+            if (tableGet(&currentClass->methods, name, &method)) {
+                bool res = invokeFromClass(instance->obj.klass, name, argCount);
+                if (vm.exceptionThrown) {
+                    vm.exceptionThrown = false;
+                    return false;
+                }
+                return res;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        return callMethodMissing(instance->obj.klass, name, argCount);
+    } else if (IS_VEC3(receiver)) {
         ObjClass* currentClass = vm.vec3Class;
-        bool found = false;
+        Value method;
 
         while (currentClass != NULL) {
             if (tableGet(&currentClass->methods, name, &method)) {
@@ -4710,11 +4945,9 @@ static bool invoke(ObjString* name, int argCount) {
         }
 
         return callMethodMissing(vm.vec3Class ? vm.vec3Class : vm.objectClass, name, argCount);
-    }
-
-    //if (!IS_OBJ(receiver) || IS_STRING(receiver)) {
-    if (IS_STRING(receiver)) {
-        ObjClass* currentClass = (IS_STRING(receiver)) ? vm.stringClass : vm.objectClass;
+    } else if (IS_STRING(receiver)) {
+        //ObjClass* currentClass = (IS_STRING(receiver)) ? vm.stringClass : vm.objectClass;
+        ObjClass* currentClass = vm.stringClass;
         Value method;
 
         while (currentClass != NULL) {
@@ -4737,34 +4970,7 @@ static bool invoke(ObjString* name, int argCount) {
             currentClass = currentClass->superclass;
         }
         return callMethodMissing(vm.stringClass, name, argCount);
-    }
-
-    if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-
-        Value field;
-        if (tableGet(&instance->fields, name, &field)) {
-            vm.stackTop[-argCount - 1] = field;
-            return callValue(field, argCount);
-        }
-
-        ObjClass* currentClass = instance->obj.klass;
-        while (currentClass != NULL) {
-            Value method;
-            if (tableGet(&currentClass->methods, name, &method)) {
-                bool res = invokeFromClass(instance->obj.klass, name, argCount);
-                if (vm.exceptionThrown) {
-                    vm.exceptionThrown = false;
-                    return false;
-                }
-                return res;
-            }
-            currentClass = currentClass->superclass;
-        }
-        return callMethodMissing(instance->obj.klass, name, argCount);
-    }
-
-    if (IS_CLASS(receiver)) {
+    } else if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
         bool res = invokeFromClass(klass, name, argCount);
         if (vm.exceptionThrown) {
@@ -4774,153 +4980,21 @@ static bool invoke(ObjString* name, int argCount) {
         if (!res)
             return callMethodMissing(klass, name, argCount);
         return true;
-        //return res;
-    }
-
-    if (klass != NULL) {
-        bool res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
+    } else {
+        ObjClass* klass = getClassForValue(receiver);
+        if (klass != NULL) {
+            printf("klass != NULL...\n");
+            bool res = invokeFromClass(klass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            if (!res)
+                return callMethodMissing(klass, name, argCount);
+            return true;
         }
-        if (!res)
-            return callMethodMissing(klass, name, argCount);
-        return true;
     }
     runtimeError("Only instances and primitives have methods.");
-    return false;
-    /*
-        if (vec3Class != NULL) {
-            Value method;
-            if (!tableGet(&vec3Class->methods, name, &method)) {
-                runtimeError("Undefined method '%s' for Vec3.", name->chars);
-                return false;
-            }
-
-            if (IS_NATIVE(method)) {
-                NativeFn native = AS_NATIVE(method);
-
-                Value result = native(argCount, vm.stackTop - argCount);
-                vm.stackTop -= (argCount + 1);
-                push(result);
-                return true;
-            }
-
-            int res = invokeFromClass(vec3Class, name, argCount);
-            if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
-            }
-            return res;
-        }
-        runtimeError("Vec3 class is not initialized.");
-        return false;
-    }
-    */
-
-    /*
-    if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-
-        Value value;
-        if (tableGet(&instance->fields, name, &value)) {
-            vm.stackTop[-argCount - 1] = value;
-            int res = callValue(value, argCount);
-            if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
-            }
-            return res;
-        }
-
-        int res =  invokeFromClass(instance->obj.klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
-    }
-
-    ObjClass* klass = getClassForValue(receiver);
-
-    if (klass != NULL) {
-        int res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
-    }
-
-    runtimeError("Type is not invokable.");
-    return false;
-
-    if (IS_ARRAY(receiver) || IS_STRING(receiver) || IS_MAP(receiver) || IS_STRING(receiver)) {
-        Obj* obj = AS_OBJ(receiver);
-        ObjClass* klass = obj->klass;
-        if (klass != NULL) {
-            int res = invokeFromClass(klass, name, argCount);
-            if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
-            }
-            return res;
-        }
-    }
-    /*
-    if (!IS_OBJ(receiver) && !IS_ARRAY(receiver) && !IS_STRING(receiver) && !IS_MAP(receiver)) {
-        //printf("type: %d\n", receiver.type);
-        runtimeError("Only objects have methods.");
-        return false;
-    }
-    */
-
-    if (IS_CLASS(receiver)) {
-        ObjClass* klass = AS_CLASS(receiver);
-        int res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
-    }
-
-    /*
-    if (IS_ARRAY(receiver)) {
-        klass = AS_ARRAY(receiver)->obj.klass;
-        return invokeFromClass(obj->klass, name, argCount);
-    }
-    */
-
-    /*
-    if (IS_MAP(receiver)) klass = vm.mapClass;
-    else if (IS_ARRAY(receiver)) klass = vm.arrayClass;
-    else if (IS_STRING(receiver)) klass = vm.stringClass;
-    else if (IS_REGEX(receiver)) klass = vm.regexClass;
-    */
-
-    /*
-    if (klass != NULL) {
-        int res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
-    }
-
-    if (IS_CLASS(receiver)) {
-        ObjClass* klass = AS_CLASS(receiver);
-        int res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
-        }
-        return res;
-    }
-    */
-
-    runtimeError("Only instances and collections have methods.");
     return false;
 }
 
@@ -5216,168 +5290,18 @@ InterpretResult run() {
                         ? READ_STRING()
                         : READ_STRING_LONG();
                     
-                    Value receiver = peek(0);
+                    Value receiver = pop();
+                    Value resolvedValue;
 
-                    // 1. Dynamic local fields (Exclusive to heap-allocated instances)
-                    if (IS_INSTANCE(receiver)) {
-                        ObjInstance* instance = AS_INSTANCE(receiver);
-                        if (instance->obj.klass == NULL) {
-                            RUNTIME_ERROR("Instance has no class.");
-                            break;
-                        }
+                    PropertyResult res = getProperty(receiver, name, &resolvedValue);
 
-                        Value value; 
-                        if (tableGet(&instance->fields, name, &value)) {
-                            pop();
-                            push(value);
-                            break;
-                        }
-                    }
-
-                    // 2. Unified metadata pipeline (primitives, vec3, arrays, instances)
-                    ObjClass* klass = getClassForValue(receiver);
-                    if (klass != NULL) {
-                        ObjClass* currentClass = klass;
-                        Value getterValue = NIL_VAL;
-
-                        while (currentClass != NULL) {
-                            if (!IS_NIL(currentClass->vGetter)) {
-                                getterValue = currentClass->vGetter;
-                                break;
-                            }
-                            currentClass = currentClass->superclass;
-                        }
-
-                        if (!IS_NIL(getterValue)) {
-                            // prepare stack [getterValue, receiver, name]
-                            pop();
-                            push(getterValue);
-                            push(receiver);
-                            push(OBJ_VAL(name));
-
-                            if (callValue(getterValue, 2)) {
-                                // it's a lox script closure, a new callframe was pushed
-                                // exit the opcode immediately to execute the getter bytecodde
-                                break;
-                            }
-
-                            // native function
-                            Value resultInstance = peek(0);
-
-                            if (isResultOk(resultInstance)) {
-                                // wrap the result instance and a fallback in a temp c array
-                                // index 0: resultInstance (receiver slot for args[-1])
-                                // index 1: NIL_VAL (argument array slot for args[0])
-                                Value fakeStack[2] = { resultInstance, NIL_VAL };
-
-                                // call native unwrap function
-                                Value unwrappedVal  = resultUnwrapOrNative(1, &fakeStack[1]);
-                                pop(); // pop result instance
-                                push(unwrappedVal); // push the actual unpacked property value
-                                break; // success
-                            } else {
-                                // the getter explicitly returned an Err, declining to handle it
-                                pop(); // pop result instance
-                                push(receiver);
-                                // fall through
-                            }
-                        }
-                            
-
-                        Value value;
-                        // check for defined methods
-                        if (findMethod(klass, name, &value)) {
-                            ObjBoundMethod* bound = newBoundMethod(receiver, value);
-                            pop();
-                            push(OBJ_VAL(bound));
-                            break;
-                        }
-
-                        // fallback to legacy direct c pointer getters (bridge phase)
-                        if (klass->getter != NULL) {
-                            value = klass->getter(receiver, name);
-                            pop();
-                            push(value);
-                            break;
-                        }
+                    if (res == PROP_FOUND) {
+                        push(resolvedValue);
+                        break;
                     }
 
                     RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
-                    break;
-
-                    /*
-                    if (IS_VEC3(receiver)) {
-                        Vec3 vec = AS_VEC3(receiver);
-                        if (name == vm.xString) {
-                            pop();
-                            push(NUMBER_VAL(vec.x));
-                        } else if (name == vm.yString) {
-                            pop();
-                            push(NUMBER_VAL(vec.y));
-                        } else if (name == vm.zString) {
-                            pop();
-                            push(NUMBER_VAL(vec.z));
-                        }
-                        break;
-                    } 
-
-                    if (IS_INSTANCE(receiver)) {
-                        ObjInstance* instance = AS_INSTANCE(receiver);
-
-                        if (instance->obj.klass == NULL) {
-                            RUNTIME_ERROR("Instance has no class.");
-                            break;
-                        }
-
-                        Value value;
-                        if (tableGet(&instance->fields, name, &value)) {
-                            pop();
-                            push(value);
-                            break;
-                        }
-
-                        ObjClass* klass = getClassForValue(receiver);
-                        //if (instance->obj.klass != NULL) {
-                        if (klass != NULL) {
-                            //if (findMethod(instance->obj.klass, name, &value)) {
-                            if (findMethod(klass, name, &value)) {
-                                ObjBoundMethod* bound = newBoundMethod(peek(0), value);
-                                pop();
-                                push(OBJ_VAL(bound));
-                                break;
-                            }
-
-                            //if (instance->obj.klass->getter != NULL) {
-                            if (klass->getter != NULL) {
-                                //value = instance->obj.klass->getter(instance, name);
-                                value = klass->getter(instance, name);
-                                pop();
-                                push(value);
-                                break;
-                            }
-                        }
-
-                        RUNTIME_ERROR("Undefined property '%s'.", name->chars);
-                        break;
-                    } 
-
-                    ObjClass* klass = getClassForValue(receiver);
-                    if (klass != NULL) {
-                        Value method;
-                        if (findMethod(klass, name, &method)) {
-
-                            ObjBoundMethod* bound = newBoundMethod(receiver, method);
-                            pop();
-                            push(OBJ_VAL(bound));
-                            break;
-                        }
-                    }
-
-                    RUNTIME_ERROR("Property '%s' not found.", name->chars);
-                    break;
-                    */
                 }
-
                 break;
             case OP_SET_PROPERTY:
             case OP_SET_PROPERTY_LONG:
@@ -5388,31 +5312,22 @@ InterpretResult run() {
 
                     Value value = peek(0);
                     Value receiver = peek(1);
+                    Value final;
 
-                    // 1. intercept via native class setter (primitives, vec3, instances)
-                    ObjClass* klass = getClassForValue(receiver);
-                    if (klass != NULL && klass->setter != NULL) {
-                        Value result = klass->setter(receiver, name, value);
-                        if (isTruthy(result)) {
-                            pop();
-                            pop();
-                            push(result);
-                            break;
-                        }
-                    }
+                    PropertyResult res = setProperty(receiver, name, value, &final);
 
-                    // 2. fall back to local dynamic fields
-                    if (IS_INSTANCE(receiver)) {
-                        ObjInstance* instance = AS_INSTANCE(receiver);
-
-                        tableSet(&instance->fields, name, value);
+                    if (res == PROP_FOUND) {
                         pop();
                         pop();
-                        push(value);
+                        push(final);
                         break;
                     }
-                    RUNTIME_ERROR("Properties cannot be set on type '%s'.",
-                            klass ? klass->name->chars : "Unknown");
+
+                    if (res == PROP_ASYNC) {
+                        break;
+                    }
+
+                    RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
                     break;
                 }
             case OP_GET_SUPER:
@@ -6149,13 +6064,33 @@ InterpretResult run() {
                 {
                     Value result = pop();
                     closeUpvalues(frame->slots);
+
+                    bool isGetterFrame = frame->isGetter;
+                    bool isSetterFrame = frame->isSetter;
                     vm.frameCount--;
+
                     if (vm.frameCount == 0) {
                         pop();
                         return INTERPRET_OK;
                     }
 
-                    vm.stackTop = frame->slots;
+                    Value* slots = frame->slots;
+                    vm.stackTop = slots;
+
+                    if (isGetterFrame) {
+                        if (isResultInstance(result)) {
+                            if (isResultOk(result)) {
+                                Value fakeStack[2] = { result, NIL_VAL };
+                                result = resultUnwrapOrNative(1, &fakeStack[1]);
+                            } else {
+                                runtimeError("Property getter returned an error Result state.");
+                                return INTERPRET_RUNTIME_ERROR;
+                            }
+                        }
+                    } else if (isSetterFrame) {
+                        result = slots[2];
+                    }
+
                     push(result);
 
                     if  (vm.frameCount == vm.nativeExitDepth) {

@@ -637,8 +637,14 @@ static void call(bool canAssign) {
 }
 
 static void dot(bool canAssign) {
-    consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
-    int name = identifierConstant(&parser.previous);
+    //consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    // check if the next token is a standard identifier or our 'class' keyword
+    if (!match(TOKEN_IDENTIFIER) && !match(TOKEN_CLASS)) {
+        error("Expect property name after '.'.");
+        return;
+    }
+
+    uint16_t  name = identifierConstant(&parser.previous);
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
