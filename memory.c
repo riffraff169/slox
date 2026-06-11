@@ -191,6 +191,8 @@ static void freeObject(Obj* object) {
                 ObjClass* klass = (ObjClass*)object;
                 freeTable(&klass->methods);
                 freeTable(&klass->fields);
+                freeTable(&klass->getters);
+                freeTable(&klass->setters);
                 FREE(ObjClass, object);
             }
             break;

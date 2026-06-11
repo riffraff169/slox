@@ -121,6 +121,7 @@ typedef struct HookNode {
 } HookNode;
 
 typedef enum {
+    CLASS_SYSTEM,
     CLASS_USER_DEFINED,
     CLASS_RESULT,
     CLASS_OPTION
@@ -131,6 +132,8 @@ typedef struct ObjClass {
     ObjString* name;
     Table methods;
     Table fields;
+    Table getters;
+    Table setters;
     ClassKind kind;
     struct ObjClass* superclass;
 

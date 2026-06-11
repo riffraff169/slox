@@ -85,7 +85,9 @@ static ObjClass* getClassForValue(Value value);
 typedef enum {
     PROP_FOUND,
     PROP_ASYNC,
-    PROP_NOT_FOUND
+    PROP_NOT_FOUND,
+    PROP_GETTER,
+    PROP_SETTER
 } PropertyResult;
 
 void setLastError(int errorNum, const char* format, ...) {
@@ -1559,7 +1561,8 @@ static ObjClass* getClassForValue(Value value) {
             case OBJ_MAP:
                 return vm.mapClass;
             case OBJ_CLASS:
-                return (ObjClass*)AS_OBJ(value);
+                return vm.classClass;
+                //return (ObjClass*)AS_OBJ(value);
                 //return AS_CLASS(value)->obj.klass;
             case OBJ_INSTANCE:
                 return AS_INSTANCE(value)->obj.klass;
@@ -3246,8 +3249,35 @@ static Value stringInitMethod(int argCount, Value* args) {
 }
 
 static Value objectClassMethod(int argCount, Value* args) {
-    Obj* obj = AS_OBJ(args[-1]);
-    return OBJ_VAL(obj->klass);
+    if (argCount != 0) {
+        runtimeError("Expected 0 arguments but get %d.", argCount);
+        return NIL_VAL;
+    }
+    Value receiver = args[-1];
+
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass);
+}
+
+static Value classSuperclassMethod(int argCount, Value* args) {
+    if (argCount != 0) {
+        runtimeError("Expected 0 arguments but get %d.", argCount);
+        return NIL_VAL;
+    }
+    Value receiver = args[-1];
+
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass->superclass == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass->superclass);
 }
 
 static Value objectRootGetter(int argCount, Value* args) {
@@ -4166,6 +4196,29 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     if (klass != NULL) {
         // step a: search up the inheritance chain for a polymorphic Value getter
         ObjClass* currentClass = klass;
+        Value propertyGetter = NIL_VAL;
+        while (currentClass != NULL) {
+            if (tableGet(&currentClass->getters, name, &propertyGetter)) {
+                break;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        if (!IS_NIL(propertyGetter)) {
+            push(propertyGetter);
+            push(receiver);
+
+            if (callValue(propertyGetter, 0)) {
+                vm.frames[vm.frameCount - 1].isGetter = true;
+                return PROP_ASYNC;
+            }
+
+            *result = peek(0);
+            pop();
+            return PROP_FOUND;
+        }
+
+        currentClass = klass;
         Value getterValue = NIL_VAL;
         while (currentClass != NULL) {
             if (!IS_NIL(currentClass->vGetter)) {
@@ -4401,10 +4454,22 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectClass->superclass = NULL;
     pop();
 
+    vm.stringClass->superclass = vm.objectClass;
 
     tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
     tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
     initStringClass();
+
+    string = copyString("Class", 5);
+    push(OBJ_VAL(string));
+    vm.classClass = newClass(string);
+    vm.classClass->superclass = vm.objectClass;
+    pop();
+
+    defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
+
+
+
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
@@ -4495,8 +4560,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
     pop();
 
-    //defineNative("get_class", objectClassMethod);
-    
     /*
     string = copyString("Array", 5);
     vm.arrayClass = newClass(string);
@@ -4532,6 +4595,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "has_method", hasMethodNative);
     defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
     defineNativeMethod(vm.objectClass, "get_superclass", getSuperclassNative);
+    defineNativeMethod(vm.objectClass, "superclass", getSuperclassNative);
     defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
     defineNativeMethod(vm.objectClass, "class", objectClassMethod);
     //defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
@@ -4983,7 +5047,6 @@ static bool invoke(ObjString* name, int argCount) {
     } else {
         ObjClass* klass = getClassForValue(receiver);
         if (klass != NULL) {
-            printf("klass != NULL...\n");
             bool res = invokeFromClass(klass, name, argCount);
             if (vm.exceptionThrown) {
                 vm.exceptionThrown = false;

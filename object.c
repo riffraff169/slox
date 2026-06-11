@@ -39,6 +39,8 @@ ObjClass* newClass(ObjString* name) {
     klass->superclass = vm.objectClass;
     initTable(&klass->methods);
     initTable(&klass->fields);
+    initTable(&klass->getters);
+    initTable(&klass->setters);
 
     klass->foreignData = NULL;
     klass->callHandler = NULL;
@@ -47,6 +49,7 @@ ObjClass* newClass(ObjString* name) {
     klass->destructor = NULL;
     klass->vGetter = NIL_VAL;
     klass->vSetter = NIL_VAL;
+    klass->kind = CLASS_USER_DEFINED;
 
     return klass;
 }
