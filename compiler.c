@@ -56,6 +56,8 @@ typedef enum {
     TYPE_FUNCTION,
     TYPE_INITIALIZER,
     TYPE_METHOD,
+    TYPE_GETTER,
+    TYPE_SETTER,
     TYPE_SCRIPT
 } FunctionType;
 
@@ -328,8 +330,12 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
 
     current = compiler;
     if (type != TYPE_SCRIPT) {
-        current->function->name = copyString(parser.previous.start,
-                parser.previous.length);
+        if (parser.previous.type == TOKEN_IDENTIFIER) {
+            current->function->name = copyString(parser.previous.start,
+                    parser.previous.length);
+        } else {
+            current->function->name = copyString("<anonymous>", 11);
+        }
     }
 
     Local* local = &current->locals[current->localCount++];
@@ -1185,50 +1191,66 @@ static Value parseConstant() {
 static void function(FunctionType type) {
     Compiler compiler;
     initCompiler(&compiler, type);
+
     beginScope();
 
     //printf("[FUNCTION] begin argument parsing\n");
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
-    if (!check(TOKEN_RIGHT_PAREN)) {
-        bool isOptional = false;
-        do {
-            if (match(TOKEN_DOT_DOT_DOT)) {
-                current->function->isVariadic = true;
-                int constant = parseVariable("Expect rest parameter name.");
-                defineVariable(constant);
+    if (type == TYPE_GETTER) {
+        // getters have 0 parameters implicitly
+        // no '(' or ')' to parse.
+    } else if (type == TYPE_SETTER) {
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after setter.");
 
-                current->function->arity++;
+        int constant = parseVariable("Expect setter parameter name.");
+        defineVariable(constant);
+        current->function->arity = 1;
 
-                if (check(TOKEN_COMMA)) {
-                    error("Cannot have parameters after a rest parameter.");
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after setter parameter.");
+    } else {
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+        if (!check(TOKEN_RIGHT_PAREN)) {
+            bool isOptional = false;
+            do {
+                if (match(TOKEN_DOT_DOT_DOT)) {
+                    current->function->isVariadic = true;
+                    int constant = parseVariable("Expect rest parameter name.");
+                    defineVariable(constant);
+
+                    current->function->arity++;
+
+                    if (check(TOKEN_COMMA)) {
+                        error("Cannot have parameters after a rest parameter.");
+                    }
+
+                    break;
                 }
 
-                break;
-            }
+                current->function->arity++;
+                if (current->function->arity > 255) {
+                    errorAtCurrent("Can't have more than 255 parameters.");
+                }
+                //printf("get constant\n");
+                int constant = parseVariable("Expect parameter name.");
+                //printf("define variable\n");
+                defineVariable(constant);
 
-            current->function->arity++;
-            if (current->function->arity > 255) {
-                errorAtCurrent("Can't have more than 255 parameters.");
-            }
-            //printf("get constant\n");
-            int constant = parseVariable("Expect parameter name.");
-            //printf("define variable\n");
-            defineVariable(constant);
-
-            //printf("looking for default value\n");
-            if (match(TOKEN_EQUAL)) {
-                //printf("getting default value\n");
-                isOptional = true;
-                Value defaultValue = parseConstant();
-                writeValueArray(&current->function->defaults, defaultValue);
-            } else if (isOptional) {
-                error("Cannot have a require parameter after an optional one.");
-            }
-            if (!isOptional) current->function->minArity++;
-        } while (match(TOKEN_COMMA));
+                //printf("looking for default value\n");
+                if (match(TOKEN_EQUAL)) {
+                    //printf("getting default value\n");
+                    isOptional = true;
+                    Value defaultValue = parseConstant();
+                    writeValueArray(&current->function->defaults, defaultValue);
+                } else if (isOptional) {
+                    error("Cannot have a require parameter after an optional one.");
+                }
+                if (!isOptional) current->function->minArity++;
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
     }
     //printf("[FUNCTION] before expect\n");
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    //consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
     //printf("[FUNCTION] after expect\n");
     consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     block();
@@ -1324,19 +1346,35 @@ static void lambda(bool canAssign) {
 
 static void method() {
     consume(TOKEN_IDENTIFIER, "Expect method name.");
-    int constant = identifierConstant(&parser.previous);
+    Token nameToken = parser.previous;
+    int constant = identifierConstant(&nameToken);
 
     FunctionType type = TYPE_METHOD;
-    if (parser.previous.length == 4 &&
-            memcmp(parser.previous.start, "init", 4) == 0) {
-        type = TYPE_INITIALIZER;
+    OpCode shortOp = OP_METHOD;
+    OpCode longOp = OP_METHOD_LONG;
+
+    if (check(TOKEN_LEFT_BRACE)) {
+        // getter: property { ... }
+        type = TYPE_GETTER;
+        shortOp = OP_GETTER;
+        longOp = OP_GETTER_LONG;
+    } else if (match(TOKEN_EQUAL)) {
+        // setter: property=(val) { ... }
+        type = TYPE_SETTER;
+        shortOp = OP_SETTER;
+        longOp = OP_SETTER_LONG;
+    } else {
+        if (nameToken.length == 4 &&
+                memcmp(nameToken.start, "init", 4) == 0) {
+            type = TYPE_INITIALIZER;
+        }
     }
 
     function(type);
     if (constant < 256) {
-        emitBytes(OP_METHOD, (uint8_t)constant);
+        emitBytes(shortOp, (uint8_t)constant);
     } else {
-        emitByte(OP_METHOD_LONG);
+        emitByte(longOp);
         emitByte((uint8_t)((constant >> 16) & 0xff));
         emitByte((uint8_t)((constant >> 8) & 0xff));
         emitByte((uint8_t)(constant & 0xff));

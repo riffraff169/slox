@@ -1,0 +1,16 @@
+//System.trace(true);
+class A {
+  init(x, y) {
+    this._x = x;
+    this._y = y;
+  }
+
+  x { print "in x getter..."; return this._x; }
+  x=(val) { this._x = val * 10; return this._x; }
+
+}
+
+var a = A(1,2);
+print a.x;
+a.x = 5;
+print a.x;

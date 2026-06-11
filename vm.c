@@ -4205,7 +4205,6 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
         }
 
         if (!IS_NIL(propertyGetter)) {
-            push(propertyGetter);
             push(receiver);
 
             if (callValue(propertyGetter, 0)) {
@@ -4303,18 +4302,36 @@ Value getPropertySync(Value receiver, ObjString* name) {
 }
 
 PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
-    if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-        tableSet(&instance->fields, name, value);
-        *result = value;
-        return PROP_FOUND;
-    }
-
-
     ObjClass* klass = getClassForValue(receiver);
+
     if (klass != NULL) {
         ObjClass* currentClass = klass;
+        Value propertySetter = NIL_VAL;
+
+        while (currentClass != NULL) {
+            if (tableGet(&currentClass->setters, name, &propertySetter)) {
+                break;
+            }
+            currentClass = currentClass->superclass;
+        }
+
+        if (!IS_NIL(propertySetter)) {
+            push(propertySetter);
+            push(receiver);
+            push(value);
+
+            if (callValue(propertySetter, 1)) {
+                return PROP_ASYNC;
+            }
+
+            *result = peek(0);
+            pop();
+            return PROP_FOUND;
+        }
+
+        currentClass = klass;
         Value setterVal = NIL_VAL;
+
         while (currentClass != NULL) {
             if (!IS_NIL(currentClass->vSetter)) {
                 setterVal = currentClass->vSetter;
@@ -4347,6 +4364,14 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
             return PROP_FOUND;
         }
     }
+
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        tableSet(&instance->fields, name, value);
+        *result = value;
+        return PROP_FOUND;
+    }
+
     return PROP_NOT_FOUND;
 }
 
@@ -5361,6 +5386,9 @@ InterpretResult run() {
                     if (res == PROP_FOUND) {
                         push(resolvedValue);
                         break;
+                    } else if (res == PROP_ASYNC) {
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
                     }
 
                     RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
@@ -5387,12 +5415,39 @@ InterpretResult run() {
                     }
 
                     if (res == PROP_ASYNC) {
+                        frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
 
                     RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
                     break;
                 }
+            case OP_GETTER:
+            case OP_GETTER_LONG:
+                {
+                    ObjString* name = (instruction == OP_GETTER)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    Value closure = peek(0);
+                    ObjClass* klass = AS_CLASS(peek(1));
+
+                    tableSet(&klass->getters, name, closure);
+                    pop();
+                }
+                break;
+            case OP_SETTER:
+            case OP_SETTER_LONG:
+                {
+                    ObjString* name = (instruction == OP_SETTER)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    Value closure = peek(0);
+                    ObjClass* klass = AS_CLASS(peek(1));
+
+                    tableSet(&klass->setters, name, closure);
+                    pop();
+                }
+                break;
             case OP_GET_SUPER:
                 {
                     ObjString* name = READ_STRING();

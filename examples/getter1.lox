@@ -1,0 +1,114 @@
+// ============================================================================
+// Setup: Mocking the Result architecture in Lox space 
+// (Ensure your VM's vm.resultClass points to this Result class for the tests)
+// ============================================================================
+//class Result {
+//    init(isOk, value) {
+//        this._isOk = isOk;
+//        this._value = value;
+//    }
+//}
+
+fun Ok(value)  { return Result(true, value); }
+fun Err(value) { return Result(false, value); }
+
+// ============================================================================
+// Test Case 1: Plain Value Getter (The "Fast Path")
+// Verifies that a getter returning a raw value does not get mistaken for an Err
+// ============================================================================
+class Vector {
+    init(x, y) {
+        this._x = x;
+        this._y = y;
+    }
+
+    magnitude {
+        // Returns a plain number, bypassing Result entirely
+        return 5.0; 
+    }
+}
+
+var vec = Vector(3, 4);
+print "--- Test 1: Plain Value Getter ---";
+print vec.magnitude; // EXPECTED: 5.0
+print "";
+
+
+// ============================================================================
+// Test Case 2: Monadic Result Unwrapping
+// Verifies that the VM intercepts a Result instance and successfully unwraps it
+// ============================================================================
+class Database {
+    init() {
+        this._connected = true;
+        this._data = "Confidential Records";
+    }
+
+    data {
+        if (this._connected) {
+            return Ok(this._data); // Explicit Ok wrapper
+        }
+        return Err("Not connected");
+    }
+}
+
+var db = Database();
+print "--- Test 2: Result-Wrapped Ok Getter ---";
+print db.data; // EXPECTED: Confidential Records
+//print db.data._value; // EXPECTED: Confidential Records
+//print db.data._value; // EXPECTED: Confidential Records
+print "";
+
+
+// ============================================================================
+// Test Case 3: Script Setter Assignment Chaining
+// Verifies that a custom setter automatically overrides its own return 
+// value to return the original RHS value, allowing elegant chaining.
+// ============================================================================
+class Account {
+    init() { this._balance = 0; }
+
+    balance(val) {
+        if (val < 0) {
+            this._balance = 0;
+            return; // Returns nil implicitly!
+        }
+        this._balance = val;
+        return "ignored string"; // Returns a dummy string explicitly!
+    }
+
+    balance {
+        return this._balance;
+    }
+}
+
+var acc1 = Account();
+var acc2 = Account();
+
+print "--- Test 3: Setter Assignment Chaining ---";
+
+// Chain the assignments. Both should be set to 150, 
+// and 'finalResult' must capture 150, NOT "ignored string" or nil.
+var finalResult = acc1.balance = acc2.balance = 150;
+
+print acc1.balance;  // EXPECTED: 150
+print acc2.balance;  // EXPECTED: 150
+print finalResult;   // EXPECTED: 150
+print "";
+
+
+// ============================================================================
+// Test Case 4: Deep Integration & Frame Isolation
+// Verifies that standard functions returning a Result object do NOT get 
+// accidentally unwrapped by the OP_RETURN loop.
+// ============================================================================
+fun standardFunction() {
+    return Ok("Keep Me Inside The Wrapper");
+}
+
+print "--- Test 4: Standard Function Frame Isolation ---";
+var standardResult = standardFunction();
+
+// Since this was a standard function call, 'isGetterFrame' was false.
+// The engine should NOT unwrap it; it should print the instance.
+print standardResult; // EXPECTED: <Instance of Result>

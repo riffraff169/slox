@@ -1,0 +1,9 @@
+//System.trace(true);
+class A {
+  init(x, y) {
+    this._x = x;
+    this._y = y;
+  }
+}
+
+var a = A(1,2);
