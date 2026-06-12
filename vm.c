@@ -1486,6 +1486,43 @@ static Value arrayStringNative(int argCount, Value* args) {
     return OBJ_VAL(string);
 }
 
+static Value arrayIterNative(int argCount, Value* args) {
+    Value arrayVal = args[-1];
+
+    // 1. look up "ArrayIterator" from the global variable state
+    Value iteratorClass;
+    ObjString* className = copyString("ArrayIterator", 13);
+    push(OBJ_VAL(className));
+
+    if (!tableGet(&vm.globals, className, &iteratorClass)) {
+        // fallback or runtime error if stdlib failed to load it
+        pop(); // classname
+        return NIL_VAL;
+    }
+    pop(); // classname
+
+    // 2. instantiate the iterator class by calling it
+    push(iteratorClass);
+    push(arrayVal);
+
+    // this runs callValue(), which sets up a new frome for ArrayIterator.init()
+    VM_CALLBACK_INIT();
+    VM_CALLBACK_ENTER();
+
+    if (vmCall(AS_CLOSURE(iteratorClass), 1)) {
+        InterpretResult state = run();
+
+        VM_CALLBACK_CHECK_ERROR(state);
+    }
+
+    Value iterInstance = peek(0);
+
+    VM_CALLBACK_EXIT();
+    pop();
+
+    return iterInstance;
+}
+
 static Value arrayJoinNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("join() expects 1 string argument (separator).");
@@ -3796,6 +3833,7 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
     defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
     defineNativeMethod(vm.arrayClass, "to_string", arrayStringNative);
+    defineNativeMethod(vm.arrayClass, "iter", arrayIterNative);
     pop();
 }
 
@@ -5844,7 +5882,7 @@ InterpretResult run() {
                             //pop();
                         } else {
                             printValue(value);
-                            if (i > 0) printf(" ");
+                            //if (i > 0) printf(" ");
                         }
                     }
                     popn(argCount);

@@ -166,6 +166,7 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte2);
 }
 
+
 static void emitLoop(int loopStart) {
     emitByte(OP_LOOP);
 
@@ -246,6 +247,7 @@ static void emitSetProp(int nameArg) {
         emitBytes(OP_SET_PROPERTY, (uint8_t)nameArg);
     }
 }
+
 
 static void emitInvokeHelper(int nameArg, uint8_t argCount) {
     if (nameArg > 255) {
@@ -490,6 +492,13 @@ static void declareVariable() {
     }
 
     addLocal(*name);
+}
+
+static void emitInvoke(const char* name, int argCount) {
+    Token token = { TOKEN_IDENTIFIER, name, (int)strlen(name), parser.previous.line };
+    int nameArg = identifierConstant(&token);
+
+    emitInvokeHelper(nameArg, argCount);
 }
 
 static int parseVariable(const char* errorMessage) {
@@ -1489,31 +1498,69 @@ static void foreachStatement() {
     }
 
     consume(TOKEN_IN, "Expect 'in' after loop variables.");
+
+    // 1. evaluate the collection expression
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after foreach clauses.");
 
-    //emitInvoke("iter", 0);
+    // 2. turn the collection into an iterator object
+    emitInvoke("iter", 0);
+
+    // 3. inject a hidden local variable to keep track of the iter
+    Token iterToken = { TOKEN_IDENTIFIER, "iter ", 5, var1.line };
+    Local* iterLocal = &current->locals[current->localCount++];
+    iterLocal->name = iterToken;
+    iterLocal->depth = current->scopeDepth;
+    iterLocal->isCaptured = false;
 
     int loopStart = currentChunk()->count;
 
-    ///emitInvoke("done", 0);
+    // 4. check condition. call iter.next()
+    namedVariable(iterToken, false);
+    emitInvoke("next", 0);
+
     int exitJump = emitJump(OP_JUMP_IF_FALSE);
     emitByte(OP_POP);
-    //emitInvoke("next"), 0);
 
-    /*
+    // 5. scope 2: intter block scope for the users's loop body and variables
+    beginScope();
+
     if (isDual) {
-        unpackTwo(var1, var2);
-    } else {
-        defineVariable(identifierConstant(&var1));
-    }
-    */
+        // fetch key and bind to var1
+        namedVariable(iterToken, false);
+        emitInvoke("key", 0);
+        Local* l1 = &current->locals[current->localCount++];
+        l1->name = var1;
+        l1->depth = current->scopeDepth;
+        l1->isCaptured = false;
 
+        // fetch value and bind to var2
+        namedVariable(iterToken, false);
+        emitInvoke("val", 0);
+        Local* l2 = &current->locals[current->localCount++];
+        l2->name = var2;
+        l2->depth = current->scopeDepth;
+        l2->isCaptured = false;
+    } else {
+        // single variable syntax: fetch value and bind to var 1
+        namedVariable(iterToken, false);
+        emitInvoke("val", 0);
+        Local* l1 = &current->locals[current->localCount++];
+        l1->name = var1;
+        l1->depth = current->scopeDepth;
+        l1->isCaptured = false;
+    }
+
+    // 6 compile loop and body
     statement();
 
+    // clears user variables (var1, var2)
+    endScope();
+
+    // 7. loop back up to run iter.next() again
     emitLoop(loopStart);
+
     patchJump(exitJump);
-    emitByte(OP_POP);
     emitByte(OP_POP);
 
     endScope();
