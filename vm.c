@@ -5960,20 +5960,37 @@ InterpretResult run() {
 
                             Value* stackStart = vm.stackTop;
                             if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
+                                // 1. setup
+                                int oldExitDepth = vm.nativeExitDepth;
+                                Value* callbackStackStart = vm.stackTop;
+                                int framesBefore = vm.frameCount;
+
                                 push(value);
                                 if (callValue(method, 0)) {
-                                    vm.nativeExitDepth = vm.frameCount - 1;
-                                    run();
+                                    if (vm.frameCount > framesBefore) {
+                                        vm.nativeExitDepth = framesBefore;
+                                        InterpretResult result = run();
+
+                                        if (result == INTERPRET_RUNTIME_ERROR) {
+                                            vm.stackTop = callbackStackStart;
+                                            vm.nativeExitDepth = oldExitDepth;
+                                            return INTERPRET_RUNTIME_ERROR;
+                                        }
+                                    }
+
+                                    //vm.nativeExitDepth = vm.frameCount - 1;
+                                    //run();
                                     Value result = pop();
 
                                     if (!IS_NIL(result)) {
                                         printValue(result);
                                     }
                                 }
+                                vm.nativeExitDepth = oldExitDepth;
                             } else {
                                 printValue(value);
                             }
-                            vm.stackTop = stackStart;
+                            //vm.stackTop = stackStart;
                             //pop();
                         } else {
                             printValue(value);
