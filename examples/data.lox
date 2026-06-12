@@ -1,0 +1,10 @@
+print "in code";
+
+print "DATA: ";
+print DATA;
+
+__END__
+This is the rest of the data
+
+
+and more data

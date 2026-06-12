@@ -1,0 +1,55 @@
+class A {
+  init(x) {
+    this.x = x;
+  }
+}
+
+fun newmethod(self, val) {
+  print "Self instance: ", self;
+  print "Value passed: ", val;
+  self.val = val;
+}
+A.add_method("newmethod", newmethod);
+
+var a = A(25);
+try {
+  a.newmethod();
+} catch (Error e) {
+  print "Got an error:";
+  print " - ${e.message}";
+  print "Skipping";
+}
+
+print "1a: x: ", a.x;
+try {
+  print "1b: val: ", a.val;
+} catch (Error e) {
+  print "Error: ${e.message}";
+}
+
+print "As method:";
+a.newmethod(4);
+print "2a: x: ", a.x;
+print "2b: val: ", a.val;
+print "As function:";
+newmethod(a, 6);
+print "3a: x: ", a.x;
+print "3b: val: ", a.val;
+
+fun px(self) {
+  print "x: ", self.x;
+}
+A.add_method("px", px);
+a.px();
+a.x = 72;
+a.px();
+a.newmethod(1234.5);
+print a.val;
+a.px();
+
+fun py(self, val) {
+  self.x = val;
+}
+A.add_method("py", py);
+a.py("this is a string");
+print a.x;
