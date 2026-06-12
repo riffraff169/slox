@@ -1298,6 +1298,43 @@ static Value stringSliceNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(dom->chars + start, end - start));
 }
 
+static Value stringTokensNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        runtimeError("tokens() expects 0 arguments.");
+        return NIL_VAL;
+    }
+
+    ObjString* receiver = AS_STRING(args[-1]);
+
+    ObjArray* result = newArray();
+    push(OBJ_VAL(result));
+
+    char* chars = receiver->chars;
+    int length = receiver->length;
+    int i = 0;
+
+    while (i < length) {
+        while (i < length && isspace((unsigned char)chars[i])) {
+            i++;
+        }
+
+        if (i >= length) break;
+
+        int start = i;
+
+        while (i < length && !isspace((unsigned char)chars[i])) {
+            i++;
+        }
+        int tokenLen = i - start;
+
+        ObjString* token = copyString(chars + start, tokenLen);
+        push(OBJ_VAL(token));
+        arrayAppend(result, OBJ_VAL(token));
+        pop();
+    }
+    return pop();
+}
+
 static Value stringSplitNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("split() expects 1 argument.");
@@ -2964,6 +3001,52 @@ void initMathLibrary() {
     srand((unsigned int)time(NULL));
 }
 
+static Value processRunStatic(int argCount, Value* args) {
+}
+
+static Value processExecuteStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        return NIL_VAL;
+    }
+
+    const char* command = AS_CSTRING(args[0]);
+    FILE* fp = popen(command, "r");
+    if (fp == NULL) return NIL_VAL;
+
+    size_t capacity = 1024;
+    size_t length = 0;
+    char* buffer = ALLOCATE(char, capacity);
+    char chunk[256];
+
+    while (fgets(chunk, sizeof(chunk), fp) != NULL) {
+        size_t chunkLen = strlen(chunk);
+        if (length + chunkLen + 1 > capacity) {
+            size_t oldCapacity = capacity;
+            capacity = GROW_CAPACITY(oldCapacity);
+            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
+        }
+        memcpy(buffer + length, chunk, chunkLen);
+        length += chunkLen;
+    }
+    buffer[length] = '\0';
+    pclose(fp);
+
+    return OBJ_VAL(takeString(buffer, length));
+}
+
+void initProcessClass() {
+    ObjString* processName = copyString("Process", 7);
+    push(OBJ_VAL(processName));
+    ObjClass* processClass = newClass(processName);
+    push(OBJ_VAL(processClass));
+    tableSet(&vm.globals, processName, OBJ_VAL(processClass));
+
+    defineNativeMethod(processClass, "run", processRunStatic);
+    defineNativeMethod(processClass, "execute", processExecuteStatic);
+    pop();
+    pop();
+}
+
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjString* systemName = copyString("System", 6);
     push(OBJ_VAL(systemName));
@@ -4155,33 +4238,9 @@ void initStringClass() {
     defineNativeMethod(vm.stringClass, "slice", stringSliceNative);
     defineNativeMethod(vm.stringClass, "to_array", stringToarrayNative);
     defineNativeMethod(vm.stringClass, "to_number", toNumberNative);
+    defineNativeMethod(vm.stringClass, "tokens", stringTokensNative);
 
     pop();
-}
-
-static Value objectGetSuperclassMethod(int argCount, Value* args) {
-    Value receiver = args[-1];
-    ObjClass* klass = NULL;
-
-    if (IS_INSTANCE(receiver)) {
-        klass = AS_OBJ(receiver)->klass;
-    } else if (IS_CLASS(receiver)) {
-        klass = AS_CLASS(receiver);
-    } else {
-        return NIL_VAL;
-    }
-
-    /*
-    Obj* obj = AS_OBJ(args[-1]);
-
-    if (obj->klass != NULL && obj->klass->superclass != NULL) {
-        return OBJ_VAL(obj->klass->superclass);
-    }
-
-    return NIL_VAL;
-    */
-    if (klass->superclass == NULL) return NIL_VAL;
-    return OBJ_VAL(klass->superclass);
 }
 
 static Value chrNative(int argCount, Value* args) {
@@ -4531,9 +4590,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
 
-
-
-
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
     vm.errstrString = NULL;
@@ -4581,10 +4637,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "isclass", isClassNative);
     defineNative("isinstance", isInstanceNative);
     defineNativeMethod(vm.objectClass, "isinstance", isInstanceNative);
-    //defineNative("packInt32", packInt32);
-    //defineNative("packByte", packByte);
     defineNative("chr", chrNative);
-
 
     string = copyString("Function", 8);
     push(OBJ_VAL(string));
@@ -4623,28 +4676,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
     pop();
 
-    /*
-    string = copyString("Array", 5);
-    vm.arrayClass = newClass(string);
-    vm.arrayClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
-
-    string = copyString("Map", 3);
-    vm.mapClass = newClass(string);
-    vm.mapClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
-
-    string = copyString("String", 6);
-    vm.stringClass = newClass(string);
-    vm.stringClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.stringClass));
-
-    string = copyString("Regex", 5);
-    vm.regexClass = newClass(copyString("Regex", 5));
-    vm.regexClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
-    */
-
     string = copyString("Module", 6);
     push(OBJ_VAL(string));
     vm.moduleClass = newClass(string);
@@ -4661,12 +4692,12 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "superclass", getSuperclassNative);
     defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
     defineNativeMethod(vm.objectClass, "class", objectClassMethod);
-    //defineNativeMethod(vm.objectClass, "get_superclass", objectGetSuperclassMethod);
 
     initResultClass();
     initOptionClass();
     initMathLibrary();
     initSystemLibrary(argc, argv, env);
+    initProcessClass();
     initFileLibrary();
     initRegexClass();
     initVec3Library();

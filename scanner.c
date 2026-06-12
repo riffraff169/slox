@@ -334,6 +334,18 @@ static Token string() {
     return makeToken(TOKEN_STRING);
 }
 
+static Token backtickString() {
+    while (peek() != '`' && !isAtEnd()) {
+        if (peek() == '\n') scanner.line++;
+        advance();
+    }
+
+    if (isAtEnd()) return errorToken("Unterminated shell command.");
+
+    advance();
+    return makeToken(TOKEN_BACKTICK_STRING);
+}
+
 Token scanToken() {
     skipWhitespace();
     scanner.start = scanner.current;
@@ -458,6 +470,8 @@ Token scanToken() {
             return makeToken(TOKEN_TILDE);
         case '"':
             return string();
+        case '`':
+            return backtickString();
     }
 
     return errorToken("Unexpected character.");

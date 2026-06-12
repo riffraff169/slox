@@ -1080,6 +1080,27 @@ static void importDeclaration() {
     consume(TOKEN_SEMICOLON, "Expect ';' after import path.");
 }
 
+static void backtick(bool canAssign) {
+    ObjString* string = copyString(
+            parser.previous.start + 1,
+            parser.previous.length - 2);
+
+    Token processToken = { TOKEN_IDENTIFIER, "Process", 7, parser.previous.line };
+    int processConstant = identifierConstant(&processToken);
+
+    if (processConstant < 256) {
+        emitBytes(OP_GET_GLOBAL, processConstant);
+    } else {
+        emitByte(OP_GET_GLOBAL_LONG);
+        emitByte((uint8_t)((processConstant >> 16) & 0xff));
+        emitByte((uint8_t)((processConstant >> 8) & 0xff));
+        emitByte((uint8_t)(processConstant & 0xff));
+    }
+
+    emitConstant(OBJ_VAL(string));
+    emitInvoke("execute", 1);
+}
+
 static void lambda(bool canAssign);
 
 ParseRule rules[] = {
@@ -1139,6 +1160,7 @@ ParseRule rules[] = {
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
+    [TOKEN_BACKTICK_STRING]  = {backtick, NULL,   PREC_NONE},
 //    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},
 };
 
