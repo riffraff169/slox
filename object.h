@@ -71,6 +71,7 @@ typedef struct {
     Chunk chunk;
     ObjString* name;
     ObjString* filename;
+    bool isfree;
 } ObjFunction;
 
 typedef Value (*NativeFn)(int argCount, Value* args);

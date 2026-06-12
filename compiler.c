@@ -1287,6 +1287,9 @@ static void function(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
+    if (type == TYPE_METHOD) {
+        function->isfree = false;
+    }
 
     int constant = makeConstant(OBJ_VAL(function));
     if (constant < 256) {

@@ -4535,6 +4535,36 @@ void initResultClass() {
     popn(2);
 }
 
+static Value classAddMethodNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("add_method() expects 2 arguments (name, function).");
+        return NIL_VAL;
+    }
+
+    // the receiver (args[-1] must be the Class object itself
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("add_method() can only be called on class objects.");
+        return NIL_VAL;
+    }
+
+    ObjClass* klass = AS_CLASS(args[-1]);
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("First argument to add_method() must be a string name.");
+        return NIL_VAL;
+    }
+    ObjString* methodName = AS_STRING(args[0]);
+
+    if (!IS_CLOSURE(args[1]) && !IS_NATIVE(args[1])) {
+        runtimeError("Second argument to add_method() must be a callable function.");
+        return NIL_VAL;
+    }
+
+    tableSet(&klass->methods, methodName, args[1]);
+
+    return NIL_VAL;
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -4589,6 +4619,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     pop();
 
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
+    defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
@@ -4975,24 +5006,6 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
             if (IS_NATIVE(method)) {
                 NativeFn native = AS_NATIVE(method);
 
-                /*
-                // 1. Capture the receiver (currently at -argCount - 1)
-                Value receiver = vm.stackTop[-argCount - 1];
-
-                // 2. Put the method obj where the reciver was (this becomes args[-1])
-                vm.stackTop[-argCount - 1] = method;
-
-                // 3. shift, move all exist arguments up one slot
-                // we go backward from the top
-                for (int i = 0; i < argCount; i++) {
-                    vm.stackTop[-i] = vm.stackTop[-i - 1];
-                }
-        
-                // 4. place the receiver in the now vacant first argument slot
-                vm.stackTop[-argCount] = receiver;
-                vm.stackTop++;
-                */
-
                 // 5. call the function (total args is now argCoutn + 1)
                 //Value result = native(argCount + 1, vm.stackTop - argCount - 1);
                 Value result = native(argCount, vm.stackTop - argCount);
@@ -5005,7 +5018,35 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
                 return true;
             }
             if (IS_CLOSURE(method)) {
-                int res = vmCall(AS_CLOSURE(method), argCount);
+                ObjClosure* closure = AS_CLOSURE(method);
+
+                // if its freestanding function being used as a method,
+                // adapt the stack to match a standard function layout
+                if (closure->function->isfree) {
+                    int expectedArgs = closure->function->arity - 1;
+
+                    if (argCount != expectedArgs) {
+                        runtimeError("Expedted %d arguments but got %d.",
+                                expectedArgs, argCount);
+                        return false;
+                    }
+
+                    // 1. slide the instance receiver and arguments up by one slot
+                    Value* start = vm.stackTop - argCount - 1;
+                    for (Value* p = vm.stackTop; p > start; p--) {
+                        *p = *(p - 1);
+                    }
+
+                    // 2. drop the closure into slot 0 of this frame area
+                    *start = method;
+
+                    // 3. account for the newly added slot and the explicit self parameter
+                    vm.stackTop++;
+                    argCount++;
+                }
+
+                // now vmCall receives an argCount that includes 'self', matching the arity
+                int res = vmCall(closure, argCount);
                 if (vm.exceptionThrown) {
                     vm.exceptionThrown = false;
                     return false;
@@ -5024,6 +5065,18 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     }
 
     runtimeError("Undefined property '%s'.", name->chars);
+    return false;
+}
+
+static bool classHasMethod(ObjClass* klass, ObjString* name) {
+    ObjClass* current = klass;
+    Value method;
+    while (current != NULL) {
+        if (tableGet(&current->methods, name, &method)) {
+            return true;
+        }
+        current = current->superclass;
+    }
     return false;
 }
 
@@ -5130,10 +5183,21 @@ static bool invoke(ObjString* name, int argCount) {
         return callMethodMissing(vm.stringClass, name, argCount);
     } else if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
-        bool res = invokeFromClass(klass, name, argCount);
-        if (vm.exceptionThrown) {
-            vm.exceptionThrown = false;
-            return false;
+        bool res;
+
+        if (classHasMethod(klass, name)) {
+            res = invokeFromClass(klass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+
+        } else {
+            res = invokeFromClass(vm.classClass, name, argCount);
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
         }
         if (!res)
             return callMethodMissing(klass, name, argCount);

@@ -77,6 +77,7 @@ ObjFunction* newFunction() {
     function->name = NULL;
     function->filename = NULL;
     function->obj.klass = vm.functionClass;
+    function->isfree = true;
     initChunk(&function->chunk);
 
     initValueArray(&function->defaults);
