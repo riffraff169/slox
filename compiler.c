@@ -45,11 +45,13 @@ typedef struct {
     Token name;
     int depth;
     bool isCaptured;
+    bool isConst;
 } Local;
 
 typedef struct {
     uint16_t index;
     bool isLocal;
+    bool isConst;
 } Upvalue;
 
 typedef enum {
@@ -438,7 +440,7 @@ static int resolveLocal(Compiler* compiler, Token* name) {
 }
 
 static int addUpvalue(Compiler* compiler, int index,
-        bool isLocal) {
+        bool isLocal, bool isConst) {
     int upvalueCount = compiler->function->upvalueCount;
 
     for (int i = 0; i < upvalueCount; i++) {
@@ -455,6 +457,7 @@ static int addUpvalue(Compiler* compiler, int index,
 
     compiler->upvalues[upvalueCount].isLocal = isLocal;
     compiler->upvalues[upvalueCount].index = index;
+    compiler->upvalues[upvalueCount].isConst = isConst;
     return compiler->function->upvalueCount++;
 }
 
@@ -464,12 +467,12 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
     int local = resolveLocal(compiler->enclosing, name);
     if (local != -1) {
         compiler->enclosing->locals[local].isCaptured = true;
-        return addUpvalue(compiler, (int)local, true);
+        return addUpvalue(compiler, (int)local, true, compiler->enclosing->locals[local].isConst);
     }
 
     int upvalue = resolveUpvalue(compiler->enclosing, name);
     if (upvalue != -1) {
-        return addUpvalue(compiler, (int)upvalue, false);
+        return addUpvalue(compiler, (int)upvalue, false, compiler->enclosing->upvalues[upvalue].isConst);
     }
 
     return -1;
@@ -527,20 +530,32 @@ static void markInitialized() {
         current->scopeDepth;
 }
 
-static void defineVariable(int global) {
+static void defineVariableExt(int global, bool isConst) {
     if (current->scopeDepth > 0) {
         markInitialized();
         return;
     }
 
     if (global < 256) {
-        emitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+        if (!isConst) {
+            emitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+        } else {
+            emitBytes(OP_DEFINE_GLOBAL_CONST, (uint8_t)global);
+        }
     } else {
-        emitByte(OP_DEFINE_GLOBAL_LONG);
+        if (!isConst) {
+            emitByte(OP_DEFINE_GLOBAL_LONG);
+        } else {
+            emitByte(OP_DEFINE_GLOBAL_CONST_LONG);
+        }
         emitByte((uint8_t)((global >> 16) & 0xff));
         emitByte((uint8_t)((global >> 8) & 0xff));
         emitByte((uint8_t)(global & 0xff));
     }
+}
+
+static void defineVariable(int global) {
+    defineVariableExt(global, false);
 }
 
 static ArgResult argumentList() {
@@ -907,6 +922,8 @@ static void string(bool canAssign) {
 static void namedVariable(Token name, bool canAssign) {
     uint8_t getOp, setOp;
     int arg = resolveLocal(current, &name);
+    bool isConst = false;
+
     if (arg != -1) {
         if (arg > 255) {
             getOp = OP_GET_LOCAL_LONG;
@@ -915,9 +932,11 @@ static void namedVariable(Token name, bool canAssign) {
             getOp = OP_GET_LOCAL;
             setOp = OP_SET_LOCAL;
         }
+        isConst = current->locals[arg].isConst;
     } else if ((arg = resolveUpvalue(current, &name)) != -1) {
         getOp = OP_GET_UPVALUE;
         setOp = OP_SET_UPVALUE;
+        isConst = current->upvalues[arg].isConst;
     } else {
         arg = identifierConstant(&name);
         if (arg > 255) {
@@ -930,30 +949,21 @@ static void namedVariable(Token name, bool canAssign) {
     }
 
     if (canAssign && match(TOKEN_EQUAL)) {
-        expression();
-        /*
-        if (setOp == OP_SET_GLOBAL_LONG || setOp == OP_SET_LOCAL_LONG) {
-            //emitSetHelper(setOp, arg);
-            emitByte(setOp);
-            emitByte((uint8_t)((arg >> 16) & 0xff));
-            emitByte((uint8_t)((arg >> 8) & 0xff));
-            emitByte((uint8_t)(arg & 0xff));
-        } else if (setOp == OP_SET_UPVALUE) {
-            emitByte(setOp);
-            emitByte((uint8_t)((arg >> 8) & 0x0ff));
-            emitByte((uint8_t)(arg & 0xff));
-        } else {
-            emitBytes(setOp, (uint8_t)arg);
+        if (isConst) {
+            error("Cannot reassign to a constant variable.");
         }
-        */
+        expression();
         emitSetVar(setOp, arg);
     } else if (canAssign && (match(TOKEN_PLUS_EQUAL) || match(TOKEN_MINUS_EQUAL) ||
                 match(TOKEN_STAR_EQUAL) || match(TOKEN_SLASH_EQUAL) ||
                 match(TOKEN_PERCENT_EQUAL))) {
+        if (isConst) {
+            error("Cannot mutate or reassign to a constant variable.");
+        }
+
         TokenType opType = parser.previous.type;
 
         emitGetVar(getOp, arg);
-        //emitGetHelper(getOp, arg);
         expression();
         switch(opType) {
             case TOKEN_PLUS_EQUAL: emitByte(OP_ADD); break;
@@ -964,24 +974,8 @@ static void namedVariable(Token name, bool canAssign) {
             default: return;
         }
         emitSetVar(setOp, arg);
-        //emitSetHelper(setOp, arg);
     } else {
         emitGetVar(getOp, arg);
-        /*
-        if (getOp == OP_GET_GLOBAL_LONG || getOp == OP_GET_LOCAL_LONG) {
-            //emitGetHelper(setOp, arg);
-            emitByte(getOp);
-            emitByte((uint8_t)((arg >> 16) & 0xff));
-            emitByte((uint8_t)((arg >> 8) & 0xff));
-            emitByte((uint8_t)(arg & 0xff));
-        } else if (getOp == OP_GET_UPVALUE) {
-            emitByte(getOp);
-            emitByte((uint8_t)((arg >> 8) & 0xff));
-            emitByte((uint8_t)(arg & 0xff));
-        } else {
-            emitBytes(getOp, (uint8_t)arg);
-        }
-        */
     }
 }
 
@@ -1426,6 +1420,34 @@ static void method() {
     }
 }
 
+static void classConstant() {
+    // 1. consume the contant identifiier name
+    consume(TOKEN_IDENTIFIER, "Expect class constant name.");
+    Token constantName = parser.previous;
+
+    // store the name in the chunks constant pool
+    int nameIndex = identifierConstant(&constantName);
+
+    // 2. expect the '=' assignment operator
+    consume(TOKEN_EQUAL, "Expect '=' after class constant name.");
+
+    // 3. compile the expression value
+    expression();
+
+    // 4. expect the closing semicolon
+    consume(TOKEN_SEMICOLON, "Expect ';' after class constant declaration.");
+
+    // 5. emit the instruction to bind the value to the class namespace
+    if (nameIndex > 255) {
+        emitByte(OP_DEFINE_CLASS_CONST_LONG);
+        emitByte((uint8_t)((nameIndex >> 16) & 0xff));
+        emitByte((uint8_t)((nameIndex >> 8) & 0xff));
+        emitByte((uint8_t)(nameIndex & 0xff));
+    } else {
+        emitBytes(OP_DEFINE_CLASS_CONST, (uint8_t)nameIndex);
+    }
+}
+
 static void classDeclaration() {
     consume(TOKEN_IDENTIFIER, "Expect class name.");
     Token className = parser.previous;
@@ -1468,6 +1490,7 @@ static void classDeclaration() {
     namedVariable(className, false);
 
     consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+
     while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
         if (match(TOKEN_INCLUDE)) {
             consume(TOKEN_IDENTIFIER, "Expect class name after 'include'.");
@@ -1475,6 +1498,8 @@ static void classDeclaration() {
             namedVariable(parser.previous, false);
             emitByte(OP_INCLUDE);
             consume(TOKEN_SEMICOLON, "Expect ';' after include statement.");
+        } else if (match(TOKEN_CONST)) {
+            classConstant();
         } else { 
             method();
         }
@@ -1498,17 +1523,26 @@ static void funDeclaration() {
 }
 
 static void varDeclaration() {
+    bool isConst = (parser.previous.type == TOKEN_CONST);
+
     int global = parseVariable("Expect variable name.");
+
+    if (current->scopeDepth > 0 && isConst) {
+        current->locals[current->localCount - 1].isConst = true;
+    }
 
     if (match(TOKEN_EQUAL)) {
         expression();
     } else {
+        if (isConst) {
+            error("Constant declarations must be initialized.");
+        }
         emitByte(OP_NIL);
     }
     consume(TOKEN_SEMICOLON,
             "Expect ';' after variable declaration.");
 
-    defineVariable(global);
+    defineVariableExt(global, isConst);
 }
 
 static void expressionStatement() {
@@ -2004,7 +2038,7 @@ static void declaration() {
         classDeclaration();
     } else if (match(TOKEN_FUN)) {
         funDeclaration();
-    } else if (match(TOKEN_VAR)) {
+    } else if (match(TOKEN_VAR) | match(TOKEN_CONST)) {
         varDeclaration();
     } else {
         statement();

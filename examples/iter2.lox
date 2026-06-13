@@ -1,0 +1,7 @@
+var a = {"father": "fred", "friend": "barney", "wife": "wilma"};
+print a;
+
+a.keys().each(fun(k) {
+  print "Key: ", k;
+  print "Value: ", a[k];
+});

@@ -38,6 +38,7 @@ typedef struct {
     Value* stackTop;
     Table globals;
     Table strings;
+    Table globalConstants;
     ObjString* initString;
     ObjString* toString;
     ObjUpvalue* openUpvalues;
@@ -62,6 +63,7 @@ typedef struct {
     int stress_mode;
     int gctype; // 1: multiplier, 0: linear
     uint8_t numNotation; // 1 = sci %g, 0 = %.0f
+    uint8_t numPrecision; // default 6
 
     Obj* objects;
     int grayCount;

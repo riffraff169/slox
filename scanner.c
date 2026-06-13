@@ -148,7 +148,12 @@ static TokenType identifierType() {
                                   return checkKeyword(2, 3, "tch", TOKEN_CATCH);
                               }
                           case 'l': return checkKeyword(2, 3, "ass", TOKEN_CLASS);
-                          case 'o': return checkKeyword(2, 6, "ntinue", TOKEN_CONTINUE);
+                          case 'o': 
+                              {
+                                  int res = checkKeyword(2, 3, "nst", TOKEN_CONST);
+                                  if (res == TOKEN_CONST) return res;
+                                  return checkKeyword(2, 6, "ntinue", TOKEN_CONTINUE);
+                              }
                       }
                   }
                   break;

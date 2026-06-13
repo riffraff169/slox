@@ -39,6 +39,7 @@ ObjClass* newClass(ObjString* name) {
     klass->superclass = vm.objectClass;
     initTable(&klass->methods);
     initTable(&klass->fields);
+    initTable(&klass->constants);
     initTable(&klass->getters);
     initTable(&klass->setters);
 

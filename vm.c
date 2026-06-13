@@ -86,6 +86,7 @@ typedef enum {
     PROP_FOUND,
     PROP_ASYNC,
     PROP_NOT_FOUND,
+    PROP_IMMUTABLE,
     PROP_GETTER,
     PROP_SETTER
 } PropertyResult;
@@ -1783,6 +1784,12 @@ void defineGlobal(const char* name, Value value) {
     pop();
 }
 
+void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
+    push(OBJ_VAL(copyString(name, (int)strlen(name))));
+    tableSet(&klass->constants, AS_STRING(peek(0)), value);
+    pop();
+}
+
 void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
@@ -1836,6 +1843,18 @@ static Value systemExitNative(int argCount, Value* args) {
 static Value systemGCNative(int argCount, Value* args) {
     collectGarbage();
     return NIL_VAL;
+}
+
+static Value systemSetPrecisionNative(int argCount, Value* args) {
+    int precision = 6;
+
+    if (argCount == 1 && IS_NUMBER(args[0])) {
+        precision = (int)AS_NUMBER(args[0]);
+        if (precision < 0) precision = 0;
+    }
+
+    vm.numPrecision = precision;
+    return NUMBER_VAL(precision);
 }
 
 static Value systemSetNotationNative(int argCount, Value* args) {
@@ -2985,7 +3004,7 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "ceil", mathCeilNative);
     defineNativeMethod(vm.numberClass, "ceil", mathCeilNative);
     defineNativeMethod(mathClass, "random", mathRandomNative);
-    defineNativeMethod(mathClass, "pi", mathPiNative);
+    //defineNativeMethod(mathClass, "pi", mathPiNative);
     defineNativeMethod(mathClass, "exp", mathExpNative);
     defineNativeMethod(vm.numberClass, "exp", mathExpNative);
     defineNativeMethod(mathClass, "hex", hexNative);
@@ -3014,8 +3033,12 @@ void initMathLibrary() {
     defineNativeMethod(mathClass, "acos", mathAcosNative);
     defineNativeMethod(vm.numberClass, "acos", mathAcosNative);
 
+    //tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
 
-    tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
+    defineGlobal("Math", OBJ_VAL(mathClass));
+
+    defineNativeClassConstant(mathClass, "PI", NUMBER_VAL(3.1415926535897932));
+    defineNativeClassConstant(mathClass, "E",  NUMBER_VAL(2.7182818284590452));
 
     popn(2);
 
@@ -3081,6 +3104,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
     defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
     defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
+    defineNativeMethod(systemClass, "set_precision", systemSetPrecisionNative);
     defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
     defineNativeMethod(systemClass, "trace", systemTraceNative);
 
@@ -4309,6 +4333,26 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
         }
     }
 
+    // 1b. class constants pipeline
+    ObjClass* constClass = NULL;
+    if (IS_INSTANCE(receiver)) {
+        constClass = AS_INSTANCE(receiver)->obj.klass;
+    } else if (IS_CLASS(receiver)) {
+        constClass = AS_CLASS(receiver);
+    } else {
+        constClass = getClassForValue(receiver);
+    }
+
+    if (constClass != NULL) {
+        ObjClass* currentClass = constClass;
+        while (currentClass != NULL) {
+            if (tableGet(&currentClass->constants, name, result)) {
+                return PROP_FOUND;
+            }
+            currentClass = currentClass->superclass;
+        }
+    }
+
     // 2. unified metadata pipeline (primitives, vectors, classes)
     ObjClass* klass = getClassForValue(receiver);
     if (klass != NULL) {
@@ -4420,6 +4464,26 @@ Value getPropertySync(Value receiver, ObjString* name) {
 }
 
 PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
+    ObjClass* constClass = NULL;
+    if (IS_INSTANCE(receiver)) {
+        constClass = AS_INSTANCE(receiver)->obj.klass;
+    } else if (IS_CLASS(receiver)) {
+        constClass = AS_CLASS(receiver);
+    } else {
+        constClass = getClassForValue(receiver);
+    }
+
+    if (constClass != NULL) {
+        ObjClass* currentClass = constClass;
+        while (currentClass != NULL) {
+            Value dummy;
+            if (tableGet(&currentClass->constants, name, &dummy)) {
+                return PROP_IMMUTABLE;
+            }
+            currentClass = currentClass->superclass;
+        }
+    }
+
     ObjClass* klass = getClassForValue(receiver);
 
     if (klass != NULL) {
@@ -4598,6 +4662,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.stress_mode = 0; // 0 = normal, 1 = always, 2 = never
     vm.gctype = 1;
     vm.numNotation = 1; // 1 = sci, 0 = %.0f
+    vm.numPrecision = 6;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -4609,6 +4674,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     initTable(&vm.globals);
     initTable(&vm.strings);
+    initTable(&vm.globalConstants);
     //initTable(&vm.giTypes);
 
     ObjString* name = copyString("String", 6);
@@ -4768,6 +4834,7 @@ void freeVM() {
 
     freeTable(&vm.globals);
     freeTable(&vm.strings);
+    freeTable(&vm.globalConstants);
 
     vm.initString = NULL;
     vm.toString = NULL;
@@ -5386,16 +5453,6 @@ InterpretResult run() {
                 break;
             case OP_CONSTANT_LONG:
                 {
-                    /*
-                    uint8_t b1 = READ_BYTE();
-                    uint8_t b2 = READ_BYTE();
-                    uint8_t b3 = READ_BYTE();
-                    //int index = b1 | (b2 << 8) | (b3 << 16);
-                    int index = (b1 << 16) | (b2 << 8) | b3;
-                    */
-
-                    //Value constant = frame->closure->function->chunk.constants.values[index];
-                    //Value constant = READ_CONSTANT_LONG(index);
                     Value constant = READ_CONSTANT_LONG();
                     push(constant);
                 }
@@ -5489,6 +5546,26 @@ InterpretResult run() {
                     push(value);
                 }
                 break;
+            case OP_DEFINE_CLASS_CONST:
+            case OP_DEFINE_CLASS_CONST_LONG:
+                {
+                    ObjString* name = (instruction == OP_DEFINE_CLASS_CONST)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+
+                    Value constantValue = peek(0);
+                    Value classVal = peek(1);
+
+                    if (!IS_CLASS(classVal)) {
+                        RUNTIME_ERROR("Can only define constants inside a class scope.");
+                        break;
+                    }
+
+                    ObjClass* klass = AS_CLASS(classVal);
+                    tableSet(&klass->constants, name, constantValue);
+                    pop();
+                }
+                break;
             case OP_DEFINE_GLOBAL:
                 {
                     ObjString* name = READ_STRING();
@@ -5496,18 +5573,39 @@ InterpretResult run() {
                     pop();
                 }
                 break;
+            case OP_DEFINE_GLOBAL_CONST:
+                {
+                    ObjString* name = READ_STRING();
+                    tableSet(&vm.globals, name, peek(0));
+                    tableSet(&vm.globalConstants, name, BOOL_VAL(true));
+                    pop();
+                }
+                break;
             case OP_DEFINE_GLOBAL_LONG:
                 {
-                    //uint32_t index = READ_24BIT();
-                    //ObjString* name = AS_STRING(frame->closure->function->chunk.constants.values[index]);
                     ObjString* name = READ_STRING_LONG();
                     tableSet(&vm.globals, name, peek(0));
+                    pop();
+                }
+                break;
+            case OP_DEFINE_GLOBAL_CONST_LONG:
+                {
+                    ObjString* name = READ_STRING_LONG();
+                    tableSet(&vm.globals, name, peek(0));
+                    tableSet(&vm.globalConstants, name, BOOL_VAL(true));
                     pop();
                 }
                 break;
             case OP_SET_GLOBAL:
                 {
                     ObjString* name = READ_STRING();
+                    Value dummy;
+
+                    if (tableGet(&vm.globalConstants, name, &dummy)) {
+                        RUNTIME_ERROR("Canot reassign global constant '%s'.", name->chars);
+                        break;
+                    }
+
                     if (tableSet(&vm.globals, name, peek(0))) {
                         tableDelete(&vm.globals, name);
                         RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
@@ -5518,6 +5616,12 @@ InterpretResult run() {
             case OP_SET_GLOBAL_LONG:
                 {
                     ObjString* name = READ_STRING_LONG();
+                    Value dummy;
+                    if (tableGet(&vm.globalConstants, name, &dummy)) {
+                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        break;
+                    }
+
                     if (tableSet(&vm.globals, name, peek(0))) {
                         tableDelete(&vm.globals, name);
                         RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
@@ -5570,6 +5674,11 @@ InterpretResult run() {
 
                     if (res == PROP_ASYNC) {
                         frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+
+                    if (res == PROP_IMMUTABLE) {
+                        RUNTIME_ERROR("Cannot reassign or shadow constant property '%s'.", name->chars);
                         break;
                     }
 

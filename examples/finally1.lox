@@ -1,0 +1,15 @@
+//System.trace(true);
+
+try {
+    print "1. About to throw...";
+    throw Error("A serious runtime error occurred!");
+    print "2. This should NEVER print.";
+} catch (Error e) {
+    print "== CAUGHT ==";
+    print e;
+    print "==/CAUGHT==";
+} finally {
+  print "in finally";
+}
+
+print "3. Life goes on after the catch block!";

@@ -133,6 +133,7 @@ typedef struct ObjClass {
     ObjString* name;
     Table methods;
     Table fields;
+    Table constants;
     Table getters;
     Table setters;
     ClassKind kind;

@@ -1,0 +1,15 @@
+var a = [1,2,3,4,5];
+print a;
+
+a.each(fun(b) { 
+  print b;
+});
+
+
+print "====";
+
+fun t1(b) {
+  print b;
+}
+
+a.each(t1);

@@ -1,0 +1,26 @@
+System.trace(true);
+
+class A {
+  init() {
+    const a = 12;
+  }
+}
+
+print A.a;
+
+class B {
+  init() {
+    const a = 12;
+    try {
+      a = 13;
+    } catch (Error e) {
+      print "Error: ${e.message}";
+    }
+  }
+}
+
+try {
+  print B.a;
+} catch (Error e) {
+  print "Error: ${e.message}";
+}

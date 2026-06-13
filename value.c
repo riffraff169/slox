@@ -67,9 +67,9 @@ void printValueSafe(Value value) {
                 break;
             case VAL_NUMBER:
                 if (vm.numNotation == 1) {
-                    printf("%g", AS_NUMBER(value));
+                    printf("%.*g", vm.numPrecision, AS_NUMBER(value));
                 } else {
-                    printf("%.0f", AS_NUMBER(value));
+                    printf("%.*f", vm.numPrecision, AS_NUMBER(value));
                 }
                 break;
             case VAL_OBJ:

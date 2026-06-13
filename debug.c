@@ -350,6 +350,18 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_THROW", offset);
         case OP_INSTANCEOF:
             return simpleInstruction("OP_INSTANCEOF", offset);
+        case OP_DEFINE_CLASS_CONST:
+            return constantInstruction("OP_DEFINE_CLASS_CONST", chunk, offset);
+            break;
+        case OP_DEFINE_CLASS_CONST_LONG:
+            return constantLongInstruction("OP_DEFINE_CLASS_CONST_LONG", chunk, offset);
+            break;
+        case OP_DEFINE_GLOBAL_CONST:
+            return constantInstruction("OP_DEFINE_GLOBAL_CONST", chunk, offset);
+            break;
+        case OP_DEFINE_GLOBAL_CONST_LONG:
+            return constantLongInstruction("OP_DEFINE_GLOBAL_CONST_LONG", chunk, offset);
+            break;
         default:
             printf("Unknown opcode %d (Hex: 0x%02x)\n", instruction, instruction);
             return offset + 1;
