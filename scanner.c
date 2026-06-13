@@ -158,6 +158,7 @@ static TokenType identifierType() {
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
                           case 'a': return checkKeyword(2, 3, "lse", TOKEN_FALSE);
+                          case 'i': return checkKeyword(2, 5, "nally", TOKEN_FINALLY);
                           case 'o':
                                     {
                                         int res = checkKeyword(2, 5, "reach", TOKEN_FOREACH);

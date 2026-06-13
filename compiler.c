@@ -305,6 +305,17 @@ static void emitConstant(Value value) {
     }
 }
 
+static void patchJumpInChunk(Chunk* chunk, int offset) {
+    int jump = chunk->count - offset - 2;
+
+    if (jump > UINT16_MAX) {
+        error("Too much code to jump over.");
+    }
+
+    chunk->code[offset] = (jump >> 8) & 0xff;
+    chunk->code[offset + 1] = jump & 0xff;
+}
+
 static void patchJump(int offset) {
     int jump = currentChunk()->count - offset - 2;
 
@@ -1591,6 +1602,17 @@ static void foreachStatement() {
     endScope();
 }
 
+static void patchTryOffset(int slot, int target, int offsetFromEnd) {
+    if (target == 0) {
+        currentChunk()->code[slot] = 0;
+        currentChunk()->code[slot + 1] = 0;
+        return;
+    }
+    int jump = target - (slot + offsetFromEnd);
+    currentChunk()->code[slot] = (jump >> 8) & 0xff;
+    currentChunk()->code[slot + 1] = jump & 0xff;
+}
+
 static void throwStatement() {
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after throw value.");
@@ -1637,50 +1659,84 @@ static void catchBlock() {
 static void tryStatement() {
     consume(TOKEN_LEFT_BRACE, "Expect '{' before try body.");
 
-    int tryJump = emitJump(OP_TRY);
+    //int tryJump = emitJump(OP_TRY);
+    emitByte(OP_TRY);
+    int catchJumpPlaceholder = currentChunk()->count;
+    emitBytes(0xff, 0xff);
+    int finallyJumpPlaceholder = currentChunk()->count;
+    emitBytes(0xff, 0xff);
 
     block();
 
     int endTryJump = emitJump(OP_END_TRY);
 
-    patchJump(tryJump);
+    //patchJump(tryJump);
+    int catchTarget = 0;
+    int catchSuccessJump = -1;
 
-    consume(TOKEN_CATCH, "Expect 'catch' after try block.");
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
+    if (match(TOKEN_CATCH)) {
+        catchTarget = currentChunk()->count;
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
 
-    consume(TOKEN_IDENTIFIER, "Expect exception type name.");
-    Token typeName = parser.previous;
+        consume(TOKEN_IDENTIFIER, "Expect exception type name.");
+        Token typeName = parser.previous;
 
-    consume(TOKEN_IDENTIFIER, "Expect exception variable name.");
-    Token exceptionVar = parser.previous;
+        consume(TOKEN_IDENTIFIER, "Expect exception variable name.");
+        Token exceptionVar = parser.previous;
 
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
-    consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
+        consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
 
-    emitByte(OP_DUP);
-    namedVariable(typeName, false);
-    emitByte(OP_INSTANCEOF);
+        emitByte(OP_DUP);
+        namedVariable(typeName, false);
+        emitByte(OP_INSTANCEOF);
 
-    int mismatchJump = emitJump(OP_JUMP_IF_FALSE);
-    emitByte(OP_POP);
+        int mismatchJump = emitJump(OP_JUMP_IF_FALSE);
+        emitByte(OP_POP);
 
-    beginScope();
+        beginScope();
 
-    addLocal(exceptionVar);
-    markInitialized();
+        addLocal(exceptionVar);
+        markInitialized();
 
-    block();
+        block();
 
-    endScope();
+        endScope();
 
-    int catchSuccessJump = emitJump(OP_JUMP);
+        catchSuccessJump = emitJump(OP_JUMP);
     
-    patchJump(mismatchJump);
-    emitByte(OP_POP);
-    emitByte(OP_THROW);
+        patchJump(mismatchJump);
+        emitByte(OP_POP);
+        emitByte(OP_THROW);
+    }
 
-    patchJump(catchSuccessJump);
-    patchJump(endTryJump);
+    int finallyTarget = 0;
+    bool hasFinally = false;
+
+    if (match(TOKEN_FINALLY)) {
+        hasFinally = true;
+        finallyTarget = currentChunk()->count;
+        consume(TOKEN_LEFT_BRACE, "Expect '{' before finally body.");
+        block();
+        emitByte(OP_END_FINALLY);
+    }
+
+    int finalDestination = currentChunk()->count;
+
+    if (catchTarget == 0) {
+        catchTarget = hasFinally ? finallyTarget : finalDestination;
+    }
+    int successTarget = hasFinally ? finallyTarget : finalDestination;
+
+    patchTryOffset(endTryJump, successTarget, 2);
+    if (catchSuccessJump != -1) {
+        patchTryOffset(catchSuccessJump, successTarget, 2);
+    }
+
+    patchTryOffset(catchJumpPlaceholder, catchTarget, 4);
+    patchTryOffset(finallyJumpPlaceholder, hasFinally ? finallyTarget: 0, 2);
+    //patchJump(catchSuccessJump);
+    //patchJump(endTryJump);
 }
 
 static void forStatement() {
@@ -1907,13 +1963,16 @@ static void whileStatement() {
 
     statement();
     emitLoop(loopStart);
+
+    patchJump(exitJump);
+
+    emitByte(OP_POP);
+
     for (int i = 0; i < loop.breakCount; i++) {
         patchJump(loop.breakJumps[i]);
     }
     currentLoop = loop.enclosing;
 
-    patchJump(exitJump);
-    emitByte(OP_POP);
 }
 
 static void synchronize() {

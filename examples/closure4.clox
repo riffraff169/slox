@@ -14,5 +14,5 @@ fun outer() {
 }
 
 var mid = outer();
-var in = mid();
-in();
+var in1 = mid();
+in1();

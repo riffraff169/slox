@@ -88,7 +88,8 @@ typedef enum {
     OP_SPLAT,
     OP_CALL_SPLAT,
     OP_INVOKE_SPLAT,
-    OP_SUPER_INVOKE_SPLAT
+    OP_SUPER_INVOKE_SPLAT,
+    OP_END_FINALLY
 } OpCode;
 
 typedef struct {

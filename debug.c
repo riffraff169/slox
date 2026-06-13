@@ -337,9 +337,15 @@ int disassembleInstruction(Chunk* chunk, int offset) {
         case OP_INCLUDE:
             return simpleInstruction("OP_INCLUDE", offset);
         case OP_TRY:
-            return jumpInstruction("OP_TRY", 1, chunk, offset);
+            printf("%-16s ", "OP_TRY");
+            uint16_t catchTarget = (chunk->code[offset + 1] << 8) | chunk->code[offset + 2];
+            uint16_t finallyTarget = (chunk->code[offset + 3] << 8) | chunk->code[offset + 4];
+            printf(" catch: %d, finally: %d\n", catchTarget, finallyTarget);
+            return offset + 5;
         case OP_END_TRY:
             return jumpInstruction("OP_END_TRY", 1, chunk, offset);
+        case OP_END_FINALLY:
+            return simpleInstruction("OP_END_FINALLY", offset);
         case OP_THROW:
             return simpleInstruction("OP_THROW", offset);
         case OP_INSTANCEOF:

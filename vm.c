@@ -197,16 +197,37 @@ void raiseException(Value exceptionValue) {
         exit(70);
     }
 
-    vm.tryCount--;
-    TryBlock target = vm.tryStack[vm.tryCount];
+    //vm.tryCount--;
+    TryBlock* target = &vm.tryStack[vm.tryCount - 1];
 
-    vm.stackTop = target.stackTop;
-    vm.frameCount = target.frameCount;
-
-    push(exceptionValue);
-
+    vm.stackTop = target->stackTop;
+    vm.frameCount = target->frameCount;
     CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
-    currentFrame->ip = target.catchIp;
+
+    if (target->catchIp != NULL) {
+        uint8_t* catchTargetIp = target->catchIp;
+
+        target->catchIp = NULL;
+
+        if (target->finallyIp == NULL) {
+            vm.tryCount--;
+        }
+        push(exceptionValue);
+        currentFrame->ip = catchTargetIp;
+    } else if (target->finallyIp != NULL) {
+        target->hasUncaughtException = true;
+        target->uncaughtException = exceptionValue;
+
+        uint8_t* finallyTargetIp = target->finallyIp;
+        target->finallyIp = NULL;
+
+        currentFrame->ip = finallyTargetIp;
+    } else {
+        vm.tryCount--;
+        raiseException(exceptionValue);
+        //push(exceptionValue);
+        //currentFrame->ip = target->catchIp;
+    }
 }
 
 static Value resultUnwrapNative(int argCount, Value* args) {
@@ -6003,7 +6024,10 @@ InterpretResult run() {
                 break;
             case OP_TRY:
                 {
-                    uint16_t offset = READ_SHORT();
+                    //uint16_t offset = READ_SHORT();
+                    uint16_t catchOffset = READ_SHORT();
+                    uint16_t finallyOffset = READ_SHORT();
+
                     if (vm.tryCount >= TRY_STACK_MAX) {
                         RUNTIME_ERROR("Stack overflow: too many nested try blocks.");
                         break;
@@ -6012,27 +6036,61 @@ InterpretResult run() {
                     TryBlock* block = &vm.tryStack[vm.tryCount++];
                     block->frameCount = vm.frameCount;
                     block->stackTop = vm.stackTop;
-                    block->catchIp = frame->ip + offset;
+                    //block->catchIp = frame->ip + offset;
+                    block->catchIp = catchOffset == 0 ? NULL : frame->ip + catchOffset;
+                    block->finallyIp = finallyOffset == 0 ? NULL : frame->ip + finallyOffset;
+
+                    block->isReturning = false;
+                    block->hasUncaughtException = false;
                 }
                 break;
             case OP_END_TRY:
                 {
-                    vm.tryCount--;
+                    TryBlock* block = &vm.tryStack[vm.tryCount - 1];
+                    if (block->finallyIp == NULL) {
+                        vm.tryCount--;
+                    }
                     uint16_t catchOffset = READ_SHORT();
 
                     frame->ip += catchOffset;
                 }
                 break;
+            case OP_END_FINALLY:
+                {
+                    TryBlock* block = &vm.tryStack[--vm.tryCount];
+
+                    if (block->isReturning) {
+                        push(block->returnValue);
+
+                        Value result = pop();
+                        vm.frameCount--;
+                        if (vm.frameCount == 0) {
+                            pop();
+                            return INTERPRET_OK;
+                        }
+                        vm.stackTop = frame->slots;
+                        push(result);
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+
+                    if (block->hasUncaughtException) {
+                        raiseException(block->uncaughtException);
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+                }
+                break;
             case OP_THROW:
                 {
-                    Value exception = peek(0);
+                    Value exception = pop();
 
                     if (IS_STRING(exception)) {
                         Value errorClassVal;
                         ObjString* errorName = copyString("Error", 5);
 
                         if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
-                            pop();
+                            //pop();
 
                             ObjClass* errorClass = AS_CLASS(errorClassVal);
                             ObjInstance* errorInstance = newInstance(errorClass);
@@ -6049,11 +6107,11 @@ InterpretResult run() {
                             pop(); // the origin string
 
                             push(OBJ_VAL(errorInstance));
-                        } else {
-                            pop();
+                        //} else {
+                        //    pop();
                         }
                     }
-                    Value exeption = pop();
+                    //Value exceptionToThrow = pop();
                     raiseException(exception);
 
                     frame = &vm.frames[vm.frameCount - 1];
@@ -6331,6 +6389,18 @@ InterpretResult run() {
             case OP_RETURN:
                 {
                     Value result = pop();
+
+                    if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                        TryBlock* block = &vm.tryStack[vm.tryCount - 1];
+                        if (block->finallyIp != NULL && !block->isReturning) {
+                            block->isReturning = true;
+                            block->returnValue = result;
+                            vm.stackTop = block->stackTop;
+                            frame->ip = block->finallyIp;
+                            break;
+                        }
+                    }
+                    //Value result = pop();
                     closeUpvalues(frame->slots);
 
                     bool isGetterFrame = frame->isGetter;
@@ -6646,7 +6716,11 @@ InterpretResult interpret(const char* source, const char* filename) {
     push(OBJ_VAL(closure));
     vmCall(closure, 0);
 
-    //return run();
+//#define DEBUG_DUMP_COMPILED_BYTECODE
+#ifdef DEBUG_DUMP_COMPILED_BYTECODE
+    disassembleChunk(&function->chunk, "Compiled Script");
+#endif
+
     InterpretResult result = run();
     if (result == INTERPRET_RUNTIME_ERROR) {
         resetStack();

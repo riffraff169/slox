@@ -20,6 +20,12 @@ typedef struct {
     int frameCount;
     Value* stackTop;
     uint8_t* catchIp;
+    uint8_t* finallyIp;
+
+    bool isReturning;
+    Value returnValue;
+    bool hasUncaughtException;
+    Value uncaughtException;
 } TryBlock;
 
 #define TRY_STACK_MAX 64
