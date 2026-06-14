@@ -1514,6 +1514,54 @@ static Value stringLenNative(int argCount, Value* args) {
     return NUMBER_VAL((double)str->length);
 }
 
+static Value arrayRestNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[-1]);
+    ObjArray* rest = newArray();
+
+    push(OBJ_VAL(rest));
+
+    for (int i = 1; i < array->count; i++) {
+        arrayAppend(rest, array->values[i]);
+    }
+
+    pop();
+    return OBJ_VAL(rest);
+}
+
+static Value arraySplitNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[-1]);
+
+    Value head = (array->count > 0) ? array->values[0] : NIL_VAL;
+
+    ObjArray* rest = newArray();
+    push(OBJ_VAL(rest));
+
+    for (int i = 1; i < array->count; i++) {
+        arrayAppend(rest, array->values[i]);
+    }
+
+    ObjArray* result = newArray();
+    push(OBJ_VAL(result));
+
+    arrayAppend(result, head);
+    arrayAppend(result, OBJ_VAL(rest));
+
+    pop();
+    pop();
+
+    return OBJ_VAL(result);
+}
+
+Value arrayFirstNative(int argCount, Value* args) {
+    ObjArray* array = AS_ARRAY(args[-1]);
+
+    if (array->count == 0) {
+        return NIL_VAL;
+    }
+
+    return array->values[0];
+}
+
 static Value arrayStringNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
@@ -3977,7 +4025,10 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "reverse", arrayReverseNative);
     defineNativeMethod(vm.arrayClass, "flatten", arrayFlattenNative);
     defineNativeMethod(vm.arrayClass, "to_string", arrayStringNative);
-    defineNativeMethod(vm.arrayClass, "iter", arrayIterNative);
+    //defineNativeMethod(vm.arrayClass, "iter", arrayIterNative);
+    defineNativeMethod(vm.arrayClass, "first", arrayFirstNative);
+    defineNativeMethod(vm.arrayClass, "rest", arrayRestNative);
+    defineNativeMethod(vm.arrayClass, "split", arraySplitNative);
     pop();
 }
 
