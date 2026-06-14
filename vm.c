@@ -1280,6 +1280,89 @@ static Value arrayLenNative(int argCount, Value* args) {
     return NUMBER_VAL(array->count);
 }
 
+static Value stringFormatNative(int argCount, Value* args) {
+    ObjString* formatStr = AS_STRING(args[-1]);
+
+    int capacity = formatStr->length + 64;
+    char* buffer = malloc(capacity);
+    int length = 0;
+
+    int currentArg = 0;
+
+    for (int i = 0; i < formatStr->length; i++) {
+        if (length + 32 >= capacity) {
+            capacity *= 2;
+            buffer = realloc(buffer, capacity);
+        }
+
+        if (formatStr->chars[i] == '%' && i + 1 < formatStr->length) {
+            char specifier = formatStr->chars[i + 1];
+            i++;
+
+            if (specifier == '%') {
+                buffer[length++] = '%';
+                continue;
+            }
+
+            if (currentArg >= argCount) {
+                length += sprintf(buffer + length, "%%c", specifier);
+                continue;
+            }
+
+            Value val = args[currentArg++];
+
+            switch (specifier) {
+                case 's':
+                    {
+                        if (IS_STRING(val)) {
+                            ObjString* s = AS_STRING(val);
+                            while (length + s->length >= capacity) {
+                                capacity += s->length + 64;
+                                buffer = realloc(buffer, capacity);
+                            }
+                            memcpy(buffer + length, s->chars, s->length);
+                            length += s->length;
+                        } else if (IS_NIL(val)) {
+                            length += sprintf(buffer + length, "nil");
+                        } else {
+                            length += sprintf(buffer + length, "<object>");
+                        }
+                    }
+                    break;
+                case 'd':
+                case 'f':
+                    if (IS_NUMBER(val)) {
+                        double num = AS_NUMBER(val);
+                        length += sprintf(buffer + length, specifier == 'd' ? "%.0f": "%f", num);
+                    } else {
+                        length += sprintf(buffer + length, "NaN");
+                    }
+                    break;
+                case 'b':
+                    if (IS_BOOL(val)) {
+                        length += sprintf(buffer + length, AS_BOOL(val) ? "true" : "false");
+                    } else {
+                        length += sprintf(buffer + length, "false");
+                    }
+                    break;
+                default:
+                    buffer[length++] = '%';
+                    buffer[length++] = specifier;
+                    break;
+            }
+        } else {
+            buffer[length++] = formatStr->chars[i];
+        }
+    }
+
+    buffer[length] = '\0';
+  
+    ObjString* result = copyString(buffer, length);
+    free(buffer);
+
+    return OBJ_VAL(result);
+}
+
 static Value stringToarrayNative(int argCount, Value* args) {
     ObjString* string = AS_STRING(args[-1]);
     ObjArray* array = newArray();
@@ -4351,7 +4434,7 @@ void initStringClass() {
     defineNativeMethod(vm.stringClass, "to_array", stringToarrayNative);
     defineNativeMethod(vm.stringClass, "to_number", toNumberNative);
     defineNativeMethod(vm.stringClass, "tokens", stringTokensNative);
-
+    defineNativeMethod(vm.stringClass, "format", stringFormatNative);
     pop();
 }
 

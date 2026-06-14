@@ -345,7 +345,8 @@ static Token heredocToken() {
 
             if (strncmp(scanner.current, tagStart, tagLength) == 0) {
                 char nextChar = scanner.current[tagLength];
-                if (nextChar == ';' || nextChar == '\n' || nextChar == '\r' || nextChar == ' ' || nextChar == '\0') {
+                //if (nextChar == ';' || nextChar == '\n' || nextChar == '\r' || nextChar == ' ' || nextChar == '\0') {
+                if (!isAlpha(nextChar) && !isDigit(nextChar) && nextChar != '_') {
                     //int bodyLength = (int)((scanner.current - 1) - bodyStart);
                     for (int i = 0; i < tagLength; i++) advance();
 
