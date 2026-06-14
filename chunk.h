@@ -93,6 +93,7 @@ typedef enum {
     OP_CALL_SPLAT,
     OP_INVOKE_SPLAT,
     OP_SUPER_INVOKE_SPLAT,
+    OP_UNPACK,
     OP_END_FINALLY
 } OpCode;
 

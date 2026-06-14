@@ -352,6 +352,20 @@ static Token backtickString() {
     return makeToken(TOKEN_BACKTICK_STRING);
 }
 
+Token peekNextToken() {
+    const char* savedStart = scanner.start;
+    const char* savedCurrent = scanner.current;
+    int savedLine = scanner.line;
+
+    Token nextToken = scanToken();
+
+    scanner.start = savedStart;
+    scanner.current = savedCurrent;
+    scanner.line = savedLine;
+
+    return nextToken;
+}
+
 Token scanToken() {
     skipWhitespace();
     scanner.start = scanner.current;

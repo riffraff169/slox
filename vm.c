@@ -1845,6 +1845,20 @@ static Value systemGCNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value systemStrictNative(int argCount, Value* args) {
+    if (argCount == 1 && IS_BOOL(args[0])) {
+        vm.strictMode = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.strictMode);
+}
+
+static Value systemWarnNative(int argCount, Value* args) {
+    if (argCount == 1 && IS_BOOL(args[0])) {
+        vm.warnMode = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.warnMode);
+}
+
 static Value systemSetPrecisionNative(int argCount, Value* args) {
     int precision = 6;
 
@@ -3107,6 +3121,8 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "set_precision", systemSetPrecisionNative);
     defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
     defineNativeMethod(systemClass, "trace", systemTraceNative);
+    defineNativeMethod(systemClass, "strict", systemStrictNative);
+    defineNativeMethod(systemClass, "warn", systemWarnNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -4663,6 +4679,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.gctype = 1;
     vm.numNotation = 1; // 1 = sci, 0 = %.0f
     vm.numPrecision = 6;
+    vm.strictMode = false;
+    vm.warnMode = true;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -6349,6 +6367,43 @@ InterpretResult run() {
                         break;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_UNPACK:
+                {
+                    uint8_t expectedCount = READ_BYTE();
+                    Value value = pop();
+
+                    if (!IS_ARRAY(value)) {
+                        RUNTIME_ERROR("Can only destructure arrays.");
+                        break;
+                    }
+
+                    ObjArray* array = AS_ARRAY(value);
+                    int actualCount = array->count;
+
+                    // case 1: not enough elements to satisfy variables
+                    if (actualCount < expectedCount) {
+                        RUNTIME_ERROR("Destructuring mismatch: Expected %d elements, but array only has %d.",
+                                expectedCount, actualCount);
+                        break;
+                    }
+
+                    // case 2: too many elements (the strict/warn zone)
+                    if (actualCount > expectedCount) {
+                        if (vm.strictMode) {
+                            RUNTIME_ERROR("Destructuring mismath: Strict mode active. Extraneous array elements detected.");
+                            break;
+                        } else if (vm.warnMode) {
+                            printf("Warning: Destructuring assigment ignored %d trailing array elements.\n",
+                                    actualCount - expectedCount);
+                        }
+                    }
+
+                    // case 3: clean extraction (unpack in reverse order)
+                    for (int i = expectedCount - 1; i >= 0; i--) {
+                        push(array->values[i]);
+                    }
                 }
                 break;
             case OP_SUPER_INVOKE:

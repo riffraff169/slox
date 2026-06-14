@@ -1525,27 +1525,104 @@ static void funDeclaration() {
 static void varDeclaration() {
     bool isConst = (parser.previous.type == TOKEN_CONST);
 
-    int global = parseVariable("Expect variable name.");
+    //int global = parseVariable("Expect variable name.");
 
-    if (current->scopeDepth > 0 && isConst) {
-        current->locals[current->localCount - 1].isConst = true;
-    }
+    int globals[64];
+    int varCount = 0;
+
+    // 1. loop through all comma-separated identifiers
+    do {
+        if (varCount >= 64) {
+            error("Too many variables in a single declaration statement.");
+            break;
+        }
+
+        globals[varCount] = parseVariable("Expect variable name.");;
+
+        if (current->scopeDepth > 0 && isConst) {
+            current->locals[current->localCount - 1].isConst = true;
+        }
+        varCount++;
+    } while (match(TOKEN_COMMA));
 
     if (match(TOKEN_EQUAL)) {
         expression();
+
+        if (varCount > 1) {
+            emitBytes(OP_UNPACK, (uint8_t)varCount);
+        }
     } else {
         if (isConst) {
             error("Constant declarations must be initialized.");
         }
-        emitByte(OP_NIL);
+        for (int i = 0; i < varCount; i++) {
+            emitByte(OP_NIL);
+        }
     }
     consume(TOKEN_SEMICOLON,
             "Expect ';' after variable declaration.");
 
-    defineVariableExt(global, isConst);
+    for (int i = 0; i < varCount; i++) {
+        defineVariableExt(globals[i], isConst);
+    }
+}
+
+static void assignToVariable(Token name) {
+    int arg = resolveLocal(current, &name);
+
+    if (arg != -1) {
+        if (current->locals[arg].isConst) {
+            error("Cannot assign to a constant variable");
+        }
+
+        if (arg > 255) {
+            emitSetVar(OP_SET_LOCAL_LONG, arg);
+        } else {
+            emitSetVar(OP_SET_LOCAL, arg);
+        }
+    } else {
+        int nameIndex = identifierConstant(&name);
+        if (arg > 255) {
+            emitSetVar(OP_SET_GLOBAL_LONG, nameIndex);
+        } else {
+            emitSetVar(OP_SET_GLOBAL, nameIndex);
+        }
+    }
+}
+
+static void destructuringAssignment() {
+    Token targets[64];
+    int varCount = 0;
+
+    do {
+        if (varCount >= 64) {
+            error("Too many targets in destructuring assignment.");
+            break;
+        }
+        consume(TOKEN_IDENTIFIER, "Expect variable name.");
+        targets[varCount++] = parser.previous;
+    } while (match(TOKEN_COMMA));
+
+    consume(TOKEN_EQUAL, "Expect '=' after assignment targets.");
+
+    expression();
+
+    consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+
+    emitBytes(OP_UNPACK, (uint8_t)varCount);
+
+    for (int i = 0; i < varCount; i++) {
+        assignToVariable(targets[i]);
+        emitByte(OP_POP);
+    }
 }
 
 static void expressionStatement() {
+    if (check(TOKEN_IDENTIFIER) && peekNextToken().type == TOKEN_COMMA) {
+        destructuringAssignment();
+        return;
+    }
+
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
     emitByte(OP_POP);

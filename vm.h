@@ -64,6 +64,8 @@ typedef struct {
     int gctype; // 1: multiplier, 0: linear
     uint8_t numNotation; // 1 = sci %g, 0 = %.0f
     uint8_t numPrecision; // default 6
+    bool strictMode;
+    bool warnMode;
 
     Obj* objects;
     int grayCount;
