@@ -316,6 +316,48 @@ static Token continueString() {
     return makeToken(TOKEN_STRING);
 }
 
+static Token heredocToken() {
+    const char* tagStart = scanner.current;
+    
+    while (isAlpha(peek()) || isDigit(peek())) {
+        advance();
+    }
+    int tagLength = (int)(scanner.current - tagStart);
+
+    if (tagLength == 0) {
+        return errorToken("Expect herdoc identifier after '<<<'.");
+    }
+
+    if (peek() == '\r') advance();
+    if (peek() == '\n') advance();
+
+    const char* bodyStart = scanner.current;
+
+    for (;;) {
+        if (isAtEnd()) {
+            return errorToken("Unterminated heredoc.");
+        }
+
+        if (peek() == '\n' || peek() == '\r') {
+            if (peek() == '\r') advance();
+            advance();
+            scanner.line++;
+
+            if (strncmp(scanner.current, tagStart, tagLength) == 0) {
+                char nextChar = scanner.current[tagLength];
+                if (nextChar == ';' || nextChar == '\n' || nextChar == '\r' || nextChar == ' ' || nextChar == '\0') {
+                    //int bodyLength = (int)((scanner.current - 1) - bodyStart);
+                    for (int i = 0; i < tagLength; i++) advance();
+
+                    return makeToken(TOKEN_HEREDOC);
+                }
+            }
+        } else {
+            advance();
+        }
+    }
+}
+
 static Token string() {
     while (peek() != '"' && !isAtEnd()) {
         if (peek() == '\n') scanner.line++;
@@ -479,7 +521,12 @@ Token scanToken() {
             return makeToken(
                     match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
         case '<':
-            if (match('<')) return makeToken(TOKEN_2LEFT);
+            if (match('<')) {
+                if (match('<')) {
+                    return heredocToken();
+                }
+                return makeToken(TOKEN_2LEFT);
+            }
             return makeToken(
                     match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
         case '>':

@@ -875,6 +875,30 @@ static void or_(bool canAssign) {
     patchJump(endJump);
 }
 
+static void heredoc(bool canAssign) {
+    Token token = parser.previous;
+
+    const char* start = token.start + 3;
+    while (*start != '\n' && *start != '\r') {
+        start++;
+    }
+    if (*start == '\r') start++;
+    start++;
+
+    const char* end = token.start + token.length;
+    while (end > start && *end != '\n' && *end != '\r') {
+        end--;
+    }
+    if (end > start && *end == '\n' && *(end - 1) == '\r') {
+        end--;
+    }
+
+    int length = (int)(end - start);
+    if (length < 0) length = 0;
+
+    emitConstant(OBJ_VAL(copyString(start, length)));
+}
+
 static void string(bool canAssign) {
     const char* source = parser.previous.start + 1;
     int length = parser.previous.length;
@@ -1141,6 +1165,7 @@ ParseRule rules[] = {
     [TOKEN_LESS_EQUAL]       = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER]       = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]           = {string,   NULL,   PREC_NONE},
+    [TOKEN_HEREDOC]          = {heredoc,  NULL,   PREC_NONE},
     [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
     [TOKEN_CHAR]             = {character,NULL,   PREC_NONE},
     [TOKEN_AND]              = {NULL,     and_,   PREC_AND},
