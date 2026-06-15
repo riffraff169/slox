@@ -1,0 +1,1627 @@
+import "image";
+
+var infinity = 1.0 / 0.0;
+var neg_infinity = -1.0 / 0.0;
+
+
+fun checker1(u, v, p) {
+  var sines = Math.sin(10 * p.x) * Math.sin(10 * p.y) * Math.sin(10 * p.z);
+  if (sines < 0) {
+    return dark_square;
+  }
+  return light_square;
+}
+
+fun Interval(min, max) {
+  return [min, max];
+}
+
+var interval_universe = Interval(neg_infinity, infinity);
+var interval_empty = Interval(infinity, neg_infinity);
+
+var err = File.stderr();
+
+fun rmm(min, max) {
+  return min + (max - min) * Math.random();
+}
+
+//fun random_vec() {
+//  return Vec3(Math.random(), Math.random(), Math.random());
+//}
+
+fun random_vec_m(min, max) {
+  return Vec3(rmm(min, max), rmm(min, max), rmm(min, max));
+}
+
+fun cross(u, v) {
+  return Vec3(u.y * v.z - u.z * v.y,
+              u.z * v.x - u.x * v.z,
+              u.x * v.y - u.y * v.x);
+}
+
+fun unit_vector(v) {
+  return v / v.length();
+}
+
+fun random_in_unit_disk() {
+  while (true) {
+    var p = Vec3(rmm(-1,1), rmm(-1,1), 0);
+    if (p.length_squared() < 1) {
+      return p;
+    }
+  }
+}
+
+// Vec3, Vec3
+fun reflect(v, n) {
+  //return v - n * dot(v, n) * 2;
+  return v - n * v.dot(n) * 2;
+}
+
+// Vec3, Vec3, Number
+fun refract(uv, n, etai) {
+  //var uvn = uv * -1;
+  //var cos_theta = dot(uv * -1.0, n);
+  var cos_theta = (-uv).dot(n);
+  if (cos_theta > 1.0) {
+    cos_theta = 1.0;
+  } 
+
+  var r_out_perp = (uv + (n * cos_theta)) * etai;
+  var r_out_parallel = n * (-Math.sqrt(Math.abs(1.0 - r_out_perp.length_squared())));
+  return r_out_perp + r_out_parallel;
+}
+
+var epsilon = 1e-160;
+
+fun random_unit_vector() {
+  while (true) {
+    var p = random_vec_m(-1, 1);
+    var lensq = p.length_squared();
+    if (epsilon < lensq and lensq <= 1) {
+      return p / Math.sqrt(lensq);
+    }
+  }
+}
+
+fun random_on_hemisphere(normal) { // Vec3
+  var on_unit_sphere = random_unit_vector();
+  if (on_unit_sphere.dot(normal) > 0.0) {
+    return on_unit_sphere;
+  } else {
+    return Vec3(-on_unit_sphere.x, -on_unit_sphere.y, -on_unit_sphere.z);
+  }
+}
+
+var intensity = Interval(0.000, 0.999);
+var intensity_low = 0.000;
+var intensity_high = 0.999;
+
+fun linear_to_gamma(d) {
+  if (d > 0) {
+    return Math.sqrt(d);
+  }
+
+  return 0;
+}
+
+fun write_color(out, color) {
+  var r = linear_to_gamma(color.x);
+  var g = linear_to_gamma(color.y);
+  var b = linear_to_gamma(color.z);
+
+  var rbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, r));
+  var gbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, g));
+  var bbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, b));
+
+  out.write(str(rbyte) + " " + str(gbyte) + " " + str(bbyte) + "\n");
+}
+
+fun dot(u, v) {
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+fun overlaps_var(t1_min, t1_max, t2_min, t2_max) {
+}
+
+fun expand(tmin, tmax, delta) {
+  var padding = delta / 2;
+  return [tmin - padding, tmax + padding];
+}
+
+// Takes: Interval [min, max], Interval [min, max]
+// Returns: Interval [min, max]
+fun interval_mm(a, b) {
+  var min = a[0];
+  if (b[0] < a[0]) min = b[0];
+
+  var max = a[1];
+  if (b[1] > a[1]) max = b[1];
+
+  return [min, max];
+}
+
+fun near_zero(v) {
+  var s = 1e-8;
+  return (Math.abs(v.x) < s) and (Math.abs(v.y) < s) and (Math.abs(v.z) < s);
+}
+
+class Perlin {
+  init() {
+    this.point_count = 256;
+    this.randvec = [0; 256];
+    this.perm_x = [0; 256];
+    this.perm_y = [0; 256];
+    this.perm_z = [0; 256];
+
+    for (var i = 0; i < this.point_count; i = i + 1) {
+      this.randvec[i] = unit_vector(random_vec_m(-1,1));
+    }
+
+    this.perlin_generate_perm(this.perm_x);
+    this.perlin_generate_perm(this.perm_y);
+    this.perlin_generate_perm(this.perm_z);
+  }
+
+  noise(p) {
+    var u = p.x - Math.floor(p.x);
+    var v = p.y - Math.floor(p.y);
+    var w = p.z - Math.floor(p.z);
+    //print "p: ", p;
+    //print "u: ", u, " v: ", v, " w: ", w;
+    //u = u*u*(3-2*u);
+    //v = v*v*(3-2*v);
+    //w = w*w*(3-2*w);
+
+    //var i = Math.floor(4*p.x) & 255;
+    //var j = Math.floor(4*p.y) & 255;
+    //var k = Math.floor(4*p.z) & 255;
+    //print "NOISE: i: ", i, " j: ", j, " k: ", k;
+    //print "NOISE: perm_x[i]: ", this.perm_x[i], " perm_y[j]: ", this.perm_y[j],
+    //  " perm_z[k]: ", this.perm_z[k];
+
+    var i = Math.floor(p.x);
+    var j = Math.floor(p.y);
+    var k = Math.floor(p.z);
+
+    var c = [0; 8];
+    //for (var di = 0; di < 2; di = di + 1) {
+    //  for (var dj = 0; dj < 2; dj = dj + 1) {
+    //    for (var dk = 0; dk < 2; dk = dk + 1) {
+    //      c[4*di + 2*dj + dk] = this.randf[
+    //        this.perm_x[(i + di) & 255] ^
+    //          this.perm_y[(j + dj) & 255] ^
+    //          this.perm_z[(k + dk) & 255]
+    //      ];
+    //    }
+    //  }
+    //}
+    //return this.randf[this.perm_x[i] ^ this.perm_y[j] ^ this.perm_z[k]];
+    c = [
+      this.randvec[this.perm_x[(i+0)&255] ^ this.perm_y[(j+0)&255] ^ this.perm_z[(k+0)&255]], // c[0][0][0]
+      this.randvec[this.perm_x[(i+0)&255] ^ this.perm_y[(j+0)&255] ^ this.perm_z[(k+1)&255]], // c[0][0][1]
+      this.randvec[this.perm_x[(i+0)&255] ^ this.perm_y[(j+1)&255] ^ this.perm_z[(k+0)&255]], // c[0][1][0]
+      this.randvec[this.perm_x[(i+0)&255] ^ this.perm_y[(j+1)&255] ^ this.perm_z[(k+1)&255]], // c[0][1][1]
+      this.randvec[this.perm_x[(i+1)&255] ^ this.perm_y[(j+0)&255] ^ this.perm_z[(k+0)&255]], // c[1][0][0]
+      this.randvec[this.perm_x[(i+1)&255] ^ this.perm_y[(j+0)&255] ^ this.perm_z[(k+1)&255]], // c[1][0][1]
+      this.randvec[this.perm_x[(i+1)&255] ^ this.perm_y[(j+1)&255] ^ this.perm_z[(k+0)&255]], // c[1][1][0]
+      this.randvec[this.perm_x[(i+1)&255] ^ this.perm_y[(j+1)&255] ^ this.perm_z[(k+1)&255]]  // c[1][1][1]
+    ];
+
+    return this.perlin_interp(c, u, v, w);
+  }
+
+  // Takes: Vec3, Number
+  // Returns: Number
+  turb(p, depth) {
+    var accum = 0.0;
+    var temp_p = p;
+    var weight = 1.0;
+
+    for (var i = 0; i < depth; i = i + 1) {
+      accum = accum + weight * this.noise(temp_p);
+      weight = weight * 0.5;
+      temp_p = temp_p * 2;
+    }
+    return Math.abs(accum);
+  }
+
+  perlin_generate_perm(p) {
+    for (var i = 0; i < this.point_count; i = i + 1) {
+      p[i] = i;
+    }
+
+    this.permute(p, this.point_count);
+  }
+
+  permute(p, n) {
+    for (var i = n - 1; i > 0; i = i - 1) {
+      var target = Math.floor(rmm(0, i));
+      var tmp = p[i];
+      p[i] = p[target];
+      p[target] = tmp;
+    }
+  }
+
+  perlin_interp(c, u, v, w) {
+    var uu = u*u*(3-2*u);
+    var vv = v*v*(3-2*v);
+    var ww = w*w*(3-2*w);
+    var accum = 0.0;
+
+    for (var i = 0; i < 2; i = i + 1) {
+      for (var j = 0; j < 2; j = j + 1) {
+        for (var k = 0; k < 2; k = k + 1) {
+          var weight_v = Vec3(u-i, v-j, w-k);
+          accum = accum + (i*uu + (1-i)*(1.0-uu)) *
+            (j*vv + (1-j)*(1.0-vv)) *
+            (k*ww + (1-k)*(1.0-ww)) * c[i*4 + j*2 + k].dot(weight_v);
+        }
+      }
+    }
+    return accum;
+  }
+}
+
+class Material {
+  emitted(u, v, p) {
+    return Vec3(0,0,0);
+  }
+
+  scatter(r_in, rec) {
+    return false;
+  }
+}
+
+class Noise_Texture < Material {
+  init(scale) {
+    this.scale = scale;
+    this.noise = Perlin();
+    this.white = Vec3(1,1,1);
+    this.gray = Vec3(0.5, 0.5, 0.5);
+  }
+
+  value(u, v, p) {
+    //return this.white * this.noise.noise(p);
+    //return this.white * this.noise.noise(this.scale * p);
+    //return this.white * 0.5 * (1.0 + this.noise.noise(this.scale*p));
+    //return this.white * this.noise.turb(p, 7);
+    return this.gray * (1 + Math.sin(this.scale * p.z + 10 * this.noise.turb(p, 7)));
+  }
+}
+
+class Hittable {
+  init() {
+    this.objects = [];
+    this.bbox = nil;
+  }
+
+  clear()  {
+    this.objects = [];
+  }
+
+  add(object) {
+    this.objects.push(object);
+    var bbox = Aabb();
+    if (this.bbox == nil) {
+      bbox = object.bbox;
+    } else {
+      bbox.set_box_aabb(this.bbox, object.bbox);
+    }
+    this.bbox = bbox;
+  }
+
+  // Takes: Ray, Number, Number
+  hit(r, ray_t_min, ray_t_max) {
+    var hit_anything = false;
+    var closest_so_far = ray_t_max;
+    var final_record = nil;
+
+    for (var i = 0; i < this.objects.len(); i = i + 1) {
+      var object = this.objects[i];
+      //if (has_method(object, "hit")) {
+          //print object;
+          var rec = object.hit(r, ray_t_min, closest_so_far);
+          //print rec;
+          if (rec != nil and rec != false) {
+            hit_anything = true;
+            closest_so_far = rec.t;
+            final_record = rec;
+          }
+       //}
+    }
+
+    return final_record;
+  }
+}
+
+fun degrees_to_radians(degrees) {
+  return degrees * Math.pi() / 180.0;
+}
+
+class Translate < Hittable {
+  // Takes: Hittable, Vec3
+  init(object, offset) {
+    super.init();
+    this.object = object;
+    this.offset = offset;
+    //this.bbox = object.bounding_box().add(offset);
+    this.bbox = object.bounding_box() + offset;
+  }
+
+  hit(r, ray_t_min, ray_t_max) {
+    var offset_r = Ray(r.origin - offset, r.direction, r.time());
+    var rec = object.hit(offset_r, ray_t_min, ray_t_max);
+    if (!rec)
+      return false;
+
+    rec.p = rec.p + offset;
+
+    return rec;
+  }
+
+  bounding_box() {
+    return this.bbox;
+  }
+}
+
+class BVHNode < Hittable {
+  init(objects, start, end) {
+    super.init();
+    
+    //for (var i = start; i < end; i = i + 1) {
+    //  this.bbox.set_box_aabb(this.bbox, objects[i].bbox);
+    //}
+
+    var axis = Math.floor(rmm(0, 3));
+
+    var object_span = end - start;
+
+
+    if (object_span == 1) {
+      this.left = objects[start];
+      this.right = objects[start];
+    } else if (object_span == 2) {
+      this.left = objects[start];
+      this.right = objects[start + 1];
+    } else {
+      var comparator = fun(a, b) {
+        var a_val;
+        var b_val;
+        if (axis == 0) {
+          a_val = a.bbox.x[0];
+          b_val = b.bbox.x[0];
+        } else if (axis == 1) {
+          a_val = a.bbox.y[0];
+          b_val = b.bbox.y[0];
+        } else {
+          a_val = a.bbox.z[0];
+          b_val = b.bbox.z[0];
+        }
+
+        if (a_val < b_val) {
+          return -1;
+        }
+        if (a_val > b_val) {
+          return 1;
+        }
+        return 0;
+      };
+
+      objects.sort(comparator);
+      var mid = start + Math.floor(object_span / 2);
+      this.left = BVHNode(objects, start, mid);
+      this.right = BVHNode(objects, mid, end);
+      this.bbox = Aabb();
+      this.bbox.set_box_aabb(this.left.bbox, this.right.bbox);
+    }
+
+    //this.bbox.set_box_aabb(this.left.bbox, this.right.bbox);
+    //this.bbox.set_box_aabb(this.left.bbox, this.right.bbox);
+    this.bbox = Aabb();
+    this.bbox.x = [this.left.bbox.x[0], this.left.bbox.x[1]];
+    this.bbox.y = [this.left.bbox.y[0], this.left.bbox.y[1]];
+    this.bbox.z = [this.left.bbox.z[0], this.left.bbox.z[1]];
+
+    this.bbox.set_box_aabb(this.bbox, this.right.bbox);
+  }
+
+  hit(r, ray_t_min, ray_t_max) {
+    if (!this.bbox.hit(r, ray_t_min, ray_t_max)) {
+      return false;
+    }
+
+    var hit_left = this.left.hit(r, ray_t_min, ray_t_max);
+    var current_max = ray_t_max;
+    if (hit_left) current_max = hit_left.t;
+
+    var hit_right = this.right.hit(r, ray_t_min, current_max);
+
+    if (hit_right) return hit_right;
+    return hit_left;
+  }
+}
+
+class Aabb {
+  init() {
+    this.x = [infinity, neg_infinity];
+    this.y = [infinity, neg_infinity];
+    this.z = [infinity, neg_infinity];
+    this.pad_to_minimums();
+  }
+
+  // Takes: 3 interval arrays, [min, max]
+  set_box_interval(x, y, z) {
+    if (typeof(x) == "ARRAY" and x.len() == 2) this.x = x;
+    if (typeof(y) == "ARRAY" and y.len() == 2) this.y = y;
+    if (typeof(z) == "ARRAY" and z.len() == 2) this.z = z;
+    this.pad_to_minimums();
+  }
+
+  // Takes: Vec3, Vec3
+  set_box_vec(a, b) {
+    // set x
+    if (a.x <= b.x) {
+      this.x = [a.x, b.x];
+    } else {
+      this.x = [b.x, a.x];
+    }
+    // set y
+    if (a.y <= b.y) {
+      this.y = [a.y, b.y];
+    } else {
+      this.y = [b.y, a.y];
+    }
+    // set z
+    if (a.z <= b.z) {
+      this.z = [a.z, b.z];
+    } else  {
+      this.z = [b.z, a.z];
+    }
+    this.pad_to_minimums();
+  }
+
+  set_box_aabb(box0, box1) {
+    this.x = interval_mm(box0.x, box1.x);
+    this.y = interval_mm(box0.y, box1.y);
+    this.z = interval_mm(box0.z, box1.z);
+  }
+
+  // Takes: Number
+  // Returns: Array[min, max]
+  axis_interval(n) {
+    if (n == 1)
+      return this.y;
+    if (n == 2)
+      return this.z;
+    return this.x;
+  }
+
+  __add__(v) {
+    var ab = Aabb();
+    ab.x = [this.bbox.x[0] + v.x, this.bbox.x[1] + v.x];
+    ab.y = [this.bbox.y[0] + v.y, this.bbox.y[1] + v.y];
+    ab.z = [this.bbox.z[0] + v.z, this.bbox.z[1] + v.z];
+    return ab;
+  }
+
+  // Takes: Vec3
+  add(v) {
+    var ab = Aabb();
+    ab.x = [this.bbox.x[0] + v.x, this.bbox.x[1] + v.x];
+    ab.y = [this.bbox.y[0] + v.y, this.bbox.y[1] + v.y];
+    ab.z = [this.bbox.z[0] + v.z, this.bbox.z[1] + v.z];
+    return ab;
+  }
+
+  longest_axis() {
+    if ((this.x[1] - this.x[0]) > (this.y[1] - this.y[0])) {
+      if ((this.x[1] - this.x[0]) > (this.z[1] - this.z[0]))
+        return 0;
+      else
+        return 2;
+    } else {
+      if ((this.y[1] - this.y[0]) > (this.z[1] - this.z[0]))
+        return 1;
+      else
+        return 2;
+    }
+  }
+
+  pad_to_minimums() {
+    var delta = 0.0001;
+    if (interval_size(this.x) < delta)
+      this.x = expand(this.x[0], this.x[1], delta);
+    if (interval_size(this.y) < delta)
+      this.y = expand(this.y[0], this.y[1], delta);
+    if (interval_size(this.z) < delta)
+      this.z = expand(this.z[0], this.z[1], delta);
+  }
+
+  hit(r, ray_t_min, ray_t_max) {
+    var ray_orig = r.origin;
+    var ray_dir = r.direction;
+    var tmin = ray_t_min;
+    var tmax = ray_t_max;
+
+    for (var axis = 0; axis < 3; axis = axis + 1) {
+      var ax = this.axis_interval(axis);
+      //var adinv = 1.0 / (ray_dir[axis] + 0.001);
+      var d = ray_dir[axis];
+
+      if (Math.abs(d) < 0.0000001) {
+        if (ray_orig[axis] < ax[0] or ray_orig[axis] > ax[1]) return false;
+      } else {
+        var adinv = 1.0 / d;
+        var t0 = (ax[0] - ray_orig[axis]) * adinv;
+        var t1 = (ax[1] - ray_orig[axis]) * adinv;
+
+        //var t_near = Math.min(t0, t1);
+        //var t_far = Math.max(t0, t1);
+        if (t0 < t1) {
+          if (t0 > tmin) tmin = t0;
+          if (t1 < tmax) tmax = t1;
+        } else {
+          if (t1 > tmin) tmin = t1;
+          if (t0 < tmax) tmax = t0;
+        }
+
+        if (tmax <= tmin) return false;
+      }
+    }
+    return true;
+  }
+}
+
+class Ray {
+  init(origin, direction, tm) { 
+    this.origin = origin;
+    this.direction = direction;
+    this.tm = tm;
+  }
+
+  set(origin, direction) {
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  time() {
+    return this.tm;
+  }
+
+  at(t) {
+    return this.origin + this.direction * t;
+  }
+
+  to_string() {
+    //return "Ray(${this.origin}, ${this.direction})";
+    return "Ray()";
+  }
+}
+
+var white = Vec3(1.0, 1.0, 1.0);
+var blue = Vec3(0.5, 0.7, 1.0);
+var red = Vec3(1, 0, 0);
+var black = Vec3(0, 0, 0);
+
+//var sphere = Vec3(0, 0, -1);
+
+var PI = Math.pi();
+var INV_PI = 1.0 / PI;
+var TWO_PI = 2.0 * PI;
+
+class Diffuse_Light < Material {
+  init(emit) {
+    this.tex = Solid_Color(emit);
+  }
+
+  set_color(tex) {
+    this.tex = tex;
+  }
+
+  emitted(u, v, p) {
+    return this.tex.value(u, v, p);
+  }
+
+  scatter(r_in, rec) {
+    return nil;
+  }
+}
+
+class Quad < Material {
+  // Takes: Vec3, Vec3, Vec3, Material
+  init(Q, u, v, mat) {
+    this.Q = Q;
+    this.u = u;
+    this.v = v;
+    this.mat = mat;
+
+    var n = u.cross(v);
+    this.normal = unit_vector(n);
+    this.D = this.normal.dot(Q);
+    this.w = n / n.dot(n);
+
+    this.set_bounding_box();
+  }
+
+  set_bounding_box() {
+    var bbox_diagonal1 = Aabb();
+    bbox_diagonal1.set_box_vec(this.Q, this.Q + this.u + this.v);
+    var bbox_diagonal2 = Aabb();
+    bbox_diagonal2.set_box_vec(this.Q + this.u, this.Q + this.v);
+    this.bbox = Aabb();
+    this.bbox.set_box_aabb(bbox_diagonal1, bbox_diagonal2);
+  }
+
+  bounding_box() {
+    return this.bbox;
+  }
+
+  hit(r, ray_t_min, ray_t_max) {
+    var rec = HitRecord();
+    var denom = this.normal.dot(r.direction);
+
+    if (Math.abs(denom) < 1e-8) return false;
+
+    var t = (this.D - this.normal.dot(r.origin)) / denom;
+    if (!interval_contains_var(ray_t_min, ray_t_max, t))
+      return false;
+
+    var intersection = r.at(t);
+    var planar_hitpt_vector = intersection - this.Q;
+    var alpha = this.w.dot(planar_hitpt_vector.cross(this.v));
+    var beta = this.w.dot(this.u.cross(planar_hitpt_vector));
+
+    var ret = this.is_interior(alpha, beta);
+    if (!ret)
+      return false;
+    rec.u = alpha;
+    rec.v = beta;
+
+    rec.t = t;
+    rec.p = intersection;
+    rec.mat = this.mat;
+    rec.set_face_normal(r, this.normal);
+    return rec;
+  }
+
+  // Takes: Number, Number
+  is_interior(a, b) {
+    if (!interval_contains_var(0, 1, a) or !interval_contains_var(0, 1, b))
+      return false;
+    
+    return [a, b];
+  }
+}
+
+class Sphere {
+  init(center, radius, mat) {
+    this.center = Ray(center, black, 0);
+    //this.center = center;
+    this.radius = radius;
+    if (radius < 0) {
+      this.radius = 0;
+    }
+    this.mat = mat;
+    this.moving = false;
+    var rvec = Vec3(this.radius, this.radius, this.radius);
+    this.bbox = Aabb();
+    this.bbox.set_box_vec(this.center.at(0) - rvec, this.center.at(0) + rvec);
+  }
+ 
+  // Vec3
+  set_motion(c2) {
+    this.center = Ray(this.center.origin, c2 - this.center.origin, 0);
+    this.moving = true;
+    var rvec = Vec3(this.radius, this.radius, this.radius);
+    var box1 = Aabb();
+    box1.set_box_vec(this.center.at(0) - rvec, this.center.at(0) + rvec);
+    var box2 = Aabb();
+    box2.set_box_vec(this.center.at(1) - rvec, this.center.at(1) + rvec);
+    this.bbox.set_box_aabb(box1, box2);
+  }
+
+  // Takes: Vec3, Number, Number
+  // Returns: Vec3, really tuple of (u, v, 0)
+  get_sphere_uv(p) { 
+    // , u, v) 
+    // p: a given point on the sphere of radius one, centered at origin
+    // u: return value [,1] of angle around the y axis from x=-1
+    // v: return value [,1] of angle from y=-1 to y=+1
+    // <1 0 0> yields <0.50 0.50>  < -1  0  0> yields <0.00 0.50>
+    // <0 1 0> yields <0.50 1.00>  <  0 -1  0> yields <0.50 0.00>
+    // <0 0 1> yields <0.25 0.50>  <  0  0 -1> yields <0.75 0.50>
+
+    var theta = Math.acos(-p.y);
+    var phi = Math.atan2(-p.z, p.x) + PI;
+
+    return Vec3(phi / TWO_PI, theta / PI, 0);
+    //return [phi / TWO_PI, theta / PI];
+  }
+
+  // Takes: Ray, Interval
+  // Returns: HitRecord | false
+  hit(r, ray_t_min, ray_t_max) {
+    //print "[SPHERE]: hit";
+    var current_center = this.center.at(r.time());
+    //var oc = this.center - r.origin;
+    var oc = current_center - r.origin;
+    var a = r.direction.length_squared();
+    var h = r.direction.dot(oc);
+    var c = oc.length_squared() - this.radius * this.radius;
+
+    var discriminant = h * h - a * c;
+    if (discriminant < 0) {
+      return false;
+    }
+
+    var sqrtd = Math.sqrt(discriminant);
+
+    var root = (h - sqrtd) / a;
+    if (!interval_surrounds_var(ray_t_min, ray_t_max, root)) {
+      root = (h + sqrtd) / a;
+      if (!interval_surrounds_var(ray_t_min, ray_t_max, root)) {
+        return false;
+      }
+    }
+    
+    var rec = HitRecord();
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    //var outward_normal = (rec.p - this.center) / this.radius;
+    var outward_normal = (rec.p - current_center) / this.radius;
+    rec.set_face_normal(r, outward_normal);
+    var uv = this.get_sphere_uv(outward_normal);
+    rec.u = uv.x;
+    rec.v = uv.y;
+    rec.mat = this.mat;
+
+    return rec;
+  }
+}
+
+var vec000 = Vec3(0, 0, 0);
+
+class HitRecord {
+  init() {
+    this.p = vec000; // Vec3(0, 0, 0);
+    this.t = 0;
+    this.normal = vec000; // Vec3(0, 0, 0);
+    this.front_face = true;
+    this.mat = nil;
+    this.u = 0;
+    this.v = 0;
+  }
+
+  set_face_normal(r, outward_normal) {
+    //this.front_face = dot(r.direction, outward_normal) < 0;
+    this.front_face = r.direction.dot(outward_normal) < 0;
+    if (this.front_face) {
+      this.normal = outward_normal;
+    } else {
+      this.normal = -outward_normal;
+    }
+  }
+
+  to_string() {
+    return "HitRecord()";
+    //return "HitRecord(" + this.p.to_string + ")";
+    //return "HitRecord(" + this.p.to_string() + ", " + this.t.to_string() + ", "
+    //  + this.normal.to_string() + ",  " + this.front_face + ", " + this.mat + ")";
+  }
+}
+
+fun interval_size(i) {
+  return i[1] - i[0];
+}
+
+fun interval_contains(i, x) {
+  return i[0] <= x and x <= i[1];
+}
+
+fun interval_contains_var(min, max, x) {
+  return min <= x and x <= max;
+}
+
+fun interval_surrounds(i, x) {
+  return i[0] < x and x < i[1];
+}
+
+fun interval_surrounds_var(min, max, x) {
+  return min < x and x < max;
+}
+
+fun interval_clamp(i, x) {
+  if (x < i[0]) return i[0];
+  if (x > i[1]) return i[1];
+  return x;
+}
+
+fun interval_clamp_var(min, max, x) {
+  if (x < min) return min;
+  if (x > max) return max;
+  return x;
+}
+
+fun checker2(u, v, p) {
+  var check = Math.floor(10 * u) + Math.floor(10 * v);
+  if (check % 2 == 0) {
+    return dark_square;
+  }
+  return light_square;
+}
+
+fun checker3(u, v, p, scale) {
+  var inv_scale = 1.0 / scale;
+  var xint = Math.floor(inv_scale * p.x);
+  var yint = Math.floor(inv_scale * p.y);
+  var zint = Math.floor(inv_scale * p.z);
+  var isEven = ((xint + yint + zint) % 2 == 0);
+
+  if (isEven) {
+    return dark_square;
+  }
+  return light_square;
+}
+
+class Solid_Color {
+  // Takes: Vec3 (color)
+  init(v) {
+    this.albedo = v;
+  }
+
+  set_rgb(r, g, b) {
+    this.albedo = Vec3(r, g, b);
+  }
+
+  value(u, v, p) {
+    //print "Solid_Color.value: ", this.albedo;
+    return this.albedo;
+  }
+}
+
+var dark_square = Vec3(0.1, 0.1, 0.1);
+var light_square = Vec3(0.9, 0.9, 0.9);
+var color_scale = 1.0 / 255.0;
+
+class Image_Texture {
+  init(filename) {
+    this.image = Image.load(filename);
+  }
+
+  value(u, v, p) {
+    if (this.image.height <= 0) return Vec3(0,0,0);
+    var newu = interval_clamp_var(0, 1, u);
+    var newv = 1.0 - interval_clamp_var(0, 1, v);
+    var i = Math.floor(newu * this.image.width);
+    var j = Math.floor(newv * this.image.height);
+
+    if (i >= this.image.width) i = this.image.width - 1;
+    if (j >= this.image.height) j = this.image.height - 1;
+
+    var pixel = this.image.get_pixel(i, j);
+    return Vec3(color_scale * pixel[0], color_scale * pixel[1], color_scale * pixel[2]);
+  }
+}
+
+class Checker {
+  // Takes: Number, Vec3, Vec3
+  init(scale, even, odd) {
+    this.inv_scale = 1.0 / scale;
+    this.even = Solid_Color(even);
+    this.odd = Solid_Color(odd);
+  }
+
+  set_colors(c1, c2) {
+    this.even = Solid_Color(c1);
+    this.odd = Solid_Color(c2);
+  }
+
+  set_texture(t1, t2) {
+    this.even = t1;
+    this.odd = t2;
+  }
+
+  value(u, v, p) {
+    // var local_p = p - sphere_center;
+    var xint = Math.floor(this.inv_scale * p.x);
+    var yint = Math.floor(this.inv_scale * p.y);
+    var zint = Math.floor(this.inv_scale * p.z);
+
+    var sum = xint + yint + zint;
+    var isEven = (sum % 2) == 0;
+
+    var result;
+    if (isEven) result = this.even.value(u, v, p);
+    else result = this.odd.value(u, v, p);
+    //print this.even.value(u, v, p);
+    //print this.odd.value(u, v, p);
+    //print "Checker result type: ", typeof(result);
+    return result;
+  }
+}
+
+class Lambertian < Material {
+  init(albedo) {
+    //this.albedo = albedo;
+    this.tex = Solid_Color(albedo);
+    //this.tex = nil;
+    //this.using_tex = false;
+  }
+
+  set_texture(tex) {
+    this.tex = tex;
+    //this.using_tex = true;
+  }
+
+  // Takes: Ray, HitRecord
+  // Returns: [Ray (scattered), Vec3 (attenuation)] | nil
+  scatter(r_in, rec) {
+    //print "LAMBERTIAN.scatter";
+    var rand_v = random_unit_vector();
+    var scatter_direction = rec.normal + rand_v;
+
+    if (near_zero(scatter_direction)) {
+      scatter_direction = rec.normal;
+    }
+    //var shifted_origin = rec.p + (rec.normal * 0.001);
+    var scattered = Ray(rec.p, scatter_direction, r_in.time());
+    //print "Lambertian: tex: ", this.tex;
+    var attenuation = this.tex.value(rec.u, rec.v, rec.p);
+    //print "Lambertian: attuenuation: ", attenuation;
+    //print "typeof(attenuation): ", typeof(attenuation);
+    return [scattered, attenuation];
+  }
+
+  to_string() {
+    //return "Lambertian(" + this.albedo.to_string() + ")";
+    return "Lambertian()";
+  }
+}
+
+class Metal < Material {
+  // Takes: Vec3, Number
+  init(albedo, fuzz) {
+    this.albedo = albedo;
+    if (fuzz < 1) {
+      this.fuzz = 1;
+    } else {
+      this.fuzz = fuzz;
+    }
+  }
+
+  // Takes: Ray, HitRecord
+  // Returns: [Ray (scattered), Vec3 (attenuation)] | nil
+  scatter(r_in, rec) {
+    var reflected = reflect(r_in.direction, rec.normal);
+    reflected = (random_unit_vector() * this.fuzz) + unit_vector(reflected);
+    var scattered = Ray(rec.p, reflected, r_in.time());
+
+    //if (dot(scattered.direction, rec.normal) > 0) {
+    if (scattered.direction.dot(rec.normal) > 0) {
+      return [scattered, this.albedo];
+    }
+    return nil;
+  }
+
+  to_string() {
+    return "Metal()";
+  }
+}
+
+var vec111 = Vec3(1.0, 1.0, 1.0);
+
+class Dielectric < Material {
+  init(ref) {
+    this.ref = ref;
+  }
+
+  scatter(r_in, rec) {
+    var attenuation = vec111;
+    var ri = this.ref;
+    if (rec.front_face) {
+      ri = 1.0 / this.ref;
+    } 
+
+    var uv = unit_vector(r_in.direction);
+    //var cos_theta = dot(uv * -1.0, rec.normal);
+    var cos_theta = (-uv).dot(rec.normal);
+    if (cos_theta > 1.0) {
+      cos_theta = 1.0;
+    } 
+    var sin_theta = Math.sqrt(1.0 - cos_theta * cos_theta);
+
+    var cannot_refract = ri * sin_theta > 1.0;
+    var direction = nil;
+
+    if (cannot_refract or this.reflectance(cos_theta, ri) > Math.random()) {
+      direction = reflect(uv, rec.normal);
+    } else {
+      direction = refract(uv, rec.normal, ri);
+    }
+    //var refracted = refract(uv, rec.normal, ri);
+    var scattered = Ray(rec.p, direction, r_in.time());
+
+    return [scattered, attenuation];
+  }
+
+  // Takes: Number, Number
+  // Returns: Number
+  reflectance(cosine, refraction_index) {
+    var r0 = (1 - refraction_index) / (1 + refraction_index);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * ((1 - cosine) ** 5);
+  }
+}
+
+class Camera {
+  init(out) {
+    this.white = Vec3(1.0, 1.0, 1.0);
+    this.blue = Vec3(0.5, 0.7, 1.0);
+    this.red = Vec3(1, 0, 0);
+    this.black = Vec3(0, 0, 0);
+    this.aspect_ratio = 1.0;
+    this.image_width = 100;
+    this.out = out;
+    this.samples_per_pixel = 10;
+    this.max_depth = 10;
+    this.stats = []; // store times;
+    this.stats.push(0);
+    this.vfov = 90;
+    this.lookfrom = Vec3(0,0,0);
+    this.lookat = Vec3(0,0,1);
+    this.vup = Vec3(0,1,0);
+    this.u = nil;
+    this.v = nil;
+    this.w = nil;
+
+    this.defocus_angle = 0;
+    this.focus_dist = 10;
+    this.defocus_disk_u = nil;
+    this.defocus_disk_v = nil;
+    this.background = this.black;
+  }
+
+  setup() {
+    this.image_height = Math.floor(this.image_width / this.aspect_ratio);
+    if (this.image_height < 1) {
+      this.image_height = 1;
+    }
+
+    this.pixel_samples_scale = 1.0 / this.samples_per_pixel;
+
+    this.center = this.lookfrom; 
+
+    //this.focal_length = (this.lookfrom - this.lookat).length();
+    var theta = degrees_to_radians(this.vfov);
+    var h = Math.tan(theta / 2);
+    //this.viewport_height = 2.0 * h * this.focal_length;
+    this.viewport_height = 2 * h * this.focus_dist;
+    this.viewport_width = this.viewport_height * (this.image_width / this.image_height);
+
+    this.w = unit_vector(this.lookfrom - this.lookat);
+    this.u = unit_vector(cross(this.vup, this.w));
+    this.v = cross(this.w, this.u);
+
+    //this.viewport_u = Vec3(this.viewport_width, 0, 0);
+    this.viewport_u = this.u * this.viewport_width;
+    //this.viewport_v = Vec3(0, -this.viewport_height, 0);
+    this.viewport_v = (this.v * -1) * this.viewport_height;
+
+    this.pixel_delta_u = this.viewport_u / this.image_width;
+    this.pixel_delta_v = this.viewport_v / this.image_height;
+
+    //this.viewport_upper_left = this.center - Vec3(0, 0, this.focal_length) -
+    //    this.viewport_u / 2 - this.viewport_v / 2;
+    //this.viewport_upper_left = this.center - (this.w * this.focal_length) - 
+    //    this.viewport_u / 2 - this.viewport_v / 2;
+    this.viewport_upper_left = this.center - (this.w * this.focus_dist) -
+        this.viewport_u / 2 - this.viewport_v / 2;
+    this.pixel00_loc = this.viewport_upper_left + (this.pixel_delta_u + this.pixel_delta_v) * 0.5;
+
+    var defocus_radius = this.focus_dist * Math.tan(degrees_to_radians(this.defocus_angle / 2));
+    this.defocus_disk_u = this.u * defocus_radius;
+    this.defocus_disk_v = this.v * defocus_radius;
+  }
+
+  render(out, world) { // Hittable
+    this.setup();
+
+    var err = File.stderr();
+
+    this.out.write("P3\n${this.image_width} ${this.image_height}\n255\n");
+    var pixel_color = black;
+
+    for (var j = 0; j < this.image_height; j = j + 1) {
+      var start = clock();
+      err.write("\rScanlines remaining: ${this.image_height - j}   ");
+      err.flush();
+      System.gc();
+      print " ";
+      print System.mem();
+      for (var i = 0; i < this.image_width; i = i + 1) {
+        //var pixel_center = this.pixel00_loc + (this.pixel_delta_u * i) + (this.pixel_delta_v * j);
+        //var ray_direction = pixel_center - this.center;
+        //var r = Ray(this.center, ray_direction);
+        //r.set(this.center, ray_direction);
+        //pixel_color = this.ray_color(r, world);
+        pixel_color = black;
+        for (var sample = 0; sample < this.samples_per_pixel; sample = sample + 1) {
+          var r = this.get_ray(i, j);
+          pixel_color = pixel_color + this.ray_color(r, this.max_depth, world);
+        }
+        write_color(out, pixel_color * this.pixel_samples_scale);
+      }
+      var end = clock();
+      this.stats.push(end - start);
+      err.write("\rScanlines remaining: ${this.image_height -j}  took " + str((end - start)) + "s   ");
+    }
+    err.write("\rDone.                                \n");
+  }
+
+  sample_square() {
+    var rx = Math.random();
+    var ry = Math.random();
+    return Vec3(0, 0, 0);
+    return Vec3(rx - 0.5, ry - 0.5, 0);
+  }
+
+  get_ray(i, j) {
+    var offset = this.sample_square();
+    var pixel_sample = this.pixel00_loc + (this.pixel_delta_u * (i + offset.x)) + (this.pixel_delta_v * (j + offset.y));
+
+    var ray_origin = this.center;
+    if (this.defocus_angle > 0) {
+      ray_origin = this.defocus_disk_sample();
+    }
+
+    var ray_direction = pixel_sample - ray_origin;
+    var ray_time = Math.random();
+
+    return Ray(ray_origin, ray_direction, ray_time);
+  }
+
+  defocus_disk_sample() {
+    var p = random_in_unit_disk();
+    return this.center + (this.defocus_disk_u * p[0]) + (this.defocus_disk_v * p[1]);
+  }
+
+  ray_color(r, depth, world) { // Ray, Hittable
+    if (depth <= 0) {
+      return this.black;
+    }
+
+    var rec = world.hit(r, 0.01, infinity);
+    if (!rec)
+      return this.background;
+
+    var emission_color = rec.mat.emitted(rec.u, rec.v, rec.p);
+
+    var res = rec.mat.scatter(r, rec);
+    if (!res) {
+      //return this.ray_color(res[0], depth - 1, world) * res[1];
+      return emission_color;
+    }
+
+    var scatter_color;
+    scatter_color = res[1] * this.ray_color(res[0], depth - 1, world);
+
+    return emission_color + scatter_color;
+  }
+}
+
+fun bouncing_spheres(out) {
+  var world = Hittable();
+  var world3 = Hittable();
+
+  var checker = Checker(0.32, dark_square, light_square);
+  //checker.set_colors(dark_square, light_square);
+  var ground = Lambertian(Vec3(0.5, 0.5, 0.5));
+  ground.set_texture(checker);
+  world.add(Sphere(Vec3(0, -1000, 0), 1000, ground));
+  world3.add(Sphere(Vec3(0, -1000, 0), 1000, ground));
+
+  print System.mem();
+  var vec420 = Vec3(4, 0.2, 0);
+
+  for (var a = -11; a < 11; a = a + 1) {
+    for (var b  = -11; b < 11; b = b + 1) {
+      var choose_mat = Math.random();
+      var center = Vec3(a + 0.9 * Math.random(), 0.2, b + 0.9 * Math.random());
+
+      if ((center - vec420).length() > 0.9) {
+        var sphere_mat = nil;
+
+
+        if (choose_mat < 0.8) {
+          var albedo = Vec3(Math.random(), Math.random(), Math.random()) *
+              Vec3(Math.random(), Math.random(), Math.random());
+          sphere_mat = Lambertian(albedo);
+          var center2 = center + Vec3(0, rmm(0, 0.5), 0);
+          var sp = Sphere(center, 0.2, sphere_mat);
+          sp.set_motion(center2);
+          world.add(Sphere(center, 0.2, sphere_mat));
+          world.add(sp);
+        } else if (choose_mat < 0.95) {
+          var albedo = Vec3(rmm(0.5,1), rmm(0.5, 1), rmm(0.5,1));
+          var fuzz = rmm(0, 0.5);
+          sphere_mat = Metal(albedo, fuzz);
+          world.add(Sphere(center, 0.2, sphere_mat));
+        } else {
+          sphere_mat = Dielectric(1.5);
+          world.add(Sphere(center, 0.2, sphere_mat));
+        }
+      }
+    }
+  }
+
+  print System.mem();
+  var mat1 = Dielectric(1.5);
+  world.add(Sphere(Vec3(0, 1, 0), 1.0, mat1));
+  //world3.add(Sphere(Vec3(0, 1, 0), 1.0, mat1));
+
+  var mat2 = Lambertian(Vec3(0.4, 0.2, 0.1));
+  world.add(Sphere(Vec3(-4, 1, 0), 1.0, mat2));
+  //world3.add(Sphere(Vec3(-4, 1, 0), 1.0, mat2));
+
+  var mat3 = Metal(Vec3(0.7, 0.6, 0.5), 0.0);
+  world.add(Sphere(Vec3(4, 1, 0), 1.0, mat3));
+  //world3.add(Sphere(Vec3(4, 1, 0), 1.0, mat3));
+
+  var world2 = BVHNode(world.objects, 0, world.objects.len());
+
+  var cam = Camera(out);
+
+  print System.mem();
+  cam.aspect_ratio = 16.0 / 9.0;
+  cam.image_width = 1200;
+  cam.samples_per_pixel = 500;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(13, 2, 3);
+  cam.lookat = Vec3(0, 0, 0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0.6;
+  cam.focus_dist = 10.0;
+
+  cam.render(out, world2);
+
+  print cam.stats;
+}
+
+fun checkered_spheres(out) {
+  var world = Hittable();
+
+  var checker = Checker(0.32, Vec3(0.2, 0.3, 0.1), Vec3(0.9, 0.9, 0.9));
+
+  var tex = Lambertian(Vec3(0.5, 0.7, 0.2));
+  //var t2 = Lambertian(Vec3(0.5, 0.5, 0.5));
+  tex.set_texture(checker);
+
+  world.add(Sphere(Vec3(0,-10,0), 10, tex));
+  world.add(Sphere(Vec3(0,10,0), 10, tex));
+
+  var world2 = BVHNode(world.objects, 0, world.objects.len());
+
+  var cam = Camera(out);
+
+  print System.mem();
+  cam.aspect_ratio = 16.0 / 9.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(13, 2, 3);
+  cam.lookat = Vec3(0, 0, 0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0.0;
+
+  cam.render(out, world);
+
+  print cam.stats;
+}
+
+fun earth(out) {
+  var earth_texture = Image_Texture("earthmap.jpg");
+  var earth_surface = Lambertian(Vec3(0,0,0));
+  earth_surface.set_texture(earth_texture);
+  var globe = Sphere(Vec3(0,0,0), 2, earth_surface);
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 16.0 / 9.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(0,0,12);
+  cam.lookat = Vec3(0,0,0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, globe);
+
+  print cam.stats;
+}
+
+fun perlin_spheres(out) {
+  var pertext = Noise_Texture(4);
+  var world = Hittable();
+  var t1 = Lambertian(Vec3(0,0,0));
+  t1.set_texture(pertext);
+  var t2 = Lambertian(Vec3(0,0,0));
+  t1.set_texture(pertext);
+
+  world.add(Sphere(Vec3(0, -1000, 0), 1000, t1));
+  world.add(Sphere(Vec3(0, 2, 0), 2, t1));
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 16.0 / 9.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(13,2,3);
+  cam.lookat = Vec3(0,0,0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, world);
+
+  print cam.stats;
+}
+
+fun quads(out) {
+  var world = Hittable();
+
+  var left_red = Lambertian(Vec3(1.0, 0.2, 0.2));
+  var back_green = Lambertian(Vec3(0.2, 1.0, 0.2));
+  var right_blue = Lambertian(Vec3(0.2, 0.2, 1.0));
+  var upper_orange = Lambertian(Vec3(1.0, 0.5, 0.0));
+  var lower_teal = Lambertian(Vec3(0.2, 0.8, 0.8));
+
+  world.add(Quad(Vec3(-3,-2, 5), Vec3(0, 0,-4), Vec3(0, 4, 0), left_red));
+  world.add(Quad(Vec3(-2,-2, 0), Vec3(4, 0, 0), Vec3(0, 4, 0), back_green));
+  world.add(Quad(Vec3( 3,-2, 1), Vec3(0, 0, 4), Vec3(0, 4, 0), right_blue));
+  world.add(Quad(Vec3(-2, 3, 1), Vec3(4, 0, 0), Vec3(0, 0, 4), upper_orange));
+  world.add(Quad(Vec3(-2,-3, 5), Vec3(4, 0, 0), Vec3(0, 0,-4), lower_teal));
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 1.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 80;
+  cam.lookfrom = Vec3(0,0,9);
+  cam.lookat = Vec3(0,0,0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, world);
+
+  print cam.stats;
+}
+
+fun simple_light(out) {
+  var world = Hittable();
+
+  var pertext = Noise_Texture(4);
+  var t1 = Lambertian(Vec3(0,0,0));
+  t1.set_texture(pertext);
+  world.add(Sphere(Vec3(0, -1000, 0), 1000, t1));
+  world.add(Sphere(Vec3(0,2,0), 2, t1));
+
+  var difflight = Diffuse_Light(Vec3(4,4,4));
+  world.add(Sphere(Vec3(0,7,0), 2, difflight));
+  world.add(Quad(Vec3(3,1,-2), Vec3(2, 0, 0), Vec3(0, 2, 0), difflight));
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 1.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0,0,0);
+  //cam.background = Vec3(0.20, 0.20, 0.20);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(26,3,6);
+  cam.lookat = Vec3(0,2,0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, world);
+
+  print cam.stats;
+}
+
+fun cornell_box(out) {
+  var world = Hittable();
+
+  var red = Lambertian(Vec3(0.65, 0.5, 0.5));
+  var white = Lambertian(Vec3(0.73, 0.73, 0.73));
+  var green = Lambertian(Vec3(0.12, 0.45, 0.15));
+  var light = Diffuse_Light(Vec3(15,15,15));
+  var glow = Diffuse_Light(Vec3(20,0,0));
+
+  var b1 = box(Vec3(130, 0, 65), Vec3(295, 165, 230), glow);
+  var bv1 = BVHNode(b1.objects, 0, b1.objects.len());
+  var b2 = box(Vec3(265, 0, 295), Vec3(430, 330, 460), glow);
+  var bv2 = BVHNode(b2.objects, 0, b2.objects.len());
+
+  world.add(bv1);
+  //for (var i = 0; i < b1.objects.len(); i = i + 1)
+  //  world.add(b1.objects[i]);
+  world.add(bv2);
+  //for (var i = 0; i < b2.objects.len(); i = i + 1)
+  //  world.add(b1.objects[i]);
+
+  //world.add(Quad(Vec3(200, 0, 200), Vec3(100, 0, 0), Vec3(0, 300, 0), white));
+
+  world.add(Quad(Vec3(0, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), red)); // right
+
+  world.add(Quad(Vec3(555, 0, 0), Vec3(0, 0, 555), Vec3(0, 555, 0), green)); // left
+  //world.add(Quad(Vec3(0, 0, 0), Vec3(0, 555, 0), Vec3(0, 0, 555), green)); // left
+
+  world.add(Quad(Vec3(343, 554, 332), Vec3(-130, 0, 0), Vec3(0, 0, -105), light)); // light
+
+  world.add(Quad(Vec3(0, 0, 555), Vec3(0, 555, 0), Vec3(555, 0, 0), white)); // back
+
+  world.add(Quad(Vec3(0, 555, 0), Vec3(555, 0, 0), Vec3(0, 0, 555), white)); // ceiling
+
+  //world.add(Quad(Vec3(555, 555, 555), Vec3(-555, 0, 0), Vec3(0, 0, -555), white)); // 
+  //world.add(Quad(Vec3(555, 555, 555), Vec3(555, 0, 0), Vec3(0, 0, 555), white)); // 
+  world.add(Quad(Vec3(0, 0, 0), Vec3(0, 0, 555), Vec3(555, 0, 0), white)); // floor
+
+
+  print "Creating bounding boxes";
+  var world2 = BVHNode(world.objects, 0, world.objects.len());
+  print "Done.";
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 1.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0,0,0);
+
+  cam.vfov = 40;
+  cam.lookfrom = Vec3(278, 278, -800);
+  cam.lookat = Vec3(278, 278, 0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, world);
+
+  print cam.stats;
+}
+
+fun test_boxes(out) {
+  var world = Hittable();
+
+  var blocks = Hittable();
+  var white_mat = Lambertian(Vec3(0.73, 0.73, 0.73));
+
+  var checker = Checker(0.32, Vec3(0.2, 0.3, 0.1), Vec3(0.9, 0.9, 0.9));
+
+  var tex = Lambertian(Vec3(0.5, 0.7, 0.2));
+  //var t2 = Lambertian(Vec3(0.5, 0.5, 0.5));
+  tex.set_texture(checker);
+
+  blocks.add(Sphere(Vec3(0,-10,0), 10, tex));
+  world.add(Sphere(Vec3(0,10,0), 10, tex));
+  //world.add(box(Vec3(130, 0, 65), Vec3(295, 165, 230), white_mat));
+  //world.add(box(Vec3(265, 0, 295), Vec3(430, 330, 460), white_mat));
+  
+  world.add(blocks);
+  //var a = Vec3(130, 0, 65);
+  //var b = Vec3(295, 165, 230);
+  //var a = Vec3(265, 0, 295);
+  //var b = Vec3(430, 330, 460);
+  //var mat = white_mat;
+
+  //var min = Vec3(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.min(a.z, b.z));
+  //var max = Vec3(Math.max(a.x, b.x), Math.max(a.y, b.y), Math.max(a.z, b.z));
+
+  //var dx = Vec3(max.x - min.x, 0, 0);
+  //var dy = Vec3(0, max.y - min.y, 0);
+  //var dz = Vec3(0, 0, max.z - min.z);
+
+  //world.add(Quad(Vec3(min.x, min.y, max.z),  dx,  dy, mat));    // front
+  //world.add(Quad(Vec3(max.x, min.y, max.z), -dz,  dy, mat));    // right
+  //world.add(Quad(Vec3(max.x, min.y, min.z), -dx,  dy, mat));    // back
+  //world.add(Quad(Vec3(min.x, min.y, min.z),  dz,  dy, mat));    // left
+  //world.add(Quad(Vec3(min.x, max.y, max.z),  dx, -dz, mat));    // top
+  //world.add(Quad(Vec3(min.x, min.y, min.z),  dx,  dz, mat));    // bottom
+
+  var world2 = BVHNode(world.objects, 0, world.objects.len());
+
+  var cam = Camera(out);
+  print System.mem();
+
+  cam.aspect_ratio = 16.0 / 9.0;
+  cam.image_width = 400;
+  cam.samples_per_pixel = 100;
+  cam.max_depth = 50;
+  cam.background = Vec3(0.70, 0.80, 1.00);
+
+  cam.vfov = 20;
+  cam.lookfrom = Vec3(13, 2, 3);
+  cam.lookat = Vec3(0, 0, 0);
+  cam.vup = Vec3(0,1,0);
+
+  cam.defocus_angle = 0;
+
+  cam.render(out, world2);
+
+  print cam.stats;
+}
+
+// Takes: Vec3, Vec3, Material
+// Returns: Hittable
+fun box(a, b, mat) {
+  var sides = Hittable();
+
+  var min = Vec3(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.min(a.z, b.z));
+  var max = Vec3(Math.max(a.x, b.x), Math.max(a.y, b.y), Math.max(a.z, b.z));
+
+  var dx = Vec3(max.x - min.x, 0, 0);
+  var dy = Vec3(0, max.y - min.y, 0);
+  var dz = Vec3(0, 0, max.z - min.z);
+
+  sides.add(Quad(Vec3(min.x, min.y, max.z),  dx,  dy, mat));    // front
+  sides.add(Quad(Vec3(max.x, min.y, max.z), -dz,  dy, mat));    // right
+  sides.add(Quad(Vec3(max.x, min.y, min.z), -dx,  dy, mat));    // back
+  sides.add(Quad(Vec3(min.x, min.y, min.z),  dz,  dy, mat));    // left
+  //sides.add(Quad(Vec3(min.x, max.y, max.z),  dx, -dz, mat));    // top
+  sides.add(Quad(Vec3(min.x, max.y, min.z),  dx,  dz, mat));    // top
+  //sides.add(Quad(Vec3(min.x, min.y, min.z),  dx,  dz, mat));    // bottom
+  sides.add(Quad(Vec3(min.x, min.y, max.z),  dx, -dz, mat));    // bottom
+
+  return sides;
+}
+
+var file = "out.ppm";
+if (System.ARGS.len() > 0) {
+  file = System.ARGS[0];
+}
+
+var out = File.open(file, "w");
+
+GC.type(0);
+GC.bump_size(1024 * 1024 * 8);
+
+
+//bouncing_spheres(out);
+//checkered_spheres(out);
+//earth(out);
+//perlin_spheres(out);
+//quads(out);
+//simple_light(out);
+cornell_box(out);
+//test_boxes(out);
