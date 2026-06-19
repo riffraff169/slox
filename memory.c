@@ -112,7 +112,17 @@ static void blackenObject(Obj* object) {
                 ObjClass* klass = (ObjClass*)object;
                 markObject((Obj*)klass->name);
                 markTable(&klass->methods);
-            }
+                markTable(&klass->getters);
+                markTable(&klass->setters);
+
+                if (klass->superclass != NULL) {
+                    markObject((Obj*)klass->superclass);
+                }
+
+                if (klass->mixinsource != NULL) {
+                    markObject((Obj*)klass->mixinsource);
+                }
+      }
             break;
         case OBJ_CLOSURE:
             {

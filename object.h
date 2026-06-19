@@ -138,6 +138,7 @@ typedef struct ObjClass {
     Table setters;
     ClassKind kind;
     struct ObjClass* superclass;
+    struct ObjClass* mixinsource;
 
     void* foreignData;
     ClassCallFn callHandler;

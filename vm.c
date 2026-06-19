@@ -4457,13 +4457,16 @@ static Value chrNative(int argCount, Value* args) {
 
 static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
     ObjClass* current = klass;
-    int i = 0;
+
     while (current != NULL) {
-        if (tableGet(&current->methods, name, method)) {
+        Table* methods = (current->mixinsource != NULL)
+            ? &current->mixinsource->methods
+            : &current->methods;
+
+        if (tableGet(methods, name, method)) {
             return true;
         }
         current = current->superclass;
-        i++;
     }
     return false;
 }
@@ -4496,7 +4499,11 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     if (constClass != NULL) {
         ObjClass* currentClass = constClass;
         while (currentClass != NULL) {
-            if (tableGet(&currentClass->constants, name, result)) {
+            Table* constants = (currentClass->mixinsource != NULL)
+                ? &currentClass->mixinsource->constants
+                : &currentClass->constants;
+
+            if (tableGet(constants, name, result)) {
                 return PROP_FOUND;
             }
             currentClass = currentClass->superclass;
@@ -4510,7 +4517,11 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
         ObjClass* currentClass = klass;
         Value propertyGetter = NIL_VAL;
         while (currentClass != NULL) {
-            if (tableGet(&currentClass->getters, name, &propertyGetter)) {
+            Table* getters = (currentClass->mixinsource != NULL)
+                ? &currentClass->mixinsource->getters
+                : &currentClass->getters;
+
+            if (tableGet(getters, name, &propertyGetter)) {
                 break;
             }
             currentClass = currentClass->superclass;
@@ -4532,8 +4543,12 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
         currentClass = klass;
         Value getterValue = NIL_VAL;
         while (currentClass != NULL) {
-            if (!IS_NIL(currentClass->vGetter)) {
-                getterValue = currentClass->vGetter;
+            Value currentVGetter = (currentClass->mixinsource != NULL)
+                ? currentClass->mixinsource->vGetter
+                : currentClass->vGetter;
+
+            if (!IS_NIL(currentVGetter)) {
+                getterValue = currentVGetter;
                 break;
             }
             currentClass = currentClass->superclass;
@@ -4627,7 +4642,12 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
         ObjClass* currentClass = constClass;
         while (currentClass != NULL) {
             Value dummy;
-            if (tableGet(&currentClass->constants, name, &dummy)) {
+
+            Table* constants = (currentClass->mixinsource != NULL)
+                ? &currentClass->mixinsource->constants
+                : &currentClass->constants;
+
+            if (tableGet(constants, name, &dummy)) {
                 return PROP_IMMUTABLE;
             }
             currentClass = currentClass->superclass;
@@ -4641,7 +4661,11 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
         Value propertySetter = NIL_VAL;
 
         while (currentClass != NULL) {
-            if (tableGet(&currentClass->setters, name, &propertySetter)) {
+            Table* setters = (currentClass->mixinsource != NULL)
+                ? &currentClass->mixinsource->setters
+                : &currentClass->setters;
+
+            if (tableGet(setters, name, &propertySetter)) {
                 break;
             }
             currentClass = currentClass->superclass;
@@ -4665,8 +4689,12 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
         Value setterVal = NIL_VAL;
 
         while (currentClass != NULL) {
-            if (!IS_NIL(currentClass->vSetter)) {
-                setterVal = currentClass->vSetter;
+            Value currentVSetter = (currentClass->mixinsource != NULL)
+                ? currentClass->mixinsource->vSetter
+                : currentClass->vSetter;
+
+            if (!IS_NIL(currentVSetter)) {
+                setterVal = currentVSetter;
                 break;
             }
             currentClass = currentClass->superclass;
@@ -5242,7 +5270,11 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     Value method;
 
     while (current != NULL) {
-        if (tableGet(&current->methods, name, &method)) {
+        Table* methods = (current->mixinsource != NULL)
+            ? &current->mixinsource->methods
+            : &current->methods;
+
+        if (tableGet(methods, name, &method)) {
             if (IS_NATIVE(method)) {
                 NativeFn native = AS_NATIVE(method);
 
@@ -5312,7 +5344,11 @@ static bool classHasMethod(ObjClass* klass, ObjString* name) {
     ObjClass* current = klass;
     Value method;
     while (current != NULL) {
-        if (tableGet(&current->methods, name, &method)) {
+        Table *methods = (current->mixinsource != NULL)
+             ? &current->mixinsource->methods
+             : &current->methods;
+
+        if (tableGet(methods, name, &method)) {
             return true;
         }
         current = current->superclass;
@@ -5344,7 +5380,12 @@ static bool invoke(ObjString* name, int argCount) {
         ObjClass* currentClass = instance->obj.klass;
         while (currentClass != NULL) {
             Value method;
-            if (tableGet(&currentClass->methods, name, &method)) {
+
+            Table* methods = (currentClass->mixinsource != NULL)
+                ? &currentClass->mixinsource->methods
+                : &currentClass->methods;
+
+            if (tableGet(methods, name, &method)) {
                 bool res = invokeFromClass(instance->obj.klass, name, argCount);
                 if (vm.exceptionThrown) {
                     vm.exceptionThrown = false;
@@ -5464,7 +5505,11 @@ static bool bindMethod(ObjClass* klass, ObjString* name) {
     ObjClass* current = klass;
 
     while (current != NULL) {
-        if (tableGet(&klass->methods, name, &method)) {
+        Table* methods = (current->mixinsource != NULL)
+            ? &current->mixinsource->methods
+            : &current->methods;
+
+        if (tableGet(methods, name, &method)) {
             ObjBoundMethod* bound = newBoundMethod(peek(0),
                     method);
                     //AS_CLOSURE(method));
@@ -6680,7 +6725,17 @@ InterpretResult run() {
                     ObjClass* mixin = AS_CLASS(mixinVal);
                     ObjClass* target = AS_CLASS(targetVal);
 
-                    tableMergeGuard(&mixin->methods, &target->methods);
+                    ObjClass* proxy = newClass(mixin->name);
+
+                    push(OBJ_VAL(proxy));
+
+                    proxy->mixinsource = mixin;
+
+                    proxy->superclass = target->superclass;
+                    target->superclass = proxy;
+
+                    pop();
+                    //tableMergeGuard(&mixin->methods, &target->methods);
                     pop();
                 }
                 break;
