@@ -2595,7 +2595,7 @@ static Value regexGetPatternNative(int argCount, Value* args) {
 }
 
 static Value listFieldsNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     ObjArray* array = newArray();
     push(OBJ_VAL(array));
@@ -2640,7 +2640,7 @@ static Value getFieldNative(int argCount, Value* args) {
 
 static Value setFieldNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0])) {
-        runtimeError("get_field() expects string, value arguments.");
+        runtimeError("set_field() expects string, value arguments.");
         return NIL_VAL;
     }
 
@@ -2648,6 +2648,25 @@ static Value setFieldNative(int argCount, Value* args) {
     ObjString* fieldName = AS_STRING(args[0]);
     Value value = args[1];
 
+    if (IS_OBJ(receiver)) {
+        if (IS_INSTANCE(receiver)) {
+            ObjInstance* instance = AS_INSTANCE(receiver);
+            printf("set_field executing! Receiver ObjType: %d\n", AS_OBJ(receiver)->type);
+            printf("  Instance Addr: %p\n", (void*)instance);
+            printf("  Key String:    '%s' (Addr: %p)\n", fieldName->chars, (void*)fieldName);
+            printf("  Value:         ");
+            printValue(value);
+            printf("\n");
+            printf("  Klass Addr:    %p\n", (void*)instance->obj.klass);
+            if (instance->obj.klass) {
+                printf("Name Obj Addr: %p\n", (void*)instance->obj.klass->name);
+                if (instance->obj.klass->name) {
+                    printf("String Length: %d\n", instance->obj.klass->name->length);
+                    printf("Raw Name:      '%s'\n", instance->obj.klass->name->chars);
+                }
+            }
+        }
+    }
     if (IS_INSTANCE(receiver)) {
         tableSet(&AS_INSTANCE(receiver)->fields, fieldName, value);
     } else if (IS_CLASS(receiver)) {
@@ -3548,16 +3567,40 @@ static Value arrayInitMethod(int argCount, Value* args) {
 
 static Value mapInitMethod(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Regex constructor expects a pattern string.");
+        runtimeError("Map init constructor expects a string.");
         return NIL_VAL;
     }
 }
 
 static Value stringInitMethod(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Regex constructor expects a pattern string.");
+        runtimeError("String init constructor expects a string.");
         return NIL_VAL;
     }
+}
+
+static Value createInstanceNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("create_instance() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* className = AS_STRING(args[0]);
+    Value classVal;
+
+    if (!tableGet(&vm.globals, className, &classVal) || !IS_CLASS(classVal)) {
+        runtimeError("No such class: %s", className->chars);
+        return NIL_VAL;
+    }
+
+    ObjClass* klass = AS_CLASS(classVal);
+    ObjInstance* instance = newInstance(klass);
+    return OBJ_VAL(instance);
+}
+
+static Value objectClassNameMethod(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    return OBJ_VAL(instance->obj.klass->name);
 }
 
 static Value objectClassMethod(int argCount, Value* args) {
@@ -4990,6 +5033,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "superclass", getSuperclassNative);
     defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
     defineNativeMethod(vm.objectClass, "class", objectClassMethod);
+    defineNativeMethod(vm.objectClass, "class_name", objectClassNameMethod);
+
+    defineNative("create_instance", createInstanceNative);
 
     initResultClass();
     initOptionClass();

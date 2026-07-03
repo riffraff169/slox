@@ -1,0 +1,141 @@
+class StdTest {
+  init() {
+    this.msg = "Hello from stdlib!";
+  }
+
+  die() {
+    // trigger a crash inside the stdlib file
+    var x = Option(false, nil);
+    x.unwrap();
+  }
+}
+
+class Error {
+  init(msg) {
+    this.message = msg;
+  }
+}
+
+class ArrayIterator {
+  init(array) {
+    this.array = array;
+    this.index = -1;
+  }
+
+  next()  {
+    this.index += 1;
+    return this.index < this.array.len();
+  }
+
+  key() {
+    return this.index;
+  }
+
+
+  val() {
+    return this.array[this.index];
+  }
+}
+
+class MapIterator {
+  init(map) {
+    this.map = map;
+    this.keysArray = map.keys();
+    this.valuesArray = map.values();
+    this.index = -1;
+  }
+
+  next() {
+    this.index = this.index + 1;
+    return this.index < this.keysArray.len();
+  }
+
+  key() { return this.keysArray[this.index]; }
+  val() { return this.valuesArray[this.index]; }
+}
+
+class Serializable {
+  serialize() {
+    var className = this.class_name();
+    print typeof(className);
+    var result = className.len().to_string() + ":" + className;
+    
+    var fieldList = this.fields();
+    result = result + fieldList.len().to_string() + ":";
+
+    for (var i = 0; i < fieldList.len(); i += 1) {
+      var name = fieldList[i];
+      var val = this.get_field(name);
+
+      result = result + name.len().to_string() + ":" + name;
+
+      if (isstring(val)) {
+        result = result + "S" + val.len().to_string() + ":" + val;
+      } else if (isnumber(val)) {
+        var numStr = val.to_string();
+        result = result + "N" + numStr.len().to_string() + ":" + numStr;
+      }
+    }
+    return result;
+  }
+}
+
+fun deserialize(data) {
+  var offset = 0;
+
+  fun readChunk() {
+    var remaining = data.slice(offset, data.len());
+    var colonPos = Number(remaining.find(":"));
+    var lenStr = remaining.slice(0, colonPos);
+    var chunkLen = Number(lenStr);
+
+    var startPos = colonPos + 1;
+    var endPos = startPos + chunkLen;
+
+    var chunkData = remaining.slice(startPos, endPos);
+
+    offset = offset + colonPos + 1 + chunkLen;
+    return chunkData;
+  }
+
+  // 1. parse class name
+  var className = readChunk();
+  print "className: ", className;
+  var instance = create_instance(className);
+  print instance;
+  if (instance == nil) {
+    print "Deserialization Error: Class '", className, "' not registered in globals.";
+    return nil;
+  }
+
+  // 2. parse field count
+  var remaining = data.slice(offset, data.len());
+  var colonPos = Number(remaining.find(":"));
+  //var fieldCount = Number(readChunk());
+  var fieldCount = Number(remaining.slice(0, colonPos));
+
+  offset = offset + colonPos + 1;
+
+  // 3. loop through fields
+  for (var i = 0; i < fieldCount; i += 1) {
+    var fieldName = readChunk();
+    //var remaining = data.slice(offset, data.len() - offset);
+    var typeRemaining = data.slice(offset, data.len());
+    var typeMarker = typeRemaining.slice(0, 1);
+
+    offset += 1;
+
+    var valRaw = readChunk();
+    var finalVal = nil;
+
+    if (typeMarker == "S") {
+      finalVal = valRaw;
+    } else if (typeMarker == "N") {
+      finalVal = Number(valRaw);
+    }
+
+    instance.set_field(fieldName, finalVal);
+  }
+
+  return instance;
+}
