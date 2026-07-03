@@ -56,6 +56,42 @@ class MapIterator {
 
 class Serializable {
   serialize() {
+    fun writeValue(val) {
+      if (isstring(val)) {
+        return "S" + val.len().to_string() + ":" + val;
+      }
+
+      if (isnumber(val)) {
+        var numStr = val.to_string();
+        return "N" + numStr.len().to_string() + ":" + numStr;
+      }
+
+      if (isbool(val)) {
+        if (val) return "B1";
+        return "B0";
+      }
+
+      if (isarray(val)) {
+        var res = "A" + val.len.to_string() + ":";
+        for (var i = 0; i < val.len(); i += 1) {
+          res = res + writeValue(val[i]);
+        }
+        return res;
+      }
+
+      if (ismap(val)) {
+        var keys = val.keys();
+        var res = "M" + keys.len().to_string() + ":";
+        for (var i = 0; i < keys.len(); i += 1) {
+          var k = keys[i];
+          res = res + writeValue(k) + writeValue(val[k]);
+        }
+        return res;
+      }
+
+      return "Z";
+    }
+
     var className = this.class_name();
     print typeof(className);
     var result = className.len().to_string() + ":" + className;
@@ -69,12 +105,7 @@ class Serializable {
 
       result = result + name.len().to_string() + ":" + name;
 
-      if (isstring(val)) {
-        result = result + "S" + val.len().to_string() + ":" + val;
-      } else if (isnumber(val)) {
-        var numStr = val.to_string();
-        result = result + "N" + numStr.len().to_string() + ":" + numStr;
-      }
+      result = result + writeValue(val);
     }
     return result;
   }
@@ -91,18 +122,74 @@ fun deserialize(data) {
 
     var startPos = colonPos + 1;
     var endPos = startPos + chunkLen;
-
     var chunkData = remaining.slice(startPos, endPos);
 
     offset = offset + colonPos + 1 + chunkLen;
     return chunkData;
   }
 
+  fun readValue() {
+    var typeRemaining = data.slice(offset, data.len());
+    var typeMarker = typeRemaining.slice(0, 1);
+    offset += 1;
+
+    if (typeMarker == "Z") {
+      return nil;
+    }
+
+    if (typeMarker == "S") {
+      return readChunk();
+    }
+
+    if (typeMarker == "N") {
+      return Number(readChunk());
+    }
+
+    if (typeMarker == "b") {
+      var boolVal = data.slice(offset, offset + 1);
+      offset += 1;
+
+      return boolVal == "1";
+    }
+
+    if (typeMarker == "A") {
+      var remaining = data.slice(offset, data.len());
+      var colonPos = Number(remaining.find(":"));
+      var elementCount = Number(remaining.slice(0, colonPos));
+      offset = offset + colonPos + 1;
+
+      var arr = [];
+
+      for (var i = 0; i < elementCount; i += 1) {
+        arr.push(readValue());
+      }
+
+      return arr;
+    }
+
+    if (typeMarker == "M") {
+      var remaining = data.slice(offset, data.len());
+      var colonPos = Number(remaining.find(":"));
+      var pairCount = Number(remaining.slice(0, colonPos));
+      offset = offset + colonPos + 1;
+
+      var map = {};
+
+      for (var i = 0; i < pairCount; i += 1) {
+        var key = readValue();
+        var val = readValue();
+        map[key] = val;
+      }
+      return map;
+    }
+
+    print "Deserialization Error: Unknown type marker '", typeMarker, "'";
+    return nil;
+  }
+
   // 1. parse class name
   var className = readChunk();
-  print "className: ", className;
   var instance = create_instance(className);
-  print instance;
   if (instance == nil) {
     print "Deserialization Error: Class '", className, "' not registered in globals.";
     return nil;
@@ -119,21 +206,7 @@ fun deserialize(data) {
   // 3. loop through fields
   for (var i = 0; i < fieldCount; i += 1) {
     var fieldName = readChunk();
-    //var remaining = data.slice(offset, data.len() - offset);
-    var typeRemaining = data.slice(offset, data.len());
-    var typeMarker = typeRemaining.slice(0, 1);
-
-    offset += 1;
-
-    var valRaw = readChunk();
-    var finalVal = nil;
-
-    if (typeMarker == "S") {
-      finalVal = valRaw;
-    } else if (typeMarker == "N") {
-      finalVal = Number(valRaw);
-    }
-
+    var finalVal = readValue();
     instance.set_field(fieldName, finalVal);
   }
 
