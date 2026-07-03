@@ -1,0 +1,24 @@
+//System.trace(true);
+
+class DynamicTester {
+  method_missing(methodName, args) {
+    print "--- [Intercepted] ---";
+    print "Method Name: " + methodName;
+
+    print "Args Object: ";
+    print args;
+
+    print "Count: ";
+    //print args.len();
+  }
+}
+
+var tester = DynamicTester();
+
+print "Test 1: Calling with multiple arguments...";
+tester.computeSomething("velocity", 9.8, true);
+
+print "";
+
+print "Test 2: Calling with ZERO arguments (the ghost stack check)...";
+tester.ghostMethod();

@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,35 @@ char* readFile(const char* path) {
     return buffer;
 }
 
+char* locateAndReadStdlib() {
+    const char* localPath = "./lib/stdlib.lox";
+    if (access(localPath, R_OK) == 0) {
+        return readFile(localPath);
+    }
+
+    const char* home = getenv("HOME");
+    if (home != NULL) {
+        char pathBuffer[PATH_MAX];
+
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/share/slox/lib/stdlib.lox", home);
+        if (access(pathBuffer, R_OK) == 0) {
+            return readFile(pathBuffer);
+        }
+
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/slox/lib/stdlib.lox", home);
+        if (access(pathBuffer, R_OK) == 0) {
+            return readFile(pathBuffer);
+        }
+    }
+
+    const char* systemPath = "/usr/local/bli/slox/stdlib.lox";
+    if (access(systemPath, R_OK) == 0) {
+        return readFile(systemPath);
+    }
+
+    return NULL;
+}
+
 static void runFile(const char* path) {
     char* source = readFile(path);
     if (source == NULL) return;
@@ -77,7 +107,7 @@ static void runFile(const char* path) {
 int main(int argc, const char* argv[], const char* env[]) {
     initVM(argc, argv, env);
 
-    char* stdlibSource = readFile("stdlib.lox");
+    char* stdlibSource = locateAndReadStdlib();
     if (stdlibSource != NULL) {
         interpret(stdlibSource, "stdlib.lox");
         free(stdlibSource);

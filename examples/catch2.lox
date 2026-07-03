@@ -1,0 +1,9 @@
+try {
+  var n = 42;
+  n.this_method_does_not_exist();
+} catch (Error e) {
+  print "== CAUGHT ENGINE ERROR ==";
+  print e;
+  print e.message;
+  print "=========================";
+}
