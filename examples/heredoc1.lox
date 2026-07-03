@@ -1,0 +1,11 @@
+//System.trace(true);
+
+var str = <<<EOSTR
+this is a string
+with multiple lines
+no interpolation
+${clock()}
+and the end
+EOSTR;
+
+print str;

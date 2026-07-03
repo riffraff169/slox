@@ -1,0 +1,18 @@
+var x = "fred";
+var y = nil;
+
+switch (x) {
+  case "hello":
+    print "one";
+    y = 11;
+  case "bye":
+    print "two";
+    y = 22;
+  default:
+    print "none";
+    y = -1;
+}
+
+print y;
+//print "y=" + y;
+//print y;

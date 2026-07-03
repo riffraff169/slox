@@ -1,0 +1,65 @@
+class Printable {
+  printMe() {
+    print "Capable of printing.";
+  }
+
+  status() {
+    print "Status: Green (from Printable).";
+  }
+}
+
+class Serializable {
+  serialize() {
+    print "Data serialized to string.";
+  }
+
+  status() {
+    print "Status: Shiny (from Serializable).";
+  }
+}
+
+class Item {
+  identify() {
+    print "Identity: Base Item.";
+  }
+}
+
+class Widget < Item {
+  include Printable;
+  include Serializable;
+
+  name() {
+    print "Identity: Custom Widget.";
+  }
+}
+
+var w = Widget();
+
+print "--- 1. Testing native methods ---";
+w.name();
+
+print "--- 2. Testing deep single-inheritance traversal --";
+w.identify();
+
+print "--- 3. Testing first include mixin ---";
+w.printMe();
+
+print "--- 4. Testing second included mixin --";
+w.serialize();
+
+print "--- 5. Testing linearization precedence ---";
+w.status();
+
+print "--- 6. Testing deep method tear-offs ---";
+var structuralTearOff = w.printMe;
+print structuralTearOff;
+structuralTearOff();
+__END__
+-- expected --
+Identity: Custom Widget.
+Identity: Base Item.
+Capable of printing.
+Data serialized to string.
+Status: Shiny (from Serializable).
+<fn printMe>
+Capable of printing.

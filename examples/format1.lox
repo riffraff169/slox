@@ -1,0 +1,22 @@
+var report = <<<EOF
+=== SYSTEM REPORT ===
+Timestamp : %s
+Status    : %s
+Nodes     : %d
+=====================
+EOF;
+
+var rep = report.format("2026-06-14", "ONLINE", 12);
+
+print rep;
+
+var rep2 = <<<EOF
+=== SYSTEM REPORT ===
+Timestamp : %s
+Status    : %s
+Nodes     : %d
+=====================
+EOF.format("2026-06-14", "ONLINE", 12);
+
+print rep2;
+

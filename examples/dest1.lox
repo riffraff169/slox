@@ -1,0 +1,8 @@
+//System.trace(true);
+
+var a,b,c;
+a = [1,2,3];
+b, c = a;
+
+print b;
+print c;

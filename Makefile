@@ -1,40 +1,41 @@
 CFLAGS = -rdynamic -D_GNU_SOURCE -g
 CFLAGS += $(shell pkg-config --cflags readline libpcre2-8)
+CFLAGS += -Isrc -MMD -MP
 
-#-Wall -Wextra -g
-TARGET = slox
-SRC = $(wildcard *.c)
-HEADERS = $(wildcard *.h)
+SRC_DIR = src
+BIN_DIR = bin
+MOD_DIR = modules
+
+TARGET = $(BIN_DIR)/slox
+SRC = $(wildcard $(SRC_DIR)/*.c)
 OBJ = $(SRC:.c=.o)
 DEPS = $(SRC:.c=.d)
+
 CC = gcc
 LIBS = -lm
-LIBS += $(shell pkg-config --libs readline libpcre2-8) 
-MOD_DIR = modules
+LIBS += $(shell pkg-config --libs readline libpcre2-8)
+
 MODULES = sha1 ssl
-#OBJS    := ${patsubst %.c, %.o, ${wildcard *.c}}
 
-all:	$(TARGET) modules
+all: $(TARGET) modules
 
-.PHONY:	all modules clean
+.PHONY: all modules clean
 
 $(TARGET): $(OBJ)
+	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) $(LIBS) -o $(TARGET) $(OBJ)
 
-CFLAGS += -MMD -MP
-%.o:	%.c
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
-
-$(SRC): $(HEADERS)
 
 modules:
 	$(MAKE) -C $(MOD_DIR)
 
-$(MOD_SO): liblox_%.so: $(MOD_DIR)/liblox_%.c
-	@echo "Building module: $@"
-	$(CC) $(CFLAGS) $(MOD_CFLAGS) -shared -o $@ $< $(MOD_LIBS)
+$(MOD_SO): liblox_%.so; $(MOD_DIR)/liblox_%.c
+	@echo "Building m odule: %@"
+	$(CC) $(CFLAGS) $(MOD_CFLAGS) -shared -o  $@ $< $(MOD_LIBS)
 
 clean:
-	rm -rf $(OBJ) $(TARGET) $(DEPS)
+	rm -rf $(SRC_DIR)/*.o $(SRC_DIR)/*.d $(BIN_DIR)
 
 -include $(DEPS)

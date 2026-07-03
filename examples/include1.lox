@@ -1,0 +1,10 @@
+include "fred.lox";
+
+var z = 15;
+
+
+print x;
+print y;
+print z;
+
+//include "ralph.lox";
