@@ -1,10 +1,10 @@
-CFLAGS += -fPIC $(shell pkg-config --cflags gobject-introspection-1.0 gtk4 gdk)
+CFLAGS += -fPIC $(shell pkg-config --cflags gobject-introspection-1.0 gtk4 gdk) -I../src
 LIBS += $(shell pkg-config --libs gobject-introspection-1.0 gtk4 gdk)
 LDFLAGS = -shared
 BEARSSL_DIR = BearSSL
 BEARSSL_A = $(BEARSSL_DIR)/build/libbearssl.a
 
-TARGET_DIR = ..
+TARGET_DIR = .
 
 MODULE_TARGETS = $(TARGET_DIR)/liblox_sha1.so $(TARGET_DIR)/liblox_image.so $(TARGET_DIR)/liblox_gi.so
 
@@ -35,6 +35,10 @@ $(TARGET_DIR)/liblox_ssl.so: liblox_ssl.c
 	@echo "Building complex module: $@"
 
 	$(CC) $(CFLAGS) -shared -o $@ liblox_ssl.c $(LDFLAGS)
+
+$(TARGET_DIR)/liblox_image.so: liblox_image.c
+	@echo "Building standard module: $@"
+	$(CC) $(CFLAGS) -shared -o $@ $<
 
 clean:
 	rm -f $(MODULE_TARGETS) *.d

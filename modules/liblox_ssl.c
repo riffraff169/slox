@@ -3,7 +3,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <stdio.h>
-#include "../vm.h"
+#include "vm.h"
 
 #ifdef HAVE_BEARSSL
 #include <bearssl.h>

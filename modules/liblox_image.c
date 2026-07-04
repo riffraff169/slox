@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include "../vm.h"
-#include "external/stb/stb_image.h"
-#include "external/stb/stb_image_write.h"
+#include "vm.h"
+#include "stb/stb_image.h"
+#include "stb/stb_image_write.h"
 
 static ObjClass* imageDataClass = NULL;
 

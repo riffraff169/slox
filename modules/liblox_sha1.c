@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "../vm.h"
+#include "vm.h"
 
 typedef struct {
     uint32_t state[5];
