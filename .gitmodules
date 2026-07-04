@@ -1,7 +1,7 @@
-[submodule "modules/external/stb"]
-	path = modules/external/stb
-	url = https://github.com/nothings/stb.git
 [submodule "modules/BearSSL"]
 	path = modules/BearSSL
 	url = https://www.bearssl.org/git/BearSSL
     ignore = untracked
+[submodule "modules/stb"]
+	path = modules/stb
+	url = https://github.com/nothings/stb.git
