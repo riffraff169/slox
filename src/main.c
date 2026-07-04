@@ -85,7 +85,7 @@ char* locateAndReadStdlib() {
         }
     }
 
-    const char* systemPath = "/usr/local/bli/slox/stdlib.lox";
+    const char* systemPath = "/usr/local/lib/slox/stdlib.lox";
     if (access(systemPath, R_OK) == 0) {
         return readFile(systemPath);
     }

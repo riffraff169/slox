@@ -593,13 +593,52 @@ static Value getMethodsNative(int argCount, Value* args) {
     return pop();
 }
 
+void* locateAndLoadModule(const char* name) {
+    char filename[256];
+
+    snprintf(filename, sizeof(filename), "liblox_%s.so", name);
+
+    char pathBuffer[PATH_MAX];
+    void* handle = NULL;
+
+    snprintf(pathBuffer, sizeof(pathBuffer), "./modules/%s", filename);
+    if (access(pathBuffer, F_OK) == 0) {
+        handle = dlopen(pathBuffer, RTLD_NOW |  RTLD_GLOBAL);
+        if (handle) return handle;
+    }
+
+    const char* home = getenv("HOME");
+    if (home != NULL) {
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/share/slox/modules/%s", home, filename);
+        if (access(pathBuffer, F_OK) == 0) {
+            handle = dlopen(pathBuffer, RTLD_NOW | RTLD_GLOBAL);
+            if (handle) return handle;
+        }
+
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/slox/modules/%s", home, filename);
+        if (access(pathBuffer, F_OK) == 0) {
+            handle = dlopen(pathBuffer, RTLD_NOW | RTLD_GLOBAL);
+            if (handle) return handle;
+        }
+    }
+
+    snprintf(pathBuffer, sizeof(pathBuffer), "/usr/local/lib/slox/modules/%s", filename);
+    if (access(pathBuffer, F_OK) == 0) {
+        handle = dlopen(pathBuffer, RTLD_NOW | RTLD_GLOBAL);
+        if (handle) return handle;
+    }
+
+    return NULL;
+}
+
 void* loadModule(const char* name) {
     // 1. construct the filename
-    char path[256];
-    snprintf(path, sizeof(path), "./liblox_%s.so", name);
+    //char path[256];
+    //snprintf(path, sizeof(path), "./liblox_%s.so", name);
 
     // 2. open the shared library
-    void* handle = dlopen(path, RTLD_NOW);
+    //void* handle = dlopen(path, RTLD_NOW);
+    void* handle = locateAndLoadModule(name);
     if (!handle) {
         runtimeError("Could not load module '%s': %s", name, dlerror());
         return NULL;
