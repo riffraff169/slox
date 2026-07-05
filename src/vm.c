@@ -3318,14 +3318,41 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjInstance* systemInstance = newInstance(systemClass);
     push(OBJ_VAL(systemInstance));
 
-    tableSet(&systemInstance->fields, copyString("EXE", 3),
-            OBJ_VAL(copyString(argv[0], strlen(argv[0]))));
+
+    vm.includePathCount = 0;
+    vm.scriptName = NULL;
 
     ObjArray* argsArray = newArray();
     push(OBJ_VAL(argsArray));
 
-    for (int i = 2; i < argc; i++) {
-        ObjString* argStr = copyString(argv[i], strlen(argv[i]));
+    int i = 1;
+    while (i < argc && argv[i][0] == '-') {
+        if (strcmp(argv[i], "-I") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: -I option requires a directory path.\n");
+                exit(64);
+            }
+            if (vm.includePathCount < 64) {
+                vm.includePaths[vm.includePathCount++] = argv[i + 1];
+            }
+            i += 2;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            exit(64);
+        }
+    }
+
+    if (i < argc) {
+        vm.scriptName = argv[i];
+        i++;
+    }
+
+    tableSet(&systemInstance->fields, copyString("EXE", 3),
+            OBJ_VAL(copyString(vm.scriptName, strlen(vm.scriptName))));
+            //OBJ_VAL(copyString(argv[0], strlen(argv[0]))));
+
+    for (int j = i; j < argc; j++) {
+        ObjString* argStr = copyString(argv[j], strlen(argv[j]));
         push(OBJ_VAL(argStr));
         arrayAppend(argsArray, OBJ_VAL(argStr));
         pop();
@@ -4933,6 +4960,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.moduleCount = 0;
     vm.moduleCapacity = 0;
     vm.moduleHandles = NULL;
+
+    vm.includePathCount = 0;
 
     initTable(&vm.globals);
     initTable(&vm.strings);
@@ -7111,6 +7140,7 @@ InterpretResult run() {
 
 InterpretResult interpret(const char* source, const char* filename) {
     const char* line = source;
+    /*
     while (strncmp(line, "include ", 8) == 0) {
         char* startQuote = strchr(line, '"');
         char* endQuote = startQuote ? strchr(startQuote + 1, '"') : NULL;
@@ -7137,6 +7167,7 @@ InterpretResult interpret(const char* source, const char* filename) {
         while (*line != '\n' && *line != '\0') line++;
         if (*line == '\n') line++;
     }
+    */
 
     vm.frameCount = 0;
     vm.stackTop = vm.stack;

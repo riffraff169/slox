@@ -64,30 +64,44 @@ char* readFile(const char* path) {
     return buffer;
 }
 
-char* locateAndReadStdlib() {
-    const char* localPath = "./lib/stdlib.lox";
-    if (access(localPath, R_OK) == 0) {
-        return readFile(localPath);
+char* locateAndReadLoxFile(const char* name) {
+    char pathBuffer[PATH_MAX];
+
+    snprintf(pathBuffer, sizeof(pathBuffer), "./%s", name);
+    if (access(pathBuffer, R_OK) == 0) {
+        return readFile(pathBuffer);
+    }
+
+    for (int i = 0; i < vm.includePathCount; i++) {
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/%s", vm.includePaths[i], name);
+        if (access(pathBuffer, R_OK) == 0) {
+            return readFile(pathBuffer);
+        }
+    }
+
+    snprintf(pathBuffer, sizeof(pathBuffer), "./lib/%s", name);
+    if (access(pathBuffer, R_OK) == 0) {
+        return readFile(pathBuffer);
     }
 
     const char* home = getenv("HOME");
     if (home != NULL) {
         char pathBuffer[PATH_MAX];
 
-        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/share/slox/lib/stdlib.lox", home);
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/share/slox/lib/%s", home, name);
         if (access(pathBuffer, R_OK) == 0) {
             return readFile(pathBuffer);
         }
 
-        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/slox/lib/stdlib.lox", home);
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.local/slox/lib/%s", home, name);
         if (access(pathBuffer, R_OK) == 0) {
             return readFile(pathBuffer);
         }
     }
 
-    const char* systemPath = "/usr/local/lib/slox/stdlib.lox";
-    if (access(systemPath, R_OK) == 0) {
-        return readFile(systemPath);
+    snprintf(pathBuffer, sizeof(pathBuffer), "/usr/local/lib/slox/%s", name);
+    if (access(pathBuffer, R_OK) == 0) {
+        return readFile(pathBuffer);
     }
 
     return NULL;
@@ -107,7 +121,7 @@ static void runFile(const char* path) {
 int main(int argc, const char* argv[], const char* env[]) {
     initVM(argc, argv, env);
 
-    char* stdlibSource = locateAndReadStdlib();
+    char* stdlibSource = locateAndReadLoxFile("stdlib.lox");
     if (stdlibSource != NULL) {
         interpret(stdlibSource, "stdlib.lox");
         free(stdlibSource);
@@ -115,10 +129,10 @@ int main(int argc, const char* argv[], const char* env[]) {
         printf("Warning: stdlib.lox not found. Proceeding with clean environment.\n");
     }
 
-    if (argc == 1) {
+    if (vm.scriptName == NULL) {
         repl();
     } else { /*if (argc == 2) {*/
-        runFile(argv[1]);
+        runFile(vm.scriptName);
     } /*else {
         fprintf(stderr, "Usage: slox [path]\n");
         exit(64);

@@ -5,6 +5,7 @@
 #include "scanner.h"
 #include "object.h"
 
+/*
 typedef struct {
     const char* start;
     const char* current;
@@ -13,8 +14,9 @@ typedef struct {
     const char* filename;
     bool atstartofline;
 } Scanner;
+*/
 
-Scanner scanner;
+static Scanner scanner;
 
 void initScanner(const char* source) {
     scanner.start = source;
@@ -192,7 +194,16 @@ static TokenType identifierType() {
         case 'n': return checkKeyword(1, 2, "il", TOKEN_NIL);
         case 'o': return checkKeyword(1, 1, "r", TOKEN_OR);
         case 'p': return checkKeyword(1, 4, "rint", TOKEN_PRINT);
-        case 'r': return checkKeyword(1, 5, "eturn", TOKEN_RETURN);
+        case 'r': 
+                  if (scanner.current - scanner.start > 1 && scanner.start[1] == 'e') {
+                      if (scanner.current - scanner.start > 2) {
+                          switch (scanner.start[2]) {
+                              case 'q': return checkKeyword(3, 4, "uire", TOKEN_REQUIRE);
+                              case 't': return checkKeyword(3, 3, "urn", TOKEN_RETURN);
+                          }
+                      }
+                  }
+                  break;
         case 's':
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
@@ -543,4 +554,12 @@ Token scanToken() {
     }
 
     return errorToken("Unexpected character.");
+}
+
+Scanner currentScanner(void) {
+    return scanner;
+}
+
+void restoreScanner(Scanner saved) {
+    scanner = saved;
 }

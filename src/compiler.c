@@ -1189,6 +1189,7 @@ ParseRule rules[] = {
     [TOKEN_WHILE]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_REQUIRE]          = {NULL,     NULL,   PREC_NONE},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
     [TOKEN_BACKTICK_STRING]  = {backtick, NULL,   PREC_NONE},
 //    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},
@@ -2135,9 +2136,54 @@ static void synchronize() {
     }
 }
 
+static void requireDeclaration() {
+    // 1. consume the string literal token containing the file path
+    consume(TOKEN_STRING, "Expect string literal for file inclusion.");
+
+    const char* filename = parser.previous.start + 1;
+    int length = parser.previous.length - 2;
+
+    char* path = malloc(length + 1);
+    memcpy(path, filename, length);
+    path[length] = '\0';
+
+    //printf("DEBUG: System is searching for literal filename: [%s]\n", path);
+    char* source = locateAndReadLoxFile(path);
+    if (source == NULL) {
+        error("Could not locate or read required file.");
+        free(path);
+        return;
+    }
+
+    // 3. save the parent file scanner state before switching streams
+    Scanner previousScanner = currentScanner();
+    Token previousCurrent = parser.current;
+    Token previousPrevious = parser.previous;
+
+    initScanner(source);
+    advance();
+
+    // 4. compile the injected file declarations straight into the current scope
+    while (!match(TOKEN_EOF)) {
+        declaration();
+    }
+
+    // 5. clean up
+    free(source);
+    free(path);
+
+    restoreScanner(previousScanner);
+    parser.current = previousCurrent;
+    parser.previous = previousPrevious;
+
+    consume(TOKEN_SEMICOLON, "Expect ';' after require directive.");
+}
+
 static void declaration() {
     if (match(TOKEN_CLASS)) {
         classDeclaration();
+    } else if (match(TOKEN_REQUIRE)) {
+        requireDeclaration();
     } else if (match(TOKEN_FUN)) {
         funDeclaration();
     } else if (match(TOKEN_VAR) | match(TOKEN_CONST)) {
@@ -2200,10 +2246,12 @@ ObjFunction* compile(const char* source, ObjString* filename) {
     // 1. include phase
     // the compiler ensure includes only happen at the top, but assumes the host
     // environment already ran them
+    /*
     while (match(TOKEN_INCLUDE)) {
         consume(TOKEN_STRING, "Expect string after 'include'.");
         consume(TOKEN_SEMICOLON, "Expect ';' after include path.");
     }
+    */
 
     // 2. main compilation phase
     while (!match(TOKEN_EOF)) {

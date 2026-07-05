@@ -27,7 +27,7 @@ typedef enum {
     TOKEN_STAR_EQUAL, TOKEN_SLASH_EQUAL,
     TOKEN_PERCENT_EQUAL, TOKEN_END_MARKER,
     TOKEN_BACKTICK_STRING, TOKEN_FINALLY, TOKEN_CONST,
-    TOKEN_HEREDOC,
+    TOKEN_HEREDOC, TOKEN_REQUIRE,
     TOKEN_ERROR, TOKEN_EOF
 } TokenType;
 
@@ -39,8 +39,20 @@ typedef struct {
     const char* filename;
 } Token;
 
+typedef struct {
+    const char* start;
+    const char* current;
+    int line;
+    int interpolationDepth;
+    const char* filename;
+    bool atstartofline;
+} Scanner;
+
 void initScanner(const char* source);
 Token peekNextToken();
 Token scanToken();
+
+Scanner currentScanner(void);
+void restoreScanner(Scanner saved);
 
 #endif

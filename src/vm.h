@@ -7,6 +7,8 @@
 
 #define FRAMES_MAX 256
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+#define MAX_INCLUDE_PATHS 64
+
 
 typedef struct {
     ObjClosure* closure;
@@ -114,6 +116,9 @@ typedef struct {
 
     bool debugPrintCode;
     bool debugTraceExecution;
+    const char* includePaths[MAX_INCLUDE_PATHS];
+    int includePathCount;
+    const char* scriptName;
 } VM;
 
 typedef enum {

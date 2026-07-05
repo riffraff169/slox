@@ -14,4 +14,6 @@
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 
+char* locateAndReadLoxFile(const char* name);
+
 #endif
