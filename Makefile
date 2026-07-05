@@ -15,7 +15,7 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.0.0
+VERSION = 1.0.1
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
 MODULES = sha1 ssl
