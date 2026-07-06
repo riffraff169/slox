@@ -212,3 +212,122 @@ fun deserialize(data) {
 
   return instance;
 }
+
+class PP {
+  init() {
+    this.indentValue = 0;
+    this.visited = {};
+  }
+
+  pp(obj) {
+    var printer = PP();
+    return printer.format(obj);
+  }
+
+  format(obj) {
+    // 1. Handle Primitives
+    if (obj == nil) return "nil";
+    if (obj.class() == Bool) {
+      if (obj)
+        return "true";
+      return "false";
+    }
+    if (obj.class() == Number) return String(obj);
+    if (obj.class() == String) return "\"" + obj + "\"";
+
+    //if (this.visited.has(obj)) return "[Circular ...]";
+    //this.visited[obj] = true;
+
+    // 2. Handle Arrays
+    if (obj.class() == Array) {
+      return this.formatArray(obj);
+    }
+
+    // 3. Handle Maps
+    if (obj.class() == Map) {
+      return this.formatMap(obj);
+    }
+
+    if (obj.class() == Vec3) {
+      return this.formatVec3(obj);
+    }
+
+    return this.formatInstance(obj);
+  }
+
+  formatMap(map) {
+    var keys = map.keys();
+    if (keys.len() == 0) return "{}";
+
+    this.indentValue += 2;
+    var pad = this.getPad();
+    var result = "{\n";
+
+    for (var i = 0; i < keys.len(); i += 1) {
+      var key = keys[i];
+      var val = map[key];
+
+      result = result + pad + "\"" + key + "\": " + this.format(val);
+
+      if (i < keys.len() - 1) result = result + ",\n";
+    }
+
+    this.indentValue -= 2;
+    return result + "\n" + this.getPad() + "}";
+  }
+
+  formatVec3(vec) {
+    return "Vec3(" + String(vec.x) + ", " + String(vec.y) + ", " + String(vec.z) + ")";
+  }
+
+  formatInstance(instance) {
+    var className = instance.class().name();
+    var keys = instance.fields();
+
+    if (keys.len() == 0) return className + " {}";
+
+    this.indentValue += 2;
+    var pad = this.getPad();
+    var result = className + " {\n";
+
+    for (var i = 0; i < keys.len(); i += 1) {
+      var fieldName = keys[i];
+      var val = instance.get_field(fieldName);
+
+      result = result + pad + fieldName + ": " + this.format(val);
+
+      if (i < keys.len() - 1) result = result + ",\n";
+    }
+
+    this.indentValue -= 2;
+    return result + "\n" + this.getPad() + "}";
+  }
+
+  formatArray(arr) {
+    if (arr.len() == 0) return "[]";
+
+    this.indentValue = this.indentValue + 2;
+    var pad = this.getPad();
+    var result = "[\n";
+
+    for (var i = 0; i < arr.len(); i += 1) {
+      result = result + pad + this.format(arr[i]);
+      if (i < arr.len() - 1) result = result + ",\n";
+    }
+
+    this.indentValue = this.indentValue - 2;
+    return result + "\n" + this.getPad() + "]";
+  }
+
+  getPad() {
+    var s = "";
+    for (var i = 0; i < this.indentValue; i += 1) {
+      s = s + " ";
+    }
+    return s;
+  }
+}
+
+fun pp(obj) {
+  print PP.pp(obj);
+}

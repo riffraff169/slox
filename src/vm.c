@@ -2634,6 +2634,10 @@ static Value regexGetPatternNative(int argCount, Value* args) {
 }
 
 static Value listFieldsNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        return OBJ_VAL(newArray());
+    }
+
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     ObjArray* array = newArray();
@@ -3347,8 +3351,10 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
         i++;
     }
 
+    const char* exeTarget = (vm.scriptName != NULL) ? vm.scriptName : argv[0];
+
     tableSet(&systemInstance->fields, copyString("EXE", 3),
-            OBJ_VAL(copyString(vm.scriptName, strlen(vm.scriptName))));
+            OBJ_VAL(copyString(exeTarget, strlen(exeTarget))));
             //OBJ_VAL(copyString(argv[0], strlen(argv[0]))));
 
     for (int j = i; j < argc; j++) {
@@ -4192,11 +4198,13 @@ void initArrayClass() {
     string = copyString("Array", 5);
     vm.arrayClass = newClass(string);
     vm.arrayClass->superclass = vm.objectClass;
-    vm.arrayClass->callHandler = arrayCallHandler;
+    //vm.arrayClass->callHandler = arrayCallHandler;
+    vm.arrayClass->callHandler = arrayNativeConstructor;
     tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
     push(OBJ_VAL(vm.arrayClass));
 
-    defineNative("Array", arrayNativeConstructor);
+    //defineNative("Array", arrayNativeConstructor);
+    defineGlobal("Array", OBJ_VAL(vm.arrayClass));
 
     //defineNativeMethod(vm.arrayClass, "init", arrayInitMethod);
     defineNativeMethod(vm.arrayClass, "push", arrayPushNative);
@@ -4230,11 +4238,13 @@ void initMapClass() {
     string = copyString("Map", 3);
     vm.mapClass = newClass(string);
     vm.mapClass->superclass = vm.objectClass;
-    vm.mapClass->callHandler = mapCallHandler;
+    //vm.mapClass->callHandler = mapCallHandler;
+    vm.mapClass->callHandler = mapNativeConstructor;
     tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
     push(OBJ_VAL(vm.mapClass));
 
-    defineNative("Map", mapNativeConstructor);
+    //defineNative("Map", mapNativeConstructor);
+    defineGlobal("Map", OBJ_VAL(vm.mapClass));
 
     //defineNativeMethod(vm.mapClass, "init", mapInitMethod);
     defineNativeMethod(vm.mapClass, "keys", mapKeysNative);
@@ -4937,6 +4947,15 @@ static Value classAddMethodNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static Value classNameNative(int argCount, Value* args) {
+    if (!IS_CLASS(args[-1])) {
+        return OBJ_VAL(copyString("Object", 6));
+    }
+
+    ObjClass* klass = AS_CLASS(args[-1]);
+    return OBJ_VAL(klass->name);
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -4998,6 +5017,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
     defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
+    defineNativeMethod(vm.classClass, "name", classNameNative);
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);

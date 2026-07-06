@@ -420,6 +420,20 @@ Token peekNextToken() {
     return nextToken;
 }
 
+static Token rawString() {
+    while (peek() != '"' && !isAtEnd()) {
+        if (peek() == '\n') {
+            scanner.line++;
+        }
+        advance();
+    }
+
+    if (isAtEnd()) return errorToken("Unterminated raw string.");
+
+    advance();
+    return makeToken(TOKEN_RAW_STRING);
+}
+
 Token scanToken() {
     skipWhitespace();
     scanner.start = scanner.current;
@@ -435,6 +449,12 @@ Token scanToken() {
         scanner.interpolationDepth--;
         return continueString();
     }
+
+    if (c == 'r' && peek() == '"') {
+        advance();
+        return rawString();
+    }
+
     if (isAlpha(c)) {
         Token token = identifier();
 
@@ -477,7 +497,7 @@ Token scanToken() {
         }
 
         if (!match('\'')) {
-            return errorToken("Unterminated character literl.");
+            return errorToken("Unterminated character literal.");
         }
         return makeToken(TOKEN_CHAR);
     }

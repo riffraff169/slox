@@ -899,6 +899,14 @@ static void heredoc(bool canAssign) {
     emitConstant(OBJ_VAL(copyString(start, length)));
 }
 
+static void rawstring(bool canAssign) {
+    // skip r"
+    const char* source = parser.previous.start + 2;
+    int length = parser.previous.length - 3;
+
+    emitConstant(OBJ_VAL(copyString(source, length)));
+}
+
 static void string(bool canAssign) {
     const char* source = parser.previous.start + 1;
     int length = parser.previous.length;
@@ -1165,6 +1173,7 @@ ParseRule rules[] = {
     [TOKEN_LESS_EQUAL]       = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER]       = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]           = {string,   NULL,   PREC_NONE},
+    [TOKEN_RAW_STRING]       = {rawstring, NULL,   PREC_NONE},
     [TOKEN_HEREDOC]          = {heredoc,  NULL,   PREC_NONE},
     [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
     [TOKEN_CHAR]             = {character,NULL,   PREC_NONE},
