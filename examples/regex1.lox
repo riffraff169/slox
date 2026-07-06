@@ -1,0 +1,4 @@
+var reg1 = Regex(r"^string(\d+)");
+var str = "string25";
+var m = reg1.match(str);
+print m;
