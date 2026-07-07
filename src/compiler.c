@@ -60,7 +60,8 @@ typedef enum {
     TYPE_METHOD,
     TYPE_GETTER,
     TYPE_SETTER,
-    TYPE_SCRIPT
+    TYPE_SCRIPT,
+    TYPE_MODULE
 } FunctionType;
 
 typedef struct Compiler {
@@ -187,7 +188,7 @@ static int emitJump(uint8_t instruction) {
 }
 
 static void emitReturn() {
-    if (current->type == TYPE_INITIALIZER) {
+    if (current->type == TYPE_INITIALIZER || current->type == TYPE_MODULE) {
         emitBytes(OP_GET_LOCAL, 0);
     } else {
         emitByte(OP_NIL);
@@ -1051,7 +1052,17 @@ static void super_(bool canAssign) {
 }
 
 static void this_(bool canAssign) {
-    if (currentClass == NULL) {
+    bool inModule = false;
+    Compiler* comp = current;
+    while (comp != NULL) {
+        if (comp->type == TYPE_MODULE) {
+            inModule = true;
+            break;
+        }
+        comp = comp->enclosing;
+    }
+
+    if (currentClass == NULL && !inModule) {
         error("Can't use 'this' outside of a class.");
         return;
     }
@@ -2239,6 +2250,147 @@ static void statement() {
     } else {
         expressionStatement();
     }
+}
+
+ObjFunction* compileModule(const char* source, ObjString* filename) {
+    initScanner(source);
+    Compiler compiler;
+    initCompiler(&compiler, TYPE_MODULE);
+    current->function->filename = filename;
+
+    parser.hadError = false;
+    parser.panicMode = false;
+
+    advance();
+    while (!match(TOKEN_EOF)) {
+        declaration();
+    }
+
+    ObjFunction* function = endCompiler();
+    return parser.hadError ? NULL : function;
+}
+
+static void compileModuleMethod(ObjClass* klass) {
+    consume(TOKEN_IDENTIFIER, "Expect method name.");
+    Token nameToken = parser.previous;
+
+    ObjString* methodName = copyString(nameToken.start, nameToken.length);
+    push(OBJ_VAL(methodName));
+
+    FunctionType type = TYPE_METHOD;
+
+    if (check(TOKEN_LEFT_BRACE)) {
+        type = TYPE_GETTER;
+    } else if (match(TOKEN_EQUAL)) {
+        type = TYPE_SETTER;
+    } else {
+        if (nameToken.length == 4 && memcmp(nameToken.start, "init", 4) == 0) {
+            type = TYPE_INITIALIZER;
+        }
+    }
+
+    Compiler compiler;
+    initCompiler(&compiler, type);
+    beginScope();
+
+    if  (type == TYPE_GETTER) {
+        // none
+    } else if (type == TYPE_SETTER) {
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after setter.");
+
+        int constant = parseVariable("Expect setter parameter name.");
+        defineVariable(constant);
+        current->function->arity = 1;
+        current->function->minArity = 1;
+
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after setter parameter.");
+    } else {
+        consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+        if (!check(TOKEN_RIGHT_PAREN)) {
+            bool isOptional = false;
+            do {
+                if (match(TOKEN_DOT_DOT_DOT)) {
+                    current->function->isVariadic = true;
+                    int constant = parseVariable("Expect rest parameter name.");
+                    defineVariable(constant);
+
+                    current->function->arity++;
+
+                    if (check(TOKEN_COMMA)) {
+                        error("Cannot have parameters after a rest paramenter.");
+                    }
+
+                    break;
+                }
+
+                current->function->arity++;
+                if (current->function->arity > 255) {
+                    errorAtCurrent("Can't have more than 255 parameters.");
+                }
+
+                int constant = parseVariable("Expect paameter name.");
+                defineVariable(constant);
+
+                if (match(TOKEN_EQUAL)) {
+                    isOptional = true;
+                    Value defaultValue = parseConstant();
+                    writeValueArray(&current->function->defaults, defaultValue);
+                } else if (isOptional)  {
+                    error("Cannot have a require parameter after an optional one.");
+                }
+
+                if (!isOptional) current->function->minArity++;
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RIGHT_PAREN, "Expect '{' before function body.");
+    }
+
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block();
+
+    ObjFunction* methodFunc = endCompiler();
+
+    if (type == TYPE_METHOD || type == TYPE_INITIALIZER) {
+        methodFunc->isfree = false;
+    }
+
+    ObjClosure* methodClosure = newClosure(methodFunc);
+    push(OBJ_VAL(methodClosure));
+
+    if (type == TYPE_GETTER) {
+        tableSet(&klass->getters, methodName, OBJ_VAL(methodClosure));
+    } else if (type == TYPE_SETTER) {
+        tableSet(&klass->setters, methodName, OBJ_VAL(methodClosure));
+    } else {
+        tableSet(&klass->methods, methodName, OBJ_VAL(methodClosure));
+    }
+
+    pop();
+    pop();
+}
+
+bool compileClassModule(const char* source, ObjClass* klass) {
+    initScanner(source);
+
+    parser.hadError = false;
+    parser.panicMode = false;
+    advance();
+
+    ClassCompiler classCompiler;
+    classCompiler.hasSuperclass = false;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+    //initCompiler(&compiler, TYPE_SCRIPT);
+
+    while (!check(TOKEN_EOF)) {
+        compileModuleMethod(klass);
+    }
+
+    consume(TOKEN_EOF, "Expect end of file.");
+
+    currentClass = classCompiler.enclosing;
+    
+    return !parser.hadError;
 }
 
 ObjFunction* compile(const char* source, ObjString* filename) {

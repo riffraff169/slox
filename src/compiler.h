@@ -5,6 +5,8 @@
 #include "vm.h"
 
 ObjFunction* compile(const char* source, ObjString* filename);
+ObjFunction* compileModule(const char* source, ObjString* filename);
+bool compileClassModule(const char* source, ObjClass* klass);
 void markCompilerRoots();
 char* readFile(const char* path);
 

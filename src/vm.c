@@ -3670,6 +3670,68 @@ static Value createInstanceNative(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+static Value programNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("program() expects a string filename argument.");
+        return NIL_VAL;
+    }
+    
+    ObjString* filename = AS_STRING(args[0]);
+    push(OBJ_VAL(filename));
+    char* source = locateAndReadLoxFile(filename->chars);
+
+    if (source == NULL) {
+        runtimeError("Could not locate or read module file '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    /*
+    ObjFunction* function = compileModule(source, filename);
+    free(source);
+
+    if (function == NULL) {
+        runtimeError("Compile error inside module '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    push(OBJ_VAL(function));
+    ObjClosure* closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+    */
+
+    const char* pathStart = filename->chars;
+    const char* lastSlash = strrchr(pathStart, '/');
+    if (lastSlash != NULL) {
+        pathStart = lastSlash + 1;
+    }
+
+    int nameLength = (int)strlen(pathStart);
+    if (nameLength > 4 && strcmp(pathStart + nameLength - 4, ".lox") == 0) {
+        nameLength -= 4;
+    }
+
+    ObjString* className = copyString(pathStart, nameLength);
+    push(OBJ_VAL(className));
+
+    ObjClass* klass = newClass(className);
+    push(OBJ_VAL(klass));
+
+    klass->superclass = vm.objectClass;
+    bool success = compileClassModule(source, klass);
+    free(source);
+
+    pop();
+    pop();
+
+    if (!success) {
+        runtimeError("Compile error inside module class '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass);
+}
+
 static Value objectClassNameMethod(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     return OBJ_VAL(instance->obj.klass->name);
@@ -5124,6 +5186,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "class_name", objectClassNameMethod);
 
     defineNative("create_instance", createInstanceNative);
+
+    defineNative("program", programNative);
 
     initResultClass();
     initOptionClass();

@@ -122,7 +122,7 @@ static void blackenObject(Obj* object) {
                 if (klass->mixinsource != NULL) {
                     markObject((Obj*)klass->mixinsource);
                 }
-      }
+            }
             break;
         case OBJ_CLOSURE:
             {

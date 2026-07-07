@@ -1,0 +1,13 @@
+init() {
+  this.maxVolume = 100;
+  this.currentVolume = 0;
+}
+
+svol(vol) {
+  this.currentVolume = vol;
+}
+
+//this.setvol = svol;
+//this.setvol = fun(vol) {
+//  this.currentVolume = vol;
+//}
