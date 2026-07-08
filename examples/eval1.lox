@@ -1,0 +1,10 @@
+eval("fun dynamicSum(a, b) { return a + b; }");
+print dynamicSum(5, 5);
+
+var prefix = "user_";
+for (var i = 1; i <= 3; i = i + 1) {
+    eval("var " + prefix + String(i) + " = " + String((i * 10)) + ";");
+}
+print user_1;
+print user_2;
+print user_3;
