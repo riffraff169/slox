@@ -3670,6 +3670,55 @@ static Value createInstanceNative(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+static Value evalNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("Argument to eval() must be a string.");
+        return NIL_VAL;
+    }
+
+    ObjString* source = AS_STRING(args[0]);
+
+    ObjFunction* function = compile(source->chars, copyString("<eval>", 6));
+    if (function == NULL) {
+        return NIL_VAL;
+    }
+
+    push(OBJ_VAL(function));
+    ObjClosure* closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+
+    int oldExitDepth = vm.nativeExitDepth;
+    Value* callbackStackStart = vm.stackTop;
+    int framesBefore = vm.frameCount;
+
+    if (callValue(OBJ_VAL(closure), 0)) {
+        if (vm.frameCount > framesBefore) {
+            vm.nativeExitDepth = framesBefore;
+            InterpretResult result = run();
+
+            if (result == INTERPRET_RUNTIME_ERROR) {
+                vm.stackTop = callbackStackStart;
+                vm.nativeExitDepth = oldExitDepth;
+                return NIL_VAL;
+            }
+        }
+
+        Value result = pop();
+
+        vm.nativeExitDepth = oldExitDepth;
+
+        return result;
+    }
+    vm.nativeExitDepth = oldExitDepth;
+    return NIL_VAL;
+}
+
 static Value programNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("program() expects a string filename argument.");
@@ -5129,6 +5178,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("isinstance", isInstanceNative);
     defineNativeMethod(vm.objectClass, "isinstance", isInstanceNative);
     defineNative("chr", chrNative);
+    defineNative("eval", evalNative);
 
     string = copyString("Function", 8);
     push(OBJ_VAL(string));
