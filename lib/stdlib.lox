@@ -216,7 +216,7 @@ fun deserialize(data) {
 class PP {
   init() {
     this.indentValue = 0;
-    this.visited = {};
+    this.visited = [];
   }
 
   pp(obj) {
@@ -235,24 +235,25 @@ class PP {
     if (obj.class() == Number) return String(obj);
     if (obj.class() == String) return "\"" + obj + "\"";
 
-    //if (this.visited.has(obj)) return "[Circular ...]";
-    //this.visited[obj] = true;
+    if (this.visited.find(fun(a) { return a == obj; }) != nil) {
+      return "[Circular ...]";
+    }
+    this.visited.push(obj);
 
-    // 2. Handle Arrays
+    var res = nil;
+
     if (obj.class() == Array) {
-      return this.formatArray(obj);
+      res = this.formatArray(obj);
+    } else if (obj.class() == Map) {
+      res = this.formatMap(obj);
+    } else if (obj.class() == Vec3) {
+      res = this.formatVec3(obj);
+    } else {
+      res = this.formatInstance(obj);
     }
+    this.visited.pop();
 
-    // 3. Handle Maps
-    if (obj.class() == Map) {
-      return this.formatMap(obj);
-    }
-
-    if (obj.class() == Vec3) {
-      return this.formatVec3(obj);
-    }
-
-    return this.formatInstance(obj);
+    return res;
   }
 
   formatMap(map) {

@@ -1,7 +1,7 @@
 %define debug_package %{nil}
 
 Name:       slox
-Version:    1.0.2
+Version:    1.0.4
 Release:    1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -14,6 +14,15 @@ BuildRequires:  make
 BuildRequires:  readline-devel
 BuildRequires:  pcre2-devel
 BuildRequires:  pkgconfig
+
+%package vim
+Summary:        Vim support for the Lox programming language
+Requires:       vim-common
+BuildArch:      noarch
+
+%description vim
+Vim syntax highlighting, filetype detection, and indentation plugins
+for slox (.lox) source files
 
 # Disable standard RPM build-root policies that block installations to /usr/local
 %define _unpackaged_files_terminate_build 0
@@ -44,6 +53,14 @@ cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
 
 cp examples/* %{buildroot}/usr/share/slox/examples
 
+mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
+mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftplugin
+mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/syntax
+
+cp extras/lox-ftdetect.vim %{buildroot}%{_datadir}/vim/vimfiles/ftdetect/lox.vim
+cp extras/lox-ftplugin.vim %{buildroot}%{_datadir}/vim/vimfiles/ftplugin/lox.vim
+cp extras/lox-syntax.vim %{buildroot}%{_datadir}/vim/vimfiles/syntax/lox.vim
+
 %clean
 rm -rf %{buildroot}
 
@@ -53,6 +70,11 @@ rm -rf %{buildroot}
 /usr/share/slox/
 
 %doc README.md
+
+%files vim
+%{_datadir}/vim/vimfiles/ftdetect/lox.vim
+%{_datadir}/vim/vimfiles/ftplugin/lox.vim
+%{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
 * Sat  Jul 04 2026 Lance Dillon <riffraff169@yahoo.com> - 1.0.0-1
