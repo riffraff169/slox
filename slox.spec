@@ -1,7 +1,7 @@
 %define debug_package %{nil}
 
 Name:       slox
-Version:    1.0.1
+Version:    1.0.2
 Release:    1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
