@@ -167,6 +167,24 @@ ObjMap* newMap() {
     return map;
 }
 
+bool mapGet(ObjMap* map, ObjString* key, Value* value) {
+    return tableGet(&map->items, key, value);
+}
+
+bool mapSet(ObjMap* map, ObjString* key, Value value) {
+    return tableSet(&map->items, key, value);
+}
+
+bool mapSetByCStr(ObjMap* map, const char* cstr, Value value) {
+    ObjString* key = copyString(cstr, (int)strlen(cstr));
+    push(OBJ_VAL(key));
+
+    bool res = mapSet(map, key, value);
+
+    pop();
+    return res;
+}
+
 /*
 ObjVec3* newVec3(Value x, Value y, Value z) {
     ObjVec3* vec3 = ALLOCATE_OBJ(ObjVec3, OBJ_VEC3);

@@ -9,6 +9,25 @@
 
 // Automatically extracted signatures
 void defineNativeClassConstant(ObjClass* klass, const char* name, Value value);
+Value stringTrimNative(int argCount, Value* args);
+Value stringContainsNative(int argCount, Value* args);
+Value stringFindNative(int argCount, Value* args);
+Value stringToUpperNative(int argCount, Value* args);
+Value stringToLowerNative(int argCount, Value* args);
+Value stringLenNative(int argCount, Value* args);
+Value stringSplitNative(int argCount, Value* args);
+Value stringSliceNative(int argCount, Value* args);
+Value stringToarrayNative(int argCount, Value* args);
+Value stringTokensNative(int argCount, Value* args);
+Value stringFormatNative(int argCount, Value* args);
+void initStringClass();
+Value mapNativeConstructor(int argCount, Value* args);
+Value mapKeysNative(int argCount, Value* args);
+Value mapValuesNative(int argCount, Value* args);
+Value mapHasNative(int argCount, Value* args);
+Value mapRemoveNative(int argCount, Value* args);
+Value mapLenNative(int argCount, Value* args);
+void initMapClass();
 Value mathSqrtNative(int argCount, Value* args);
 Value mathAbsNative(int argCount, Value* args);
 Value mathFloorNative(int argCount, Value* args);

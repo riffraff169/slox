@@ -70,6 +70,472 @@ void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
     pop();
 }
 
+Value clockNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
+void initGlobalNatives() {
+    defineNative("clock", clockNative);
+    defineNative("str", strNative);
+    defineNative("typeof", typeofNative);
+    defineNative("isnumber", isNumberNative);
+}
+
+#define STRING_METHOD_LIST(X) \
+    X("trim", stringTrimNative) \
+    X("contains", stringContainsNative) \
+    X("find", stringFindNative) \
+    X("to_upper", stringToUpperNative) \
+    X("to_lower", stringToLowerNative) \
+    X("len", stringLenNative) \
+    X("length", stringLenNative) \
+    X("split", stringSplitNative) \
+    X("slice", stringSliceNative) \
+    X("to_array", stringToarrayNative) \
+    X("to_number", toNumberNative) \
+    X("tokens", stringTokensNative) \
+    X("format", stringFormatNative)
+
+Value stringTrimNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[-1]);
+    char* start = str->chars;
+    char* end = str->chars + str->length - 1;
+
+    while (isspace(*start)) start++;
+
+    while (end > start && isspace(*end)) end--;
+
+    int newLength = (int)(end - start + 1);
+    if (newLength <= 0) return OBJ_VAL(copyString("", 0));
+
+    return OBJ_VAL(copyString(start, newLength));
+}
+
+Value stringContainsNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjString* haystack = AS_STRING(args[-1]);
+    ObjString* needle = AS_STRING(args[0]);
+
+    return BOOL_VAL(strstr(haystack->chars, needle->chars) != NULL);
+}
+
+Value stringFindNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return NIL_VAL;
+    }
+
+    ObjString* haystack = AS_STRING(args[-1]);
+    ObjString* needle = AS_STRING(args[0]);
+
+    char* location = strstr(haystack->chars, needle->chars);
+    if (location != NULL) {
+        return NUMBER_VAL(location - haystack->chars);
+    }
+    return NIL_VAL;
+}
+
+Value stringToUpperNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[-1]);
+
+    char* buffer = (char*)malloc(str->length + 1);
+    if (buffer == NULL) {
+        runtimeError("to_upper() failed to allocate memory.");
+        return NIL_VAL;
+    }
+
+    for (int i = 0; i < str->length; i++) {
+        buffer[i] = toupper((unsigned char)str->chars[i]);
+    }
+    buffer[str->length] = '\0';
+
+    return OBJ_VAL(takeString(buffer, str->length));
+}
+
+Value stringToLowerNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[-1]);
+
+    char* buffer = (char*)malloc(str->length + 1);
+    if (buffer == NULL) {
+        runtimeError("to_lower() failed to allocate memory.");
+        return NIL_VAL;
+    }
+
+    for (int i = 0; i < str->length; i++) {
+        buffer[i] = tolower((unsigned char)str->chars[i]);
+    }
+    buffer[str->length] = '\0';
+
+    return OBJ_VAL(takeString(buffer, str->length));
+}
+
+Value stringLenNative(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[-1]);
+    return NUMBER_VAL((double)str->length);
+}
+
+Value stringSplitNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("split() expects 1 argument.");
+        return NIL_VAL;
+    }
+
+    Value val = args[0];
+    ObjString* receiver = AS_STRING(args[-1]);
+
+    if (IS_STRING(val)) {
+        ObjString* sep = AS_STRING(args[0]);
+
+        ObjArray* result = newArray();
+        push(OBJ_VAL(result));
+
+        if (sep->length == 0) {
+            for (int i = 0; i < receiver->length; i++) {
+                ObjString* charStr = copyString(receiver->chars + i, 1);
+                push(OBJ_VAL(charStr));
+                arrayAppend(result, OBJ_VAL(charStr));
+                pop();
+            }
+            return pop();
+        }
+
+        char* text = receiver->chars;
+        char* found;
+        int sepLen = sep->length;
+
+        while ((found = strstr(text, sep->chars)) != NULL) {
+            int segmentLen = (int)(found - text);
+
+            ObjString* segment = copyString(text, segmentLen);
+            push(OBJ_VAL(segment));
+            arrayAppend(result, OBJ_VAL(segment));
+            pop();
+
+            text = found + sepLen;
+        }
+
+        ObjString* lastSegment = copyString(text, (int)strlen(text));
+        push(OBJ_VAL(lastSegment));
+        arrayAppend(result, OBJ_VAL(lastSegment));
+        pop();
+
+        return pop();
+    } else if (IS_NUMBER(val)) {
+        int split_size = (int)AS_NUMBER(val);
+        if (split_size <= 0) {
+            runtimeError("split size must be > 0.");
+            return NIL_VAL;
+        }
+
+        ObjArray* array = newArray();
+        push(OBJ_VAL(array));
+
+        int index = 0;
+
+        while (index < receiver->length) {
+            int rem = receiver->length - index;
+            int current_size = (rem < split_size) ? rem : split_size;
+
+            ObjString* str = copyString(&receiver->chars[index], current_size);
+            push(OBJ_VAL(str));
+            arrayAppend(array, OBJ_VAL(str));
+            pop();
+
+            index += split_size;
+        }
+        return pop();
+    }
+    runtimeError("split() expects a string or positive number arguments.");
+    return NIL_VAL;
+}
+
+Value stringSliceNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("slice() expects at least a start index.");
+        return NIL_VAL;
+    }
+
+    ObjString* dom = AS_STRING(args[-1]);
+    int length = dom->length;
+
+    int start = (int)AS_NUMBER(args[0]);
+    if (start < 0) start += length;
+    if (start < 0) start = 0;
+    if (start > length) start = length;
+
+    int end = length;
+    if (argCount >= 2 && IS_NUMBER(args[1])) {
+        end = (int)AS_NUMBER(args[1]);
+        if (end < 0) end += length;
+        if (end < 0) end = 0;
+        if (end > length) end = length;
+    }
+
+    if (start >= end) return OBJ_VAL(copyString("", 0));
+
+    return OBJ_VAL(copyString(dom->chars + start, end - start));
+}
+
+Value stringToarrayNative(int argCount, Value* args) {
+    ObjString* string = AS_STRING(args[-1]);
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (int i = 0; i < string->length; i++) {
+        uint8_t byte = (uint8_t)string->chars[i];
+        arrayAppend(array, NUMBER_VAL((double)byte));
+    }
+
+    return pop();
+}
+
+Value stringTokensNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        runtimeError("tokens() expects 0 arguments.");
+        return NIL_VAL;
+    }
+
+    ObjString* receiver = AS_STRING(args[-1]);
+
+    ObjArray* result = newArray();
+    push(OBJ_VAL(result));
+
+    char* chars = receiver->chars;
+    int length = receiver->length;
+    int i = 0;
+
+    while (i < length) {
+        while (i < length && isspace((unsigned char)chars[i])) {
+            i++;
+        }
+
+        if (i >= length) break;
+
+        int start = i;
+
+        while (i < length && !isspace((unsigned char)chars[i])) {
+            i++;
+        }
+        int tokenLen = i - start;
+
+        ObjString* token = copyString(chars + start, tokenLen);
+        push(OBJ_VAL(token));
+        arrayAppend(result, OBJ_VAL(token));
+        pop();
+    }
+    return pop();
+}
+
+Value stringFormatNative(int argCount, Value* args) {
+    ObjString* formatStr = AS_STRING(args[-1]);
+
+    int capacity = formatStr->length + 64;
+    char* buffer = malloc(capacity);
+    int length = 0;
+
+    int currentArg = 0;
+
+    for (int i = 0; i < formatStr->length; i++) {
+        if (length + 32 > capacity) {
+            capacity *= 2;
+            buffer = realloc(buffer, capacity);
+        }
+
+        if (formatStr->chars[i] == '%' && i + 1 < formatStr->length) {
+            char specifier = formatStr->chars[i + 1];
+            i++;
+
+            if (specifier == '%') {
+                buffer[length++] = '%';
+                continue;
+            }
+
+            if (currentArg >= argCount) {
+                length += sprintf(buffer + length, "%%c", specifier);
+                continue;
+            }
+
+            Value val = args[currentArg++];
+
+            switch (specifier) {
+                case 's':
+                    {
+                        if (IS_STRING(val)) {
+                            ObjString* s = AS_STRING(val);
+                            while (length + s->length >= capacity) {
+                                capacity += s->length + 64;
+                                buffer = realloc(buffer, capacity);
+                            }
+                            memcpy(buffer + length, s->chars, s->length);
+                            length += s->length;
+                        } else if (IS_NIL(val)) {
+                            length += sprintf(buffer + length, "nil");
+                        } else {
+                            length += sprintf(buffer + length, "<object>");
+                        }
+                    }
+                    break;
+                case 'd':
+                case 'f':
+                    if (IS_NUMBER(val)) {
+                        double num = AS_NUMBER(val);
+                        length += sprintf(buffer + length, specifier == 'd' ? "%.0f" : "%f", num);
+                    } else {
+                        length += sprintf(buffer + length, "NaN");
+                    }
+                    break;
+                case 'b':
+                    if (IS_BOOL(val)) {
+                        length += sprintf(buffer + length, AS_BOOL(val) ? "true" : "false");
+                    } else {
+                        length += sprintf(buffer + length, "false");
+                    }
+                    break;
+                default:
+                    buffer[length++] = '%';
+                    buffer[length++] = specifier;
+                    break;
+            }
+        } else {
+            buffer[length++] = formatStr->chars[i];
+        }
+    }
+
+    buffer[length] = '\0';
+
+    ObjString* result = copyString(buffer, length);
+    free(buffer);
+
+    return OBJ_VAL(result);
+}
+
+void initStringClass() {
+    ObjString* empty = copyString("", 0);
+    push(OBJ_VAL(empty));
+    empty->obj.klass = vm.stringClass;
+
+#define X(name, func) defineNativeMethod(vm.stringClass, name, func);
+    STRING_METHOD_LIST(X)
+#undef X
+    pop();
+}
+
+#define MAP_METHOD_LIST(X) \
+    X("keys", mapKeysNative) \
+    X("values", mapValuesNative) \
+    X("has", mapHasNative) \
+    X("remove", mapRemoveNative) \
+    X("len", mapLenNative)
+
+Value mapNativeConstructor(int argCount, Value* args) {
+    if (argCount % 2 != 0) {
+        runtimeError("Map constructor requires an even number of key-value arguments.");
+        return NIL_VAL;
+    }
+    
+    ObjMap* map = newMap();
+    push(OBJ_VAL(map));
+
+    for (int i = 0; i < argCount; i += 2) {
+        Value key = args[i];
+        Value value = args[i+1];
+
+        if (!IS_STRING(key)) {
+            runtimeError("Map keys must be strings.");
+            pop();
+            return NIL_VAL;
+        }
+        tableSet(&map->items, AS_STRING(key), value);
+    }
+
+    return pop();
+}
+
+Value mapKeysNative(int argCount, Value* args) {
+    ObjMap* map = AS_MAP(args[-1]);
+    ObjArray* valuesArray = newArray();
+    push(OBJ_VAL(valuesArray));
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry* entry = &map->items.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(valuesArray, OBJ_VAL(entry->key));
+        }
+    }
+    return pop();
+}
+
+Value mapValuesNative(int argCount, Value* args) {
+    ObjMap* map = AS_MAP(args[-1]);
+    ObjArray* valuesArray = newArray();
+    push(OBJ_VAL(valuesArray));
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry* entry = &map->items.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(valuesArray, entry->value);
+        }
+    }
+    return pop();
+}
+
+Value mapHasNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjMap* map = AS_MAP(args[-1]);
+    Value dummy;
+    return BOOL_VAL(mapGetByValue(map, args[0], &dummy));
+}
+
+Value mapRemoveNative(int argCount, Value* args) {
+    ObjMap* sourceMap = AS_MAP(args[-1]);
+    ObjMap* deletedMap = newMap();
+    push(OBJ_VAL(deletedMap));
+
+    for (int i = 0; i < argCount; i++) {
+        Value key = args[i];
+
+        if (!IS_STRING(key)) {
+            runtimeError("Map keys must be strings.");
+            pop();
+            return NIL_VAL;
+        }
+
+        Value value;
+        if (mapGetByValue(sourceMap, key, &value)) {
+            mapSetByValue(deletedMap, key, value);
+            tableDelete(&sourceMap->items, AS_STRING(key));
+        }
+    }
+
+    return pop();
+}
+
+Value mapLenNative(int argCount, Value* args) {
+    return NUMBER_VAL(AS_MAP(args[-1])->items.count);
+}
+
+void initMapClass() {
+    ObjString* string = NULL;
+    string = copyString("Map", 3);
+    push(OBJ_VAL(string));
+
+    vm.mapClass = newClass(string);
+    vm.mapClass->superclass = vm.objectClass;
+    vm.mapClass->callHandler = mapNativeConstructor;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
+    push(OBJ_VAL(vm.mapClass));
+
+#define X(name, func) defineNativeMethod(vm.mapClass, name, func);
+    MAP_METHOD_LIST(X)
+#undef X
+    pop();
+}
+
 #define MATH_DUAL_METHOD_LIST(X) \
     X("sqrt", mathSqrtNative) \
     X("abs", mathAbsNative) \
