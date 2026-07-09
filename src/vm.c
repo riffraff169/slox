@@ -32,6 +32,7 @@
 #include "object.h"
 #include "memory.h"
 #include "vm.h"
+#include "native.h"
 
 #define MAX32 4294967296.0
 
@@ -74,12 +75,12 @@ VM vm;
 InterpretResult run();
 //void initArrayMethods();
 
-static bool callValue(Value callee, int argCount);
-static bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
+bool callValue(Value callee, int argCount);
+bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
 Value peek(int distance);
 Value popn(int n);
-static bool isFalsey(Value value);
-static bool isTruthy(Value value);
+bool isFalsey(Value value);
+bool isTruthy(Value value);
 static ObjClass* getClassForValue(Value value);
 
 typedef enum {
@@ -679,575 +680,6 @@ void* loadModule(const char* name) {
         return NIL_VAL; \
     }
 
-static Value mathSqrtNative(int argCount, Value* args) {
-    /*
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("sqrt() expects 1 number argument.");
-        return NIL_VAL;
-    }
-    */
-    EXTRACT_MATH_OP(val, "sqrt");
-    //return NUMBER_VAL(sqrt(AS_NUMBER(args[0])));
-    return NUMBER_VAL(sqrt(val));
-}
-
-static Value mathAbsNative(int argCount, Value* args) {
-    /*
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("sqrt() expects 1 number argument.");
-        return NIL_VAL;
-    }
-    */
-    EXTRACT_MATH_OP(val, "abs");
-    return NUMBER_VAL(fabs(val));
-}
-
-static Value toNumberNative(int argCount, Value* args) {
-    Value value = NUMBER_VAL(0);
-
-    if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) || IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
-        value = args[-1];
-    } else {
-        if (argCount < 1) return NUMBER_VAL(0);
-        value = args[0];
-    }
-
-    if (IS_NUMBER(value)) return value;
-    if (!IS_STRING(value)) return NUMBER_VAL(0);
-
-    char* end;
-    const char* str = AS_CSTRING(value);
-    double number = strtod(str, &end);
-
-    if (str == end) {
-        return NUMBER_VAL(0);
-    }
-
-    return NUMBER_VAL(number);
-}
-
-static Value mathSinNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "sin");
-    return NUMBER_VAL(sin(val));
-}
-
-static Value mathCosNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(cos(val));
-}
-
-static Value mathAcosNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(acos(val));
-}
-
-static Value mathTanNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(tan(val));
-}
-
-static Value mathAtan2Native(int argCount, Value* args) {
-    double y, x;
-
-    if (IS_NUMBER(args[-1])) {
-        if (argCount < 1 || !IS_NUMBER(args[0])) {
-            runtimeError("atan2() expects a number argument when called as a method.");
-            return NIL_VAL;
-        }
-        y = AS_NUMBER(args[-1]);
-        x = AS_NUMBER(args[0]);
-    } else {
-        if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
-            runtimeError("atan2() expects two number arguments when called as statically.");
-            return NIL_VAL;
-        }
-        y = AS_NUMBER(args[0]);
-        x = AS_NUMBER(args[1]);
-    }
-    return NUMBER_VAL(atan2(y, x));
-}
-
-static Value mathRoundNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(round(val));
-}
-
-static Value mathFloorNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(floor(val));
-}
-
-static Value mathCeilNative(int argCount, Value* args) {
-    //if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-    EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(ceil(val));
-}
-
-static Value mathRandomNative(int argCount, Value* args) {
-    //return NUMBER_VAL((double)rand() / (double)RAND_MAX);
-    //unsigned long large_rand = ((unsigned long)rand() << 15) | rand();
-    double r = (double)rand();
-    double m = (double)RAND_MAX;
-    //return NUMBER_VAL((double)large_rand / (double)0x3fffffff);
-    return NUMBER_VAL(r / (m + 1.0));
-}
-
-static Value mathPiNative(int argCount, Value* args) {
-    return NUMBER_VAL(3.14159265358979323846);
-}
-
-static Value mathExpNative(int argCount, Value* args) {
-    double val;
-
-    if (IS_NUMBER(args[-1])) {
-        val = AS_NUMBER(args[-1]);
-    } else if (argCount >= 1 && IS_NUMBER(args[0])) {
-        val = AS_NUMBER(args[0]);
-    } else {
-        return NUMBER_VAL(exp(1.0));
-    }
-
-    return NUMBER_VAL(exp(val));
-    /*
-    if (argCount < 1 || !IS_NUMBER(args[0])) return NUMBER_VAL(exp(1.0));
-    return NUMBER_VAL(exp(AS_NUMBER(args[0])));
-    */
-}
-
-static int defaultSortComparator(const void* a, const void* b) {
-    Value valA = *(Value*)a;
-    Value valB = *(Value*)b;
-
-    // sort numbers
-    if (IS_NUMBER(valA) && IS_NUMBER(valB)) {
-        double diff = AS_NUMBER(valA) - AS_NUMBER(valB);
-        return (diff > 0) - (diff < 0);
-    }
-
-    // sort strings
-    if (IS_STRING(valA) && IS_STRING(valB)) {
-        return strcmp(AS_CSTRING(valA), AS_CSTRING(valB));
-    }
-
-    // sort booleans (false < true)
-    if (IS_BOOL(valA) && IS_BOOL(valB)) {
-        return (int)AS_BOOL(valA) - (int)AS_BOOL(valB);
-    }
-
-    // fallback: stable order for mixed types based on type tag
-    return (int)valA.type - (int)valB.type;
-}
-
-static int loxSortComparator(const void* a, const void* b, void* userdata) {
-    // 1. recover our context
-    ObjClosure* callback = (ObjClosure*)userdata;
-    Value valA = *(Value*)a;
-    Value valB = *(Value*)b;
-
-    // 2. setup the stack baseline
-    Value* comparisonStackBase = vm.stackTop;
-
-    // 3. push closure + 2 arguments
-    push(OBJ_VAL(callback));
-    push(valA);
-    push(valB);
-
-    Value *stackStart = vm.stackTop;
-    int oldExitDepth = vm.nativeExitDepth;
-    vm.nativeExitDepth = vm.frameCount;
-
-    if (vmCall(callback, 2)) {
-        InterpretResult state = run();
-        if (state == INTERPRET_RUNTIME_ERROR) {
-            vm.stackTop = comparisonStackBase;
-            vm.nativeExitDepth = oldExitDepth;
-            return 0;
-        }
-
-        Value result = pop();
-
-        vm.stackTop = comparisonStackBase;
-
-        if (IS_NUMBER(result)) return (int)AS_NUMBER(result);
-        if (IS_BOOL(result)) {
-            if (AS_BOOL(result) == false)
-                return 1;
-            else
-                return -1;
-        }
-    }
-    vm.stackTop = comparisonStackBase;
-    return 0; // default to equal
-}
-
-static Value arraySortSliceNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    if (array->count < 2) return args[-1];
-    int start = AS_NUMBER(args[0]);
-    int end = AS_NUMBER(args[1]);
-    if (start < 0 || end > array->count || start > end) {
-        return args[-1];
-    }
-
-    Value* sliceStart = &array->values[start];
-    int count = end - start;
-    if (argCount >= 3 && IS_CLOSURE(args[2])) {
-        qsort_r(sliceStart, count, sizeof(Value),
-                loxSortComparator, AS_CLOSURE(args[2]));
-    } else {
-        qsort(sliceStart, count, sizeof(Value),
-                defaultSortComparator);
-    }
-    return args[-1];
-}
-
-static Value arraySortNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    if (array->count < 2) return args[-1];
-
-    if (argCount >= 2 && IS_CLOSURE(args[0])) {
-        qsort_r(array->values, array->count, sizeof(Value),
-                loxSortComparator, AS_CLOSURE(args[0]));
-    } else {
-        // default sort (fast c)
-        qsort(array->values, array->count, sizeof(Value),
-                defaultSortComparator);
-    }
-    return args[-1];
-}
-
-static Value arraySliceNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    int count = array->count;
-
-    int start = (argCount >= 2 && IS_NUMBER(args[0])) ?  (int)AS_NUMBER(args[0]) : 0;
-    if (start < 0) start = count + start;
-    if (start < 0) start = 0;
-    if (start > count) start = count;
-
-    int end = (argCount >= 3 && IS_NUMBER(args[1])) ?  (int)AS_NUMBER(args[1]) : count;
-    if (end < 0) end = count + end;
-    if (end < 0) end = 0;
-    if (end > count) end = count;
-
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    if (end > start) {
-        for (int i = start; i < end; i++) {
-            arrayAppend(result, array->values[i]);
-        }
-    }
-
-    return pop();
-}
-
-static Value arrayHasNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("Expected 1 argument for has().");
-        return NIL_VAL;
-    }
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    Value target = args[0];
-
-    for (int i = 0; i < array->count; i++) {
-        if (valuesEqual(array->values[i], target)) {
-            return BOOL_VAL(true);
-        }
-    }
-    return BOOL_VAL(false);
-}
-
-static Value arrayFindNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a closure callback argument for find().");
-        return NIL_VAL;
-    }
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    ObjClosure* callback = AS_CLOSURE(args[0]);
-
-    VM_CALLBACK_INIT();
-
-    for (int i = 0; i < array->count; i++) {
-
-        push(OBJ_VAL(callback));
-        push(array->values[i]);
-
-        VM_CALLBACK_ENTER();
-
-        if (vmCall(callback, 1)) {
-            InterpretResult state = run();
-
-            VM_CALLBACK_CHECK_ERROR(state);
-
-            Value result = pop();
-
-            if (!isFalsey(result)) {
-                VM_CALLBACK_RESET_STACK();
-                VM_CALLBACK_EXIT();
-                return array->values[i];
-            }
-        }
-        VM_CALLBACK_RESET_STACK();
-    }
-
-    VM_CALLBACK_EXIT();
-    return NIL_VAL;
-}
-
-static Value arrayEachNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) return NIL_VAL;
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    push(OBJ_VAL(array));
-    ObjClosure* callback = AS_CLOSURE(args[0]);
-
-    VM_CALLBACK_INIT();
-
-    for (int i = 0; i < array->count; i++) {
-        push(args[0]);
-        push(array->values[i]);
-
-        VM_CALLBACK_ENTER();
-
-        if (vmCall(callback, 1)) {
-            InterpretResult state = run();
-
-            VM_CALLBACK_CHECK_ERROR(state);
-        }
-
-        VM_CALLBACK_RESET_STACK();
-    }
-
-    VM_CALLBACK_EXIT();
-    return pop();
-}
-
-static Value arrayPushNative(int argCount, Value* args) {
-    if (argCount < 1) return NIL_VAL;
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    for (int i = 0; i < argCount; i++) {
-        arrayAppend(array, args[i]);
-    }
-    return OBJ_VAL(array);
-}
-
-static Value arrayPopNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-
-    if (array->count == 0) {
-        return NIL_VAL;
-    }
-
-    Value lastValue = array->values[array->count - 1];
-    array->count--;
-    array->values[array->count] = NIL_VAL;
-    return lastValue;
-}
-
-static Value arrayReduceNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        return NIL_VAL;
-    }
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    Value callback = args[0];
-
-    Value acc = (argCount > 1) ? args[1] : NIL_VAL;
-    int startindex = (argCount > 1) ? 0 : 1;
-    if (argCount <= 1 && array->count > 0) {
-        acc = array->values[0];
-    }
-
-    // 1. pin the accumulator
-    push(acc);
-
-    // 2. init macro: captures vm.stackStop after acc has been pinned
-    VM_CALLBACK_INIT();
-
-    for (int i = startindex; i < array->count; i++) {
-        push(callback);
-
-        // safely read the current accumulator from its pinned stack slot.
-        // Since _callbackStackStart points right after acc,
-        // _callbackStackStart[-1] is always our up-to-date accumulator.
-        push(_callbackStackStart[-1]);
-        push(array->values[i]);
-
-        // set the exit depth before the call pushes the new frame
-        VM_CALLBACK_ENTER();
-
-        if (callValue(callback, 2)) {
-            InterpretResult res = run();
-
-            // guard against runtime panics inside the closure
-            VM_CALLBACK_CHECK_ERROR(res);
-
-            // update our pinned accumulator slot with the callback's return value
-            _callbackStackStart[-1] = peek(0);
-        }
-
-        // instantly clears the callback elements and return values
-        VM_CALLBACK_RESET_STACK();
-    }
-
-    // 3. teardown: restore the original native exit depth;
-    VM_CALLBACK_EXIT();
-
-    return pop();
-}
-
-static Value arrayFilterNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        return NIL_VAL;
-    }
-
-    ObjArray* original = AS_ARRAY(args[-1]);
-    Value callback = args[0];
-    
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    VM_CALLBACK_INIT();
-
-    for (int i = 0; i < original->count; i++) {
-        push(callback);
-        push(original->values[i]);
-
-        VM_CALLBACK_ENTER();
-
-        if (callValue(callback, 1)) {
-            InterpretResult res = run();
-
-            VM_CALLBACK_CHECK_ERROR(res);
-            
-            if (!isFalsey(pop())) {
-                arrayAppend(result, original->values[i]);
-            }
-        }
-
-        VM_CALLBACK_RESET_STACK();
-    }
-
-    VM_CALLBACK_EXIT();
-
-    return pop();
-}
-
-static Value arrayDupNative(int argCount, Value* args) {
-    if (!IS_ARRAY(args[-1])) return NIL_VAL;
-
-    ObjArray* original = AS_ARRAY(args[-1]);
-    ObjArray* copy = duplicateArray(original);
-
-    return OBJ_VAL(copy);
-}
-
-static Value arrayIsEmptyNative(int argCount, Value* args) {
-    return BOOL_VAL(AS_ARRAY(args[-1])->count == 0);
-}
-
-static Value arrayMapNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a closure callback argument for map().");
-        return NIL_VAL;
-    }
-
-    ObjArray* original = AS_ARRAY(args[-1]);
-    ObjClosure* callback = AS_CLOSURE(args[0]);
-    
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    VM_CALLBACK_INIT();
-
-    for (int i = 0; i < original->count; i++) {
-        push(OBJ_VAL(callback));
-        push(original->values[i]);
-
-        VM_CALLBACK_ENTER();
-
-        //if (callValue(callback, 1)) {
-        if (vmCall(callback, 1)) {
-            InterpretResult res = run();
-
-            VM_CALLBACK_CHECK_ERROR(res);
-
-            Value testResult = peek(0);
-            arrayAppend(result, testResult);
-        }
-
-        VM_CALLBACK_RESET_STACK();
-    }
-
-    VM_CALLBACK_EXIT();
-
-    return pop();
-}
-
-static Value arrayReverseNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    if (array->count < 2) return args[-1];
-
-    int left = 0;
-    int right = array->count - 1;
-    
-    while (left < right) {
-        Value temp = array->values[left];
-        array->values[left] = array->values[right];
-        array->values[right] = temp;
-        left++;
-        right--;
-    }
-    return args[-1];
-}
-
-static void flattenDeepHelper(ObjArray* result, ObjArray* current) {
-    for (int i = 0; i < current->count; i++)  {
-        Value item = current->values[i];
-
-        if (IS_ARRAY(item)) {
-            flattenDeepHelper(result, AS_ARRAY(item));
-        } else {
-            arrayAppend(result, item);
-        }
-    }
-}
-
-static Value arrayFlattenNative(int argCount, Value* args) {
-    ObjArray* source = AS_ARRAY(args[-1]);
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    /*
-    for (int i = 0; i < source->count; i++) {
-        Value item = source->values[i];
-
-        if (IS_ARRAY(item)) {
-            ObjArray* inner = AS_ARRAY(item);
-            for (int j = 0; j < inner->count; j++) {
-                arrayAppend(result, inner->values[j]);
-            }
-        } else {
-            arrayAppend(result, item);
-        }
-    }
-    */
-
-    flattenDeepHelper(result, source);
-
-    return pop();
-}
-
 static Value mapValuesNative(int argCount, Value* args) {
     ObjMap* map = AS_MAP(args[-1]);
     ObjArray* valuesArray = newArray();
@@ -1312,11 +744,6 @@ static Value mapRemoveNative(int argCount, Value* args) {
 
 static Value mapLenNative(int argCount, Value* args) {
     return NUMBER_VAL(AS_MAP(args[-1])->items.count);
-}
-
-static Value arrayLenNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    return NUMBER_VAL(array->count);
 }
 
 static Value stringFormatNative(int argCount, Value* args) {
@@ -1636,85 +1063,6 @@ static Value stringLenNative(int argCount, Value* args) {
     return NUMBER_VAL((double)str->length);
 }
 
-static Value arrayRestNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    ObjArray* rest = newArray();
-
-    push(OBJ_VAL(rest));
-
-    for (int i = 1; i < array->count; i++) {
-        arrayAppend(rest, array->values[i]);
-    }
-
-    pop();
-    return OBJ_VAL(rest);
-}
-
-static Value arraySplitNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-
-    Value head = (array->count > 0) ? array->values[0] : NIL_VAL;
-
-    ObjArray* rest = newArray();
-    push(OBJ_VAL(rest));
-
-    for (int i = 1; i < array->count; i++) {
-        arrayAppend(rest, array->values[i]);
-    }
-
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    arrayAppend(result, head);
-    arrayAppend(result, OBJ_VAL(rest));
-
-    pop();
-    pop();
-
-    return OBJ_VAL(result);
-}
-
-Value arrayFirstNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-
-    if (array->count == 0) {
-        return NIL_VAL;
-    }
-
-    return array->values[0];
-}
-
-static Value arrayStringNative(int argCount, Value* args) {
-    ObjArray* array = AS_ARRAY(args[-1]);
-    int count = array->count;
-
-    if (count == 0) {
-        return OBJ_VAL(copyString("", 0));
-    }
-
-    uint8_t* buffer = ALLOCATE(uint8_t, count);
-
-    for (int i = 0; i < count; i++) {
-        Value v = array->values[i];
-        if (!IS_NUMBER(v)) {
-            FREE_ARRAY(uint8_t, buffer, count);
-            runtimeError("Array containers non-number at index %d.", i);
-            return NIL_VAL;
-        }
-        double num = AS_NUMBER(v);
-        if (num < 0 || num > 255) {
-            FREE_ARRAY(uint8_t, buffer, count);
-            runtimeError("Byte value %g out of range (0-255).", num);
-            return NIL_VAL;
-        }
-        buffer[i] = (uint8_t)num;
-    }
-    ObjString* string = copyString((char*)buffer, count);
-    FREE_ARRAY(uint8_t, buffer, count);
-
-    return OBJ_VAL(string);
-}
-
 static Value arrayIterNative(int argCount, Value* args) {
     Value arrayVal = args[-1];
 
@@ -1750,56 +1098,6 @@ static Value arrayIterNative(int argCount, Value* args) {
     pop();
 
     return iterInstance;
-}
-
-static Value arrayJoinNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("join() expects 1 string argument (separator).");
-        return NIL_VAL;
-    }
-
-    ObjArray* array = AS_ARRAY(args[-1]);
-    ObjString* sep = AS_STRING(args[0]);
-
-    if (array->count == 0) return OBJ_VAL(copyString("", 0));
-
-    int capacity = 32;
-    int length = 0;
-    char* buffer = ALLOCATE(char, capacity);
-
-    for (int i = 0; i < array->count; i++) {
-        Value item = array->values[i];
-
-        ObjString* s = valueToString(item);
-        push(OBJ_VAL(s));
-
-        int sepLen = (i < array->count - 1) ? sep->length : 0;
-        int neededCapacity = length + s->length + sepLen + 1;
-
-        if (neededCapacity > capacity) {
-            int oldCapacity = capacity;
-            capacity = neededCapacity * 2;
-            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
-        }
-
-        memcpy(buffer + length, s->chars, s->length);
-        length += s->length;
-
-        pop();
-
-        if (sepLen > 0) {
-            memcpy(buffer + length, sep->chars, sepLen);
-            length += sepLen;
-        }
-    }
-
-    buffer = GROW_ARRAY(char, buffer, capacity, length + 1);
-    buffer[length] = '\0';
-
-    ObjString* result = takeString(buffer, length);
-
-    return OBJ_VAL(result);
-
 }
 
 static void resetStack() {
@@ -1954,12 +1252,6 @@ void defineGlobal(const char* name, Value value) {
     pop();
 }
 
-void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
-    push(OBJ_VAL(copyString(name, (int)strlen(name))));
-    tableSet(&klass->constants, AS_STRING(peek(0)), value);
-    pop();
-}
-
 void defineNative(const char* name, NativeFn function) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
@@ -1984,7 +1276,7 @@ Value popn(int n) {
     return *vm.stackTop;
 }
 
-static void defineNativeMethod(ObjClass* klass, const char* name,
+void defineNativeMethod(ObjClass* klass, const char* name,
         NativeFn function) {
     ObjNative* native = newNative(function);
     push(OBJ_VAL(native));
@@ -2808,53 +2100,6 @@ static Value getSuperclassNative(int argCount, Value* args) {
     */
 }
 
-static Value fromHexNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) return NIL_VAL;
-
-    const char* str = AS_CSTRING(args[0]);
-    //char* endptr;
-
-    uint32_t result = (uint32_t)strtoul(str, NULL, 0);
-
-    //if (str == endptr) return NIL_VAL;
-    return NUMBER_VAL((double)result);
-}
-
-static Value fromBinNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
-
-    const char* str = AS_CSTRING(args[1]);
-    char* endptr;
-
-    unsigned long long result = strtoull(str, &endptr, 2);
-
-    if (str == endptr) return NIL_VAL;
-    return NUMBER_VAL((double)result);
-}
-
-static Value mathMinNative(int argCount, Value* args) {
-    if (argCount != 3) return NIL_VAL;
-    return NUMBER_VAL(fmin(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
-}
-
-static Value mathMaxNative(int argCount, Value* args) {
-    if (argCount != 3) return NIL_VAL;
-    return NUMBER_VAL(fmax(AS_NUMBER(args[0]), AS_NUMBER(args[1])));
-}
-
-static Value mathParseNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
-
-    const char* str = AS_CSTRING(args[1]);
-    char* endptr;
-
-    unsigned long long result = strtoull(str, &endptr, 0);
-
-    if (str == endptr) return NIL_VAL;
-
-    return NUMBER_VAL((double)result);
-}
-
 static Value vec3InitNative(int argCount, Value* args) {
     if (argCount != 3) {
         runtimeError("Need 3 arguments.");
@@ -3008,98 +2253,6 @@ static Value vec3NegNative(int argCount, Value* args) {
     return VEC3_VAL(b);
 }
 
-static Value bitTestNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) return NIL_VAL;
-
-    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
-    int bit = (int)AS_NUMBER(args[2]);
-
-    if (bit < 0 || bit > 63) return BOOL_VAL(false);
-
-    return BOOL_VAL((num >> bit) & 1);
-}
-
-static Value hexNative(int argCount, Value* args) {
-    uint64_t num;
-    int precision = 1;
-    bool prefix = true;
-
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
-        if (argCount >= 2 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
-    } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 2 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
-        if (argCount >= 3 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
-    }
-
-    char buffer[64];
-    if (prefix)
-        snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (uint64_t)num);
-    else
-        snprintf(buffer, sizeof(buffer), "%.*llx", precision, (uint64_t)num);
-
-    return OBJ_VAL(copyString(buffer, strlen(buffer)));
-}
-
-static Value octNative(int argCount, Value* args) {
-    uint64_t num;
-    int precision = 1;
-
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
-    } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 2 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
-    }
-
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0%.*llo", precision, (unsigned long long)num);
-
-    return OBJ_VAL(copyString(buffer, strlen(buffer)));
-}
-
-static Value binNative(int argCount, Value* args) {
-    uint64_t num;
-    int min_bits = 1;
-
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) min_bits = (int)AS_NUMBER(args[0]);
-    } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 2 && IS_NUMBER(args[1])) min_bits = (int)AS_NUMBER(args[1]);
-    }
-
-    if (min_bits > 64) min_bits = 64;
-    if (min_bits < 1) min_bits = 1;
-
-    char buffer[70];
-    char* p = buffer;
-    *p++ = '0';
-    *p++ = 'b';
-
-    int highest_bit = 0;
-    for (int i = 63; i >= 0; i--) {
-        if ((num >> i) & 1) {
-            highest_bit = i;
-            break;
-        }
-    }
-    int start_bit = (highest_bit >= min_bits) ? highest_bit : min_bits - 1;
-
-    for (int i = start_bit; i >= 0; i--) {
-        *p++ = ((num >> i) & 1) ? '1' : '0';
-    }
-    *p = '\0';
-
-    return OBJ_VAL(copyString(buffer, (int)(p - buffer)));
-}
 static inline Value getCheckTarget(int argCount, Value* args) {
     /*
     if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) ||
@@ -3194,62 +2347,6 @@ static Value typeofNative(int argCount, Value* args) {
     }
 
     return OBJ_VAL(copyString("UNKNOWN", 7));
-}
-
-void initMathLibrary() {
-    ObjString* mathName = copyString("Math", 4);
-    push(OBJ_VAL(mathName));
-    ObjClass* mathClass = newClass(mathName);
-    push(OBJ_VAL(mathClass));
-
-    defineNativeMethod(mathClass, "sqrt", mathSqrtNative);
-    defineNativeMethod(vm.numberClass, "sqrt", mathSqrtNative);
-    defineNativeMethod(mathClass, "abs", mathAbsNative);
-    defineNativeMethod(vm.numberClass, "abs", mathAbsNative);
-    defineNativeMethod(mathClass, "floor", mathFloorNative);
-    defineNativeMethod(vm.numberClass, "floor", mathFloorNative);
-    defineNativeMethod(mathClass, "ceil", mathCeilNative);
-    defineNativeMethod(vm.numberClass, "ceil", mathCeilNative);
-    defineNativeMethod(mathClass, "random", mathRandomNative);
-    //defineNativeMethod(mathClass, "pi", mathPiNative);
-    defineNativeMethod(mathClass, "exp", mathExpNative);
-    defineNativeMethod(vm.numberClass, "exp", mathExpNative);
-    defineNativeMethod(mathClass, "hex", hexNative);
-    defineNativeMethod(vm.numberClass, "hex", hexNative);
-    defineNativeMethod(mathClass, "oct", octNative);
-    defineNativeMethod(vm.numberClass, "oct", octNative);
-    defineNativeMethod(mathClass, "bin", binNative);
-    defineNativeMethod(vm.numberClass, "bin", binNative);
-    defineNativeMethod(mathClass, "bit_test", bitTestNative);
-    defineNativeMethod(mathClass, "min", mathMinNative);
-    defineNativeMethod(mathClass, "max", mathMaxNative);
-    defineNativeMethod(mathClass, "parse", mathParseNative);
-    defineNativeMethod(mathClass, "from_hex", fromHexNative);
-    defineNativeMethod(mathClass, "from_bin", fromBinNative);
-    //defineNativeMethod(mathClass, "ceil", mathCeilNative);
-    defineNativeMethod(mathClass, "round", mathRoundNative);
-    defineNativeMethod(mathClass, "to_number", toNumberNative);
-    defineNativeMethod(mathClass, "sin", mathSinNative);
-    defineNativeMethod(vm.numberClass, "sin", mathSinNative);
-    defineNativeMethod(mathClass, "tan", mathTanNative);
-    defineNativeMethod(vm.numberClass, "tan", mathTanNative);
-    defineNativeMethod(mathClass, "atan2", mathAtan2Native);
-    defineNativeMethod(vm.numberClass, "atan2", mathAtan2Native);
-    defineNativeMethod(mathClass, "cos", mathCosNative);
-    defineNativeMethod(vm.numberClass, "cos", mathCosNative);
-    defineNativeMethod(mathClass, "acos", mathAcosNative);
-    defineNativeMethod(vm.numberClass, "acos", mathAcosNative);
-
-    //tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
-
-    defineGlobal("Math", OBJ_VAL(mathClass));
-
-    defineNativeClassConstant(mathClass, "PI", NUMBER_VAL(3.1415926535897932));
-    defineNativeClassConstant(mathClass, "E",  NUMBER_VAL(2.7182818284590452));
-
-    popn(2);
-
-    srand((unsigned int)time(NULL));
 }
 
 static Value processRunStatic(int argCount, Value* args) {
@@ -3612,7 +2709,8 @@ void initRegexClass() {
     string = copyString("Regex", 5);
     vm.regexClass = newClass(copyString("Regex", 5));
     vm.regexClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+    //tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+    defineGlobal("Regex", OBJ_VAL(vm.regexClass));
     push(OBJ_VAL(vm.regexClass));
 
     defineNativeMethod(vm.regexClass, "init", regexInitMethod);
@@ -3622,7 +2720,7 @@ void initRegexClass() {
 
     //defineNative("Regex", regexInitNative);
     vm.regexClass->destructor = regexDestructor;
-    defineGlobal("Regex", OBJ_VAL(vm.regexClass));
+    //defineGlobal("Regex", OBJ_VAL(vm.regexClass));
 
     pop();
 }
@@ -3829,22 +2927,6 @@ static Value objectRootGetter(int argCount, Value* args) {
     }
 
     return errorResult("Value '%s' not found", name);
-}
-
-static Value arrayNativeConstructor(int argCount, Value* args) {
-    ObjArray* array = newArray();
-    //array->obj.klass = vm.arrayClass;
-
-    if (argCount > 0) {
-        array->values = ALLOCATE(Value, argCount);
-        array->capacity = argCount;
-        array->count = argCount;
-
-        for (int i = 0; i < argCount; i++) {
-            array->values[i] = args[i];
-        }
-    }
-    return OBJ_VAL(array);
 }
 
 static Value mapNativeConstructor(int argCount, Value* args) {
@@ -4303,6 +3385,7 @@ static Value boolCallHandler(int argCount, Value* args) {
     return BOOL_VAL(isTruthy(args[0]));
 }
 
+/*
 void initArrayClass() {
     ObjString* string = NULL;
 
@@ -4342,6 +3425,7 @@ void initArrayClass() {
     defineNativeMethod(vm.arrayClass, "split", arraySplitNative);
     pop();
 }
+*/
 
 void initMapClass() {
     ObjString* string = NULL;
@@ -5379,7 +4463,7 @@ bool vmCall(ObjClosure* closure, int argCount) {
     return true;
 }
 
-static bool callValue(Value callee, int argCount) {
+bool callValue(Value callee, int argCount) {
     vm.exceptionThrown = false;
 
     if (IS_OBJ(callee)) {
@@ -5481,7 +4565,7 @@ static bool callValue(Value callee, int argCount) {
     return false;
 }
 
-static bool isFalsey(Value value) {
+bool isFalsey(Value value) {
     if (IS_NIL(value)) return true;
     if (IS_BOOL(value)) return !AS_BOOL(value);
 
@@ -5508,11 +4592,11 @@ static bool isFalsey(Value value) {
     return false;
 }
 
-static bool isTruthy(Value value) {
+bool isTruthy(Value value) {
     return !isFalsey(value);
 }
 
-static bool invokeFromClass(ObjClass* klass, ObjString* name,
+bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
     ObjClass* current = klass;
     Value method;
@@ -5588,7 +4672,7 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     return false;
 }
 
-static bool classHasMethod(ObjClass* klass, ObjString* name) {
+bool classHasMethod(ObjClass* klass, ObjString* name) {
     ObjClass* current = klass;
     Value method;
     while (current != NULL) {
@@ -5604,7 +4688,7 @@ static bool classHasMethod(ObjClass* klass, ObjString* name) {
     return false;
 }
 
-static bool invoke(ObjString* name, int argCount) {
+bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
     ObjClass* klass = getClassForValue(receiver);

@@ -140,5 +140,11 @@ void push(Value value);
 Value pop();
 Value peek(int distance);
 void setLastError(int errorNum, const char* format, ...);
+bool isFalsey(Value value);
+bool isTruthy(Value value);
+bool callValue(Value callee, int argCount);
+bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
+bool invoke(ObjString* name, int argCount);
+void defineNativeMethod(ObjClass* klass, const char* name, NativeFn function);
 
 #endif

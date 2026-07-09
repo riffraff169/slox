@@ -1,0 +1,16 @@
+var a,b = [1,2,3];
+print a;
+print b;
+
+System.warn(false);
+
+var a,b = [1,2,3];
+print a;
+print b;
+__END__
+-- expect: --
+Warning: Destructuring assigment ignored 1 trailing array elements.
+1
+2
+1
+2
