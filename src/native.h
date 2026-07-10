@@ -98,5 +98,12 @@ Value arraySplitNative(int argCount, Value* args);
 void debugPrintArrayMethods();
 Value arrayNativeConstructor(int argCount, Value* args);
 void initArrayClass();
+Value resultNativeConstructor(int argCount, Value* args);
+Value resultUnwrapNative(int argCount, Value* args);
+Value resultUnwrapOrNative(int argCount, Value* args);
+Value optionNativeConstructor(int argCount, Value* args);
+Value optionUnwrapNative(int argCount, Value* args);
+Value optionUnwrapOrNative(int argCount, Value* args);
+void initResultAndOptionClass();
 
 #endif // NATIVE_H

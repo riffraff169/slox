@@ -138,6 +138,7 @@ InterpretResult run();
 InterpretResult interpret(const char* source, const char* filename);
 void push(Value value);
 Value pop();
+Value popn(int n);
 Value peek(int distance);
 void setLastError(int errorNum, const char* format, ...);
 bool isFalsey(Value value);

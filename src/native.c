@@ -1832,3 +1832,142 @@ void initArrayClass() {
     pop();
 #undef METHOD
 }
+
+Value resultNativeConstructor(int argCount, Value* args) {
+    if (argCount < 1 || argCount > 2) {
+        runtimeError("Result() rexpects 1 or 2 arguments, got %d.", argCount);
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = newInstance(vm.resultClass);
+    push(OBJ_VAL(instance));
+
+    Value isOk = args[0];
+    Value payload = (argCount == 2) ? args[1] : NIL_VAL;
+
+    tableSet(&instance->fields, vm.okString, isOk);
+    if (AS_BOOL(isOk)) {
+        tableSet(&instance->fields, vm.valString, payload);
+    } else {
+        tableSet(&instance->fields, vm.errString, payload);
+    }
+
+    pop();
+    return OBJ_VAL(instance);
+}
+
+Value resultUnwrapNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    if (instance->obj.klass != vm.resultClass) {
+        runtimeError("Method unwrap() expected a Result instance.");
+        return NIL_VAL;
+    }
+
+    Value okVal = NIL_VAL;
+    tableGet(&instance->fields, vm.okString, &okVal);
+
+    if (isFalsey(okVal)) {
+        Value errVal = NIL_VAL;
+        tableGet(&instance->fields, vm.errString, &errVal);
+
+        if (IS_STRING(errVal)) {
+            runtimeError("Panic: Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
+        } else {
+            runtimeError("Panic: Tried to unwrap an error Result.");
+        }
+        return NIL_VAL;
+    }
+
+    Value successVal = NIL_VAL;
+    tableGet(&instance->fields, vm.valString, &successVal);
+
+    return successVal;
+}
+
+Value resultUnwrapOrNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    if (instance->obj.klass != vm.resultClass) {
+        runtimeError("Method unwrap_or() expected a Result instance.");
+        return NIL_VAL;
+    }
+
+    Value okVal = NIL_VAL;
+    tableGet(&instance->fields, vm.okString, &okVal);
+
+    if (isTruthy(okVal)) {
+        Value successVal = NIL_VAL;
+        tableGet(&instance->fields, vm.valString, &successVal);
+        return successVal;
+    }
+
+    return args[0];
+}
+
+Value optionNativeConstructor(int argCount, Value* args) {
+    if (argCount < 1 || argCount > 2) {
+        runtimeError("Option() expects 1 or 2 arguments, got %d", argCount);
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = newInstance(vm.optionClass);
+    push(OBJ_VAL(instance));
+
+    Value isSome = args[0];
+    Value payload = (argCount == 2) ? args[1] : NIL_VAL;
+
+    tableSet(&instance->fields, vm.isSomeString, isSome);
+    tableSet(&instance->fields, vm.valString, payload);
+
+    pop();
+    return OBJ_VAL(instance);
+}
+
+Value optionUnwrapNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    Value is_some = NIL_VAL;
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+
+    if (!AS_BOOL(is_some)) {
+        runtimeError("Attempted to unwrap a 'None' Option.");
+        return NIL_VAL;
+    }
+
+    Value val = NIL_VAL;
+    tableGet(&instance->fields, vm.valString, &val);
+    return val;
+}
+
+Value optionUnwrapOrNative(int argCount, Value* args) {
+}
+
+void initResultAndOptionClass() {
+    vm.okString = copyString("ok", 2);
+    vm.valString = copyString("val", 3);
+    vm.errString = copyString("err", 3);
+    vm.isSomeString = copyString("is_some", 7);
+
+    ObjString* resultName = copyString("Result", 6);
+    push(OBJ_VAL(resultName));
+    vm.resultClass = newClass(resultName);
+    vm.resultClass->superclass = vm.objectClass;
+    vm.resultClass->callHandler = resultNativeConstructor;
+    push(OBJ_VAL(vm.resultClass));
+
+    tableSet(&vm.globals, resultName, OBJ_VAL(vm.resultClass));
+    defineNativeMethod(vm.resultClass, "unwrap", resultUnwrapNative);
+    defineNativeMethod(vm.resultClass, "unwrap_or", resultUnwrapOrNative);
+
+    ObjString* optionName = copyString("Option", 6);
+    push(OBJ_VAL(optionName));
+    vm.optionClass = newClass(optionName);
+    vm.optionClass->superclass = vm.objectClass;
+    vm.optionClass->callHandler = optionNativeConstructor;
+    push(OBJ_VAL(vm.optionClass));
+
+    tableSet(&vm.globals, optionName, OBJ_VAL(vm.optionClass));
+    defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
+    defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
+
+    popn(4);
+}

@@ -78,7 +78,6 @@ InterpretResult run();
 bool callValue(Value callee, int argCount);
 bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
 Value peek(int distance);
-Value popn(int n);
 bool isFalsey(Value value);
 bool isTruthy(Value value);
 
@@ -231,55 +230,6 @@ void raiseException(Value exceptionValue) {
     }
 }
 
-static Value resultUnwrapNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("Result.unwrap() called on a non-instance object.");
-        return NIL_VAL;
-    }
-
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    Value okVal;
-
-    tableGet(&instance->fields, vm.okString, &okVal);
-
-    if (isFalsey(okVal)) {
-        Value errVal;
-        tableGet(&instance->fields, vm.errString, &errVal);
-
-        if (IS_STRING(errVal)) {
-            runtimeError("Panic: Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
-        } else {
-            runtimeError("Panic: Tried to unwrap an error Result.");
-        }
-        return NIL_VAL;
-    }
-
-    Value successVal;
-    tableGet(&instance->fields, vm.valString, &successVal);
-
-    return successVal;
-}
-
-static Value resultUnwrapOrNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        runtimeError("Result.unwrap_or() expects exactly 1 argument.");
-        return NIL_VAL;
-    }
-
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    Value okVal;
-
-    tableGet(&instance->fields, vm.okString, &okVal);
-
-    if (!isFalsey(okVal)) {
-        Value successVal;
-        tableGet(&instance->fields, vm.valString, &successVal);
-        return successVal;
-    }
-
-    return args[0];
-}
-
 static Value optionInitNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
@@ -287,42 +237,6 @@ static Value optionInitNative(int argCount, Value* args) {
     tableSet(&instance->fields, copyString("val", 3), args[1]);
 
     return args[-1];
-}
-
-static Value optionUnwrapNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-
-    Value is_some;
-    tableGet(&instance->fields, vm.isSomeString, &is_some);
-
-    if (!AS_BOOL(is_some)) {
-        runtimeError("CRITICAL ERROR: Attempted to unwrap a 'None' Option.");
-        return NIL_VAL;
-    }
-
-    Value val;
-    tableGet(&instance->fields, copyString("val", 3), &val);
-    return val;
-}
-
-static Value optionUnwrapOrNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("Option.unwrap_or() expects exactly 1 argument.");
-        return NIL_VAL;
-    }
-
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    Value is_some;
-
-    tableGet(&instance->fields, vm.isSomeString, &is_some);
-
-    if (isTruthy(is_some)) {
-        Value val;
-        tableGet(&instance->fields, vm.valString, &val);
-        return val;
-    }
-
-    return args[0];
 }
 
 static uint32_t valueToUint32(Value value) {
@@ -3047,46 +2961,6 @@ Value setPropertySync(Value receiver, ObjString* name, Value value) {
     return NIL_VAL;
 }
 
-void initOptionClass() {
-    ObjString* className = copyString("Option", 6);
-    push(OBJ_VAL(className));
-
-    vm.optionClass = newClass(className);
-    vm.optionClass->kind = CLASS_OPTION;
-    vm.optionClass->superclass = vm.objectClass;
-    push(OBJ_VAL(vm.optionClass));
-
-    tableSet(&vm.globals, className, OBJ_VAL(vm.optionClass));
-
-    defineNativeMethod(vm.optionClass, "init", optionInitNative);
-    defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
-    defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
-    vm.isSomeString = copyString("is_some", 7);
-
-    popn(2);
-}
-
-void initResultClass() {
-    ObjString* className = copyString("Result", 6);
-    push(OBJ_VAL(className));
-
-    vm.resultClass = newClass(className);
-    vm.resultClass->kind = CLASS_RESULT;
-    vm.resultClass->superclass = vm.objectClass;
-    push(OBJ_VAL(vm.resultClass));
-
-    tableSet(&vm.globals, className, OBJ_VAL(vm.resultClass));
-
-    defineNativeMethod(vm.resultClass, "init", resultInitNative);
-    defineNativeMethod(vm.resultClass, "unwrap", resultUnwrapNative);
-    defineNativeMethod(vm.resultClass, "unwrap_or", resultUnwrapOrNative);
-
-    vm.okString = copyString("ok", 2);
-    vm.valString = copyString("val", 3);
-    vm.errString = copyString("err", 3);
-    popn(2);
-}
-
 static Value classAddMethodNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("add_method() expects 2 arguments (name, function).");
@@ -3305,8 +3179,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
     initCoreLibrary(); // done
 
-    initResultClass();
-    initOptionClass();
+    initResultAndOptionClass();
     initMathLibrary(); // done
     initSystemLibrary(argc, argv, env);
     initProcessClass();
@@ -3554,7 +3427,7 @@ bool isFalsey(Value value) {
     if (IS_INSTANCE(value)) {
         ObjInstance* instance = AS_INSTANCE(value);
 
-        if (instance->obj.klass->kind == CLASS_RESULT) {
+        if (instance->obj.klass == vm.resultClass) {
             Value okVal;
 
             if (tableGet(&instance->fields, vm.okString, &okVal)) {
@@ -3562,10 +3435,10 @@ bool isFalsey(Value value) {
             }
             return true;
         }
-        if (instance->obj.klass->kind == CLASS_OPTION) {
+        if (instance->obj.klass == vm.optionClass) {
             Value is_some;
 
-            if (tableGet(&instance->fields, copyString("is_some", 7), &is_some)) {
+            if (tableGet(&instance->fields, vm.isSomeString, &is_some)) {
                 return isFalsey(is_some);
             }
             return true;
