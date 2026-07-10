@@ -3377,6 +3377,7 @@ bool callValue(Value callee, int argCount) {
                                 vm.exceptionThrown = false;
                                 return false;
                             }
+                            if (vm.frameCount == 0) return false;
 
                             vm.stackTop -= argCount + 1;
                             push(result);
@@ -3472,6 +3473,7 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
                     vm.exceptionThrown = false;
                     return false;
                 }
+                if (vm.frameCount == 0) return false;
                 vm.stackTop -= (argCount + 1);
                 push(result);
                 return true;
@@ -3593,6 +3595,7 @@ bool invoke(ObjString* name, int argCount) {
                 if (IS_NATIVE(method)) {
                     NativeFn native = AS_NATIVE(method);
                     Value result = native(argCount, vm.stackTop - argCount);
+                    if (vm.frameCount == 0) return false;
                     vm.stackTop -= (argCount + 1);
                     push(result);
                     return true;
@@ -3611,6 +3614,7 @@ bool invoke(ObjString* name, int argCount) {
             if (IS_NATIVE(method)) {
                 NativeFn native = AS_NATIVE(method);
                 Value result = native(argCount, vm.stackTop - argCount);
+                if (vm.frameCount == 0) return false;
                 vm.stackTop -= (argCount + 1);
                 push(result);
                 return true;
@@ -3634,6 +3638,7 @@ bool invoke(ObjString* name, int argCount) {
                 if (IS_NATIVE(method)) {
                     NativeFn native = AS_NATIVE(method);
                     Value result = native(argCount, vm.stackTop - argCount);
+                    if (vm.frameCount == 0) return false;
                     vm.stackTop -= (argCount + 1);
                     push(result);
                     return true;
@@ -4693,8 +4698,8 @@ InterpretResult run() {
                         frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
-                    frame = &vm.frames[vm.frameCount - 1];
                     if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                    frame = &vm.frames[vm.frameCount - 1];
                     break;
                 }
                 break;
@@ -4975,6 +4980,7 @@ InterpretResult run() {
                         vm.nativeExitDepth = -1;
                         return INTERPRET_OK;
                     }
+                    if (vm.frameCount == 0) return false;
 
                     frame = &vm.frames[vm.frameCount - 1];
                 }

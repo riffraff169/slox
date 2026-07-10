@@ -1939,6 +1939,17 @@ Value optionUnwrapNative(int argCount, Value* args) {
 }
 
 Value optionUnwrapOrNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    Value is_some = NIL_VAL;
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+
+    if (isTruthy(is_some)) {
+        Value val = NIL_VAL;
+        tableGet(&instance->fields, vm.valString, &val);
+        return val;
+    }
+    return args[0];
 }
 
 void initResultAndOptionClass() {
