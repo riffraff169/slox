@@ -105,5 +105,11 @@ Value optionNativeConstructor(int argCount, Value* args);
 Value optionUnwrapNative(int argCount, Value* args);
 Value optionUnwrapOrNative(int argCount, Value* args);
 void initResultAndOptionClass();
+Value regexNativeConstructor(int argCount, Value* args);
+Value regexTestNative(int argCount, Value* args);
+Value regexMatchNative(int argCount, Value* args);
+Value regexGetPatternNative(int argCount, Value* args);
+void regexDestructor(ObjInstance* inst);
+void initRegexClass();
 
 #endif // NATIVE_H

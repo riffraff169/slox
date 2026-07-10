@@ -1982,3 +1982,147 @@ void initResultAndOptionClass() {
 
     popn(4);
 }
+
+Value regexNativeConstructor(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Regex constructor expects a pattern string.");
+        return NIL_VAL;
+    }
+
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("Constructor called on a non-class object.");
+        return NIL_VAL;
+    }
+    ObjClass* klass = AS_CLASS(args[-1]);
+    ObjString* pattern = AS_STRING(args[0]);
+
+    int errornumber;
+    PCRE2_SIZE erroroffset;
+
+    pcre2_code* code = pcre2_compile(
+            (unsigned char*)pattern->chars, PCRE2_ZERO_TERMINATED,
+            0, &errornumber, &erroroffset, NULL);
+
+    if (code == NULL) {
+        runtimeError("Regex compilation failed.");
+        return NIL_VAL;
+    }
+
+    RegexInternal* internal = ALLOCATE(RegexInternal, 1);
+    internal->code = code;
+    internal->pattern = pattern;
+
+    ObjInstance* instance = newInstance(klass);
+    instance->foreignPtr = internal;
+
+    return OBJ_VAL(instance);
+}
+
+Value regexTestNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[1])) {
+        runtimeError("test() expects 1 string argument.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+    RegexInternal* re = (RegexInternal*)instance->foreignPtr;
+
+    if (re == NULL) {
+        runtimeError("Regex not initialized.");
+        return NIL_VAL;
+    }
+
+    ObjString* subject = AS_STRING(args[1]);
+
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
+    int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
+            0, 0, match_data, NULL);
+
+    pcre2_match_data_free(match_data);
+    return BOOL_VAL(rc >= 0);
+}
+
+Value regexMatchNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("match() expects 1 string argument.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    RegexInternal* re = (RegexInternal*)instance->foreignPtr;
+
+    if (re == NULL) {
+        runtimeError("Regex not initialized.");
+        return NIL_VAL;
+    }
+
+    ObjString* subject = AS_STRING(args[0]);
+
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
+    int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
+            0, 0, match_data, NULL);
+
+    if (rc < 0) {
+        pcre2_match_data_free(match_data);
+        return NIL_VAL;
+    }
+
+    PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(match_data);
+
+    ObjArray* results = newArray();
+    push(OBJ_VAL(results));
+
+    for (int i = 0; i < rc; i++) {
+        int start = (int)ovector[2 * i];
+        int end = (int)ovector[2 * i + 1];
+
+        if (start == -1) {
+            arrayAppend(results, NIL_VAL);
+        } else {
+            ObjString* matchStr = copyString(subject->chars + start, end - start);
+            push(OBJ_VAL(matchStr));
+            arrayAppend(results, OBJ_VAL(matchStr));
+            pop();
+        }
+    }
+
+    pcre2_match_data_free(match_data);
+    return pop();
+}
+
+Value regexGetPatternNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[0]);
+
+    if (instance->foreignPtr == NULL) {
+        runtimeError("Regex instance not initialized.");
+        return NIL_VAL;
+    }
+
+    RegexInternal* internal = (RegexInternal*)instance->foreignPtr;
+    return OBJ_VAL(internal->pattern);
+}
+
+void regexDestructor(ObjInstance* inst) {
+    if (inst->foreignPtr != NULL) {
+        RegexInternal* re = (RegexInternal*)inst->foreignPtr;
+        pcre2_code_free(re->code);
+        FREE(RegexInternal, inst->foreignPtr);
+        inst->foreignPtr = NULL;
+    }
+}
+
+void initRegexClass() {
+    ObjString* string = copyString("Regex", 5);
+    push(OBJ_VAL(string));
+    vm.regexClass = newClass(string);
+    vm.regexClass->superclass = vm.objectClass;
+    vm.regexClass->callHandler = regexNativeConstructor;
+    vm.regexClass->destructor = regexDestructor;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+
+    defineNativeMethod(vm.regexClass, "test", regexTestNative);
+    defineNativeMethod(vm.regexClass, "match", regexMatchNative);
+    defineNativeMethod(vm.regexClass, "get_pattern", regexGetPatternNative);
+
+    pop();
+}
