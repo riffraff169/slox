@@ -81,7 +81,6 @@ Value peek(int distance);
 Value popn(int n);
 bool isFalsey(Value value);
 bool isTruthy(Value value);
-static ObjClass* getClassForValue(Value value);
 
 typedef enum {
     PROP_FOUND,
@@ -350,10 +349,6 @@ void includeMethods(ObjClass* target, ObjClass* mixin) {
     }
 }
 
-static Value clockNative(int argCount, Value* args) {
-    return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
-}
-
 static Value objectEachNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Expected a closure callback.");
@@ -478,122 +473,6 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
     return res;
 }
 
-static Value objectToStringNative(int argCount, Value* args) {
-    if (argCount != 0) {
-        return NIL_VAL;
-    }
-
-    Value receiver = args[-1];
-
-    char buffer[64];
-    int len = 0;
-
-    if (IS_NUMBER(receiver)) {
-        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(receiver));
-    } else if (IS_BOOL(receiver)) {
-        len = snprintf(buffer, sizeof(buffer), AS_BOOL(receiver) ? "true" : "false");
-    } else if (IS_NIL(receiver)) {
-        len = snprintf(buffer, sizeof(buffer), "nil");
-    } else if (IS_STRING(receiver)) {
-        return receiver; // already a string
-    } else {
-        len = snprintf(buffer, sizeof(buffer), "<object>");
-    }
-
-    return OBJ_VAL(copyString(buffer, len));
-}
-
-static Value strNative(int argCount, Value* args) {
-    //if (argCount != 1) return NIL_VAL;
-    if (argCount != 1) return OBJ_VAL(copyString("", 0));
-
-    char buffer[64];
-    int len = 0;
-
-    if (IS_NUMBER(args[0])) {
-        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(args[0]));
-    } else if (IS_BOOL(args[0])) {
-        len = snprintf(buffer, sizeof(buffer), AS_BOOL(args[0]) ? "true" : "false");
-    } else if (IS_NIL(args[0])) {
-        len = snprintf(buffer, sizeof(buffer), "nil");
-    } else if (IS_STRING(args[0])) {
-        return args[0]; // already a string
-    } else {
-        len = snprintf(buffer, sizeof(buffer), "<object>");
-    }
-
-    return OBJ_VAL(copyString(buffer, len));
-}
-
-static Value hasMethodNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        runtimeError("has_method() expects exactly 1 argument (the method name).");
-        return BOOL_VAL(false);
-    }
-
-    if (!IS_STRING(args[0])) {
-        runtimeError("has_method() expects a string argument for the method name.");
-        return BOOL_VAL(false);
-    }
-
-    Value receiver = args[-1];
-    ObjString* methodName = AS_STRING(args[0]);
-
-    ObjClass* klass = getClassForValue(receiver);
-    if (klass == NULL) {
-        return BOOL_VAL(false);
-    }
-
-    ObjClass* current = klass;
-    Value method;
-
-    while (current != NULL) {
-        if (tableGet(&current->methods, methodName, &method)) {
-            return BOOL_VAL(true);
-        }
-        current = current->superclass;
-    }
-    return BOOL_VAL(false);
-}
-
-static Value getMethodsNative(int argCount, Value* args) {
-    Value receiver = args[-1];
-    ObjClass* klass = getClassForValue(receiver);
-    //ObjClass* klass = NULL;
-
-    /*
-    if (IS_INSTANCE(receiver)) {
-        klass = AS_INSTANCE(receiver)->obj.klass;
-    } else if (IS_CLASS(receiver)) {
-        klass = AS_CLASS(receiver);
-    } else if (IS_OBJ(receiver)) {
-        klass = AS_OBJ(receiver)->klass;
-    }
-    */
-
-    if (klass == NULL) {
-        runtimeError("Cannot get methods of a non-object/non-class.");
-        return NIL_VAL;
-    }
-
-    ObjArray* list = newArray();
-    push(OBJ_VAL(list));
-
-    ObjClass* current = klass;
-    while (current != NULL) {
-        Table* table = &current->methods;
-        for (int i = 0; i < table->capacity; i++) {
-            Entry* entry = &table->entries[i];
-            if (entry->key != NULL) {
-                arrayAppend(list, OBJ_VAL(entry->key));
-            }
-        }
-        current = current->superclass;
-    }
-
-    return pop();
-}
-
 void* locateAndLoadModule(const char* name) {
     char filename[256];
 
@@ -712,9 +591,7 @@ static void resetStack() {
     vm.openUpvalues = NULL;
 }
 
-static ObjClass* getClassForValue(Value value) {
-    Obj* obj = AS_OBJ(value);
-
+ObjClass* getClassForValue(Value value) {
     // 1. Handle primitive immediate values
     if (IS_NUMBER(value)) return vm.numberClass;
     if (IS_BOOL(value)) return vm.boolClass;
@@ -722,54 +599,22 @@ static ObjClass* getClassForValue(Value value) {
     if (IS_STRING(value)) return vm.stringClass;
     if (IS_VEC3(value)) return vm.vec3Class;
 
+    // 2. Handle heap-allocated objects
     if (IS_OBJ(value)) {
         switch (OBJ_TYPE(value)) {
-            case OBJ_STRING:
-                return vm.stringClass;
-            case OBJ_ARRAY:
-                return vm.arrayClass;
-            case OBJ_MAP:
-                return vm.mapClass;
-            case OBJ_CLASS:
-                return vm.classClass;
+            case OBJ_STRING: return vm.stringClass;
+            case OBJ_ARRAY: return vm.arrayClass;
+            case OBJ_MAP: return vm.mapClass;
+            case OBJ_CLASS: return vm.classClass;
                 //return (ObjClass*)AS_OBJ(value);
                 //return AS_CLASS(value)->obj.klass;
-            case OBJ_INSTANCE:
-                return AS_INSTANCE(value)->obj.klass;
-            default:
-                return AS_OBJ(value)->klass;
+            case OBJ_CLOSURE:
+            case OBJ_NATIVE: return vm.functionClass;
+            case OBJ_INSTANCE: return AS_INSTANCE(value)->obj.klass;
+            default: return AS_OBJ(value)->klass;
         }
     }
     return NULL;
-
-    /*
-    {
-
-        Obj* obj = AS_OBJ(value);
-
-        if (obj->type == OBJ_CLASS) {
-            return (ObjClass*)obj;
-        }
-
-        if (obj->type == OBJ_INSTANCE) {
-            return ((ObjInstance*)obj)->obj.klass;
-        }
-
-        if (obj->type == OBJ_ARRAY) return vm.arrayClass;
-        if (obj->type == OBJ_VEC3) return vm.vec3Class;
-        if (obj->type == OBJ_MAP) return vm.mapClass;
-
-        return obj->klass;
-    }
-
-    if (IS_CLASS(value)) {
-        return AS_CLASS(value)->obj.klass;
-    }
-    if (IS_INSTANCE(value)) return AS_INSTANCE(value)->obj.klass;
-    if (IS_MAP(value)) return vm.mapClass;
-    if (IS_ARRAY(value)) return vm.arrayClass;
-    return NULL;
-    */
 }
 
 bool runtimeError(const char* format, ...) {
@@ -1531,99 +1376,6 @@ static Value regexGetPatternNative(int argCount, Value* args) {
     return OBJ_VAL(internal->pattern);
 }
 
-static Value listFieldsNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        return OBJ_VAL(newArray());
-    }
-
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-
-    ObjArray* array = newArray();
-    push(OBJ_VAL(array));
-
-    for (int i = 0; i < instance->fields.capacity; i++) {
-        Entry* entry = &instance->fields.entries[i];
-        if (entry->key != NULL) {
-            arrayAppend(array, OBJ_VAL(entry->key));
-        }
-    }
-
-    pop();
-
-    return OBJ_VAL(array);
-}
-
-static Value getFieldNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("get_field() expects a string argument.");
-        return NIL_VAL;
-    }
-
-    Value receiver = args[-1];
-    ObjString* fieldName = AS_STRING(args[0]);
-    Value value;
-
-    if (IS_INSTANCE(receiver)) {
-        if (tableGet(&AS_INSTANCE(receiver)->fields, fieldName, &value)) {
-            return value;
-        }
-    } else if (IS_CLASS(receiver)) {
-        if (tableGet(&AS_CLASS(receiver)->fields, fieldName, &value)) {
-            return value;
-        }
-    } else {
-        runtimeError("Only instance and classes can have fields.");
-        return NIL_VAL;
-    }
-
-    return NIL_VAL;
-}
-
-static Value setFieldNative(int argCount, Value* args) {
-    if (argCount != 2 || !IS_STRING(args[0])) {
-        runtimeError("set_field() expects string, value arguments.");
-        return NIL_VAL;
-    }
-
-    Value receiver = args[-1];
-    ObjString* fieldName = AS_STRING(args[0]);
-    Value value = args[1];
-
-    if (IS_OBJ(receiver)) {
-        if (IS_INSTANCE(receiver)) {
-            ObjInstance* instance = AS_INSTANCE(receiver);
-            printf("set_field executing! Receiver ObjType: %d\n", AS_OBJ(receiver)->type);
-            printf("  Instance Addr: %p\n", (void*)instance);
-            printf("  Key String:    '%s' (Addr: %p)\n", fieldName->chars, (void*)fieldName);
-            printf("  Value:         ");
-            printValue(value);
-            printf("\n");
-            printf("  Klass Addr:    %p\n", (void*)instance->obj.klass);
-            if (instance->obj.klass) {
-                printf("Name Obj Addr: %p\n", (void*)instance->obj.klass->name);
-                if (instance->obj.klass->name) {
-                    printf("String Length: %d\n", instance->obj.klass->name->length);
-                    printf("Raw Name:      '%s'\n", instance->obj.klass->name->chars);
-                }
-            }
-        }
-    }
-    if (IS_INSTANCE(receiver)) {
-        tableSet(&AS_INSTANCE(receiver)->fields, fieldName, value);
-    } else if (IS_CLASS(receiver)) {
-        tableSet(&AS_CLASS(receiver)->fields, fieldName, value);
-    } else {
-        runtimeError("Only instance and classes can have fields.");
-        return NIL_VAL;
-    }
-    return value;
-
-    /*
-    runtimeError("Cannot set fields on built-in types.");
-    return NIL_VAL;
-    */
-}
-
 bool isInstanceOf(Value value, ObjClass* targetClass) {
     if (!IS_INSTANCE(value)) return false;
 
@@ -1633,77 +1385,6 @@ bool isInstanceOf(Value value, ObjClass* targetClass) {
         klass = klass->superclass;
     }
     return false;
-}
-
-static Value getSuperclassNative(int argCount, Value* args) {
-    /*
-    if (argCount != 1 || (!IS_CLASS(args[0]) && !IS_INSTANCE(args[0]))) {
-        runtimeError("get_superclass() expects a class or instance as the argument.");
-        return NIL_VAL;
-    }
-    */
-    //printValue(args[-1]);
-    //printf("\n");
-
-    Value receiver = args[-1];
-    ObjClass* klass = getClassForValue(receiver);
-    //Obj* obj = AS_OBJ(args[-1]);
-
-    /*
-    if (IS_INSTANCE(receiver)) {
-        klass = AS_INSTANCE(receiver)->obj.klass;
-    } else if (IS_CLASS(receiver)) {
-        klass = AS_CLASS(receiver);
-    } else if (IS_OBJ(receiver)) {
-        klass = AS_OBJ(receiver)->klass;
-    }
-    */
-
-    if (klass == NULL) {
-        runtimeError("Cannot get superclass of a non-object type.");
-        return NIL_VAL;
-    }
-
-    if (klass->superclass != NULL) {
-        return OBJ_VAL(klass->superclass);
-    }
-
-    return NIL_VAL;
-
-    /*
-    if (!IS_OBJ(args[-1])) {
-        runtimeError("get_superclass() expects an object.");
-        return NIL_VAL;
-    }
-    
-    if (IS_CLASS(args[-1])) {
-        klass = AS_CLASS(args[-1]);
-    }
-
-    if (IS_INSTANCE(args[-1])) {
-        ObjInstance* instance = AS_INSTANCE(args[-1]);
-        klass = instance->obj.klass;
-    }
-
-    if (obj->klass == NULL) {
-        printf("klass == NULL\n");
-        return NIL_VAL;
-    }
-
-    if (obj->klass->superclass == NULL) {
-        printf("superclass == NULL\n");
-        return NIL_VAL;
-    }
-
-    if (obj->klass != NULL)
-        klass = obj->klass;
-
-    if (klass != NULL && klass->superclass != NULL) {
-        return OBJ_VAL(klass->superclass);
-    }
-
-    return NIL_VAL;
-    */
 }
 
 static Value vec3InitNative(int argCount, Value* args) {
@@ -1873,86 +1554,6 @@ static inline Value getCheckTarget(int argCount, Value* args) {
         return (argCount > 0) ? args[0] : NIL_VAL;
     }
     return args[-1];
-}
-
-static Value isNumberNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_NUMBER(target));
-    //return BOOL_VAL(argCount > 0 && IS_NUMBER(args[0]));
-}
-
-static Value isStringNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_STRING(target));
-    //return BOOL_VAL(argCount > 0 && IS_STRING(args[0]));
-}
-
-static Value isBoolNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_BOOL(target));
-    //return BOOL_VAL(argCount > 0 && IS_BOOL(args[0]));
-}
-
-static Value isNilNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_NIL(target));
-    //return BOOL_VAL(argCount > 0 && IS_NIL(args[0]));
-}
-
-static Value isClassNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_CLASS(target));
-    //return BOOL_VAL(argCount > 0 && IS_CLASS(args[0]));
-}
-
-static Value isInstanceNative(int argCount, Value* args) {
-    Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_INSTANCE(target));
-    //return BOOL_VAL(argCount > 0 && IS_INSTANCE(args[0]));
-}
-
-static Value typeofNative(int argCount, Value* args) {
-    if (argCount < 1) return OBJ_VAL(copyString("NIL", 3));
-    Value value = args[0];
-
-    // 1. Handle primitives
-    if (IS_NUMBER(value)) return OBJ_VAL(copyString("Number", 6));
-    if (IS_BOOL(value)) return OBJ_VAL(copyString("Bool", 4));
-    if (IS_NIL(value)) return OBJ_VAL(copyString("Nil", 3));
-    if (IS_VEC3(value)) return OBJ_VAL(copyString("Vec3", 4));
-
-
-    if (IS_OBJ(value)) {
-        Obj* obj = AS_OBJ(value);
-
-        // 2. Header promotion check
-        // If it has a class, just return that class's name
-        // This covers OBJ_ISNTANCE, OBJ_ARRAY, and any other promoted types.
-        if (obj->klass != NULL) {
-            return OBJ_VAL(obj->klass->name);
-        }
-
-        switch (OBJ_TYPE(value)) {
-            case OBJ_STRING:
-                return OBJ_VAL(copyString("String", 6));
-            case OBJ_NATIVE:
-                return OBJ_VAL(copyString("Native", 6));
-            case OBJ_CLOSURE:
-                return OBJ_VAL(copyString("Function", 8));
-            case OBJ_CLASS:
-                return OBJ_VAL(copyString("Class", 5));
-            //case OBJ_INSTANCE:
-            //    return OBJ_VAL(AS_INSTANCE(value)->obj.klass->name);
-            //case OBJ_ARRAY:
-            //    return OBJ_VAL(copyString("Array", 5));
-            //case OBJ_MAP:
-            //    return OBJ_VAL(copyString("Map", 3));
-            default:
-                return OBJ_VAL(copyString("Object", 6));
-        }
-    }
-
-    return OBJ_VAL(copyString("UNKNOWN", 7));
 }
 
 static Value processRunStatic(int argCount, Value* args) {
@@ -2353,157 +1954,6 @@ static Value stringInitMethod(int argCount, Value* args) {
         runtimeError("String init constructor expects a string.");
         return NIL_VAL;
     }
-}
-
-static Value createInstanceNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("create_instance() expects a string argument.");
-        return NIL_VAL;
-    }
-
-    ObjString* className = AS_STRING(args[0]);
-    Value classVal;
-
-    if (!tableGet(&vm.globals, className, &classVal) || !IS_CLASS(classVal)) {
-        runtimeError("No such class: %s", className->chars);
-        return NIL_VAL;
-    }
-
-    ObjClass* klass = AS_CLASS(classVal);
-    ObjInstance* instance = newInstance(klass);
-    return OBJ_VAL(instance);
-}
-
-static Value evalNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
-        return NIL_VAL;
-    }
-
-    if (!IS_STRING(args[0])) {
-        runtimeError("Argument to eval() must be a string.");
-        return NIL_VAL;
-    }
-
-    ObjString* source = AS_STRING(args[0]);
-
-    ObjFunction* function = compile(source->chars, copyString("<eval>", 6));
-    if (function == NULL) {
-        return NIL_VAL;
-    }
-
-    push(OBJ_VAL(function));
-    ObjClosure* closure = newClosure(function);
-    pop();
-    push(OBJ_VAL(closure));
-
-    int oldExitDepth = vm.nativeExitDepth;
-    Value* callbackStackStart = vm.stackTop;
-    int framesBefore = vm.frameCount;
-
-    if (callValue(OBJ_VAL(closure), 0)) {
-        if (vm.frameCount > framesBefore) {
-            vm.nativeExitDepth = framesBefore;
-            InterpretResult result = run();
-
-            if (result == INTERPRET_RUNTIME_ERROR) {
-                vm.stackTop = callbackStackStart;
-                vm.nativeExitDepth = oldExitDepth;
-                return NIL_VAL;
-            }
-        }
-
-        Value result = pop();
-
-        vm.nativeExitDepth = oldExitDepth;
-
-        return result;
-    }
-    vm.nativeExitDepth = oldExitDepth;
-    return NIL_VAL;
-}
-
-static Value programNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("program() expects a string filename argument.");
-        return NIL_VAL;
-    }
-    
-    ObjString* filename = AS_STRING(args[0]);
-    push(OBJ_VAL(filename));
-    char* source = locateAndReadLoxFile(filename->chars);
-
-    if (source == NULL) {
-        runtimeError("Could not locate or read module file '%s'.", filename->chars);
-        return NIL_VAL;
-    }
-
-    /*
-    ObjFunction* function = compileModule(source, filename);
-    free(source);
-
-    if (function == NULL) {
-        runtimeError("Compile error inside module '%s'.", filename->chars);
-        return NIL_VAL;
-    }
-
-    push(OBJ_VAL(function));
-    ObjClosure* closure = newClosure(function);
-    pop();
-    push(OBJ_VAL(closure));
-    */
-
-    const char* pathStart = filename->chars;
-    const char* lastSlash = strrchr(pathStart, '/');
-    if (lastSlash != NULL) {
-        pathStart = lastSlash + 1;
-    }
-
-    int nameLength = (int)strlen(pathStart);
-    if (nameLength > 4 && strcmp(pathStart + nameLength - 4, ".lox") == 0) {
-        nameLength -= 4;
-    }
-
-    ObjString* className = copyString(pathStart, nameLength);
-    push(OBJ_VAL(className));
-
-    ObjClass* klass = newClass(className);
-    push(OBJ_VAL(klass));
-
-    klass->superclass = vm.objectClass;
-    bool success = compileClassModule(source, klass);
-    free(source);
-
-    pop();
-    pop();
-
-    if (!success) {
-        runtimeError("Compile error inside module class '%s'.", filename->chars);
-        return NIL_VAL;
-    }
-
-    return OBJ_VAL(klass);
-}
-
-static Value objectClassNameMethod(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    return OBJ_VAL(instance->obj.klass->name);
-}
-
-static Value objectClassMethod(int argCount, Value* args) {
-    if (argCount != 0) {
-        runtimeError("Expected 0 arguments but get %d.", argCount);
-        return NIL_VAL;
-    }
-    Value receiver = args[-1];
-
-    ObjClass* klass = getClassForValue(receiver);
-
-    if (klass == NULL) {
-        return NIL_VAL;
-    }
-
-    return OBJ_VAL(klass);
 }
 
 static Value classSuperclassMethod(int argCount, Value* args) {
@@ -3294,23 +2744,6 @@ void initIOClass() {
     pop();
 }
 
-static Value chrNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        return NIL_VAL;
-    }
-
-    if (!IS_NUMBER(args[0])) {
-        return NIL_VAL;
-    }
-
-    uint8_t code = (uint8_t)AS_NUMBER(args[0]);
-    char c_str[2];
-    c_str[0] = (char)code;
-    c_str[1] = '\0';
-
-    return OBJ_VAL(copyString(c_str, 1));
-}
-
 static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
     ObjClass* current = klass;
 
@@ -3746,7 +3179,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
     tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
-    initStringClass();
+    initStringClass(); // done
 
     string = copyString("Class", 5);
     push(OBJ_VAL(string));
@@ -3790,6 +3223,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.methodMissingString = NULL;
     vm.methodMissingString = copyString("method_missing", 14);
 
+    /*
     defineNative("clock", clockNative);
     defineNative("str", strNative);
     defineNative("typeof", typeofNative);
@@ -3807,6 +3241,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.objectClass, "isinstance", isInstanceNative);
     defineNative("chr", chrNative);
     defineNative("eval", evalNative);
+    */
 
     string = copyString("Function", 8);
     push(OBJ_VAL(string));
@@ -3851,6 +3286,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.moduleClass->superclass = vm.objectClass;
     pop();
 
+    /*
     defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
     defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
     defineNativeMethod(vm.objectClass, "set_field", setFieldNative);
@@ -3866,18 +3302,20 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNative("create_instance", createInstanceNative);
 
     defineNative("program", programNative);
+    */
+    initCoreLibrary(); // done
 
     initResultClass();
     initOptionClass();
-    initMathLibrary();
+    initMathLibrary(); // done
     initSystemLibrary(argc, argv, env);
     initProcessClass();
     initFileLibrary();
     initRegexClass();
     initVec3Library();
     initGCLibrary();
-    initArrayClass();
-    initMapClass();
+    initArrayClass(); // done
+    initMapClass(); //done
     initIOClass();
     initStructClass();
 

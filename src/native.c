@@ -64,6 +64,8 @@
         frame = &vm.frames[vm.frameCount - 1]; \
     } while (false)
 
+#define GET_GLOBAL(name, outValue) tableGet(&vm.globals, (name), (outValue))
+
 void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     tableSet(&klass->constants, AS_STRING(peek(0)), value);
@@ -74,11 +76,408 @@ Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
-void initGlobalNatives() {
-    defineNative("clock", clockNative);
-    defineNative("str", strNative);
-    defineNative("typeof", typeofNative);
-    defineNative("isnumber", isNumberNative);
+Value strNative(int argCount, Value* args) {
+    if (argCount != 1) return OBJ_VAL(copyString("", 0));
+
+    return valueToString(args[0]);
+}
+
+Value typeofNative(int argCount, Value* args) {
+    if (argCount < 1) return OBJ_VAL(vm.nilClass->name);
+    ObjClass* klass = getClassForValue(args[0]);
+
+    if (klass != NULL) {
+        return OBJ_VAL(klass->name);
+    }
+
+    return OBJ_VAL(copyString("UNKNOWN", 7));
+}
+
+Value chrNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        return NIL_VAL;
+    }
+
+    if (!IS_NUMBER(args[0])) {
+        return NIL_VAL;
+    }
+
+    uint8_t code = (uint8_t)AS_NUMBER(args[0]);
+    char c_str[2];
+    c_str[0] = (char)code;
+    c_str[1] = '\0';
+
+    return OBJ_VAL(copyString(c_str, 1));
+}
+
+Value evalNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("Argument to eval() must be a string.");
+        return NIL_VAL;
+    }
+
+    ObjString* source = AS_STRING(args[0]);
+
+    ObjFunction* function = compile(source->chars, copyString("<eval>", 6));
+    if (function == NULL) {
+        return NIL_VAL;
+    }
+
+    push(OBJ_VAL(function));
+    ObjClosure* closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+
+    VM_CALLBACK_INIT();
+
+    VM_CALLBACK_ENTER();
+
+    if (callValue(OBJ_VAL(closure), 0)) {
+        InterpretResult result = run();
+
+        VM_CALLBACK_CHECK_ERROR(result);
+
+        Value evalResult = pop();
+
+        VM_CALLBACK_EXIT();
+        return evalResult;
+    }
+    VM_CALLBACK_EXIT();
+    return NIL_VAL;
+}
+
+Value createInstanceNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("create_instance() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* className = AS_STRING(args[0]);
+    Value classVal;
+
+    if (!GET_GLOBAL(className, &classVal) | !IS_CLASS(classVal)) {
+        runtimeError("No such class: %s", className->chars);
+        return NIL_VAL;
+    }
+
+    ObjClass* klass = AS_CLASS(classVal);
+    ObjInstance* instance = newInstance(klass);
+    return OBJ_VAL(instance);
+}
+
+Value programNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("program() expects a string filename argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* filename = AS_STRING(args[0]);
+    push(OBJ_VAL(filename));
+    char* source = locateAndReadLoxFile(filename->chars);
+
+    if (source == NULL) {
+        runtimeError("Could not locate or read class file '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    const char* pathStart = filename->chars;
+    const char* lastSlash = strrchr(pathStart, '/');
+    if (lastSlash != NULL) {
+        pathStart = lastSlash + 1;
+    }
+
+    int nameLength = (int)strlen(pathStart);
+    if (nameLength > 4 && strcmp(pathStart + nameLength - 4, ".lox") == 0) {
+        nameLength -= 4;
+    }
+
+    ObjString* className = copyString(pathStart, nameLength);
+    push(OBJ_VAL(className));
+
+    ObjClass* klass = newClass(className);
+    push(OBJ_VAL(klass));
+
+    klass->superclass = vm.objectClass;
+    bool success = compileClassModule(source, klass);
+    free(source);
+
+    pop();
+    pop();
+
+    if (!success) {
+        runtimeError("Compile error inside dynamic class '%s'.", filename->chars);
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass);
+}
+
+static inline Value getCheckTarget(int argCount, Value* args) {
+    if (IS_NATIVE(args[-1])) {
+        return (argCount > 0) ? args[0] : NIL_VAL;
+    }
+    return args[-1];
+}
+
+Value isNumberNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_NUMBER(target));
+}
+
+Value isStringNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_STRING(target));
+}
+
+Value isBoolNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_BOOL(target));
+}
+
+Value isNilNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_NIL(target));
+}
+
+Value isClassNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_CLASS(target));
+}
+
+Value isInstanceNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_INSTANCE(target));
+}
+
+Value listFieldsNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        return OBJ_VAL(newArray());
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (int i = 0; i < instance->fields.capacity; i++) {
+        Entry* entry = &instance->fields.entries[i];
+        if (entry->key != NULL) {
+            arrayAppend(array, OBJ_VAL(entry->key));
+        }
+    }
+
+    pop();
+
+    return OBJ_VAL(array);
+}
+
+Value getFieldNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("get_field() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    Value receiver = args[-1];
+    ObjString* fieldName = AS_STRING(args[0]);
+    Value value;
+
+    if (IS_INSTANCE(receiver)) {
+        if (tableGet(&AS_INSTANCE(receiver)->fields, fieldName, &value)) {
+            return value;
+        }
+    } else if (IS_CLASS(receiver)) {
+        if (tableGet(&AS_CLASS(receiver)->fields, fieldName, &value)) {
+            return value;
+        }
+    } else {
+        runtimeError("Only instance and classes can have fields.");
+        return NIL_VAL;
+    }
+
+    return NIL_VAL;
+}
+
+Value setFieldNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0])) {
+        runtimeError("set_field() expects string, value arguments.");
+        return NIL_VAL;
+    }
+
+    Value receiver = args[-1];
+    ObjString* fieldName = AS_STRING(args[0]);
+    Value value = args[1];
+
+    if (IS_OBJ(receiver)) {
+        if (IS_INSTANCE(receiver)) {
+            ObjInstance* instance = AS_INSTANCE(receiver);
+            if (instance->obj.klass) {
+                if (instance->obj.klass->name) {
+                }
+            }
+        }
+    }
+    if (IS_INSTANCE(receiver)) {
+        tableSet(&AS_INSTANCE(receiver)->fields, fieldName, value);
+    } else if (IS_CLASS(receiver)) {
+        tableSet(&AS_CLASS(receiver)->fields, fieldName, value);
+    } else {
+        runtimeError("Only instances and classes can have fields.");
+        return NIL_VAL;
+    }
+    return value;
+}
+
+Value getMethodsNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass == NULL) {
+        runtimeError("Cannot get methods of a non-object/non-class.");
+        return NIL_VAL;
+    }
+
+    ObjArray* list = newArray();
+    push(OBJ_VAL(list));
+
+    ObjClass* current = klass;
+    while (current != NULL) {
+        Table* table = &current->methods;
+        for (int i = 0; i < table->capacity; i++) {
+            Entry* entry = &table->entries[i];
+            if (entry->key != NULL) {
+                arrayAppend(list, OBJ_VAL(entry->key));
+            }
+        }
+        current = current->superclass;
+    }
+
+    return pop();
+}
+
+Value hasMethodNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("has_method() expects exactly 1 argument.");
+        return BOOL_VAL(false);
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("has_method() expects a string argument.");
+        return BOOL_VAL(false);
+    }
+
+    Value receiver = args[-1];
+    ObjString* methodName = AS_STRING(args[0]);
+
+    ObjClass* klass = getClassForValue(receiver);
+    if (klass == NULL) {
+        return BOOL_VAL(false);
+    }
+
+    ObjClass* current = klass;
+    Value method;
+
+    while (current != NULL) {
+        if (tableGet(&current->methods, methodName, &method)) {
+            return BOOL_VAL(true);
+        }
+        current = current->superclass;
+    }
+    return BOOL_VAL(false);
+}
+
+Value getSuperclassNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass == NULL) {
+        runtimeError("Cannot get superclass of a non-object type.");
+        return NIL_VAL;
+    }
+
+    if (klass->superclass != NULL) {
+        return OBJ_VAL(klass->superclass);
+    }
+
+    return NIL_VAL;
+}
+
+Value objectToStringNative(int argCount, Value* args) {
+    if (argCount != 0) return NIL_VAL;
+
+    return valueToString(args[-1]);
+}
+
+Value objectClassMethod(int argCount, Value* args) {
+    if (argCount != 0) {
+        runtimeError("Expected 0 arguments but got %d.", argCount);
+        return NIL_VAL;
+    }
+
+    Value receiver = args[-1];
+    ObjClass* klass = getClassForValue(receiver);
+
+    if (klass == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass);
+}
+
+Value objectClassNameMethod(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    return OBJ_VAL(instance->obj.klass->name);
+}
+
+#define CORE_GLOBAL_LIST(X) \
+    X("clock", clockNative) \
+    X("str", strNative) \
+    X("typeof", typeofNative) \
+    X("chr", chrNative) \
+    X("eval", evalNative) \
+    X("create_instance", createInstanceNative) \
+    X("program", programNative)
+
+#define CORE_DUAL_LIST(X) \
+    X("isnumber", isNumberNative) \
+    X("isstring", isStringNative) \
+    X("isbool", isBoolNative) \
+    X("isnil", isNilNative) \
+    X("isclass", isClassNative) \
+    X("isinstance", isInstanceNative)
+
+#define OBJECT_METHOD_LIST(X) \
+    X("fields", listFieldsNative) \
+    X("get_fields", listFieldsNative) \
+    X("get_field", getFieldNative) \
+    X("set_field", setFieldNative) \
+    X("get_methods", getMethodsNative) \
+    X("has_method", hasMethodNative) \
+    X("responds_to", hasMethodNative) \
+    X("get_superclass", getSuperclassNative) \
+    X("superclass", getSuperclassNative) \
+    X("to_string", objectToStringNative) \
+    X("class", objectClassMethod) \
+    X("class_name", objectClassNameMethod)
+
+void initCoreLibrary() {
+#define X(name, func) defineNative(name, func);
+    CORE_GLOBAL_LIST(X);
+#undef X
+
+#define X(name, func) \
+    defineNative(name, func); \
+    defineNativeMethod(vm.objectClass, name, func);
+    CORE_DUAL_LIST(X);
+#undef X
+
+#define X(name, func) defineNativeMethod(vm.objectClass, name, func);
+    OBJECT_METHOD_LIST(X);
+#undef X
 }
 
 #define STRING_METHOD_LIST(X) \
@@ -1040,7 +1439,7 @@ Value arrayJoinNative(int argCount, Value* args) {
     for (int i = 0; i < array->count; i++) {
         Value item = array->values[i];
 
-        ObjString* s = valueToString(item);
+        ObjString* s = AS_STRING(valueToString(item));
         push(OBJ_VAL(s));
 
         int sepLen = (i < array->count - 1) ? sep->length : 0;

@@ -146,5 +146,6 @@ bool callValue(Value callee, int argCount);
 bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
 bool invoke(ObjString* name, int argCount);
 void defineNativeMethod(ObjClass* klass, const char* name, NativeFn function);
+ObjClass* getClassForValue(Value value);
 
 #endif

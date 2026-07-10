@@ -9,6 +9,29 @@
 
 // Automatically extracted signatures
 void defineNativeClassConstant(ObjClass* klass, const char* name, Value value);
+Value clockNative(int argCount, Value* args);
+Value strNative(int argCount, Value* args);
+Value typeofNative(int argCount, Value* args);
+Value chrNative(int argCount, Value* args);
+Value evalNative(int argCount, Value* args);
+Value createInstanceNative(int argCount, Value* args);
+Value programNative(int argCount, Value* args);
+Value isNumberNative(int argCount, Value* args);
+Value isStringNative(int argCount, Value* args);
+Value isBoolNative(int argCount, Value* args);
+Value isNilNative(int argCount, Value* args);
+Value isClassNative(int argCount, Value* args);
+Value isInstanceNative(int argCount, Value* args);
+Value listFieldsNative(int argCount, Value* args);
+Value getFieldNative(int argCount, Value* args);
+Value setFieldNative(int argCount, Value* args);
+Value getMethodsNative(int argCount, Value* args);
+Value hasMethodNative(int argCount, Value* args);
+Value getSuperclassNative(int argCount, Value* args);
+Value objectToStringNative(int argCount, Value* args);
+Value objectClassMethod(int argCount, Value* args);
+Value objectClassNameMethod(int argCount, Value* args);
+void initCoreLibrary();
 Value stringTrimNative(int argCount, Value* args);
 Value stringContainsNative(int argCount, Value* args);
 Value stringFindNative(int argCount, Value* args);

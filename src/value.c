@@ -29,29 +29,41 @@ void freeValueArray(ValueArray* array) {
     initValueArray(array);
 }
 
-ObjString* valueToString(Value value) {
+Value valueToString(Value value) {
     if (IS_STRING(value)) {
-        return AS_STRING(value);
-    } else if (IS_BOOL(value)) {
-        return AS_BOOL(value) ? copyString("true", 4) : copyString("false", 5);
+        return value;
+    }
+
+    char buffer[128];
+    int length = 0;
+
+    if (IS_BOOL(value)) {
+        length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
     } else if (IS_NIL(value)) {
-        return copyString("nil", 3);
+        length = snprintf(buffer, sizeof(buffer), "nil");
     } else if (IS_NUMBER(value)) {
-        char buffer[32];
-        int length = snprintf(buffer, 32, "%g", AS_NUMBER(value));
-        return copyString(buffer, length);
+        length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
+        /*
     } else if (IS_ARRAY(value)) {
         return copyString("[array]", 7);
     } else if (IS_MAP(value)) {
         return copyString("[map]", 5);
+        */
     } else if (IS_VEC3(value)) {
-        char buffer[128];
-        int length = snprintf(buffer, 128, "Vec3(%g, %g, %g)",
+        length = snprintf(buffer, sizeof(buffer), "Vec3(%g, %g, %g)",
                 AS_VEC3(value).x, AS_VEC3(value).y, AS_VEC3(value).z);
-        return copyString(buffer, length);
+    } else if (IS_OBJ(value)) {
+        ObjClass* klass = getClassForValue(value);
+        if (klass != NULL) {
+            length = snprintf(buffer, sizeof(buffer), "<object %s>", klass->name->chars);
+        } else {
+            length = snprintf(buffer, sizeof(buffer), "<object>");
+        }
+    } else {
+        length = snprintf(buffer, sizeof(buffer), "unknown");
     }
 
-    return copyString("obj", 3);
+    return OBJ_VAL(copyString(buffer, length));
 }
 
 void printValueSafe(Value value) {
