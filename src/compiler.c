@@ -853,15 +853,36 @@ static void number(bool canAssign) {
     const char* start = parser.previous.start;
     int length = parser.previous.length;
     double value;
+    char* endptr;
+
+    bool hasDot = false;
+    for (int i = 0; i < length; i++) {
+        if (start[i] == '.') {
+            hasDot = true;
+            break;
+        }
+    }
 
     if (length > 2 && start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
-        value = (double)strtoul(start, NULL, 16);
+        value = (double)strtoul(start, &endptr, 16);
+        if (endptr != start + length) {
+            error("Invalid hexadecimal literal");
+            return;
+        }
     } else if (length > 2 && start[0] == '0' && (start[1] == 'o' || start[1] == 'O')) {
-        value = (double)strtoul(start + 2, NULL, 8);
-    } else if (length > 1 && start[0] == '0' && start[1] != '.') {
-        value = (double)strtoul(start, NULL, 8);
+        value = (double)strtoul(start + 2, &endptr, 8);
+        if (endptr != start + length) {
+            error("Invalid octal literal.");
+            return;
+        }
+    } else if (length > 1 && start[0] == '0' && !hasDot) {
+        value = (double)strtoul(start, &endptr, 8);
+        if (endptr != start + length) {
+            error("Invalid octal digit in literal.");
+            return;
+        }
     } else {
-        value = strtod(start, NULL);
+        value = strtod(start, &endptr);
     }
 
     emitConstant(NUMBER_VAL(value));
@@ -1090,6 +1111,35 @@ static void unary(bool canAssign) {
             return;
     }
 }
+
+/*
+static void interpolation(bool canAssign) {
+    int partCount = 2;
+
+    // 1. Handle the leading string and the first expression
+    string(false);
+    expression();
+    emitByte(OP_STR);
+
+    // 2. Loop through mid-string interpolation segments
+    while (match(TOKEN_INTERPOLATION)) {
+        string(false);
+        expression();
+        emitByte(OP_STR);
+        patCount += 2;
+    }
+
+    // 3. Handle the final terminating string segment
+    if (match(TOKEN_STRING)) {
+        string(false);
+        partCount++;
+    }
+
+    // 4. Tell the VM to pull 'partCount' values off the stack and merge them in one shot
+    emitByte(OP_INTERPOLATE);
+    emitByte(partCount);
+}
+*/
 
 static void interpolation(bool canAssign) {
     string(false);

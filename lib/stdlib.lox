@@ -332,3 +332,7 @@ class PP {
 fun pp(obj) {
   print PP.pp(obj);
 }
+
+const STDOUT = File.open("STDOUT").unwrap();
+const STDERR = File.stderr();
+const STDIN = File.open("STDIN").unwrap();

@@ -51,7 +51,7 @@ ObjClass* newClass(ObjString* name) {
     klass->destructor = NULL;
     klass->vGetter = NIL_VAL;
     klass->vSetter = NIL_VAL;
-    klass->kind = CLASS_USER_DEFINED;
+    klass->isFrozen = false;
 
     return klass;
 }
@@ -91,6 +91,7 @@ ObjInstance* newInstance(ObjClass* klass) {
     instance->obj.klass = klass;
     initTable(&instance->fields);
     instance->foreignPtr = NULL;
+    instance->isFrozen = false;
     return instance;
 }
 

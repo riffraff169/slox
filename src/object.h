@@ -121,13 +121,6 @@ typedef struct HookNode {
     struct HookNode* next;
 } HookNode;
 
-typedef enum {
-    CLASS_SYSTEM,
-    CLASS_USER_DEFINED,
-    CLASS_RESULT,
-    CLASS_OPTION
-} ClassKind;
-
 typedef struct ObjClass {
     Obj obj;
     ObjString* name;
@@ -136,7 +129,6 @@ typedef struct ObjClass {
     Table constants;
     Table getters;
     Table setters;
-    ClassKind kind;
     struct ObjClass* superclass;
     struct ObjClass* mixinsource;
 
@@ -148,6 +140,8 @@ typedef struct ObjClass {
 
     Value vGetter;
     Value vSetter;
+
+    bool isFrozen;
 } ObjClass;
 
 typedef struct ObjInstance {
@@ -156,6 +150,7 @@ typedef struct ObjInstance {
     void* foreignPtr;
     //bool isBoxed;
     Table fields;
+    bool isFrozen;
 } ObjInstance;
 
 typedef struct {

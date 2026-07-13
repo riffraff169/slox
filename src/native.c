@@ -433,6 +433,33 @@ Value objectClassNameMethod(int argCount, Value* args) {
     return OBJ_VAL(instance->obj.klass->name);
 }
 
+Value objectFreezeNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+
+    if (IS_CLASS(receiver)) {
+        AS_CLASS(receiver)->isFrozen = true;
+    } else if (IS_INSTANCE(receiver)) {
+        AS_INSTANCE(receiver)->isFrozen = true;
+    } else {
+        runtimeError("Method .freeze() can only be called on classes or instances .");
+        return NIL_VAL;
+    }
+
+    return receiver;
+}
+
+Value objectIsfrozenNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+
+    if (IS_CLASS(receiver)) {
+        return BOOL_VAL(AS_CLASS(receiver)->isFrozen);
+    } else if (IS_INSTANCE(receiver)) {
+        return BOOL_VAL(AS_INSTANCE(receiver)->isFrozen);
+    }
+    runtimeError("Method .is_frozen() can only be called on classes or instances .");
+    return NIL_VAL;
+}
+
 #define CORE_GLOBAL_LIST(X) \
     X("clock", clockNative) \
     X("str", strNative) \
@@ -462,7 +489,9 @@ Value objectClassNameMethod(int argCount, Value* args) {
     X("superclass", getSuperclassNative) \
     X("to_string", objectToStringNative) \
     X("class", objectClassMethod) \
-    X("class_name", objectClassNameMethod)
+    X("class_name", objectClassNameMethod) \
+    X("freeze", objectFreezeNative) \
+    X("is_frozen", objectIsfrozenNative)
 
 void initCoreLibrary() {
 #define X(name, func) defineNative(name, func);
@@ -2125,4 +2154,561 @@ void initRegexClass() {
     defineNativeMethod(vm.regexClass, "get_pattern", regexGetPatternNative);
 
     pop();
+}
+
+void closeFileInternal(ObjInstance* inst) {
+    if (inst->foreignPtr !=  NULL) {
+        FILE* handle = (FILE*)inst->foreignPtr;
+
+        if (handle != stdout && handle != stderr && handle != stdin) {
+            fclose(handle);
+        }
+        inst->foreignPtr = NULL;
+    }
+}
+
+void fileDestructor(ObjInstance* inst) {
+    closeFileInternal(inst);
+}
+
+Value fileLoadNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("File.load() expects a string path.");
+        return NIL_VAL;
+    }
+
+    Value pathValue = NIL_VAL;
+    if (IS_STRING(args[0])) {
+        pathValue = args[0];
+    } else if (argCount >= 2 && IS_STRING(args[1])) {
+        pathValue = args[1];
+    } else {
+        runtimeError("File.load() expects a string path.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(pathValue);
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) {
+        setLastError(errno, "%s", "Failed to open file.");
+        return NIL_VAL;
+    }
+
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        fclose(file);
+        setLastError(errno, "%s", "Failed to seek file stream.");
+        return NIL_VAL;
+    }
+
+    long signedSize = ftell(file);
+    if (signedSize < 0) {
+        fclose(file);
+        setLastError(errno, "%s", "Invalid file stream length or directory handle.");
+        return NIL_VAL;
+    }
+
+    if (signedSize > INT_MAX) {
+        fclose(file);
+        runtimeError("File is too large to load into a string.");
+        return NIL_VAL;
+    }
+
+    size_t fileSize = (size_t)signedSize;
+    rewind(file);
+
+    char* buffer = (char*)malloc(fileSize + 1);
+    if (buffer == NULL) {
+        fclose(file);
+        runtimeError("Not enough memory to read file.");
+        return NIL_VAL;
+    }
+
+    size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
+    buffer[bytesRead] = '\0';
+    fclose(file);
+
+    Value result = OBJ_VAL(copyString(buffer, (int)bytesRead));
+    free(buffer);
+
+    return result;
+}
+
+Value fileSaveNative(int argCount, Value* args) {
+    if (argCount <= 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("File.read() expects (path, content).");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+    const char* content = AS_CSTRING(args[1]);
+
+    FILE* file = fopen(path, "w");
+    if (file == NULL) return errorResult("%s", "Unable to open file.");
+
+    fprintf(file, "%s", content);
+    fclose(file);
+    return okResult(BOOL_VAL(true));
+}
+
+Value fileExistsNative(int argCount, Value* args) {
+    if (argCount < 1) return BOOL_VAL(false);
+
+    Value pathValue = NIL_VAL;
+    if (IS_STRING(args[0])) {
+        pathValue = args[0];
+    } else if (argCount >= 2 && IS_STRING(args[1])) {
+        pathValue = args[1];
+    } else {
+        return BOOL_VAL(false);
+    }
+
+    const char* path = AS_CSTRING(pathValue);
+    if (access(path, F_OK) == 0) {
+        return BOOL_VAL(true);
+    }
+    return BOOL_VAL(false);
+}
+
+Value fileListNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("File.list() expects a directory path string.");
+        return NIL_VAL;
+    }
+
+    Value pathValue = NIL_VAL;
+    if (IS_STRING(args[0])) {
+        pathValue = args[0];
+    } else if (argCount >= 2 && IS_STRING(args[1])) {
+        pathValue = args[1];
+    } else {
+        runtimeError("File.list() expects a directory path string.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(pathValue);
+    DIR* dir = opendir(path);
+
+    if (dir == NULL) {
+        return errorResult("%s", "Unable to open directory.");
+    }
+
+    ObjArray *fileList = newArray();
+    push(OBJ_VAL(fileList));
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        ObjString* name = copyString(entry->d_name, (int)strlen(entry->d_name));
+        push(OBJ_VAL(name));
+        arrayAppend(fileList, OBJ_VAL(name));
+        pop();
+    }
+
+    Value result = okResult(OBJ_VAL(fileList));
+
+    pop();
+
+    return result;
+}
+
+Value fileOpenNative(int argCount, Value* args) {
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("File.open() must be called as a clas method.");
+        return NIL_VAL;
+    }
+    ObjClass* fileClass = AS_CLASS(args[-1]);
+
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("File.open() expects at least a path string.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+    const char* mode = "r";
+
+    if (argCount >= 2 && IS_STRING(args[1])) {
+        mode = AS_CSTRING(args[1]);
+    }
+
+    FILE* handle = NULL;
+
+    if (strcmp(path, "STDOUT") == 0) {
+        handle = stdout;
+        mode = "w";
+    } else if (strcmp(path, "STDERR") == 0) {
+        handle = stderr;
+        mode = "w";
+    } else if (strcmp(path, "STDIN") == 0) {
+        handle = stdin;
+        mode = "r";
+    } else {
+        handle = fopen(path, mode);
+    }
+
+    if (handle == NULL) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to open file '%s': %s", path, strerror(errsv));
+    }
+
+    ObjInstance* fileInst = newInstance(fileClass);
+    push(OBJ_VAL(fileInst));
+
+    fileInst->foreignPtr = handle;
+
+    Value result = okResult(OBJ_VAL(fileInst));
+
+    pop();
+
+    return result;
+}
+
+Value fileReadNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.read() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if (!handle) return errorResult("%s", "No open file handle found.");
+
+    int length = -1;
+
+    if (argCount >= 1 && IS_NUMBER(args[0])) {
+        length = (int)AS_NUMBER(args[0]);
+        if (length < 0) {
+            return errorResult("%s", "Read length cannot be negative.");
+        }
+    } else {
+        long currentPos = ftell(handle);
+        if (currentPos < 0) {
+            return errorResult("%s", "Cannot read unbounded stream (unseekable pipe or stdin).");
+        }
+
+        if (fseek(handle, 0L, SEEK_END) != 0) {
+            return errorResult("%s", "Cannot seek file streadm.");
+        }
+
+        long endPos = ftell(handle);
+        if (endPos < 0) {
+            return errorResult("%s", "Cannot determine stream end size.");
+        }
+
+        if (fseek(handle, currentPos, SEEK_SET) != 0) {
+            return errorResult("%s", "Failed to restore stream cursor position.");
+        }
+
+        length = (int)(endPos - currentPos);
+    }
+
+    if (length == 0) {
+        return okResult(OBJ_VAL(copyString("", 0)));
+    }
+
+    char* buffer = (char*)malloc(length + 1);
+    if (buffer == NULL) {
+        return errorResult("%s", "Could not allocate read buffer.");
+    }
+
+    size_t bytesRead = fread(buffer, 1, length, handle);
+
+    if (bytesRead == 0 && ferror(handle)) {
+        free(buffer);
+        return errorResult("%s", "Error reading data from file descriptor.");
+    }
+
+    ObjString* resultString = copyString(buffer, (int)bytesRead);
+    free(buffer);
+
+    push(OBJ_VAL(resultString));
+
+    Value finalResult = okResult(OBJ_VAL(resultString));
+
+    pop();
+
+    return finalResult;
+}
+
+Value fileReadlineNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.readline() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+    if (!handle) return errorResult("%s", "No open file handle found.");
+
+    size_t capacity = 512;
+    size_t length = 0;
+    char* buffer = (char*)malloc(capacity);
+
+    if (buffer == NULL) {
+        return errorResult("%s", "Could not allocate readline buffer.");
+    }
+    bool readAny = false;
+
+    while (true) {
+        char* writePtr = buffer + length;
+        size_t remainingSpace = capacity - length;
+
+        if (fgets(writePtr, (int)remainingSpace, handle) == NULL) {
+            if (ferror(handle)) {
+                free(buffer);
+                return errorResult("%s", "Error reading data from file stream.");
+            }
+            break;
+        }
+
+        readAny = true;
+        size_t segmentLength = strlen(writePtr);
+        length += segmentLength;
+
+        if (length > 0 && buffer[length - 1] == '\n') {
+            break;
+        }
+
+        if (length >= capacity - 1) {
+            size_t oldCapacity = capacity;
+            capacity = oldCapacity * 2;
+            char* newBuffer = (char*)realloc(buffer, capacity);
+
+            if (newBuffer == NULL) {
+                free(buffer);
+                return errorResult("%s", "Out of memory while reading line.");
+            }
+            buffer = newBuffer;
+        }
+    }
+
+    if (!readAny) {
+        free(buffer);
+        ObjString* emptyString = copyString("", 0);
+        push(OBJ_VAL(emptyString));
+        Value finalResult = okResult(OBJ_VAL(emptyString));
+        pop();
+        return finalResult;
+    }
+
+    ObjString* lineString = copyString(buffer, (int)length);
+    free(buffer);
+
+    push(OBJ_VAL(lineString));
+    Value finalResult = okResult(OBJ_VAL(lineString));
+    pop();
+
+    return finalResult;
+}
+
+Value fileWriteNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.write() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+
+    if (handle == NULL) {
+        return errorResult("%s", "Cannot write to a closed file descriptor.");
+    }
+
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("File.write() expects 1 string argument (data).");
+        return NIL_VAL;
+    }
+
+    ObjString* str = AS_STRING(args[0]);
+
+    if (str->length == 0) {
+        return okResult(NUMBER_VAL(0));
+    }
+
+    size_t written = fwrite(str->chars, 1, str->length, handle);
+
+    if (written < (size_t)str->length) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to write all data. wrote %zu of %d bytes; %s",
+                written, str->length, strerror(errsv));
+    }
+
+    return okResult(NUMBER_VAL((double)written));
+}
+
+Value fileCloseNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.close( must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    closeFileInternal(inst);
+    return okResult(NIL_VAL);
+}
+
+Value fileSeekNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.seek() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+
+    if (!handle) {
+        return errorResult("%s", "Cannot seek within a closed file descriptor.");
+    }
+
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("File.seek() requires at least 1 number argument(offset).");
+        return NIL_VAL;
+    }
+
+    if (argCount == 2 && !IS_NUMBER(args[1])) {
+        runtimeError("File.seek() second argument (whence) must be a number.");
+        return NIL_VAL;
+    }
+
+    long offset = (long)AS_NUMBER(args[0]);
+    int whence = 0;
+
+    if (argCount == 2) {
+        whence = (int)AS_NUMBER(args[1]);
+    }
+
+    if (fseek(handle, offset, whence) != 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to seek stream position: %s", strerror(errsv));
+    }
+
+    return okResult(NIL_VAL);
+}
+
+Value fileTellNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.tell() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+
+    if (!handle) {
+        return errorResult("%s", "Cannot query position of a closed file descriptor.");
+    }
+
+    long position = ftell(handle);
+    if (position == -1L) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to query stream position: %s", strerror(errsv));
+    }
+
+    return okResult(NUMBER_VAL((double)position));
+}
+
+Value fileStderrNative(int argCount, Value* args) {
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("File.stderr() must be called as a class method.");
+        return NIL_VAL;
+    }
+    ObjClass* fileClass = AS_CLASS(args[-1]);
+    ObjInstance* instance = newInstance(fileClass);
+    instance->foreignPtr = stderr;
+    return OBJ_VAL(instance);
+}
+
+Value fileFlushNative(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("File.flush() must be called on a File instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* inst = AS_INSTANCE(args[-1]);
+    FILE* handle = (FILE*)inst->foreignPtr;
+
+    if (!handle) {
+        return errorResult("%s", "Cannot flush a closed file descriptor.");
+    }
+
+    if (fflush(handle) == EOF) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to flush stream: %s", strerror(errsv));
+    }
+
+    return okResult(NIL_VAL);
+}
+
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#else
+#include <sys/stat.h>
+#endif
+
+Value fileMkdirNative(int argCount, Value* args) {
+    if (!IS_CLASS(args[-1])) {
+        runtimeError("File.mkdir() must be called as a class method.");
+        return NIL_VAL;
+    }
+
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("File.mkdir() expects a path string as the first argument.");
+        return NIL_VAL;
+    }
+
+    int mode = 0755;
+
+    if (argCount > 1 && IS_NUMBER(args[1])) {
+        mode = (int)AS_NUMBER(args[1]);
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+
+    if (mkdir(path, mode) == 0) {
+        return BOOL_VAL(true);
+    }
+
+    int errsv = errno;
+    setLastError(errsv, "%s", strerror(errsv));
+    return BOOL_VAL(false);
+}
+
+void initFileLibrary(){
+    ObjString* fileName = copyString("File", 4);
+    push(OBJ_VAL(fileName));
+    ObjClass* fileClass = newClass(fileName);
+    push(OBJ_VAL(fileClass));
+    fileClass->destructor = fileDestructor;
+
+    defineNativeMethod(fileClass, "load", fileLoadNative);
+    defineNativeMethod(fileClass, "save", fileSaveNative);
+    defineNativeMethod(fileClass, "exists", fileExistsNative);
+    defineNativeMethod(fileClass, "list", fileListNative);
+    defineNativeMethod(fileClass, "open", fileOpenNative);
+    defineNativeMethod(fileClass, "read", fileReadNative);
+    defineNativeMethod(fileClass, "readline", fileReadlineNative);
+    defineNativeMethod(fileClass, "write", fileWriteNative);
+    defineNativeMethod(fileClass, "close", fileCloseNative);
+    defineNativeMethod(fileClass, "seek", fileSeekNative);
+    defineNativeMethod(fileClass, "tell", fileTellNative);
+    defineNativeMethod(fileClass, "stderr", fileStderrNative);
+    defineNativeMethod(fileClass, "flush", fileFlushNative);
+    defineNativeMethod(fileClass, "mkdir", fileMkdirNative);
+
+    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
+
+    defineClassConstant(fileClass, "SEEK_SET", NUMBER_VAL(SEEK_SET));
+    defineClassConstant(fileClass, "SEEK_CUR", NUMBER_VAL(SEEK_CUR));
+    defineClassConstant(fileClass, "SEEK_END", NUMBER_VAL(SEEK_END));
+
+    popn(2);
+
 }

@@ -86,6 +86,7 @@ typedef enum {
     PROP_ASYNC,
     PROP_NOT_FOUND,
     PROP_IMMUTABLE,
+    PROP_FROZEN,
     PROP_GETTER,
     PROP_SETTER
 } PropertyResult;
@@ -113,22 +114,8 @@ void clearLastError() {
     setLastError(0, "%s", "Success");
 }
 
+/*
 static Value resultInitNative(int argCount, Value* args) {
-    /*
-    printf("\n--- Result.init() Stack Layout ---\n");
-    for (int i = -2; i <= argCount; i++) {
-        printf("  args[%d]: ", i);
-        printValue(args[i]);
-        printf("\n");
-    }
-    printf("----------------------------------\n");
-
-    if (argCount != 3) {
-        runtimeError("Result.init() expects exactly 3 arguments (ok, val, err).");
-        return NIL_VAL;
-    }
-    */
-
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     tableSet(&instance->fields, vm.okString, args[0]);
@@ -137,6 +124,7 @@ static Value resultInitNative(int argCount, Value* args) {
 
     return args[-1];
 }
+*/
 
 static Value createResult(Value value, Value errval, bool isok) {
     push(value);
@@ -156,7 +144,7 @@ static Value createResult(Value value, Value errval, bool isok) {
     return OBJ_VAL(result);
 }
 
-static Value errorResult(const char* format, ...) {
+Value errorResult(const char* format, ...) {
     char buffer[1024];
     va_list args;
     va_start(args, format);
@@ -168,7 +156,7 @@ static Value errorResult(const char* format, ...) {
     return res;
 }
 
-static Value okResult(Value value) {
+Value okResult(Value value) {
     return createResult(value, NIL_VAL, true);
 }
 
@@ -183,9 +171,6 @@ bool isResultOk(Value value) {
     }
 
     return false;
-}
-
-Value getResultvalue(Value value) {
 }
 
 void raiseException(Value exceptionValue) {
@@ -230,6 +215,18 @@ void raiseException(Value exceptionValue) {
     }
 }
 
+void defineClassConstant(ObjClass* klass, const char* name, Value value) {
+    push(value);
+    ObjString* constantName = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(constantName));
+
+    tableSet(&klass->constants, constantName, value);
+
+    pop();
+    pop();
+}
+
+/*
 static Value optionInitNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
@@ -238,6 +235,7 @@ static Value optionInitNative(int argCount, Value* args) {
 
     return args[-1];
 }
+*/
 
 static uint32_t valueToUint32(Value value) {
     double num = AS_NUMBER(value);
@@ -829,353 +827,6 @@ static Value systemMemNative(int argCount, Value* args) {
     return pop();
 }
 
-static Value fileCloseNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    if (inst->foreignPtr != stdout && inst->foreignPtr != stderr && inst->foreignPtr != NULL) {
-        fclose((FILE*)inst->foreignPtr);
-        inst->foreignPtr = NULL;
-    }
-    return okResult(NIL_VAL);
-}
-
-static Value fileReadNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return errorResult("%s", "No file handle.");
-
-    int length = -1;
-
-    if (argCount >= 1 && IS_NUMBER(args[0])) {
-        length = (int)AS_NUMBER(args[0]);
-        if (length < 0) {
-            return errorResult("%s", "Read length cannot be negative.");
-        }
-    } else {
-        if (fseek(handle, 0L, SEEK_END) != 0) {
-            return errorResult("%s", "Cannot seek file stream.");
-        }
-        long tellsize = ftell(handle);
-        if (tellsize < 0) {
-            return errorResult("%s", "Cannot determine stream size.");
-        }
-        length = (int)tellsize;
-        rewind(handle);
-    }
-
-    char* buffer = (char*)malloc(length + 1);
-    if (buffer == NULL) {
-        return errorResult("%s", "Could not allocate read buffer.");
-    }
-
-    size_t bytesRead = fread(buffer, 1, length, handle);
-
-    if (bytesRead == 0 && ferror(handle)) {
-        free(buffer);
-        return errorResult("%s", "Error reading data from file descriptor.");
-    }
-
-    ObjString* result = copyString(buffer, (int)bytesRead);
-    free(buffer);
-
-    return okResult(OBJ_VAL(result));
-}
-
-static Value fileReadlineNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    FILE* handle = (FILE*)inst->foreignPtr;
-
-    if (!handle) return errorResult("%s", "No file handle.");
-
-    char lineBuffer[1024];
-    if (fgets(lineBuffer, sizeof(lineBuffer), handle) == NULL) {
-        if (ferror(handle)) {
-            return errorResult("%s", "Error reading data from file stream.");
-        }
-        return okResult(OBJ_VAL(copyString("", 0)));
-    }
-
-    return okResult(OBJ_VAL(copyString(lineBuffer, (int)strlen(lineBuffer))));
-}
-
-static Value fileWriteNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("File.write() expects 1 string argument (data).");
-        return NIL_VAL;
-    }
-
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    FILE* handle = (FILE*)inst->foreignPtr;
-
-    if (handle == NULL) {
-        return errorResult("%s", "File handle is NULL.");
-    }
-
-    if (!IS_STRING(args[0])) {
-        return errorResult("%s", "Argument to write() must be a string.");
-    }
-
-    ObjString* str = AS_STRING(args[0]);
-
-    size_t written = fwrite(str->chars, 1, str->length, handle);
-
-    //fflush(handle);
-
-    return okResult(NUMBER_VAL((double)written));
-}
-
-static Value fileFlushNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    FILE* stream = (FILE*)instance->foreignPtr;
-
-    if (!stream) {
-        return errorResult("%s", "File handle is NULL.");
-    }
-
-    if (fflush(stream) == EOF) {
-        int errsv = errno;
-        setLastError(errsv, "%s", strerror(errsv));
-        return errorResult("Failed to flush stream: %s", strerror(errsv));
-    }
-
-    return okResult(NIL_VAL);
-}
-
-static Value fileStderrNative(int argCount, Value* args) {
-    Value fileClass;
-    if (!tableGet(&vm.globals, copyString("File", 4), &fileClass)) {
-        runtimeError("Core 'File' class could not be found during stderr initialization.");
-        return NIL_VAL;
-    }
-
-    if (!IS_CLASS(fileClass)) {
-        runtimeError("Global 'File' identifier has been corrupted and is no longer a Class.");
-        return NIL_VAL;
-    }
-
-    ObjInstance* instance = newInstance(AS_CLASS(fileClass));
-    instance->foreignPtr = stderr;
-
-    return OBJ_VAL(instance);
-}
-
-static Value fileOpenNative(int argCount, Value* args) {
-    /*
-    if (!IS_CLASS(args[-1])) {
-        runtimeError("File.open() must be called as a class method.");
-        return NIL_VAL;
-    }
-
-    */
-    ObjClass* fileClass = AS_CLASS(args[-1]);
-
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        return errorResult("%s", "File.open() expects at least a path string.");
-    }
-
-    const char* path = AS_CSTRING(args[0]);
-    const char* mode = "r";
-    FILE* handle = NULL;
-
-    if (argCount >= 2 && IS_STRING(args[1])) {
-        mode = AS_CSTRING(args[1]);
-    }
-
-    if (strcmp(path, "STDOUT") == 0) {
-        handle = stdout;
-        mode = "w";
-    } else if (strcmp(path, "STDERR") == 0) {
-        handle = stderr;
-        mode = "w";
-    } else {
-        handle = fopen(path, mode);
-    }
-
-    if (handle == NULL) {
-        return NIL_VAL;
-    }
-
-    /*
-    Value fileObj;
-    if (!tableGet(&vm.globals, copyString("File", 4), &fileObj)) {
-        runtimeError("Global 'File' class not found.");
-        return NIL_VAL;
-    }
-    */
-
-    if (handle == NULL) {
-        int errsv = errno;
-        setLastError(errsv, "%s", strerror(errsv));
-        return errorResult("Failed to open file '%s': %s", path, strerror(errsv));
-    }
-
-    ObjInstance* fileInst = newInstance(fileClass);
-    fileInst->foreignPtr = handle;
-
-    return okResult(OBJ_VAL(fileInst));
-}
-
-static Value fileMkdirNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("mkdir() expects a path string.");
-        return NIL_VAL;
-    }
-    int mode = 0755;
-
-    if (argCount > 1 && IS_NUMBER(args[1])) {
-        mode = (int)AS_NUMBER(args[1]);
-    }
-
-    const char* path = AS_CSTRING(args[0]);
-
-    if (mkdir(path, mode) == 0) {
-        return BOOL_VAL(true);
-    }
-
-    setLastError(errno, "%s", strerror(errno));
-    return BOOL_VAL(false);
-}
-
-static Value fileLoadNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("File.load() expects a string path.");
-        return NIL_VAL;
-    }
-
-
-    Value pathValue = NIL_VAL;
-
-    if (IS_STRING(args[0])) {
-        pathValue = args[0];
-    } else if (argCount >= 2 && IS_STRING(args[1])) {
-        pathValue = args[1];
-    } else {
-        runtimeError("File.load() expects a string path.");
-        return NIL_VAL;
-    }
-
-    const char* path = AS_CSTRING(pathValue);
-    FILE* file = fopen(path, "rb");
-    if (file == NULL) {
-        setLastError(errno, "%s", "Failed to seek file stream.");
-        return NIL_VAL;
-    }
-
-    if (fseek(file, 0L, SEEK_END) != 0) {
-        fclose(file);
-        setLastError(errno, "%s", "Failed to seek file stream.");
-        return NIL_VAL;
-    }
-
-    long signedSize = ftell(file);
-    if (signedSize < 0) {
-        fclose(file);
-        setLastError(errno, "%s", "Invalid file stream length or directory handle.");
-        return NIL_VAL;
-    }
-
-    size_t fileSize = (size_t)signedSize;
-    rewind(file);
-
-    char* buffer = (char*)malloc(fileSize + 1);
-    if (buffer == NULL) {
-        fclose(file);
-        runtimeError("Not enough memory to read file.");
-        return NIL_VAL;
-    }
-
-    size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
-    buffer[bytesRead] = '\0';
-    fclose(file);
-
-    return OBJ_VAL(takeString(buffer, (int)bytesRead));
-}
-
-static Value fileSeekNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("File.seek() requires at least 1 number");
-        return NIL_VAL;
-    }
-
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return errorResult("%s", "No file handle.");
-
-    long offset = (long)AS_NUMBER(args[0]);
-    int whence = 0;
-    if (argCount == 2) 
-      whence = (int)AS_NUMBER(args[1]);
-
-    int result = fseek(handle, offset, whence);
-    return okResult(NUMBER_VAL(result));
-}
-
-static Value fileTellNative(int argCount, Value* args) {
-    ObjInstance* inst = AS_INSTANCE(args[-1]);
-    FILE* handle = (FILE*)inst->foreignPtr;
-    if (!handle) return errorResult("%s", "No file handle.");
-
-    return okResult(NUMBER_VAL((double)ftell(handle)));
-}
-
-static Value fileSaveNative(int argCount, Value* args) {
-    if (argCount <= 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("File.read() expects (path, content).");
-        return NIL_VAL;
-    }
-
-    const char* path = AS_STRING(args[0])->chars;
-    const char* content = AS_STRING(args[1])->chars;
-
-    FILE* file = fopen(path, "w");
-    if (file == NULL) return errorResult("%s", "Unable to open file.");
-
-    fprintf(file, "%s", content);
-    fclose(file);
-    return okResult(BOOL_VAL(true));
-}
-
-static Value fileExistsNative(int argCount, Value* args) {
-    if (argCount <= 1 || !IS_STRING(args[0])) return BOOL_VAL(false);
-    FILE* file = fopen(AS_STRING(args[0])->chars, "r");
-    if (file) {
-        fclose(file);
-        return BOOL_VAL(true);
-    }
-    return BOOL_VAL(false);
-}
-
-static Value fileListNative(int argCount, Value* args) {
-    if (argCount <= 1 || !IS_STRING(args[0])) {
-        runtimeError("File.read() expects 1 string argument (directory path).");
-        return errorResult("%s", "File.read() expects 1 string argument (directory path).");
-    }
-
-    const char* path = AS_STRING(args[0])->chars;
-    DIR* dir = opendir(path);
-
-    if (dir == NULL) {
-        return errorResult("%s", "Unable to open dir.");
-    }
-
-    ObjArray* fileList = newArray();
-    push(OBJ_VAL(fileList));
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        ObjString* name = copyString(entry->d_name, (int)strlen(entry->d_name));
-        push(OBJ_VAL(name));
-        arrayAppend(fileList, OBJ_VAL(name));
-        pop();
-    }
-
-    closedir(dir);
-    return okResult(pop());
-}
-
 bool isInstanceOf(Value value, ObjClass* targetClass) {
     if (!IS_INSTANCE(value)) return false;
 
@@ -1426,7 +1077,6 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjInstance* systemInstance = newInstance(systemClass);
     push(OBJ_VAL(systemInstance));
 
-
     vm.includePathCount = 0;
     vm.scriptName = NULL;
 
@@ -1457,9 +1107,15 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
 
     const char* exeTarget = (vm.scriptName != NULL) ? vm.scriptName : argv[0];
 
-    tableSet(&systemInstance->fields, copyString("EXE", 3),
-            OBJ_VAL(copyString(exeTarget, strlen(exeTarget))));
-            //OBJ_VAL(copyString(argv[0], strlen(argv[0]))));
+    ObjString* exeKey = copyString("EXE", 3);
+    push(OBJ_VAL(exeKey));
+
+    ObjString* exeVal = copyString(exeTarget, strlen(exeTarget));
+    push(OBJ_VAL(exeVal));
+
+    tableSet(&systemInstance->fields, exeKey, OBJ_VAL(exeVal));
+    pop();
+    pop();
 
     for (int j = i; j < argc; j++) {
         ObjString* argStr = copyString(argv[j], strlen(argv[j]));
@@ -1495,41 +1151,6 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, copyString("System", 6), OBJ_VAL(systemInstance));
 
     popn(5);
-}
-
-void fileDestructor(ObjInstance* inst) {
-    if (inst->foreignPtr != NULL) {
-        fclose((FILE*)inst->foreignPtr);
-        inst->foreignPtr = NULL;
-    }
-}
-
-void initFileLibrary() {
-    ObjString* fileName = copyString("File", 4);
-    push(OBJ_VAL(fileName));
-    ObjClass* fileClass = newClass(fileName);
-    push(OBJ_VAL(fileClass));
-    fileClass->destructor = fileDestructor;
-
-
-    defineNativeMethod(fileClass, "load", fileLoadNative);
-    defineNativeMethod(fileClass, "save", fileSaveNative);
-    defineNativeMethod(fileClass, "exists", fileExistsNative);
-    defineNativeMethod(fileClass, "list", fileListNative);
-    defineNativeMethod(fileClass, "open", fileOpenNative);
-    defineNativeMethod(fileClass, "read", fileReadNative);
-    defineNativeMethod(fileClass, "readline", fileReadlineNative);
-    defineNativeMethod(fileClass, "write", fileWriteNative);
-    defineNativeMethod(fileClass, "close", fileCloseNative);
-    defineNativeMethod(fileClass, "seek", fileSeekNative);
-    defineNativeMethod(fileClass, "tell", fileTellNative);
-    defineNativeMethod(fileClass, "stderr", fileStderrNative);
-    defineNativeMethod(fileClass, "flush", fileFlushNative);
-    defineNativeMethod(fileClass, "mkdir", fileMkdirNative);
-
-    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
-
-    popn(2);
 }
 
 Value vec3CallHandler(int argCount, Value* args) {
@@ -2689,6 +2310,18 @@ Value getPropertySync(Value receiver, ObjString* name) {
 
 PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
     ObjClass* constClass = NULL;
+
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        if (klass->isFrozen) {
+            return PROP_FROZEN;
+        }
+    }
+
+    if (IS_INSTANCE(receiver)) {
+        if (AS_INSTANCE(receiver)->isFrozen) return PROP_FROZEN;
+    }
+
     if (IS_INSTANCE(receiver)) {
         constClass = AS_INSTANCE(receiver)->obj.klass;
     } else if (IS_CLASS(receiver)) {
@@ -3907,6 +3540,18 @@ InterpretResult run() {
                         break;
                     }
 
+                    if (res == PROP_FROZEN) {
+                        if (IS_CLASS(receiver)) {
+                            RUNTIME_ERROR("Cannot modify properties or methods on frozen class '%s'.",
+                                    AS_CLASS(receiver)->name->chars);
+                        } else {
+                            ObjClass* instanceClass = getClassForValue(receiver);
+                            RUNTIME_ERROR("Cannot modify properties on frozen instance of class '%s'.",
+                                    instanceClass != NULL ? instanceClass->name->chars : "Object");
+                        }
+                        break;
+                    }
+                            
                     RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
                     break;
                 }
