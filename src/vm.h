@@ -60,8 +60,8 @@ typedef struct {
     size_t bytesAllocated;
     size_t nextGC;
     int heap_growth_factor;
-    int init_threshold;
-    int bump_size;
+    size_t init_threshold;
+    size_t bump_size;
     int stress_mode;
     int gctype; // 1: multiplier, 0: linear
     uint8_t numNotation; // 1 = sci %g, 0 = %.0f

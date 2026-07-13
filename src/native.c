@@ -2913,3 +2913,487 @@ void initProcessClass() {
     pop();
 }
 
+Value structPackNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("Struct.pack() expects at least 2 arguments (format string, value array).");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("First argument to Struct.pack() must be a format string.");
+        return NIL_VAL;
+    }
+
+    if (!IS_ARRAY(args[1])) {
+        runtimeError("Second argument to Struct.pack() must be an Array.");
+        return NIL_VAL;
+    }
+
+    const char* format = AS_CSTRING(args[0]);
+    ObjArray* array = AS_ARRAY(args[1]);
+    bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : true;
+
+    const char* f = format;
+    int val_index = 0;
+    int totalSize = 0;
+
+    while (*f != '\0') {
+        if (isspace(*f)) {
+            f++;
+            continue;
+        }
+
+        int width = 0;
+        bool hasWidth = false;
+        while (isdigit(*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        if (type != '\0') {
+            if (val_index >= array->count) {
+                runtimeError("Format string requires more values than provided in the array.");
+                return NIL_VAL;
+            }
+
+            Value currentVal = array->values[val_index];
+
+            switch (type) {
+                case 'B': totalSize += 1;  break;
+                case 'H': totalSize += 2;  break;
+                case 'I': totalSize += 4;  break;
+                case 'Q': totalSize += 8;  break;
+                case 's':
+                      {
+                          if (!IS_STRING(currentVal)) {
+                              runtimeError("Expected string value for 's' format specifier.");
+                              return NIL_VAL;
+                          }
+                          totalSize += hasWidth ? width : AS_STRING(currentVal)->length;
+                      }
+                      break;
+                default:
+                      runtimeError("Unknown format specifier '%c'.", *f);
+                      return NIL_VAL;
+            }
+            val_index++;
+            f++;
+        }
+    }
+
+    uint8_t* buffer = (uint8_t*)calloc(1, totalSize);
+    uint8_t* cursor = buffer;
+    f = format;
+    val_index = 0;
+
+    while (*f != '\0') {
+        if (isspace(*f)) {
+            f++;
+            continue;
+        }
+
+        int width = 0;
+        bool hasWidth = false;
+
+        while (isdigit(*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        switch (type) {
+            case 'B':
+                double num = AS_NUMBER(array->values[val_index++]);
+                *cursor++ = (uint8_t)num;
+                break;
+            case 'H':
+                {
+                    uint16_t val = (uint16_t)AS_NUMBER(array->values[val_index++]);
+                    if (bigend) {
+                        *cursor++ = (val >> 8) & 0xff;
+                        *cursor++ = val & 0xff;
+                    } else {
+                        *cursor++ = val & 0xff;
+                        *cursor++ = (val >> 8) & 0xff;
+                    }
+                }
+                break;
+            case 'I':
+                {
+                    uint32_t val = (uint32_t)AS_NUMBER(array->values[val_index++]);
+                    if (bigend) {
+                        *cursor++ = (val >> 24) & 0xff;
+                        *cursor++ = (val >> 16) & 0xff;
+                        *cursor++ = (val >> 8) & 0xff;
+                        *cursor++ = val & 0xff;
+                    } else {
+                        *cursor++ = val & 0xff;
+                        *cursor++ = (val >> 8) & 0xff;
+                        *cursor++ = (val >> 16) & 0xff;
+                        *cursor++ = (val >> 24) & 0xff;
+                    }
+                }
+                break;
+            case 'Q':
+                {
+                    uint64_t val = (uint64_t)AS_NUMBER(array->values[val_index++]);
+                    if (bigend) {
+                        for (int i = 7; i >= 0; i--) {
+                            *cursor++ = (val >> (i * 8)) & 0xff;
+                        }
+                    } else {
+                        for (int i = 0; i < 8; i++) {
+                            *cursor++ = (val >> (i * 8)) & 0xff;
+                        }
+                    }
+                }
+                break;
+            case 's':
+                {
+                    ObjString* s = AS_STRING(array->values[val_index++]);
+                    int finalWidth = hasWidth ? width : s->length;
+                    int copyLen = (s->length < finalWidth) ? s->length : finalWidth;
+
+                    memcpy(cursor, s->chars, copyLen);
+                    cursor += copyLen;
+
+                    if (copyLen < finalWidth) {
+                        memset(cursor, 0, finalWidth - copyLen);
+                        cursor += (finalWidth - copyLen);
+                    }
+                }
+                break;
+        }
+        if (*f != '\0') f++;
+    }
+
+    ObjString* result = copyString((const char*)buffer, totalSize);
+    free(buffer);
+    return OBJ_VAL(result);
+}
+
+Value structUnpackNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("First argument to Struct.unpack() must be a format string.");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[1])) {
+        runtimeError("Second argument to Struct.unpack() must be a data string.");
+        return NIL_VAL;
+    }
+
+    const char* format = AS_CSTRING(args[0]);
+    ObjString* data = AS_STRING(args[1]);
+    const uint8_t* buffer = (const uint8_t*)data->chars;
+    bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : true;
+
+    ObjArray* result = newArray();
+    push(OBJ_VAL(result));
+
+    const char* f = format;
+    int offset = 0;
+
+    while (*f != '\0') {
+        if (isspace(*f)) {
+            f++;
+            continue;
+        }
+
+        int width = 0;
+        bool hasWidth = false;
+        while (isdigit(*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        if (type == '\0') {
+            runtimeError("Format string ended unexpectedly after width specifier.");
+            return NIL_VAL;
+        }
+
+        int requiredSize = 0;
+        switch (type) {
+            case 'B': requiredSize = 1; break;
+            case 'H': requiredSize = 2; break;
+            case 'I': requiredSize = 4; break;
+            case 'Q': requiredSize = 8; break;
+            case 's': requiredSize = hasWidth ? width : (data->length - offset); break;
+            default:
+                      runtimeError("Unknown format specifier '%c'.", type);
+                      return NIL_VAL;
+        }
+
+        if (offset + requiredSize > data->length) {
+            runtimeError("Buffer underflow: Data string is too short o unpack the specified format.");
+            return NIL_VAL;
+        }
+
+        switch (type) {
+            case 'B':
+                {
+                    uint8_t val = buffer[offset];
+                    arrayAppend(result, NUMBER_VAL((double)val));
+                    offset += 1;
+                }
+                break;
+            case 'H':
+                {
+                    uint16_t val;
+                    if (bigend) {
+                        val = (buffer[offset] << 8) | buffer[offset + 1];
+                    } else {
+                        val = buffer[offset] | (buffer[offset + 1] << 8);
+                    }
+                    arrayAppend(result, NUMBER_VAL((double)val));
+                    offset += 2;
+                }
+                break;
+            case 'I':
+                {
+                    uint32_t val;
+                    if (bigend) {
+                        val = ((uint32_t)buffer[offset] << 24) |
+                            ((uint32_t)buffer[offset + 1] << 16) |
+                            ((uint32_t)buffer[offset + 2] << 8) |
+                            (uint32_t)buffer[offset + 3];
+                    } else {
+                        val = (uint32_t)buffer[offset] |
+                            ((uint32_t)buffer[offset + 1] << 8) |
+                            ((uint32_t)buffer[offset + 2] << 16) |
+                            ((uint32_t)buffer[offset + 3] << 24);
+                    }
+                    arrayAppend(result, NUMBER_VAL((double)val));
+                    offset += 4;
+                }
+                break;
+            case 'Q':
+                {
+                    uint64_t val = 0;
+                    if (bigend) {
+                        for (int i = 0; i < 8; i++) {
+                            val = (val << 8) | buffer[offset + i];
+                        }
+                    } else {
+                        for (int i = 7; i >= 0; i--) {
+                            val = (val << 8) | buffer[offset + i];
+                        }
+                    }
+                    arrayAppend(result, NUMBER_VAL((double)val));
+                    offset += 8;
+                }
+                break;
+            case 's':
+                {
+                    ObjString* str = copyString((const char*)buffer + offset, requiredSize);
+                    push(OBJ_VAL(str));
+                    arrayAppend(result, OBJ_VAL(str));
+                    pop();
+                    offset += requiredSize;
+                }
+                break;
+        }
+        f++;
+    }
+
+    pop();
+    return OBJ_VAL(result);
+}
+
+void initStructClass() {
+    ObjString* string = NULL;
+
+    string = copyString("Struct", 6);
+    push(OBJ_VAL(string));
+    ObjClass* structClass = newClass(string);
+    push(OBJ_VAL(structClass));
+    structClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(structClass));
+
+    defineNativeMethod(structClass, "pack", structPackNative);
+    defineNativeMethod(structClass, "unpack", structUnpackNative);
+
+    pop();
+    pop();
+}
+
+Value hgfGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("heap_growth_Factor() expects a numeric multiplier.");
+        return NIL_VAL;
+    }
+
+    double val = AS_NUMBER(args[0]);
+
+    if (val < 1.1) {
+        runtimeError("Heap growth factor must be 1.1 or greater to avoid collection thrashing.");
+        return NIL_VAL;
+    }
+
+    vm.heap_growth_factor = val;
+    return args[0];
+}
+
+Value get_hgfGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_growth_factor() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.heap_growth_factor);
+}
+
+Value thresholdGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("init_threshold() expects a numeric byte size.");
+        return NIL_VAL;
+    }
+
+    double val = AS_NUMBER(args[0]);
+    if (val < 0) {
+        runtimeError("Initial GC threshold cannot be negative.");
+        return NIL_VAL;
+    }
+
+    vm.init_threshold = (size_t)val;
+    return args[0];
+}
+
+Value get_thresholdGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_threshold() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.init_threshold);
+}
+
+Value bumpsizeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("bump_size() expects a numeric byte size.");
+        return NIL_VAL;
+    }
+
+    double val = AS_NUMBER(args[0]);
+    if (val < 0) {
+        runtimeError("GC bump size cannot be negative.");
+        return NIL_VAL;
+    }
+
+    if (val < 4096) {
+        runtimeError("GC bump size must be at least 4096 bytes (4Kb) to prevent thrashing.");
+        return NIL_VAL;
+    }
+
+    vm.bump_size = (size_t)val;
+
+    return args[0];
+}
+
+Value get_bumpsizeGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_bumpsize() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.bump_size);
+}
+
+Value stressmodeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("stress_mode() expects an integer (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
+        return NIL_VAL;
+    }
+
+    double val = AS_NUMBER(args[0]);
+
+    if (val != 0.0 && val != 1.0 && val != 2.0) {
+        runtimeError("Invalied stress mode.");
+        return NIL_VAL;
+    }
+
+    vm.stress_mode = (int)val;
+
+    return args[0];
+}
+
+Value get_stressmodeGCNative(int argCount, Value* args) {
+    if (argCount > 1) {
+        runtimeError("get_stressmode() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return NUMBER_VAL(vm.stress_mode);
+}
+
+Value typeGCNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
+        return NIL_VAL;
+    }
+
+
+    double val = AS_NUMBER(args[0]);
+    if (val != 0.0 && val != 1.0) {
+        runtimeError("Invalid GC strategy type. Use GC.TypeLinear (0) or GC.TypeMult (1).");
+        return NIL_VAL;
+    }
+
+    vm.gctype = (int)val;
+    return args[0];
+}
+
+Value get_typeGCNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        runtimeError("get_gctype() expects 0 arguments.");
+        return NIL_VAL;
+    }
+    return NUMBER_VAL((double)vm.gctype);
+}
+
+Value systemGCNative(int argCount, Value* args) {
+    collectGarbage();
+    return NIL_VAL;
+}
+
+void initGCLibrary() {
+    ObjString* gcName = copyString("GC", 2);
+    push(OBJ_VAL(gcName));
+    ObjClass* gcClass = newClass(gcName);
+    push(OBJ_VAL(gcClass));
+
+    defineNativeMethod(gcClass, "heap_growth_factor", hgfGCNative);
+    defineNativeMethod(gcClass, "get_growth_factor", get_hgfGCNative);
+    defineNativeMethod(gcClass, "init_threshold", thresholdGCNative);
+    defineNativeMethod(gcClass, "get_threshold", get_thresholdGCNative);
+    defineNativeMethod(gcClass, "bump_size", bumpsizeGCNative);
+    defineNativeMethod(gcClass, "get_bumpsize", get_bumpsizeGCNative);
+    defineNativeMethod(gcClass, "stress_mode", stressmodeGCNative);
+    defineNativeMethod(gcClass, "get_stress_mode", get_stressmodeGCNative);
+    defineNativeMethod(gcClass, "type", typeGCNative);
+    defineNativeMethod(gcClass, "get_gctype", get_typeGCNative);
+    // same as System.gc()
+    defineNativeMethod(gcClass, "gc", systemGCNative);
+
+    tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
+
+    defineClassConstant(gcClass, "NormalMode", NUMBER_VAL(0));
+    defineClassConstant(gcClass, "StressMode", NUMBER_VAL(1));
+    defineClassConstant(gcClass, "DisabledMode", NUMBER_VAL(2));
+
+    defineClassConstant(gcClass, "TypeLinear", NUMBER_VAL(0));
+    defineClassConstant(gcClass, "TypeMult", NUMBER_VAL(1));
+
+    pop();
+    pop();
+}

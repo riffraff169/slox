@@ -139,5 +139,19 @@ Value processReadStatic(int argCount, Value* args);
 Value processCloseStatic(int argCount, Value* args);
 Value processWriteStatic(int argCount, Value* args);
 void initProcessClass();
+Value structPackNative(int argCount, Value* args);
+Value structUnpackNative(int argCount, Value* args);
+void initStructClass();
+Value hgfGCNative(int argCount, Value* args);
+Value get_hgfGCNative(int argCount, Value* args);
+Value thresholdGCNative(int argCount, Value* args);
+Value get_thresholdGCNative(int argCount, Value* args);
+Value bumpsizeGCNative(int argCount, Value* args);
+Value get_bumpsizeGCNative(int argCount, Value* args);
+Value stressmodeGCNative(int argCount, Value* args);
+Value get_stressmodeGCNative(int argCount, Value* args);
+Value typeGCNative(int argCount, Value* args);
+Value get_typeGCNative(int argCount, Value* args);
+void initGCLibrary();
 
 #endif // NATIVE_H
