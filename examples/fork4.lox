@@ -1,0 +1,29 @@
+print "[System Initializing data channel allocations...";
+var channel = Process.pipe().unwrap();
+
+var pid = Process.fork().unwrap();
+
+if (pid == 0) {
+  Process.close(channel["read"]);
+
+  print "  [Child] Computing heavy data analysis payload...";
+  System.sleep(0.4);
+
+  var feedback = "SUCCESS: Process 42910 transactional events cleanly.";
+  Process.write(channel["write"], feedback);
+
+  Process.close(channel["write"]);
+  System.exit(0);
+}
+
+Process.close(channel["write"]);
+
+print "[Parent] Waiting on data transmission from child worker...";
+
+var incomingMsg = Process.read(channel["read"]).unwrap();
+
+print "[Parent] Data received from pie link: '", incomingMsg, "'";
+
+Process.close(channel["read"]);
+var status = Process.wait(pid).unwrap();
+print "[Parent] System routine finished with exit code: " + status;

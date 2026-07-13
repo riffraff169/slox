@@ -1,0 +1,15 @@
+var r1 = Result(true, "yes");
+print r1;
+if (r1) print "ok";
+print r1.unwrap();
+print r1.unwrap_or(25);
+
+var r2 = Result(false, "dont");
+print r2;
+if (r2) print "ok";
+try {
+  print r2.unwrap();
+} catch (Error e) {
+  print "Error: ${e.message}";
+}
+print r2.unwrap_or(25);

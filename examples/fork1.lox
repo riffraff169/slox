@@ -1,0 +1,22 @@
+print "--- Before the split ---";
+
+var forkres = Process.fork().unwrap();
+
+if (forkres == 0) {
+  print "[Child] I am the newly cloned child VM!";
+  print "[Child] Counting to 3 inside my private process bubble:";
+
+  for (var i = 1; i <= 3; i += 1) {
+    print "[Child] Count: ", i;
+  }
+
+  print "[Child] Task finished. Exiting child VM cleanly.";
+  System.exit(0);
+} else {
+  print "[Parent] Hello from the parent VM!";
+  print "[Parent] My child process was born with PID: ", forkres;
+
+  print "[Parent] Parent VM execution continuing down main thread...";
+}
+
+print "--- After the split (Only parent should reach here) ---";

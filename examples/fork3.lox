@@ -1,0 +1,22 @@
+System.set_notation(0);
+System.set_precision(0);
+print "[Parent] Spawning worker subprocess...";
+var forkres = Process.fork().unwrap();
+
+if (forkres == 0) {
+  for (var i = 1; i <= 3; i += 1) {
+    print "  [Child Worker] Processing batch ", i, "...";
+    System.sleep(0.2);
+  }
+  print "  [Child Worker] Task complete. Exiting.";
+  System.exit(14);
+}
+
+print "[Parent] Child spawned with PID (", forkres, "). Doing independent background work...";
+System.sleep(0.1);
+print "[Parent] Independent work done. Now blocking until child terminates...";
+
+var exitStatus = Process.wait(forkres).unwrap();
+
+print "[Parent] Success! Child process has cleared.";
+print "[Parent] Child process exited with status code: ", exitStatus;
