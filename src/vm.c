@@ -1007,50 +1007,22 @@ static inline Value getCheckTarget(int argCount, Value* args) {
     return args[-1];
 }
 
-static Value processRunStatic(int argCount, Value* args) {
-}
-
-static Value processExecuteStatic(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
+Value systemSleepNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("System.sleep() requires a numeric duration in seconds.");
         return NIL_VAL;
     }
 
-    const char* command = AS_CSTRING(args[0]);
-    FILE* fp = popen(command, "r");
-    if (fp == NULL) return NIL_VAL;
+    double totalSeconds = AS_NUMBER(args[0]);
+    if (totalSeconds < 0) totalSeconds = 0;
 
-    size_t capacity = 1024;
-    size_t length = 0;
-    char* buffer = ALLOCATE(char, capacity);
-    char chunk[256];
+    struct timespec ts;
+    ts.tv_sec = (time_t)totalSeconds;
+    ts.tv_nsec = (long)((totalSeconds - (double)ts.tv_sec) * 1e9);
+    
+    nanosleep(&ts, NULL);
 
-    while (fgets(chunk, sizeof(chunk), fp) != NULL) {
-        size_t chunkLen = strlen(chunk);
-        if (length + chunkLen + 1 > capacity) {
-            size_t oldCapacity = capacity;
-            capacity = GROW_CAPACITY(oldCapacity);
-            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
-        }
-        memcpy(buffer + length, chunk, chunkLen);
-        length += chunkLen;
-    }
-    buffer[length] = '\0';
-    pclose(fp);
-
-    return OBJ_VAL(takeString(buffer, length));
-}
-
-void initProcessClass() {
-    ObjString* processName = copyString("Process", 7);
-    push(OBJ_VAL(processName));
-    ObjClass* processClass = newClass(processName);
-    push(OBJ_VAL(processClass));
-    tableSet(&vm.globals, processName, OBJ_VAL(processClass));
-
-    defineNativeMethod(processClass, "run", processRunStatic);
-    defineNativeMethod(processClass, "execute", processExecuteStatic);
-    pop();
-    pop();
+    return NIL_VAL;
 }
 
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
@@ -1071,6 +1043,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "trace", systemTraceNative);
     defineNativeMethod(systemClass, "strict", systemStrictNative);
     defineNativeMethod(systemClass, "warn", systemWarnNative);
+    defineNativeMethod(systemClass, "sleep", systemSleepNative);
 
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -2629,31 +2602,14 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.moduleClass->superclass = vm.objectClass;
     pop();
 
-    /*
-    defineNativeMethod(vm.objectClass, "fields", listFieldsNative);
-    defineNativeMethod(vm.objectClass, "get_field", getFieldNative);
-    defineNativeMethod(vm.objectClass, "set_field", setFieldNative);
-    defineNativeMethod(vm.objectClass, "get_methods", getMethodsNative);
-    defineNativeMethod(vm.objectClass, "has_method", hasMethodNative);
-    defineNativeMethod(vm.objectClass, "responds_to", hasMethodNative);
-    defineNativeMethod(vm.objectClass, "get_superclass", getSuperclassNative);
-    defineNativeMethod(vm.objectClass, "superclass", getSuperclassNative);
-    defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
-    defineNativeMethod(vm.objectClass, "class", objectClassMethod);
-    defineNativeMethod(vm.objectClass, "class_name", objectClassNameMethod);
-
-    defineNative("create_instance", createInstanceNative);
-
-    defineNative("program", programNative);
-    */
     initCoreLibrary(); // done
 
     initResultAndOptionClass(); // done
     initMathLibrary(); // done
     initSystemLibrary(argc, argv, env);
     initProcessClass();
-    initFileLibrary();
-    initRegexClass();
+    initFileLibrary(); //
+    initRegexClass(); //
     initVec3Library();
     initGCLibrary();
     initArrayClass(); // done
@@ -3622,11 +3578,36 @@ InterpretResult run() {
             case OP_ADD:
                 {
 
+                    /*
                     if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
                         concatenate();
                         break;
                     } 
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    */
+                    if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
+                        Value rawB = peek(0);
+                        Value rawA = peek(1);
+
+                        Value bVal = valueToString(rawB);
+                        push(bVal);
+
+                        Value aVal = valueToString(rawA);
+                        push(aVal);
+
+                        ObjString* aStr = AS_STRING(aVal);
+                        ObjString* bStr = AS_STRING(bVal);
+
+                        int length = aStr->length + bStr->length;
+                        char* chars = ALLOCATE(char, length + 1);
+                        memcpy(chars, aStr->chars, aStr->length);
+                        memcpy(chars + aStr->length, bStr->chars, bStr->length);
+                        chars[length] = '\0';
+
+                        ObjString* result = takeString(chars, length);
+                        popn(4);
+
+                        push(OBJ_VAL(result));
+                    } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                         double b = AS_NUMBER(pop());
                         double a = AS_NUMBER(pop());
                         push(NUMBER_VAL(a + b));

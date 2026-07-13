@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "native.h"
 #include "common.h"
@@ -2712,3 +2713,203 @@ void initFileLibrary(){
     popn(2);
 
 }
+
+Value processRunStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Process.run() requires a string command argument.");
+        return NIL_VAL;
+    }
+
+    const char* command = AS_CSTRING(args[0]);
+
+    int status = system(command);
+
+#ifdef WEXITSTATUS
+    if (status != -1) {
+        status = WEXITSTATUS(status);
+    }
+#endif
+
+    return okResult(NUMBER_VAL((double)status));
+}
+
+Value processExecuteStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Process.execute() requires a string command argument.");
+        return NIL_VAL;
+    }
+
+    const char* command = AS_CSTRING(args[0]);
+    FILE* fp = popen(command, "r");
+    if (fp == NULL) {
+        int errsv = errno;
+        return errorResult("Failed to spawn process stream: %s", strerror(errsv));
+    }
+
+    size_t capacity = 4096;
+    size_t length = 0;
+    char* buffer = ALLOCATE(char, capacity);
+
+    while (true) {
+        if (length + 1024 >= capacity) {
+            size_t oldCapacity = capacity;
+            capacity = GROW_CAPACITY(oldCapacity);
+            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
+        }
+
+        if (fgets(buffer + length, (int)(capacity - length), fp) == NULL) {
+            break;
+        }
+
+        length += strlen(buffer + length);
+    }
+
+    int status = pclose(fp);
+    if (status == -1) {
+        FREE_ARRAY(char, buffer, capacity);
+        return errorResult("Process failed to terminate cleanly.");
+    }
+
+    ObjString* outputString = takeString(buffer, length);
+    return okResult(OBJ_VAL(outputString));
+}
+
+Value processForkStatic(int argCount, Value* args) {
+    fflush(NULL);
+
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        int errsv = errno;
+        return errorResult("Failed to fork process: %s", strerror(errsv));
+    }
+
+    return okResult(NUMBER_VAL((double)pid));
+}
+
+Value processWaitStatic(int argCount, Value* args) {
+    pid_t targetPid = -1;
+
+    if (argCount > 0) {
+        if (!IS_NUMBER(args[0])) {
+            runtimeError("Process.wait() argument must be a process ID number.");
+            return NIL_VAL;
+        }
+        targetPid = (pid_t)AS_NUMBER(args[0]);
+    }
+
+    int status;
+    pid_t reapedPid = waitpid(targetPid, &status, 0);
+
+    if (reapedPid < 0) {
+        int errsv = errno;
+        return errorResult("Wait failed: %s", strerror(errsv));
+    }
+
+    int exitCode = 0;
+#ifdef WEXITSTATUS
+    if (WIFEXITED(status)) {
+        exitCode = WEXITSTATUS(status);
+    }
+#endif
+
+    return okResult(NUMBER_VAL((double)exitCode));
+}
+
+Value processPipeStatic(int argCount, Value* args) {
+    int fds[2];
+    if (pipe(fds) < 0) {
+        return errorResult("Failed to allocate OS pipe: %s", strerror(errno));
+    }
+
+    ObjMap* pipeMap = newMap();
+    push(OBJ_VAL(pipeMap));
+
+    ObjString* readKey = copyString("read", 4);
+    push(OBJ_VAL(readKey));
+    mapSet(pipeMap, readKey, NUMBER_VAL((double)fds[0]));
+    pop();
+
+    ObjString* writeKey = copyString("write", 5);
+    push(OBJ_VAL(writeKey));
+    mapSet(pipeMap, writeKey, NUMBER_VAL((double)fds[1]));
+    pop();
+
+    pop();
+    return okResult(OBJ_VAL(pipeMap));
+}
+
+Value processReadStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("Process.read() requires a numeric descriptor.");
+        return NIL_VAL;
+    }
+
+    int fd = (int)AS_NUMBER(args[0]);
+    size_t maxBytes = 4096;
+
+    char* buffer = ALLOCATE(char, maxBytes + 1);
+    ssize_t bytesRead = read(fd, buffer, maxBytes);
+
+    if (bytesRead < 0) {
+        FREE_ARRAY(char, buffer, maxBytes + 1);
+        return errorResult("Failed to read from stream: %s", strerror(errno));
+    }
+
+    buffer[bytesRead] = '\0';
+    buffer = GROW_ARRAY(char, buffer, maxBytes + 1, bytesRead + 1);
+
+    ObjString* outString = takeString(buffer, bytesRead);
+    return okResult(OBJ_VAL(outString));
+}
+
+Value processCloseStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("Process.close() requires a numeric descriptor.");
+        return NIL_VAL;
+    }
+
+    close((int)AS_NUMBER(args[0]));
+    return NIL_VAL;
+}
+
+Value processWriteStatic(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("Process.write() requires a numeric descriptor and a string message.");
+        return NIL_VAL;
+    }
+
+    int fd = (int)AS_NUMBER(args[0]);
+    ObjString* message = AS_STRING(args[1]);
+
+    ssize_t bytesWritten = write(fd, message->chars, message->length);
+    if (bytesWritten < 0) {
+        return errorResult("Failed to write to stream: %s", strerror(errno));
+    }
+
+    return okResult(NUMBER_VAL((double)bytesWritten));
+}
+
+void initProcessClass() {
+    ObjString* processName = copyString("Process", 7);
+    push(OBJ_VAL(processName));
+    ObjClass* processClass = newClass(processName);
+    push(OBJ_VAL(processClass));
+    tableSet(&vm.globals, processName, OBJ_VAL(processClass));
+
+    defineNativeMethod(processClass, "run", processRunStatic);
+    defineNativeMethod(processClass, "execute", processExecuteStatic);
+    defineNativeMethod(processClass, "fork", processForkStatic);
+    defineNativeMethod(processClass, "wait", processWaitStatic);
+    defineNativeMethod(processClass, "pipe", processPipeStatic);
+    defineNativeMethod(processClass, "read", processReadStatic);
+    defineNativeMethod(processClass, "write", processWriteStatic);
+    defineNativeMethod(processClass, "close", processCloseStatic);
+
+
+    processClass->isFrozen = true;
+
+    pop();
+    pop();
+}
+

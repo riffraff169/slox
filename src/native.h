@@ -130,5 +130,14 @@ Value fileStderrNative(int argCount, Value* args);
 Value fileFlushNative(int argCount, Value* args);
 Value fileMkdirNative(int argCount, Value* args);
 void initFileLibrary();
+Value processRunStatic(int argCount, Value* args);
+Value processExecuteStatic(int argCount, Value* args);
+Value processForkStatic(int argCount, Value* args);
+Value processWaitStatic(int argCount, Value* args);
+Value processPipeStatic(int argCount, Value* args);
+Value processReadStatic(int argCount, Value* args);
+Value processCloseStatic(int argCount, Value* args);
+Value processWriteStatic(int argCount, Value* args);
+void initProcessClass();
 
 #endif // NATIVE_H
