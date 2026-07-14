@@ -1,0 +1,41 @@
+var server = IO.tcp();
+server.listen(8080);
+
+var allSockets = [server];
+var clients = [];
+
+print "Server running on port 8080...";
+
+while (true) {
+  var readyResult = IO.poll(allSockets, 1000, IO.PollIn);
+  var readySockets = readyResult.unwrap();
+
+  for (var i = 0; i < readySockets.length(); i += 1) {
+    var s = readySockets[i];
+
+    if (s == server) {
+      var acceptResult = server.accept();
+      var client = acceptResult.unwrap();
+
+      if (client != nil) {
+        print "New client connected!";
+        allSockets.push(client);
+        clients.push(client);
+      } else {
+        var recvResult = s.recv(1024);
+
+        if (!recvResult) {
+          print "Client disconnected: " + recvResult.err;
+          allSockets.remove(s);
+          clients.remove(s);
+          s.close();
+        } else {
+          var data = recvResult.unwrap();
+          if (data.length() > 0) {
+            s.send("Echo: " + data);
+          }
+        }
+      }
+    }
+  }
+}
