@@ -150,6 +150,7 @@ void defineNativeMethod(ObjClass* klass, const char* name, NativeFn function);
 ObjClass* getClassForValue(Value value);
 Value errorResult(const char* format, ...);
 Value okResult(Value value);
+void clearLastError();
 void defineClassConstant(ObjClass* klass, const char* name, Value value);
 
 #endif

@@ -2317,7 +2317,7 @@ Value fileListNative(int argCount, Value* args) {
 
 Value fileOpenNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
-        runtimeError("File.open() must be called as a clas method.");
+        runtimeError("File.open() must be called as a class method.");
         return NIL_VAL;
     }
     ObjClass* fileClass = AS_CLASS(args[-1]);
@@ -3396,4 +3396,621 @@ void initGCLibrary() {
 
     pop();
     pop();
+}
+
+void ioDestructor(ObjInstance* inst) {
+    if (inst->foreignPtr != NULL) {
+        SocketInternal* so = (SocketInternal*)inst->foreignPtr;
+        if (so->fd < 0) {
+            close(so->fd);
+        }
+        FREE(SocketInternal, inst->foreignPtr);
+        inst->foreignPtr = NULL;
+    }
+}
+
+Value ioCallHandler(int argCount, Value* args) {
+    ObjClass* klass = AS_CLASS(args[-1]);
+
+    if (strcmp(klass->name->chars, "IO") == 0) {
+        runtimeError("Cannot instantiate IO base class directly. Use IO.tcp() or IO.udp().");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = newInstance(klass);
+    push(OBJ_VAL(instance));
+
+    int sockType = (strcmp(klass->name->chars, "udp") == 0) ? SOCK_DGRAM : SOCK_STREAM;
+
+    int fd = socket(AF_INET, sockType, 0);
+    if (sockType == SOCK_STREAM) {
+        int opt = 1;
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    }
+
+    if (fd == -1) {
+        runtimeError("Could not create OS socket.");
+        return NIL_VAL;
+    }
+
+    SocketInternal* so = ALLOCATE(SocketInternal, 1);
+    so->fd = fd;
+    so->type = sockType;
+    so->connected = false;
+
+    instance->foreignPtr = so;
+    pop();
+
+    return OBJ_VAL(instance);
+}
+
+Value ioTcpNative(int argCount, Value* args) {
+    Value tcpClassVal;
+    if (!tableGet(&vm.globals, copyString("Tcp", 3), &tcpClassVal)) {
+    }
+}
+
+Value ioInspectNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    if (instance->foreignPtr != NULL) {
+        SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+        printf("========\n");
+        printf("fd: %d\n", so->fd);
+        printf("type: %d\n", so->type);
+        printf("connected: %s\n", so->connected == true ? "TRUE" : "FALSE");
+        printf("========\n");
+    } else {
+        printf("[Socket]: <Closed/Deallocated>\n");
+    }
+
+    return NIL_VAL;
+}
+
+Value ioConnectNative(int argCount, Value* args) {
+    clearLastError();
+
+    if (argCount < 2) {
+        runtimeError("Connect expects at least 2 arguments: (ip, port).");
+        return errorResult("Connect expects at least 2 arguments: (ip, port).");
+    }
+
+    if (!IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
+        runtimeError("Connect expects a string (host) and a number (port).");
+        return errorResult("Invalid argument types.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL) {
+        return errorResult("Socket not initialized.");
+    }
+
+    if (so->connected) {
+        return errorResult("Socket is already connected.");
+    }
+
+    double timeoutVal = 0.0;
+    if (argCount > 2) {
+        if (!IS_NUMBER(args[2])) {
+            runtimeError("Timeout must be a numeric value.");
+            return errorResult("Invalid timeout type.");
+        }
+        timeoutVal = AS_NUMBER(args[2]);
+        if (timeoutVal < 0.0) {
+            runtimeError("Timeout cannot be negative.");
+            return errorResult("Negative timeout.");
+        }
+    }
+
+    if (so->fd == -1) {
+        so->fd = socket(AF_INET, so->type, 0);
+        if (so->fd == -1) {
+            return errorResult("Failed to re-open socket.");
+        }
+    }
+
+    double portNum = AS_NUMBER(args[1]);
+    int port = (int)portNum;
+    if (portNum != (double)port || port < 0 || port > 65535) {
+        runtimeError("Port must be an integer between 0 and 65535.");
+        return errorResult("Invalid port value.");
+    }
+
+    const char* host = AS_CSTRING(args[0]);
+    char portStr[6];
+    snprintf(portStr, sizeof(portStr), "%d", port);
+
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = so->type;
+
+    int status = getaddrinfo(host, portStr, &hints, &res);
+    if (status != 0) {
+        return errorResult("getaddrinfo: %s", gai_strerror(status));
+    }
+
+    int flags = fcntl(so->fd, F_GETFL, 0);
+    if (timeoutVal > 0.0) {
+        fcntl(so->fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    int cres = connect(so->fd, res->ai_addr, res->ai_addrlen);
+
+    if (cres < 0 && errno != EINPROGRESS) {
+        freeaddrinfo(res);
+        if (timeoutVal > 0.0) fcntl(so->fd, F_SETFL, flags);
+        return errorResult("Immediate connection failure: %s", strerror(errno));
+    }
+
+    if (cres != 0) {
+        struct pollfd pfd;
+        pfd.fd = so->fd;
+        pfd.events = POLLOUT;
+
+        int timeout_ms = (int)(timeoutVal * 1000.0);
+        int poll_res = poll(&pfd, 1, timeout_ms);
+
+        if (poll_res <= 0) {
+            if (timeoutVal > 0.0) fcntl(so->fd, F_SETFL, flags);
+            close(so->fd);
+            so->fd = -1;
+            freeaddrinfo(res);
+            return errorResult("Connection timed out afte %g seconds", timeoutVal);
+        }
+
+        int so_error;
+        socklen_t len = sizeof(so_error);
+        getsockopt(so->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (so_error != 0) {
+            if (timeoutVal > 0.0) fcntl(so->fd, F_SETFL, flags);
+            close(so->fd);
+            so->fd = -1;
+            freeaddrinfo(res);
+            return errorResult("Connect error: %s", strerror(so_error));
+        }
+    }
+
+    if (timeoutVal > 0.0) {
+        fcntl(so->fd, F_SETFL, flags);
+    }
+
+    freeaddrinfo(res);
+    so->connected = true;
+    return okResult(BOOL_VAL(true));
+}
+
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
+Value ioSendNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("send() expects a string as the first argument.");
+        return errorResult("%s", "send() expects a string as the first argument.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1 || !so->connected) {
+        return errorResult("%s", "Socket is not initialized or connected.");
+    }
+
+    ObjString* data = AS_STRING(args[0]);
+
+    ssize_t bytesSent = send(so->fd, data->chars, data->length, MSG_NOSIGNAL);
+
+    if (bytesSent < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return okResult(NUMBER_VAL(0.0));
+        }
+        return errorResult("Socket write error: %s.", strerror(errno));
+    }
+    
+    return okResult(NUMBER_VAL((double)bytesSent));
+}
+
+Value ioRecvNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("recv() expects a buffer size number as the first argument.");
+        return errorResult("recv() expects a buffer size number as the first argument.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1 || !so->connected) {
+        runtimeError("Socket is not initialized or connected.");
+        return errorResult("Socket is not initialized or connected");
+    }
+
+    double requestedLength = AS_NUMBER(args[0]);
+    if (requestedLength <= 0) {
+        runtimeError("recv() buffer size must be greater than 0.");
+        return errorResult("recv() buffer size must be greater than 0.");
+    }
+
+    if (requestedLength > 16 * 1024 * 1024) {
+        runtimeError("recv() buffer size exceeds maximum limit of 16MB.");
+        return errorResult("recv() buffer size exceeds maximum limit of 16MB.");
+    }
+
+    int length = (int)requestedLength;
+    char* buffer = (char*)malloc(length);
+
+    if (buffer == NULL) {
+        return errorResult("Out of memory allocating receiver buffer.");
+    }
+
+    ssize_t bytesRead = recv(so->fd, buffer, length, 0);
+
+    if (bytesRead < 0 ) {
+        free(buffer);
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            ObjString* emptyStr = copyString("", 0);
+            push(OBJ_VAL(emptyStr));
+            Value resultVal = okResult(OBJ_VAL(emptyStr));
+            pop();
+            return resultVal;
+        }
+        return errorResult("SOcket read error: %s", strerror(errno));
+    }
+
+    if (bytesRead == 0) {
+        free(buffer);
+        return errorResult("Connection closed by peer.");
+    }
+
+    ObjString* result = copyString(buffer, (int)bytesRead);
+    free(buffer);
+
+    push(OBJ_VAL(result));
+    Value resultVal = okResult(OBJ_VAL(result));
+    pop();
+
+    return resultVal;
+}
+
+Value ioListenNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("listen() expects a port number as the first argument.");
+        return errorResult("listen() expects a port number as the first argument.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1) {
+        runtimeError("Socket is not initialized.");
+        return errorResult("Socket is not initialized.");
+    }
+
+    double portVal = AS_NUMBER(args[0]);
+    if (portVal < 0 || portVal > 65535) {
+        runtimeError("Port number must be between 0 and 65535.");
+        return errorResult("Port number must be between 0 and 65535.");
+    }
+    int port = (int)portVal;
+
+    int opt = 1;
+    if (setsockopt(so->fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        fprintf(stderr, "[Warning] Faile dto set SO_REUSEADDR: %s\n", strerror(errno));
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    if (bind(so->fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        return errorResult("Could not bind to port %d: %s", port, strerror(errno));
+    }
+
+    if (listen(so->fd, 128) < 0) {
+        return errorResult("Could not listen on socket: %s", strerror(errno));
+    }
+
+    return okResult(args[-1]);
+}
+
+Value ioAcceptNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1) {
+        runtimeError("Server socket is not initialized.");
+        return errorResult("Server socket is not initialized.");
+    }
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    int client_fd = accept(so->fd, (struct sockaddr*)&client_addr, &client_len);
+
+    if (client_fd < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return okResult(NIL_VAL);
+        }
+
+        return errorResult("Accept failed: %s", strerror(errno));
+    }
+    
+    ObjClass* tcpClass = instance->obj.klass;
+    ObjInstance* client_instance = newInstance(tcpClass);
+
+    push(OBJ_VAL(client_instance));
+
+    SocketInternal* client_so = ALLOCATE(SocketInternal, 1);
+    client_so->fd = client_fd;
+    client_so->type = SOCK_STREAM;
+    client_so->connected = true;
+    client_instance->foreignPtr = client_so;
+
+    Value resultVal = okResult(OBJ_VAL(client_instance));
+
+    pop();
+
+    return resultVal;
+}
+
+Value ioBindNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
+        runtimeError("bind() expects an IP address string and a port number.");
+        return errorResult("bind() expects an IP address string and a port number.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1) {
+        runtimeError("Socket is not initialized.");
+        return errorResult("Socket is not initialized.");
+    }
+
+    double portVal = AS_NUMBER(args[1]);
+    if (portVal < 0 || portVal > 65535) {
+        runtimeError("Port number must be between 0 and 65535.");
+        return errorResult("Port number must be between 0 and 65535.");
+    }
+    int port = (int)portVal;
+
+    ObjString* ipStr = AS_STRING(args[0]);
+    const char* ip = ipStr->chars;
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &addr.sin_addr) <= 0) {
+        return errorResult("Invalid IP address format: %s", ip);
+    }
+
+    int opt = 1;
+    if (setsockopt(so->fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        fprintf(stderr, "[Warning] Failed to get SO_REUSEADDR: %s\n", strerror(errno));
+    }
+
+    if (bind(so->fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        return errorResult("Could not bind to %s:%s: %s", ip, port, strerror(errno));
+    }
+
+    return okResult(args[-1]);
+}
+
+Value ioReadableNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1) {
+        return errorResult("Socket is not initialized.");
+    }
+
+    struct pollfd pfd;
+    pfd.fd = so->fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    int ready = poll(&pfd, 1, 0);
+
+    if (ready < 0) {
+        return errorResult("Failed to check socket readability: %s", strerror(errno));
+    }
+
+    bool isReadable = (ready > 0) && (pfd.revents & (POLLIN | POLLHUP | POLLERR));
+
+    return okResult(BOOL_VAL(isReadable));
+}
+
+Value ioCloseNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL) {
+        return okResult(NIL_VAL);
+    }
+
+    if (so->fd != -1) {
+        if (so->type == SOCK_STREAM && so->connected) {
+            shutdown(so->fd, SHUT_RDWR);
+        }
+        close(so->fd);
+        so->fd = -1;
+        so->connected = false;
+    }
+
+    return okResult(NIL_VAL);
+}
+
+Value ioPollNative(int argCount, Value* args) {
+    if (!IS_CLASS(args[-1])) {
+        return errorResult("poll() must be called on the IO.class.");
+    }
+
+    if (argCount < 1 || !IS_ARRAY(args[0])) {
+        return errorResult("poll() must have an array of sockets as the first argument.");
+    }
+
+    int eventMask = POLLIN;
+    if (argCount > 2 && IS_NUMBER(args[2])) {
+        eventMask = (int)AS_NUMBER(args[2]);
+    }
+
+    ObjArray* socket_array = AS_ARRAY(args[0]);
+
+    int max_fds = socket_array->count > 0 ? socket_array->count : 1;
+    struct pollfd fds[max_fds];
+    int valid_fd_count = 0;
+
+    for (int i = 0; i < socket_array->count; i++) {
+        Value item = socket_array->values[i];
+        if (!IS_INSTANCE(item)) continue;
+
+        ObjInstance* instance = AS_INSTANCE(item);
+        SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+        if (so != NULL && so->fd != 1) {
+            fds[valid_fd_count].fd = so->fd;
+            fds[valid_fd_count].events = eventMask;
+            fds[valid_fd_count].revents = 0;
+            valid_fd_count++;
+        }
+    }
+
+    int timeout = (argCount < 1 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : -1;
+    int pollResult = poll(fds, valid_fd_count, timeout);
+
+    if (pollResult < 0) {
+        return errorResult("Poll failed: %s", strerror(errno));
+    }
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    if (pollResult > 0) {
+        int fds_idx = 0;
+
+        for (int i = 0; i < socket_array->count; i++) {
+            Value item = socket_array->values[i];
+            if (!IS_INSTANCE(item)) continue;
+
+            ObjInstance* instance = AS_INSTANCE(item);
+            SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+            if (so != NULL && so->fd != -1) {
+                short revents = fds[fds_idx].revents;
+
+                if (revents & (eventMask | POLLERR | POLLHUP)) {
+                    arrayAppend(array, item);
+                }
+                fds_idx++;
+            }
+        }
+    }
+    Value resultVal = okResult(OBJ_VAL(array));
+    pop();
+    return resultVal;
+}
+
+Value ioSetRecvTimeoutNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
+        return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1) {
+        return errorResult("Socket is not initialized.");
+    }
+
+    double requestedMs = AS_NUMBER(args[0]);
+    if (requestedMs < 0) {
+        runtimeError("Timeout value cannot be negative.");
+        return errorResult("Timeout value cannot be negative.");
+    }
+
+    int ms = (int)requestedMs;
+
+    struct timeval timeout;
+    timeout.tv_sec = ms / 1000;
+    timeout.tv_usec = (ms % 1000) * 1000;
+
+    if (setsockopt(so->fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        return errorResult("Failed to set receive timeout: %s", strerror(errno));
+    }
+
+    return okResult(args[-1]);
+}
+
+void initIOClass() {
+
+    ObjString* ioName = copyString("IO", 2);
+    push(OBJ_VAL(ioName));
+
+    ObjClass* ioClass = newClass(ioName);
+    push(OBJ_VAL(ioClass));
+
+    ioClass->superclass = vm.objectClass;
+    ioClass->callHandler = ioCallHandler;
+    ioClass->destructor = ioDestructor;
+
+    tableSet(&vm.globals, ioName, OBJ_VAL(ioClass));
+
+    ObjString* tcpName = copyString("tcp", 3);
+    push(OBJ_VAL(tcpName));
+
+    ObjClass* tcpClass = newClass(tcpName);
+    push(OBJ_VAL(tcpClass));
+
+    tcpClass->superclass = ioClass;
+    tcpClass->callHandler = ioCallHandler;
+    tcpClass->destructor = ioDestructor;
+    tableSet(&ioClass->methods, tcpName, OBJ_VAL(tcpClass));
+
+    //defineClassConstant(ioClass, "tcp", OBJ_VAL(tcpClass));
+
+    pop(); // tcpClass
+    pop(); // tcpName
+
+    ObjString* udpName = copyString("udp", 3);
+    push(OBJ_VAL(udpName));
+
+    ObjClass* udpClass = newClass(udpName);
+    push(OBJ_VAL(udpClass));
+
+    udpClass->superclass = ioClass;
+    udpClass->callHandler = ioCallHandler;
+    udpClass->destructor = ioDestructor;
+
+    tableSet(&ioClass->methods, udpName, OBJ_VAL(udpClass));
+    //defineClassConstant(ioClass, "udp", OBJ_VAL(udpClass));
+
+    pop(); // udpClass
+    pop(); // udpName
+
+    defineNativeMethod(ioClass, "inspect", ioInspectNative);
+    defineNativeMethod(ioClass, "connect", ioConnectNative);
+    defineNativeMethod(ioClass, "send", ioSendNative);
+    defineNativeMethod(ioClass, "recv", ioRecvNative);
+    defineNativeMethod(ioClass, "listen", ioListenNative);
+    defineNativeMethod(ioClass, "accept", ioAcceptNative);
+    defineNativeMethod(ioClass, "bind", ioBindNative);
+    defineNativeMethod(ioClass, "readable", ioReadableNative);
+    defineNativeMethod(ioClass, "close", ioCloseNative);
+    defineNativeMethod(ioClass, "poll", ioPollNative);
+    defineNativeMethod(ioClass, "set_recv_timeout", ioSetRecvTimeoutNative);
+
+    defineClassConstant(ioClass, "PollIn", NUMBER_VAL(POLLIN));
+    defineClassConstant(ioClass, "PollOut", NUMBER_VAL(POLLOUT));
+    defineClassConstant(ioClass, "PollErr", NUMBER_VAL(POLLERR));
+    defineClassConstant(ioClass, "PollHup", NUMBER_VAL(POLLHUP));
+
+    pop(); // ioClass
+    pop(); // ioName
 }

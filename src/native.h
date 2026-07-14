@@ -152,6 +152,22 @@ Value stressmodeGCNative(int argCount, Value* args);
 Value get_stressmodeGCNative(int argCount, Value* args);
 Value typeGCNative(int argCount, Value* args);
 Value get_typeGCNative(int argCount, Value* args);
+Value systemGCNative(int argCount, Value* args);
 void initGCLibrary();
+void ioDestructor(ObjInstance* inst);
+Value ioCallHandler(int argCount, Value* args);
+Value ioTcpNative(int argCount, Value* args);
+Value ioInspectNative(int argCount, Value* args);
+Value ioConnectNative(int argCount, Value* args);
+Value ioSendNative(int argCount, Value* args);
+Value ioRecvNative(int argCount, Value* args);
+Value ioListenNative(int argCount, Value* args);
+Value ioAcceptNative(int argCount, Value* args);
+Value ioBindNative(int argCount, Value* args);
+Value ioReadableNative(int argCount, Value* args);
+Value ioCloseNative(int argCount, Value* args);
+Value ioPollNative(int argCount, Value* args);
+Value ioSetRecvTimeoutNative(int argCount, Value* args);
+void initIOClass();
 
 #endif // NATIVE_H

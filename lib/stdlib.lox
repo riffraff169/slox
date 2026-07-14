@@ -336,3 +336,52 @@ fun pp(obj) {
 const STDOUT = File.open("STDOUT").unwrap();
 const STDERR = File.stderr();
 const STDIN = File.open("STDIN").unwrap();
+
+// 
+fun sendAll(socket, data) {
+  var totalBytes = data.length();
+  var bytesSent = 0;
+
+  while (bytesSent < totalBytes) {
+    var unsentData = data.substring(bytesSent);
+    var result = socket.send(unsentData);
+
+    if (!result) {
+      return false;
+    }
+
+    var written = result.unwrap();
+
+    if (written > 0) {
+      bytesSent = bytesSent + written;
+    } else {
+      socket.poll(IO.PollOut, 100);
+    }
+  }
+
+  return true;
+}
+
+fun readExact(socket, targetLength) {
+  var dataReceived = "";
+
+  while (dataReceived.length() < targetLength) {
+    var pollResult = IO.poll([socket], 500, IO.PollIn);
+    if (pollResult.unwrap().length() == 0) {
+      continue;
+    }
+
+    var remaining = targetLength - dataReceived.length();
+    var result = socket.recv(remaining);
+
+    if (!result) {
+      print "Connection lost: " + result.err;
+      return nil;
+    }
+
+    var chunk = result.wrap();
+    dataReceived = dataReceived + chunk;
+  }
+
+  return dataReceived;
+}
