@@ -978,7 +978,9 @@ void initMapClass() {
     X("tan", mathTanNative) \
     X("atan2", mathAtan2Native) \
     X("cos", mathCosNative) \
-    X("acos", mathAcosNative)
+    X("acos", mathAcosNative) \
+    X("to_int", numberToIntNative) \
+    X("to_fixed", numberToFixedNative)
 
 #define MATH_ONLY_METHOD_LIST(X) \
     X("random", mathRandomNative) \
@@ -1236,6 +1238,41 @@ Value mathAcosNative(int argCount, Value* args) {
     return NUMBER_VAL(acos(val));
 }
 
+Value numberToIntNative(int argCount, Value* args) {
+    EXTRACT_MATH_OP(val, "to_int");
+
+    if (isnan(val)) {
+        return OBJ_VAL(copyString("NaN", 3));
+    }
+    if (isinf(val)) {
+        return OBJ_VAL(copyString(val > 0 ? "Infinity" : "-Infinity", val > 0 ? 8 : 9));
+    }
+
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%0.f", trunc(val));
+    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+}
+
+Value numberToFixedNative(int argCount, Value* args) {
+    EXTRACT_MATH_OP(val, "to_fixed");
+    int decimals = 0;
+
+    if (argCount >= 2) {
+        if (!IS_NUMBER(args[1])) {
+            runtimeError("Number.to_fixed() decimals argument must be a number.");
+            return NIL_VAL;
+        }
+        decimals = (int)AS_NUMBER(args[1]);
+        if (decimals < 0) decimals = 0;
+        if (decimals > 20) decimals = 20;
+    }
+
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.*f", decimals, val);
+
+    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+}
+
 void initMathLibrary() {
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
@@ -1252,6 +1289,9 @@ void initMathLibrary() {
 #define X(name, func) defineNativeMethod(mathClass, name, func);
     MATH_ONLY_METHOD_LIST(X)
 #undef X
+
+    defineNativeMethod(vm.numberClass, "to_int", numberToIntNative);
+    defineNativeMethod(vm.numberClass, "to_fixed", numberToFixedNative);
 
     // or if want single source:
 #define X(name, func, isDual) \
@@ -2733,7 +2773,7 @@ Value processRunStatic(int argCount, Value* args) {
     return okResult(NUMBER_VAL((double)status));
 }
 
-Value processExecuteStatic(int argCount, Value* args) {
+Value processCaptureStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Process.execute() requires a string command argument.");
         return NIL_VAL;
@@ -2770,7 +2810,11 @@ Value processExecuteStatic(int argCount, Value* args) {
         return errorResult("Process failed to terminate cleanly.");
     }
 
-    ObjString* outputString = takeString(buffer, length);
+    size_t exactSize = length + 1;
+    buffer = GROW_ARRAY(char, buffer, capacity, exactSize);
+    buffer[length] = '\0';
+
+    ObjString* outputString = takeString(buffer, (int)length);
     return okResult(OBJ_VAL(outputString));
 }
 
@@ -2781,10 +2825,100 @@ Value processForkStatic(int argCount, Value* args) {
 
     if (pid < 0) {
         int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        runtimeError("fork() failed: %s", strerror(errsv));
         return errorResult("Failed to fork process: %s", strerror(errsv));
     }
 
     return okResult(NUMBER_VAL((double)pid));
+}
+
+static char* valueToCString(Value val) {
+    if (IS_STRING(val)) {
+        return strdup(AS_CSTRING(val));
+    } else if (IS_NUMBER(val)) {
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(val));
+        return strdup(buffer);
+    } else if (IS_BOOL(val)) {
+        return strdup(AS_BOOL(val) ? "true" : "false");
+    } else if (IS_NIL(val)) {
+        return strdup("nil");
+    }
+    return strdup("object");
+}
+
+Value processExecStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("exec() expects a string path as the first argument.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+
+    ObjArray* argsArray = NULL;
+    if (argCount >= 2 && !IS_NIL(args[1])) {
+        if (!IS_ARRAY(args[1])) {
+            runtimeError("Second argument to exec() must be an Array or nil.");
+            return NIL_VAL;
+        }
+        argsArray = AS_ARRAY(args[1]);
+    }
+
+    int arrayCount = argsArray ? argsArray->count : 0;
+
+    char** argv = malloc((arrayCount + 2) * sizeof(char*));
+    if (argv == NULL) {
+        runtimeError("Out of memory converting arguments for exec.");
+        return NIL_VAL;
+    }
+
+    argv[0] = strdup(path);
+
+    for (int i = 0; i < arrayCount; i++) {
+        argv[i + 1] = valueToCString(argsArray->values[i]);
+    }
+    argv[arrayCount + 1] = NULL;
+
+    if (argCount >= 3 && IS_MAP(args[2])) {
+        if (!IS_MAP(args[2])) {
+            for (int i = 0; i <= arrayCount; i++) {
+                free(argv[i]);
+                free(argv);
+                runtimeError("exec() third argument must be a Map or nil.");
+                return NIL_VAL;
+            }
+
+            ObjMap* envMap = AS_MAP(args[2]);
+            for (int i = 0; i < envMap->items.capacity; i++) {
+                Entry* entry = &envMap->items.entries[i];
+
+                if (entry->key != NULL) {
+                    char* valStr = valueToCString(entry->value);
+                    setenv(entry->key->chars, valStr, 1);
+                    free(valStr);
+                }
+            }
+        }
+
+    }
+
+    execvp(path, argv);
+
+    int errsv = errno;
+    for (int i = 0; i < arrayCount; i++) {
+        free(argv[i]);
+    }
+    free(argv);
+
+    setLastError(errsv, "%s", strerror(errsv));
+    runtimeError("exec() failed: %s", strerror(errsv));
+
+    return NIL_VAL;
+}
+
+Value processPidStatic(int argCount, Value* args) {
+    return NUMBER_VAL((double)getpid());
 }
 
 Value processWaitStatic(int argCount, Value* args) {
@@ -2803,6 +2937,8 @@ Value processWaitStatic(int argCount, Value* args) {
 
     if (reapedPid < 0) {
         int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        runtimeError("wait() failed: %s", strerror(errsv));
         return errorResult("Wait failed: %s", strerror(errsv));
     }
 
@@ -2898,8 +3034,10 @@ void initProcessClass() {
     tableSet(&vm.globals, processName, OBJ_VAL(processClass));
 
     defineNativeMethod(processClass, "run", processRunStatic);
-    defineNativeMethod(processClass, "execute", processExecuteStatic);
+    defineNativeMethod(processClass, "capture", processCaptureStatic);
     defineNativeMethod(processClass, "fork", processForkStatic);
+    defineNativeMethod(processClass, "exec", processExecStatic);
+    defineNativeMethod(processClass, "pid", processPidStatic);
     defineNativeMethod(processClass, "wait", processWaitStatic);
     defineNativeMethod(processClass, "pipe", processPipeStatic);
     defineNativeMethod(processClass, "read", processReadStatic);
@@ -4013,4 +4151,296 @@ void initIOClass() {
 
     pop(); // ioClass
     pop(); // ioName
+}
+
+Value systemTimeNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)time(NULL));
+}
+
+Value systemExitNative(int argCount, Value* args) {
+    int code = 0;
+    if (argCount > 0) {
+        if (!IS_NUMBER(args[0])) {
+            runtimeError("exit() expects a number argument.");
+            return NIL_VAL;
+        }
+
+        double dcode = AS_NUMBER(args[0]);
+        if (dcode <= -INT_MAX - 1 || dcode > INT_MAX || isnan(dcode)) {
+            fprintf(stderr, "exit(): RangeError: exit code is outside integer range.");
+            exit(1);
+        }
+        int rcode = (int)dcode;
+
+        if (rcode < 0 | rcode > 255) {
+            code = (unsigned char)dcode;
+            fprintf(stderr, "exit() Warning: exit code %d is out of range (0-255).", rcode);
+        } else {
+            code = rcode;
+        }
+    }
+
+    exit(code);
+
+    return NIL_VAL;
+}
+
+static void setMapField(ObjMap* map, const char* name, double value) {
+    ObjString* key = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(key));
+    tableSet(&map->items, key, NUMBER_VAL(value));
+    pop();
+}
+
+typedef struct {
+    unsigned long size, resident, share, text, lib, data, dt;
+} statm_t;
+
+Value systemMemNative(int argCount, Value* args) {
+    ObjMap* memmap = newMap();
+    push(OBJ_VAL(memmap));
+
+    statm_t res;
+    const char* statm_path = "/proc/self/statm";
+    FILE *f = fopen(statm_path, "r");
+    if (!f) {
+        int errsv = errno;
+        char* errmsg = strerror(errsv);
+        setLastError(errsv, "%s", errmsg);
+        runtimeError("Error reading statm: %s\n", errmsg);
+        pop();
+        return NIL_VAL;
+    }
+
+    if (7 != fscanf(f, "%lu %lu %lu %lu %lu %lu %lu",
+                &res.size, &res.resident, &res.share, &res.text,
+                &res.lib, &res.data, &res.dt)) {
+        int errsv = errno;
+        char* errmsg = strerror(errsv);
+        setLastError(errsv, "%s", errmsg);
+        runtimeError("Error parsing statm: %s\n", errmsg);
+        fclose(f);
+        pop();
+        return NIL_VAL;
+    }
+    fclose(f);
+
+    long page_size = sysconf(_SC_PAGESIZE);
+    if (page_size <= 0) page_size = 4096;
+
+    setMapField(memmap, "size", (double)res.size * page_size);
+    setMapField(memmap, "resident", (double)res.resident * page_size);
+    setMapField(memmap, "share", (double)res.share * page_size);
+    setMapField(memmap, "text", (double)res.text * page_size);
+    setMapField(memmap, "data", (double)res.data * page_size);
+
+    return pop();
+}
+
+Value systemResetStackNative(int argCount, Value* args) {
+    for (Value* slot = vm.stackTop; slot < vm.stack + STACK_MAX; slot++) {
+        *slot = NIL_VAL;
+    }
+    return NIL_VAL;
+}
+
+Value systemShowStackNative(int argCount, Value* args) {
+    printf("[SHOW_STACK]: stack: %d\n", (int)(vm.stackTop - vm.stack));
+    return NIL_VAL;
+}
+
+Value systemSetPrecisionNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        if (!IS_NUMBER(args[0])) {
+            runtimeError("set_precision() expects a number argument.");
+            return NIL_VAL;
+        }
+
+        int precision = (int)AS_NUMBER(args[0]);
+        if (precision < 0) precision = 0;
+        if (precision > 20) precision = 20;
+        vm.numPrecision = precision;
+    }
+
+    return NUMBER_VAL(vm.numPrecision);
+}
+
+Value systemSetNotationNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        if (!IS_NUMBER(args[0])) {
+            runtimeError("set_notation() expects a number argument.");
+            return NIL_VAL;
+        }
+
+        int style = (int)AS_NUMBER(args[0]);
+
+        if (style < 0 || style > 2) {
+            runtimeError("Invalid notation style type.");
+            return NIL_VAL;
+        }
+
+        vm.numNotation = style;
+    }
+
+    return NUMBER_VAL(vm.numNotation);
+}
+
+Value systemDebugPrintNative(int argCount, Value* args) {
+    if (argCount < 0) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("debug_print() expects a boolean argument.");
+            return NIL_VAL;
+        }
+        vm.debugPrintCode = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.debugPrintCode);
+}
+
+Value systemTraceNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("trace() expects a boolean argument.");
+        }
+        vm.debugTraceExecution = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.debugTraceExecution);
+}
+
+Value systemStrictNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("strict() expects a boolean argument.");
+            return NIL_VAL;
+        }
+        vm.strictMode = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.strictMode);
+}
+
+Value systemWarnNative(int argCount, Value* args) {
+    if (argCount > 0) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("warn() expects a boolean argument.");
+            return NIL_VAL;
+        }
+        vm.warnMode = AS_BOOL(args[0]);
+    }
+    return BOOL_VAL(vm.warnMode);
+}
+
+Value systemSleepNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("System.sleep() requires a numeric duration in seconds.");
+        return NIL_VAL;
+    }
+
+    double totalSeconds = AS_NUMBER(args[0]);
+    if (totalSeconds < 0) totalSeconds = 0;
+
+    struct timespec ts;
+    ts.tv_sec = (time_t)totalSeconds;
+    ts.tv_nsec = (long)((totalSeconds - (double)ts.tv_sec) * 1e9);
+
+    nanosleep(&ts, NULL);
+
+    return NIL_VAL;
+}
+
+void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
+    ObjString* systemName = copyString("System", 6);
+    push(OBJ_VAL(systemName));
+    ObjClass* systemClass = newClass(systemName);
+    push(OBJ_VAL(systemClass));
+
+    defineNativeMethod(systemClass, "time", systemTimeNative);
+    defineNativeMethod(systemClass, "exit", systemExitNative);
+    defineNativeMethod(systemClass, "gc", systemGCNative);
+    defineNativeMethod(systemClass, "mem", systemMemNative);
+    defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
+    defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
+    defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
+    defineNativeMethod(systemClass, "set_precision", systemSetPrecisionNative);
+    defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
+    defineNativeMethod(systemClass, "trace", systemTraceNative);
+    defineNativeMethod(systemClass, "strict", systemStrictNative);
+    defineNativeMethod(systemClass, "warn", systemWarnNative);
+    defineNativeMethod(systemClass, "sleep", systemSleepNative);
+
+    vm.includePathCount = 0;
+    vm.scriptName = NULL;
+
+    ObjArray* argsArray = newArray();
+    push(OBJ_VAL(argsArray));
+
+    int i = 1;
+    while (i < argc && argv[i][0] == '-') {
+        if (strcmp(argv[i], "-I") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: -I option requires a directory path.\n");
+                exit(64);
+            }
+            if (vm.includePathCount < 64) {
+                vm.includePaths[vm.includePathCount++] = argv[i + 1];
+            }
+            i += 2;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            exit(64);
+        }
+    }
+
+    if (i < argc) {
+        vm.scriptName = argv[i];
+        i++;
+    }
+
+    const char* exeTarget = (vm.scriptName != NULL) ? vm.scriptName : argv[0];
+
+    ObjString* exeKey = copyString("EXE", 3);
+    push(OBJ_VAL(exeKey));
+    ObjString* exeVal = copyString(exeTarget, strlen(exeTarget));
+    push(OBJ_VAL(exeVal));
+
+    tableSet(&systemClass->fields, exeKey, OBJ_VAL(exeVal));
+    pop(); // pop exeVal
+    pop(); // pop exeKey
+
+    for (int j = i; j < argc; j++) {
+        ObjString* argStr = copyString(argv[j], strlen(argv[j]));
+        push(OBJ_VAL(argStr));
+        arrayAppend(argsArray, OBJ_VAL(argStr));
+        pop();
+    }
+    tableSet(&systemClass->fields, copyString("ARGS", 4), OBJ_VAL(argsArray));
+
+    ObjMap* envMap = newMap();
+    push(OBJ_VAL(envMap));
+
+    for (const char **envp = env; *envp != NULL; envp++) {
+        const char* entry = *envp;
+        char *sep = strchr(entry, '=');
+
+        if (sep != NULL) {
+            int keyLen = (int)(sep - entry);
+            int valLen = (int)strlen(sep + 1);
+
+            ObjString* key = copyString(entry, keyLen);
+            push(OBJ_VAL(key));
+            ObjString* val = copyString(sep + 1, valLen);
+            push(OBJ_VAL(val));
+
+            tableSet(&envMap->items, key, OBJ_VAL(val));
+            pop();
+            pop();
+        }
+    }
+    tableSet(&systemClass->fields, copyString("ENV", 3), OBJ_VAL(envMap));
+
+    defineClassConstant(systemClass, "Scientific", NUMBER_VAL(1));
+    defineClassConstant(systemClass, "Fixed", NUMBER_VAL(2));
+    defineClassConstant(systemClass, "Default", NUMBER_VAL(0));
+
+    tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
+
+    popn(4);
 }

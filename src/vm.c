@@ -652,176 +652,6 @@ void defineNativeMethod(ObjClass* klass, const char* name,
     popn(2);
 }
 
-static Value systemTimeNative(int argCount, Value* args) {
-    return NUMBER_VAL((double)time(NULL));
-}
-
-static Value systemExitNative(int argCount, Value* args) {
-    int code = 0;
-    if (argCount == 1 && IS_NUMBER(args[1])) {
-        code = (int)AS_NUMBER(args[1]);
-    }
-    exit(code);
-    //return NIL_VAL; // technically never reached
-}
-
-static Value systemStrictNative(int argCount, Value* args) {
-    if (argCount == 1 && IS_BOOL(args[0])) {
-        vm.strictMode = AS_BOOL(args[0]);
-    }
-    return BOOL_VAL(vm.strictMode);
-}
-
-static Value systemWarnNative(int argCount, Value* args) {
-    if (argCount == 1 && IS_BOOL(args[0])) {
-        vm.warnMode = AS_BOOL(args[0]);
-    }
-    return BOOL_VAL(vm.warnMode);
-}
-
-static Value systemSetPrecisionNative(int argCount, Value* args) {
-    int precision = 6;
-
-    if (argCount == 1 && IS_NUMBER(args[0])) {
-        precision = (int)AS_NUMBER(args[0]);
-        if (precision < 0) precision = 0;
-    }
-
-    vm.numPrecision = precision;
-    return NUMBER_VAL(precision);
-}
-
-static Value systemSetNotationNative(int argCount, Value* args) {
-    int style = 1;
-    if (argCount == 1 && IS_NUMBER(args[0])) {
-        style = (int)AS_NUMBER(args[0]);
-    }
-    vm.numNotation = style;
-    return NUMBER_VAL(style);
-}
-
-static Value systemDebugPrintNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_BOOL(args[1])) {
-        runtimeError("Expected a boolean argument (true/false).");
-        return BOOL_VAL(false);
-    }
-    vm.debugPrintCode = AS_BOOL(args[1]);
-    return BOOL_VAL(vm.debugPrintCode);
-}
-
-static Value systemTraceNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_BOOL(args[0])) {
-        runtimeError("Expected a boolean argument (true/false).");
-        return BOOL_VAL(false);
-    }
-    vm.debugTraceExecution = AS_BOOL(args[0]);
-    return BOOL_VAL(vm.debugTraceExecution);
-}
-
-static Value systemShowStackNative(int argCount, Value* args) {
-    printf("[SHOW_STACK]: stack: %d\n", (int)(vm.stackTop - vm.stack));
-    return NIL_VAL;
-}
-
-static Value systemResetStackNative(int argCount, Value* args) {
-    for (Value* slot = vm.stackTop; slot < vm.stack + STACK_MAX; slot++) {
-        *slot = NIL_VAL;
-    }
-    return NIL_VAL;
-}
-
-typedef struct {
-    unsigned long size, resident, share, text, lib, data, dt;
-} statm_t;
-
-static Value systemMemNative(int argCount, Value* args) {
-    ObjMap* memmap = newMap();
-    push(OBJ_VAL(memmap));
-
-    statm_t res;
-    const char* statm_path = "/proc/self/statm";
-    FILE *f = fopen(statm_path, "r");
-    if (!f) {
-        int errsv = errno;
-        char *errmsg = strerror(errsv);
-        setLastError(errsv, "%s", errmsg);
-        runtimeError("Error reading statm: %s\n", errmsg);
-        pop();
-        return NIL_VAL;
-    }
-
-    if (7 != fscanf(f, "%lu %lu %lu %lu %lu %lu %lu",
-                &res.size, &res.resident, &res.share, &res.text,
-                &res.lib, &res.data, &res.dt)) {
-        int errsv = errno;
-        char *errmsg = strerror(errsv);
-        setLastError(errsv, "%s", errmsg);
-        runtimeError("Error parsing statm: %s\n", errmsg);
-        fclose(f);
-        pop();
-        return NIL_VAL;
-    }
-
-    fclose(f);
-
-    ObjString* key;
-    double val;
-
-    key = copyString("size", 4);
-    push(OBJ_VAL(key));
-    val = res.size;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-
-    key = copyString("resident", 8);
-    push(OBJ_VAL(key));
-    val = res.resident;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-
-    key = copyString("share", 5);
-    push(OBJ_VAL(key));
-    val = res.share;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-
-    key = copyString("text", 4);
-    push(OBJ_VAL(key));
-    val = res.text;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-
-    /* unused
-    key = copyString("lib", 3);
-    push(OBJ_VAL(key));
-    val = res.lib;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-    */
-
-    key = copyString("data", 4);
-    push(OBJ_VAL(key));
-    val = res.data;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-
-    /* unused
-    key = copyString("dt", 2);
-    push(OBJ_VAL(key));
-    val = res.data;
-    push(NUMBER_VAL(val));
-    tableSet(&memmap->items, key, NUMBER_VAL(val));
-    popn(2);
-    */
-    return pop();
-}
-
 bool isInstanceOf(Value value, ObjClass* targetClass) {
     if (!IS_INSTANCE(value)) return false;
 
@@ -1002,125 +832,6 @@ static inline Value getCheckTarget(int argCount, Value* args) {
     return args[-1];
 }
 
-Value systemSleepNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("System.sleep() requires a numeric duration in seconds.");
-        return NIL_VAL;
-    }
-
-    double totalSeconds = AS_NUMBER(args[0]);
-    if (totalSeconds < 0) totalSeconds = 0;
-
-    struct timespec ts;
-    ts.tv_sec = (time_t)totalSeconds;
-    ts.tv_nsec = (long)((totalSeconds - (double)ts.tv_sec) * 1e9);
-    
-    nanosleep(&ts, NULL);
-
-    return NIL_VAL;
-}
-
-void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
-    ObjString* systemName = copyString("System", 6);
-    push(OBJ_VAL(systemName));
-    ObjClass* systemClass = newClass(systemName);
-    push(OBJ_VAL(systemClass));
-
-    defineNativeMethod(systemClass, "time", systemTimeNative);
-    defineNativeMethod(systemClass, "exit", systemExitNative);
-    defineNativeMethod(systemClass, "gc", systemGCNative);
-    defineNativeMethod(systemClass, "mem", systemMemNative);
-    defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
-    defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
-    defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
-    defineNativeMethod(systemClass, "set_precision", systemSetPrecisionNative);
-    defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
-    defineNativeMethod(systemClass, "trace", systemTraceNative);
-    defineNativeMethod(systemClass, "strict", systemStrictNative);
-    defineNativeMethod(systemClass, "warn", systemWarnNative);
-    defineNativeMethod(systemClass, "sleep", systemSleepNative);
-
-    tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
-
-    ObjInstance* systemInstance = newInstance(systemClass);
-    push(OBJ_VAL(systemInstance));
-
-    vm.includePathCount = 0;
-    vm.scriptName = NULL;
-
-    ObjArray* argsArray = newArray();
-    push(OBJ_VAL(argsArray));
-
-    int i = 1;
-    while (i < argc && argv[i][0] == '-') {
-        if (strcmp(argv[i], "-I") == 0) {
-            if (i + 1 >= argc) {
-                fprintf(stderr, "Error: -I option requires a directory path.\n");
-                exit(64);
-            }
-            if (vm.includePathCount < 64) {
-                vm.includePaths[vm.includePathCount++] = argv[i + 1];
-            }
-            i += 2;
-        } else {
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
-            exit(64);
-        }
-    }
-
-    if (i < argc) {
-        vm.scriptName = argv[i];
-        i++;
-    }
-
-    const char* exeTarget = (vm.scriptName != NULL) ? vm.scriptName : argv[0];
-
-    ObjString* exeKey = copyString("EXE", 3);
-    push(OBJ_VAL(exeKey));
-
-    ObjString* exeVal = copyString(exeTarget, strlen(exeTarget));
-    push(OBJ_VAL(exeVal));
-
-    tableSet(&systemInstance->fields, exeKey, OBJ_VAL(exeVal));
-    pop();
-    pop();
-
-    for (int j = i; j < argc; j++) {
-        ObjString* argStr = copyString(argv[j], strlen(argv[j]));
-        push(OBJ_VAL(argStr));
-        arrayAppend(argsArray, OBJ_VAL(argStr));
-        pop();
-    }
-    tableSet(&systemInstance->fields, copyString("ARGS", 4), OBJ_VAL(argsArray));
-
-    ObjMap* envMap = newMap();
-    push(OBJ_VAL(envMap));
-
-    for (const char **envp = env; *envp != NULL; envp++) {
-        const char *entry = *envp;
-        char *sep = strchr(entry, '=');
-
-        if (sep != NULL) {
-
-            int keyLen = (int)(sep - entry);
-            int valLen = (int)strlen(sep + 1);
-
-            ObjString* key = copyString(entry, keyLen);
-            push(OBJ_VAL(key));
-            ObjString* val = copyString(sep + 1, valLen);
-            push(OBJ_VAL(val));
-
-            tableSet(&envMap->items, key, OBJ_VAL(val));
-            pop();
-            pop();
-        }
-    }
-    tableSet(&systemInstance->fields, copyString("ENV", 3), OBJ_VAL(envMap));
-    tableSet(&vm.globals, copyString("System", 6), OBJ_VAL(systemInstance));
-
-    popn(5);
-}
-
 Value vec3CallHandler(int argCount, Value* args) {
     if (argCount != 3) {
         runtimeError("Vec3 construct expects 3 arguments.");
@@ -1209,6 +920,17 @@ static Value classSuperclassMethod(int argCount, Value* args) {
     }
 
     return OBJ_VAL(klass->superclass);
+}
+
+static Value objectClassNameNative(int argCount, Value* args) {
+    Value receiver = args[-1];
+    ObjClass* klass = NULL;
+
+    klass = getClassForValue(receiver);
+    if (klass != NULL) {
+        return OBJ_VAL(klass->name);
+    }
+    return NIL_VAL;
 }
 
 static Value objectRootGetter(int argCount, Value* args) {
@@ -1655,6 +1377,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
     defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
     defineNativeMethod(vm.classClass, "name", classNameNative);
+    defineNativeMethod(vm.objectClass, "className", objectClassNameNative);
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
@@ -1743,7 +1466,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initGCLibrary(); //
     initArrayClass(); // done
     initMapClass(); //done
-    initIOClass();
+    initIOClass(); // done
     initStructClass(); //
 
     vm.debugPrintCode = false;
@@ -3410,7 +3133,7 @@ InterpretResult run() {
                     // case 2: too many elements (the strict/warn zone)
                     if (actualCount > expectedCount) {
                         if (vm.strictMode) {
-                            RUNTIME_ERROR("Destructuring mismath: Strict mode active. Extraneous array elements detected.");
+                            RUNTIME_ERROR("Destructuring error: Unassigned %d trailing elements.", expectedCount - actualCount);
                             break;
                         } else if (vm.warnMode) {
                             printf("Warning: Destructuring assigment ignored %d trailing array elements.\n",
