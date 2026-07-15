@@ -1369,7 +1369,7 @@ Value arrayMapNative(int argCount, Value* args) {
     }
 
     ObjArray* original = AS_ARRAY(args[-1]);
-    ObjClosure* callback = AS_CLOSURE(args[0]);
+    Value callback = args[0];
 
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
@@ -1377,12 +1377,12 @@ Value arrayMapNative(int argCount, Value* args) {
     VM_CALLBACK_INIT();
 
     for (int i = 0; i < original->count; i++) {
-        push(OBJ_VAL(callback));
+        push(callback);
         push(original->values[i]);
 
         VM_CALLBACK_ENTER();
 
-        if (vmCall(callback, 1)) {
+        if (callValue(callback, 1)) {
             InterpretResult res = run();
 
             VM_CALLBACK_CHECK_ERROR(res);
@@ -1414,6 +1414,7 @@ Value arrayIsEmptyNative(int argCount, Value* args) {
 
 Value arrayFilterNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
+        runtimeError("Expected a callback function argument for filter().");
         return NIL_VAL;
     }
 
@@ -1436,7 +1437,7 @@ Value arrayFilterNative(int argCount, Value* args) {
 
             VM_CALLBACK_CHECK_ERROR(res);
 
-            if (!isFalsey(pop())) {
+            if (isTruthy(pop())) {
                 arrayAppend(result, original->values[i]);
             }
         }
@@ -1450,17 +1451,38 @@ Value arrayFilterNative(int argCount, Value* args) {
 }
 
 Value arrayReduceNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        return NIL_VAL;
-    }
-
     ObjArray* array = AS_ARRAY(args[-1]);
-    Value callback = args[0];
+    Value callback = NIL_VAL;
+    Value acc = NIL_VAL;
+    int startindex = 0;
 
-    Value acc = (argCount > 1) ? args[1] : NIL_VAL;
-    int startindex = (argCount > 1) ? 0 : 1;
-    if (argCount <= 1 && array->count > 0) {
+    if (argCount == 1) {
+        // case A: [1,2,3].reduce(callback)
+        if (!IS_CLOSURE(args[0])) {
+            runtimeError("reduce() with 1 argument expects a callback function.");
+            return NIL_VAL;
+        }
+
+        if (array->count == 0) {
+            return NUMBER_VAL(0);
+            //runtimeError("Cannot reuduce an empty array with no initial value.");
+            //return NIL_VAL;
+        }
+        callback = args[0];
         acc = array->values[0];
+        startindex = 1;
+    } else if (argCount >= 2) {
+        // case B: [1,2,3].reduce(initialValue, callback)
+        if (!IS_CLOSURE(args[1])) {
+            runtimeError("reduce() with 2 arguments expecats a callback function as the second argument.");
+            return NIL_VAL;
+        }
+        acc = args[0];
+        callback = args[1];
+        startindex = 0;
+    } else {
+        runtimeError("reduce() expects at least 1 argument (callback).");
+        return NIL_VAL;
     }
 
     push(acc);
