@@ -33,29 +33,30 @@
 #include "vm.h"
 
 // 1. Setup phase: Capture the original depth and current stack pointer
-#define VM_CALLBACK_INIT() \
-    int _oldExitDepth = vm.nativeExitDepth; \
-    Value* _callbackStackStart = vm.stackTop
+#define VM_CALLBACK_INIT(oldDepth, stackStart) \
+    int oldDepth = vm.nativeExitDepth; \
+    Value* stackStart = vm.stackTop
 
 // 2. Execute phase: Tell the vm where to return when the callback yields
-#define VM_CALLBACK_ENTER() \
+#define VM_CALLBACK_ENTER(priorFrame) \
+    int priorFrame = vm.frameCount; \
     vm.nativeExitDepth = vm.frameCount
 
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
-#define VM_CALLBACK_CHECK_ERROR(resultState) \
+#define VM_CALLBACK_CHECK_ERROR(resultState, oldDepth, stackStart) \
     if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
-        vm.stackTop = _callbackStackStart; \
-        vm.nativeExitDepth = _oldExitDepth; \
+        vm.stackTop = stackStart; \
+        vm.nativeExitDepth = oldDepth; \
         return NIL_VAL; \
     }
 
 // 4. Iteration reset: Clear the stack back to the stable start point for the next loop
-#define VM_CALLBACK_RESET_STACK() \
-    vm.stackTop = _callbackStackStart
+#define VM_CALLBACK_RESET_STACK(stackStart) \
+    vm.stackTop = stackStart
 
 // 5. Final Teardown: Restore the exit depth before returning a final value
-#define VM_CALLBACK_EXIT() \
-    vm.nativeExitDepth = _oldExitDepth
+#define VM_CALLBACK_EXIT(oldDepth) \
+    vm.nativeExitDepth = oldDepth
 
 #define RUNTIME_ERROR(...) \
     do { \
@@ -134,21 +135,22 @@ Value evalNative(int argCount, Value* args) {
     pop();
     push(OBJ_VAL(closure));
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
-    VM_CALLBACK_ENTER();
+    VM_CALLBACK_ENTER(priorFrameCount);
 
     if (callValue(OBJ_VAL(closure), 0)) {
-        InterpretResult result = run();
-
-        VM_CALLBACK_CHECK_ERROR(result);
+        if (vm.frameCount > priorFrameCount) {
+            InterpretResult result = run();
+            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart);
+        }
 
         Value evalResult = pop();
 
-        VM_CALLBACK_EXIT();
+        VM_CALLBACK_EXIT(oldExitDepth);
         return evalResult;
     }
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
     return NIL_VAL;
 }
 
@@ -1363,7 +1365,7 @@ Value arrayLenNative(int argCount, Value* args) {
 }
 
 Value arrayMapNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
+    if (argCount < 1 || !isCallable(args[0])) {
         runtimeError("Expected a closure callback argument for map().");
         return NIL_VAL;
     }
@@ -1374,27 +1376,29 @@ Value arrayMapNative(int argCount, Value* args) {
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
     for (int i = 0; i < original->count; i++) {
         push(callback);
         push(original->values[i]);
 
-        VM_CALLBACK_ENTER();
+        VM_CALLBACK_ENTER(priorFrameCount);
 
+        //int priorFrameCount = vm.frameCount;
         if (callValue(callback, 1)) {
-            InterpretResult res = run();
-
-            VM_CALLBACK_CHECK_ERROR(res);
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult res = run();
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+            }
 
             Value testResult = peek(0);
             arrayAppend(result, testResult);
         }
 
-        VM_CALLBACK_RESET_STACK();
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
 
     return pop();
 }
@@ -1424,28 +1428,29 @@ Value arrayFilterNative(int argCount, Value* args) {
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
     for (int i = 0; i < original->count; i++) {
         push(callback);
         push(original->values[i]);
 
-        VM_CALLBACK_ENTER();
+        VM_CALLBACK_ENTER(priorFrameCount);
 
         if (callValue(callback, 1)) {
-            InterpretResult res = run();
-
-            VM_CALLBACK_CHECK_ERROR(res);
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult res = run();
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+            }
 
             if (isTruthy(pop())) {
                 arrayAppend(result, original->values[i]);
             }
         }
 
-        VM_CALLBACK_RESET_STACK();
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
 
     return pop();
 }
@@ -1487,28 +1492,29 @@ Value arrayReduceNative(int argCount, Value* args) {
 
     push(acc);
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
     for (int i = startindex; i < array->count; i++) {
         push(callback);
 
-        push(_callbackStackStart[-1]);
+        push(callbackStackStart[-1]);
         push(array->values[i]);
 
-        VM_CALLBACK_ENTER();
+        VM_CALLBACK_ENTER(priorFrameCount);
 
         if (callValue(callback, 2)) {
-            InterpretResult res = run();
+            if (vm.frameCount > priorFrameCount ) {
+                InterpretResult res = run();
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+            }
 
-            VM_CALLBACK_CHECK_ERROR(res);
-
-            _callbackStackStart[-1] = peek(0);
+            callbackStackStart[-1] = peek(0);
         }
 
-        VM_CALLBACK_RESET_STACK();
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
 
     return pop();
 }
@@ -1569,24 +1575,25 @@ Value arrayEachNative(int argCount, Value* args) {
     push(OBJ_VAL(array));
     ObjClosure* callback = AS_CLOSURE(args[0]);
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
     for (int i = 0; i < array->count; i++) {
         push(args[0]);
         push(array->values[i]);
 
-        VM_CALLBACK_ENTER();
+        VM_CALLBACK_ENTER(priorFrameCount);
 
         if (vmCall(callback, 1)) {
-            InterpretResult state = run();
-
-            VM_CALLBACK_CHECK_ERROR(state);
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult state = run();
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+            }
         }
 
-        VM_CALLBACK_RESET_STACK();
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
     return pop();
 }
 
@@ -1599,31 +1606,32 @@ Value arrayFindNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     ObjClosure* callback = AS_CLOSURE(args[0]);
 
-    VM_CALLBACK_INIT();
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
     for (int i = 0; i < array->count; i++) {
         push(OBJ_VAL(callback));
         push(array->values[i]);
 
-        VM_CALLBACK_ENTER();
+        VM_CALLBACK_ENTER(priorFrameCount);
 
         if (vmCall(callback, 1)) {
-            InterpretResult state = run();
-
-            VM_CALLBACK_CHECK_ERROR(state);
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult state = run();
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+            }
 
             Value result = pop();
 
-            if (!isFalsey(result)) {
-                VM_CALLBACK_RESET_STACK();
-                VM_CALLBACK_EXIT();
+            if (isTruthy(result)) {
+                VM_CALLBACK_RESET_STACK(callbackStackStart);
+                VM_CALLBACK_EXIT(oldExitDepth);
                 return array->values[i];
             }
         }
-        VM_CALLBACK_RESET_STACK();
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
-    VM_CALLBACK_EXIT();
+    VM_CALLBACK_EXIT(oldExitDepth);
     return NIL_VAL;
 }
 

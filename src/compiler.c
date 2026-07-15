@@ -1388,7 +1388,7 @@ static void function(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
-    if (type == TYPE_METHOD) {
+    if (type == TYPE_METHOD || type == TYPE_INITIALIZER) {
         function->isfree = false;
     }
 

@@ -44,6 +44,7 @@
 
 // 2. Execute phase: Tell the vm where to return when the callback yields
 #define VM_CALLBACK_ENTER() \
+    int _priorFrameCount = vm.frameCount; \
     vm.nativeExitDepth = vm.frameCount
 
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
@@ -520,6 +521,7 @@ ObjClass* getClassForValue(Value value) {
             case OBJ_CLASS: return vm.classClass;
                 //return (ObjClass*)AS_OBJ(value);
                 //return AS_CLASS(value)->obj.klass;
+            case OBJ_BOUND_METHOD:
             case OBJ_CLOSURE:
             case OBJ_NATIVE: return vm.functionClass;
             case OBJ_INSTANCE: return AS_INSTANCE(value)->obj.klass;
@@ -650,6 +652,14 @@ void defineNativeMethod(ObjClass* klass, const char* name,
     tableSet(&klass->methods, methodName, OBJ_VAL(native));
 
     popn(2);
+}
+
+bool isCallable(Value value) {
+    if (!IS_OBJ(value)) return false;
+    ObjType type = OBJ_TYPE(value);
+    return type == OBJ_CLOSURE ||
+        type == OBJ_NATIVE ||
+        type == OBJ_BOUND_METHOD;
 }
 
 bool isInstanceOf(Value value, ObjClass* targetClass) {
@@ -1015,7 +1025,7 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     }
 
     // 2. unified metadata pipeline (primitives, vectors, classes)
-    ObjClass* klass = getClassForValue(receiver);
+    ObjClass* klass = IS_CLASS(receiver) ? AS_CLASS(receiver) : getClassForValue(receiver);
     if (klass != NULL) {
         // step a: search up the inheritance chain for a polymorphic Value getter
         ObjClass* currentClass = klass;
@@ -1471,6 +1481,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.debugPrintCode = false;
     vm.debugTraceExecution = false;
+
+    initValueArray(&vm.atExitHooks);
 }
 
 void freeVM() {
@@ -2085,6 +2097,13 @@ static void closeUpvalues(Value* last) {
 
 static void defineMethod(ObjString* name) {
     Value method = peek(0);
+    /*
+    ObjClosure* closure = AS_CLOSURE(method);
+
+    printf("[DEBUG] Defined method '%s' with arity: %d\n",
+            name->chars, closure->function->arity);
+
+            */
     ObjClass* klass = AS_CLASS(peek(1));
     tableSet(&klass->methods, name, method);
     pop();
@@ -3032,6 +3051,11 @@ InterpretResult run() {
                         RUNTIME_ERROR("Call failed.");
                         break;
                     }
+
+                    if (vm.frameCount == 0) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;

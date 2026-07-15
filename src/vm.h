@@ -119,6 +119,8 @@ typedef struct {
     const char* includePaths[MAX_INCLUDE_PATHS];
     int includePathCount;
     const char* scriptName;
+
+    ValueArray atExitHooks;
 } VM;
 
 typedef enum {
@@ -152,5 +154,6 @@ Value errorResult(const char* format, ...);
 Value okResult(Value value);
 void clearLastError();
 void defineClassConstant(ObjClass* klass, const char* name, Value value);
+bool isCallable(Value value);
 
 #endif
