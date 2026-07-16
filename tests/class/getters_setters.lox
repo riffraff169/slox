@@ -1,0 +1,27 @@
+class Circle {
+  init(radius) {
+    this.radius = radius;
+  }
+
+  // Getter (no parentheses needed to invoke)
+  area {
+    return 3.14 * this.radius ** 2;
+  }
+
+  // Setter
+  diameter=(val) {
+    this.radius = val / 2;
+  }
+}
+
+var c = Circle(5);
+print c.area;                           // expect: 78.5
+
+c.diameter = 20;                        // Sets radius to 10
+print c.radius;                         // expect: 10
+print c.area;                           // expect: 314
+
+__END__
+78.5
+10
+314

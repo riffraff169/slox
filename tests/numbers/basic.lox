@@ -1,0 +1,37 @@
+// Basic addition and subtraction
+print 15 + 5;      // expect: 20
+print 20 - 7;      // expect: 13
+
+// Multiplication and Division
+print 6 * 7;       // expect: 42
+print 40 / 8;      // expect: 5
+
+// Modulo Operator (%)
+print 10 % 3;      // expect: 1
+print 12 % 4;      // expect: 0
+print 15 % 6;      // expect: 3
+
+// Exponentiation (**)
+print 2 ** 3;      // expect: 8
+print 5 ** 2;      // expect: 25
+print 10 ** 0;     // expect: 1
+
+// Operator Precedence
+print 5 + 3 * 2;   // expect: 11
+print (5 + 3) * 2; // expect: 16
+print 2 * 3 ** 2;  // expect: 18
+
+__END__
+20
+13
+42
+5
+1
+0
+3
+8
+25
+1
+11
+16
+18

@@ -1,0 +1,26 @@
+// 1. Map with standard Lox closure
+var nums = [1, 2, 3];
+var doubled = nums.map(fun(x) {
+    return x * 2;
+});
+print doubled;     // expect: [2, 4, 6]
+
+// 2. Map with synchronous native function (First-class bound method)
+var floats = [1.5, 2.7, 3.9];
+var ints = floats.map(Number.to_int);
+print ints;        // expect: [1, 2, 3]
+
+// 3. Re-entrancy Test: Nested Map execution (The stack-depth killer)
+var matrix = [[1, 2], [3, 4]];
+var incremented = matrix.map(fun(row) {
+    return row.map(fun(val) {
+        return val + 1;
+    });
+});
+print incremented; // expect: [[2, 3], [4, 5]]
+
+
+__END__
+[2, 4, 6]
+[1, 2, 3]
+[[2, 3], [4, 5]]

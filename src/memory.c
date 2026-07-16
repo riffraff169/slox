@@ -297,6 +297,7 @@ static void markRoots() {
     markObject((Obj*)vm.valString);
     markObject((Obj*)vm.errString);
     markObject((Obj*)vm.isSomeString);
+    markArray(&vm.atExitHooks);
 }
 
 static void traceReferences() {

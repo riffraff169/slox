@@ -1,0 +1,18 @@
+print typeof(42);         // expect: Number
+print typeof("hello");    // expect: String
+print typeof(true);       // expect: Bool
+print typeof(nil);        // expect: Nil
+
+var arr = [1, 2];
+print typeof(arr);        // expect: Array
+
+fun my_func() {}
+print typeof(my_func);    // expect: Function
+
+__END__
+Number
+String
+Bool
+Nil
+Array
+Function

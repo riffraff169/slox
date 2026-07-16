@@ -1323,6 +1323,41 @@ static Value classNameNative(int argCount, Value* args) {
     return OBJ_VAL(klass->name);
 }
 
+Value atExitNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("at_exit() expects a callback for a parameter.");
+        return NIL_VAL;
+    }
+
+    Value hook = args[0];
+    if (!IS_CLOSURE(hook) && !IS_NATIVE(hook) && !IS_BOUND_METHOD(hook)) {
+        runtimeError("at_exit() argument must be a callable.");
+        return NIL_VAL;
+    }
+
+    writeValueArray(&vm.atExitHooks, hook);
+    return NIL_VAL;
+}
+
+void runAtExitHooks() {
+    while (vm.atExitHooks.count > 0) {
+        Value hook = vm.atExitHooks.values[vm.atExitHooks.count - 1];
+        vm.atExitHooks.count--;
+
+        push(hook);
+
+        if (callValue(hook, 0)) {
+            if (vm.frameCount > 0) {
+                InterpretResult result = run();
+                if (result != INTERPRET_OK) {
+                    break;
+                }
+            }
+            //pop();
+        }
+    }
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -1483,6 +1518,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.debugTraceExecution = false;
 
     initValueArray(&vm.atExitHooks);
+
+    defineNative("at_exit", atExitNative);
 }
 
 void freeVM() {
@@ -1505,6 +1542,7 @@ void freeVM() {
         }
     }
     FREE_ARRAY(void*, vm.moduleHandles, vm.moduleCapacity);
+    freeValueArray(&vm.atExitHooks);
 }
 
 void push(Value value) {
@@ -2824,10 +2862,16 @@ InterpretResult run() {
 
                         Value* stackStart = vm.stackTop;
                         if (tableGet(&instance->obj.klass->methods, vm.str_neg, &method)) {
-                            if (callValue(method, 0)) {
+                            ObjBoundMethod* bound = newBoundMethod(peek(0), method);
+                            pop();
+                            push(OBJ_VAL(bound));
+
+                            if (callValue(peek(0), 0)) {
+                                int priorDepth = vm.nativeExitDepth;
                                 vm.nativeExitDepth = vm.frameCount - 1;
                                 run();
-                                result = pop();
+                                vm.nativeExitDepth = priorDepth;
+                                //result = pop();
                             }
                         }
                         vm.stackTop = stackStart;
@@ -3624,34 +3668,6 @@ InterpretResult run() {
 
 InterpretResult interpret(const char* source, const char* filename) {
     const char* line = source;
-    /*
-    while (strncmp(line, "include ", 8) == 0) {
-        char* startQuote = strchr(line, '"');
-        char* endQuote = startQuote ? strchr(startQuote + 1, '"') : NULL;
-
-        if (startQuote && endQuote) {
-            int len = endQuote - startQuote - 1;
-            char* incPath = malloc(len + 1);
-            if (incPath == NULL) {
-                fprintf(stderr, "Fatal Error: Out of memory allocating include path buffer.\n");
-                exit(74);
-            }
-
-            strncpy(incPath, startQuote + 1, len);
-            incPath[len] = '\0';
-
-            char* incSource = readFile(incPath);
-            if (incSource != NULL) {
-                interpret(incSource, incPath);
-                free(incSource);
-            }
-            free(incPath);
-        }
-
-        while (*line != '\n' && *line != '\0') line++;
-        if (*line == '\n') line++;
-    }
-    */
 
     vm.frameCount = 0;
     vm.stackTop = vm.stack;

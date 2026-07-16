@@ -1,0 +1,28 @@
+System.trace(true);
+var counter = 0;
+
+// Registering first
+at_exit(fun() {
+  print "Hook 1 (Registered First): counter is " + counter;
+});
+
+// Registering second
+at_exit(fun() {
+  print "Hook 2 (Registered Second): counter is " + counter;
+});
+
+// Modify the captured variable to prove late-binding/closure capture
+counter = 99;
+
+print "Main script finished.";
+
+/* 
+   Logic check:
+   1. The VM prints "Main script finished."
+   2. The VM processes the LIFO queue:
+      - Pops Hook 2 first (the last registered).
+      - Pops Hook 1 second.
+*/
+// expect: Main script finished.
+// expect: Hook 2 (Registered Second): counter is 99
+// expect: Hook 1 (Registered First): counter is 99

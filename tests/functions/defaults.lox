@@ -1,0 +1,12 @@
+fun greet(name, greeting = "Hello", punctuation = "!") {
+  print greeting + ", " + name + punctuation;
+}
+
+greet("Alice");                         // expect: Hello, Alice!
+greet("Bob", "Good morning");           // expect: Good morning, Bob!
+greet("Charlie", "Hey", ".");           // expect: Hey, Charlie.
+
+__END__
+Hello, Alice!
+Good morning, Bob!
+Hey, Charlie.

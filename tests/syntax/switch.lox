@@ -1,0 +1,16 @@
+var vegetable = "carrot";
+
+switch (vegetable) {
+    case "broccoli":
+        print "green";
+    case "carrot":
+        print "orange";
+    case "cauliflower":
+        print "white";
+    default:
+        print "unknown color";
+}
+// expect: orange
+
+__END__
+orange

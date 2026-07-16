@@ -1,0 +1,31 @@
+class NumberWrapper {
+  init(val) {
+    this.val = val;
+  }
+  
+  __add__(other) {
+    return NumberWrapper(this.val + other.val);
+  }
+
+  __sub__(other) {
+    return NumberWrapper(this.val - other.val);
+  }
+}
+
+var a = NumberWrapper(10);
+var b = NumberWrapper(20);
+var c = NumberWrapper(5);
+
+// 1. Test binary add: (a + b)
+var sum = a + b;
+print sum.val; // expect: 30
+
+// 2. Test chained operations: (a + b) - c
+// If the stack pointer (vm.stackTop) is not restored perfectly 
+// after (a + b), this will crash or produce garbage.
+var result = (a + b) - c;
+print result.val; // expect: 25
+
+__END__
+30
+25

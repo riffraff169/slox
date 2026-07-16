@@ -1,0 +1,15 @@
+// Array creation and indexing
+var arr = [10, 20, 30];
+print arr[0];      // expect: 10
+print arr[1];      // expect: 20
+print arr[2];      // expect: 30
+
+// Updating elements
+arr[1] = 99;
+print arr[1];      // expect: 99
+
+__END__
+10
+20
+30
+99

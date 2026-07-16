@@ -1,0 +1,18 @@
+var step = "first";
+
+at_exit(fun() {
+  print "Hook 1: This should run last!"; // expect: Hook 1: This should run last!
+});
+
+at_exit(fun() {
+  print "Hook 2: Running second. Capture check: " + step; // expect: Hook 2: Running second. Capture check: second
+});
+
+step = "second";
+
+print "Main script complete."; // expect: Main script complete.
+
+__END__
+Main script complete.
+Hook 2: Running second. Capture check: second
+Hook 1: This should run last!

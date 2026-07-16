@@ -155,5 +155,6 @@ Value okResult(Value value);
 void clearLastError();
 void defineClassConstant(ObjClass* klass, const char* name, Value value);
 bool isCallable(Value value);
+void runAtExitHooks();
 
 #endif

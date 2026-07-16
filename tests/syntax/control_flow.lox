@@ -1,0 +1,43 @@
+// While loop
+var i = 0;
+while (i < 3) {
+    print i;
+    i = i + 1;
+}
+// expect: 0
+// expect: 1
+// expect: 2
+
+// For loop with break statement
+for (var j = 0; j < 5; j = j + 1) {
+    if (j == 3) {
+        break;
+    }
+    print j;
+}
+// expect: 0
+// expect: 1
+// expect: 2
+
+// For loop with continue statement
+for (var k = 0; k < 5; k = k + 1) {
+    if (k == 2 or k == 4) {
+        continue;
+    }
+    print k;
+}
+// expect: 0
+// expect: 1
+// expect: 3
+
+__END__
+0
+1
+2
+0
+1
+2
+0
+1
+3
+

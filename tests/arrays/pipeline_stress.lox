@@ -1,0 +1,14 @@
+var data = [[1, 2], [3, 4]];
+
+// Double mapping with arithmetic and type validation inside
+var processed = data.map(fun(row) {
+    return row.map(fun(val) {
+        var squared = val ** 2;
+        return typeof(squared) + ":" + squared;
+    });
+});
+
+print processed;
+
+__END__
+[[Number:1, Number:4], [Number:9, Number:16]]

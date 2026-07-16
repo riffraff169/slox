@@ -1,0 +1,23 @@
+var grade = "B";
+
+switch (grade) {
+    case "A": {
+        var msg = "Excellent";
+        print msg;
+    }
+    case "B": {
+        var msg = "Passing";
+        print msg;
+              }
+    case "C": {
+        // Test fallthrough or multi-case matching
+        var msg = "Passing";
+        print msg;
+    }
+    default: {
+        print "Try again";
+    }
+}
+
+__END__
+Passing

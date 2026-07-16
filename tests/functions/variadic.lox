@@ -1,0 +1,10 @@
+fun sum(prefix, ...numbers) {
+  print prefix;                         // expect: Total:
+  print numbers;                        // expect: [10, 20, 30]
+}
+
+sum("Total:", 10, 20, 30);
+
+__END__
+Total:
+[10, 20, 30]
