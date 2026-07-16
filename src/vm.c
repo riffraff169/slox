@@ -533,6 +533,7 @@ ObjClass* getClassForValue(Value value) {
 
 bool runtimeError(const char* format, ...) {
     //printf("[DEBUG] runtimeError triggered! tryCount: %d, format: %s\n", vm.tryCount, format);
+    fflush(stdout);
 
     va_list args;
     va_start(args, format);
@@ -1581,8 +1582,13 @@ bool vmCall(ObjClosure* closure, int argCount) {
         }
     } else {
         if (argCount < function->minArity || argCount > function->arity) {
-            runtimeError("Expected between %d and %d arguments but got %d.",
-                    function->minArity, function->arity, argCount);
+            if (function->minArity == function->arity) {
+                runtimeError("Expected %d arguments but got %d",
+                        function->arity, argCount);
+            } else {
+                runtimeError("Expected between %d and %d arguments but got %d.",
+                        function->minArity, function->arity, argCount);
+            }
             return false;
         }
     }

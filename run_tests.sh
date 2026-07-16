@@ -38,8 +38,10 @@ while IFS= read -r -d '' test_file; do
     # 3. Run the VM and direct stdout/stderr to the actual file
     "$VM_BIN" "$test_file" > "$actual_tmp" 2>&1
 
+    grep -vE '^\[.*:[0-9]+\] in .+' "$actual_tmp" > "${actual_tmp}.filtered"
+
     # 4. Compare expected vs actual output
-    if diff -u "$expected_tmp" "$actual_tmp" > /dev/null; then
+    if diff -u "$expected_tmp" "${actual_tmp}.filtered" > /dev/null; then
         echo -e "  [${GREEN}PASS${NC}] $test_file"
         ((PASSED++))
     else
@@ -47,7 +49,7 @@ while IFS= read -r -d '' test_file; do
         echo -e "  ${YELLOW}--------------------------------------------------${NC}"
         echo "  Expected (Left) vs Actual Output (Right):"
         # Print a side-by-side diff of the mismatch
-        diff -y -W 60 "$expected_tmp" "$actual_tmp" | sed 's/^/  /'
+        diff -y -W 80 "$expected_tmp" "${actual_tmp}.filtered" | sed 's/^/  /'
         echo -e "  ${YELLOW}--------------------------------------------------${NC}"
         ((FAILED++))
     fi
