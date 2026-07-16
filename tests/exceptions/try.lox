@@ -1,0 +1,19 @@
+var x = 1;
+try {
+  x = 2;
+  try {
+    y = 3;
+  } catch (Error e) {
+    print "got ${e.message}, throwing...";
+    throw Error("new ${e.message}");
+  }
+} catch (Error f) {
+  print f;
+  print f.message;
+}
+
+print "not aborting though...";
+// expect: got Undefined variable 'y'., throwing...
+// expect: Error instance
+// expect: new Undefined variable 'y'.
+// expect: not aborting though...

@@ -1827,42 +1827,6 @@ static void throwStatement() {
     emitByte(OP_THROW);
 }
 
-static void catchBlock() {
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
-
-    consume(TOKEN_IDENTIFIER, "Expect exception type name.");
-    Token typeName = parser.previous;
-
-    consume(TOKEN_IDENTIFIER, "Expect variable name for caught exception.");
-    Token varName = parser.previous;
-
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after catch arguments.");
-
-    beginScope();
-    emitByte(OP_DUP);
-
-    namedVariable(typeName, false);
-    emitByte(OP_INSTANCEOF);
-
-    int mismatchJump = emitJump(OP_JUMP_IF_FALSE);
-    emitByte(OP_POP);
-
-    addLocal(varName);
-    markInitialized();
-
-    statement();
-
-    endScope();
-
-    int catchSuccessJump = emitJump(OP_JUMP);
-
-    patchJump(mismatchJump);
-    emitByte(OP_POP);
-    emitByte(OP_THROW);
-
-    patchJump(catchSuccessJump);
-}
-
 static void tryStatement() {
     consume(TOKEN_LEFT_BRACE, "Expect '{' before try body.");
 
@@ -1880,41 +1844,59 @@ static void tryStatement() {
     //patchJump(tryJump);
     int catchTarget = 0;
     int catchSuccessJump = -1;
+    int mismatchJump = -1;
 
     if (match(TOKEN_CATCH)) {
         catchTarget = currentChunk()->count;
         consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
 
         consume(TOKEN_IDENTIFIER, "Expect exception type name.");
-        Token typeName = parser.previous;
+        Token first = parser.previous;
 
-        consume(TOKEN_IDENTIFIER, "Expect exception variable name.");
-        Token exceptionVar = parser.previous;
+        Token exceptionVar;
+        bool hasTypeCheck = false;
+        Token typeName;
+
+        if (check(TOKEN_RIGHT_PAREN)) {
+            exceptionVar = first;
+        } else {
+            hasTypeCheck = true;
+            typeName = first;
+            consume(TOKEN_IDENTIFIER, "Expect exception variable name.");
+            exceptionVar = parser.previous;
+        }
 
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
         consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
 
-        emitByte(OP_DUP);
-        namedVariable(typeName, false);
-        emitByte(OP_INSTANCEOF);
+        if (hasTypeCheck) {
+            emitByte(OP_DUP);
+            namedVariable(typeName, false);
+            emitByte(OP_INSTANCEOF);
 
-        int mismatchJump = emitJump(OP_JUMP_IF_FALSE);
-        emitByte(OP_POP);
+            mismatchJump = emitJump(OP_JUMP_IF_FALSE);
+            emitByte(OP_POP);
 
-        beginScope();
+            beginScope();
+            addLocal(exceptionVar);
+            markInitialized();
+            block();
+            endScope();
 
-        addLocal(exceptionVar);
-        markInitialized();
-
-        block();
-
-        endScope();
-
-        catchSuccessJump = emitJump(OP_JUMP);
+            catchSuccessJump = emitJump(OP_JUMP);
     
-        patchJump(mismatchJump);
-        emitByte(OP_POP);
-        emitByte(OP_THROW);
+            patchJump(mismatchJump);
+            emitByte(OP_POP);
+            emitByte(OP_THROW);
+        } else {
+            beginScope();
+            addLocal(exceptionVar);
+            markInitialized();
+            block();
+            endScope();
+
+            catchSuccessJump = emitJump(OP_JUMP);
+        }
     }
 
     int finallyTarget = 0;

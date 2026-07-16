@@ -1,0 +1,17 @@
+try {
+  //var e = {1,2,3,4};
+  print "1. About to throw...";
+  throw Error("A serious runtime error occurred!");
+  print "2. This should NEVER print.";
+} catch (Error e) {
+  print "== CAUGHT ==";
+  print e;
+  print "==/CAUGHT==";
+}
+
+print "3. Life goes on after the catch block!";
+// expect: 1. About to throw...
+// expect: == CAUGHT ==
+// expect: Error instance
+// expect: ==/CAUGHT==
+// expect: 3. Life goes on after the catch block!
