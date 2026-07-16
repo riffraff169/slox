@@ -121,12 +121,14 @@ static void runFile(const char* path) {
 int main(int argc, const char* argv[], const char* env[]) {
     initVM(argc, argv, env);
 
-    char* stdlibSource = locateAndReadLoxFile("stdlib.lox");
-    if (stdlibSource != NULL) {
-        interpret(stdlibSource, "stdlib.lox");
-        free(stdlibSource);
-    } else {
-        printf("Warning: stdlib.lox not found. Proceeding with clean environment.\n");
+    if (!vm.noStdLib) {
+        char* stdlibSource = locateAndReadLoxFile("stdlib.lox");
+        if (stdlibSource != NULL) {
+            interpret(stdlibSource, "stdlib.lox");
+            free(stdlibSource);
+        } else {
+            printf("Warning: stdlib.lox not found. Proceeding with clean environment.\n");
+        }
     }
 
     if (vm.scriptName == NULL) {

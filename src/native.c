@@ -3534,6 +3534,29 @@ Value systemGCNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value gcStatsNative(int argCount, Value* args) {
+    ObjMap* stats = newMap();
+    push(OBJ_VAL(stats));
+
+    ObjString* keyStr = copyString("allocated", 9);
+    push(OBJ_VAL(keyStr));
+    mapSet(stats, keyStr, NUMBER_VAL((double)vm.bytesAllocated));
+    pop();
+
+    keyStr = copyString("threshold", 9);
+    push(OBJ_VAL(keyStr));
+    mapSet(stats, keyStr, NUMBER_VAL((double)vm.nextGC));
+    pop();
+
+    keyStr = copyString("collections", 11);
+    push(OBJ_VAL(keyStr));
+    mapSet(stats, keyStr, NUMBER_VAL((double)vm.gcCount));
+    pop();
+
+    pop();
+    return OBJ_VAL(stats);
+}
+
 void initGCLibrary() {
     ObjString* gcName = copyString("GC", 2);
     push(OBJ_VAL(gcName));
@@ -3552,6 +3575,7 @@ void initGCLibrary() {
     defineNativeMethod(gcClass, "get_gctype", get_typeGCNative);
     // same as System.gc()
     defineNativeMethod(gcClass, "gc", systemGCNative);
+    defineNativeMethod(gcClass, "stats", gcStatsNative);
 
     tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
 
@@ -4413,6 +4437,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
                 vm.includePaths[vm.includePathCount++] = argv[i + 1];
             }
             i += 2;
+        } else if (strcmp(argv[i], "--no-stdlib") == 0 || strcmp(argv[i], "-n") == 0) {
+            vm.noStdLib = true;
+            i++;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             exit(64);

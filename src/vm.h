@@ -60,6 +60,7 @@ typedef struct {
     size_t bytesAllocated;
     size_t nextGC;
     int heap_growth_factor;
+    int gcCount;
     size_t init_threshold;
     size_t bump_size;
     int stress_mode;
@@ -87,6 +88,7 @@ typedef struct {
     ObjClass* gcClass;
     ObjClass* classClass;
     int nativeExitDepth;
+    bool noStdLib;
 
     int moduleCount;
     int moduleCapacity;
