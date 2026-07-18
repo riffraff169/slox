@@ -43,12 +43,6 @@ Value valueToString(Value value) {
         length = snprintf(buffer, sizeof(buffer), "nil");
     } else if (IS_NUMBER(value)) {
         length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
-        /*
-    } else if (IS_ARRAY(value)) {
-        return copyString("[array]", 7);
-    } else if (IS_MAP(value)) {
-        return copyString("[map]", 5);
-        */
     } else if (IS_VEC3(value)) {
         length = snprintf(buffer, sizeof(buffer), "Vec3(%g, %g, %g)",
                 AS_VEC3(value).x, AS_VEC3(value).y, AS_VEC3(value).z);
@@ -115,12 +109,12 @@ bool valuesEqual(Value a, Value b) {
             return true;
         case VAL_NUMBER:
             return AS_NUMBER(a) == AS_NUMBER(b);
-        case VAL_OBJ:
-            return AS_OBJ(a) == AS_OBJ(b);
         case VAL_VEC3:
             return (AS_VEC3(a).x == AS_VEC3(b).x) &&
                 (AS_VEC3(a).y == AS_VEC3(b).y) &&
                 (AS_VEC3(a).z == AS_VEC3(b).z);
+        case VAL_OBJ:
+            return AS_OBJ(a) == AS_OBJ(b);
         default:
             return false;
     }

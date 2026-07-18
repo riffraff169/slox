@@ -81,6 +81,7 @@ typedef struct {
     ObjClass* nilClass;
     ObjClass* arrayClass;
     ObjClass* mapClass;
+    ObjClass* setClass;
     ObjClass* stringClass;
     ObjClass* mathClass;
     ObjClass* regexClass;

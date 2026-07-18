@@ -118,13 +118,51 @@ static ObjString* allocateString(char* chars, int length,
     return string;
 }
 
-static uint32_t hashString(const char* key, int length) {
+uint32_t hashBytes(const uint8_t* key, int length) {
     uint32_t hash = 2166136261u;
     for (int i = 0; i < length; i++) {
         hash ^= (uint8_t)key[i];
         hash *= 16777619;
     }
     return hash;
+}
+
+static uint32_t hashString(const char* key, int length) {
+    return hashBytes((const uint8_t*)key, length);
+}
+
+uint32_t hashValue(Value value) {
+    switch (value.type) {
+        case VAL_NUMBER:
+            {
+                double n = AS_NUMBER(value);
+                return hashBytes((const uint8_t*)&n, sizeof(double));
+            }
+        case VAL_OBJ:
+            {
+                if (IS_STRING(value)) {
+                    return AS_STRING(value)->hash;
+                }
+                Obj* obj = AS_OBJ(value);
+                return hashBytes((const uint8_t*)&obj, sizeof(void*));
+            }
+        case VAL_VEC3:
+            {
+                Vec3 v = AS_VEC3(value);
+                return hashBytes((const uint8_t*)&v, sizeof(Vec3));
+            }
+        case VAL_BOOL:
+            return AS_BOOL(value) ? 1 : 2;
+        case VAL_NIL:
+            return 3;
+        default:
+#ifdef DEBUG
+            fprintf(stderr, "Missing hashValue case for type %d!\n", value.type);
+            abort();
+            //return hashBytes((const uint8_t*)&value, sizeof(Value));
+#endif
+            return 0;
+    }
 }
 
 ObjString* takeString(char* chars, int length) {
@@ -166,6 +204,16 @@ ObjMap* newMap() {
     initTable(&map->items);
 
     return map;
+}
+
+ObjSet* newSet() {
+    ObjSet* set = ALLOCATE_OBJ(ObjSet, OBJ_SET);
+    ((Obj*)set)->klass = vm.setClass;
+    set->isMultiset = false;
+
+    initTable2(&set->items);
+
+    return set;
 }
 
 bool mapGet(ObjMap* map, ObjString* key, Value* value) {
@@ -270,7 +318,7 @@ static void printFunction(ObjFunction* function) {
 void printArray(ObjArray* array) {
     printf("[");
     for (int i = 0; i < array->count; i++) {
-        printValue(array->values[i]);
+        printValueSafe(array->values[i]);
         if (i < array->count - 1) printf(", ");
     }
     printf("]");
@@ -293,6 +341,24 @@ void printMap(ObjMap* map) {
     printf("}\n");
 }
 
+void printSet(ObjSet* set) {
+    printf("Set(");
+    bool first = true;
+    for (int i = 0; i < set->items.capacity; i++) {
+        Entry2* entry = &set->items.entries[i];
+        if (IS_NIL(entry->key)) continue;
+
+        if (!first) printf(", ");
+        printValueSafe(entry->key);
+        if (set->isMultiset) {
+            printf(": ");
+            printValueSafe(entry->value);
+        }
+        first = false;
+    }
+    printf("}\n");
+}
+
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
         case OBJ_FOREIGN:
@@ -303,6 +369,9 @@ void printObject(Value value) {
             break;
         case OBJ_ARRAY:
             printArray(AS_ARRAY(value));
+            break;
+        case OBJ_SET:
+            printSet(AS_SET(value));
             break;
         case OBJ_BOUND_METHOD:
             //printFunction(AS_BOUND_METHOD(value)->method->function);

@@ -14,6 +14,7 @@
 #define IS_FOREIGN(value)       isObjType(value, OBJ_FOREIGN)
 #define IS_REGEX(value)         isObjType(value, OBJ_REGEX)
 #define IS_MAP(value)           isObjType(value, OBJ_MAP)
+#define IS_SET(value)           isObjType(value, OBJ_SET)
 #define IS_ARRAY(value)         isObjType(value, OBJ_ARRAY)
 #define IS_BOUND_METHOD(value)  isObjType(value, OBJ_BOUND_METHOD)
 #define IS_CLASS(value)         isObjType(value, OBJ_CLASS)
@@ -26,6 +27,7 @@
 #define AS_FOREIGN(value)       ((ObjForeign*)AS_OBJ(value))
 #define AS_REGEX(value)         ((ObjRegex*)AS_OBJ(value))
 #define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
+#define AS_SET(value)           ((ObjSet*)AS_OBJ(value))
 #define AS_ARRAY(value)         ((ObjArray*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value)  ((ObjBoundMethod*)AS_OBJ(value))
 #define AS_CLASS(value)         ((ObjClass*)AS_OBJ(value))
@@ -49,6 +51,7 @@ typedef enum {
     OBJ_UPVALUE,
     OBJ_ARRAY,
     OBJ_MAP,
+    OBJ_SET,
     OBJ_FOREIGN,
     OBJ_REGEX,
     OBJ_VEC3
@@ -180,6 +183,12 @@ typedef struct {
 
 typedef struct {
     Obj obj;
+    Table2 items;
+    bool isMultiset;
+} ObjSet;
+
+typedef struct {
+    Obj obj;
     pcre2_code* code;
     ObjString* pattern;
 } ObjRegex;
@@ -204,6 +213,7 @@ typedef struct {
 ObjForeign* newForeign(void* ptr, const char* name);
 ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
+ObjSet* newSet();
 void arrayAppend(ObjArray* array, Value value);
 ObjArray* newArray();
 ObjBoundMethod* newBoundMethod(Value receiver, Value method);
@@ -218,6 +228,8 @@ ObjUpvalue* newUpvalue(Value* slot);
 ObjArray* duplicateArray(ObjArray* original);
 void printArray(ObjArray *array);
 void printObject(Value value);
+uint32_t hashBytes(const uint8_t* key, int length);
+uint32_t hashValue(Value value);
 
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;

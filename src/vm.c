@@ -518,6 +518,7 @@ ObjClass* getClassForValue(Value value) {
             case OBJ_STRING: return vm.stringClass;
             case OBJ_ARRAY: return vm.arrayClass;
             case OBJ_MAP: return vm.mapClass;
+            case OBJ_SET: return vm.setClass;
             case OBJ_CLASS: return vm.classClass;
                 //return (ObjClass*)AS_OBJ(value);
                 //return AS_CLASS(value)->obj.klass;
@@ -893,6 +894,7 @@ void initVec3Library() {
     pop();
 }
 
+/*
 static Value arrayInitMethod(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Array constructor expects a pattern string.");
@@ -902,20 +904,25 @@ static Value arrayInitMethod(int argCount, Value* args) {
     ObjArray* array = newArray();
     return OBJ_VAL(array);
 }
+*/
 
+/*
 static Value mapInitMethod(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Map init constructor expects a string.");
         return NIL_VAL;
     }
 }
+*/
 
+/*
 static Value stringInitMethod(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("String init constructor expects a string.");
         return NIL_VAL;
     }
 }
+*/
 
 static Value classSuperclassMethod(int argCount, Value* args) {
     if (argCount != 0) {
@@ -1513,6 +1520,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initGCLibrary(); //
     initArrayClass(); // done
     initMapClass(); //done
+    initSetClass(); //done
     initIOClass(); // done
     initStructClass(); //
 
@@ -3628,6 +3636,10 @@ InterpretResult run() {
                     Value indexValue = peek(1);
                     Value targetValue = peek(2);
 
+                    if (IS_SET(targetValue)) {
+                        RUNTIME_ERROR("Cannot assign values to a Set. Use .add() instead.");
+                        break;
+                    }
                     if (IS_MAP(targetValue)) {
                         if (!IS_STRING(indexValue)) {
                             RUNTIME_ERROR("Map keys must be strings.");

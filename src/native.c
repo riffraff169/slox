@@ -959,12 +959,184 @@ void initMapClass() {
     vm.mapClass->superclass = vm.objectClass;
     vm.mapClass->callHandler = mapNativeConstructor;
     tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
-    push(OBJ_VAL(vm.mapClass));
 
 #define X(name, func) defineNativeMethod(vm.mapClass, name, func);
     MAP_METHOD_LIST(X)
 #undef X
     pop();
+}
+
+Value setNativeConstructor(int argCount, Value* args) {
+    ObjSet* set = newSet();
+    push(OBJ_VAL(set));
+
+    for (int i = 0; i < argCount; i ++) {
+        Value key = args[i];
+
+        if (IS_NIL(key)) {
+            runtimeError("Set keys cannot be nil.");
+            pop();
+            return NIL_VAL;
+        }
+        tableSet2(&set->items, key, NUMBER_VAL(1.0));
+    }
+
+    return pop();
+}
+
+Value setAddNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    Value key = args[0];
+
+    if (IS_NIL(key)) {
+        runtimeError("Cannot use nil as a key in a Set.");
+        return NIL_VAL;
+    }
+
+    Value count;
+    bool found = tableGet2(&set->items, key, &count);
+
+    if (set->isMultiset) {
+        double newCount = found ? AS_NUMBER(count) + 1.0 : 1.0;
+        tableSet2(&set->items, key, NUMBER_VAL(newCount));
+    } else {
+        if (!found) {
+            tableSet2(&set->items, key, NUMBER_VAL(1.0));
+        }
+    }
+}
+
+void setRemove(ObjSet* set, Value val) {
+    Value count;
+    if (!tableGet2(&set->items, val, &count)) return;
+
+    if (set->isMultiset) {
+        double c = AS_NUMBER(count);
+        if (c > 1.0)  {
+            tableSet2(&set->items, val, NUMBER_VAL(c - 1.0));
+        } else {
+            tableDelete2(&set->items, val);
+        }
+    } else {
+        tableDelete2(&set->items, val);
+    }
+}
+
+Value setCountNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    Value key = args[0];
+
+    if (IS_NIL(key)) {
+        runtimeError("Cannot use nil as a key in a Set.");
+        return NIL_VAL;
+    }
+
+    Value count;
+    if (!tableGet2(&set->items, key, &count)) {
+        return NUMBER_VAL(0);
+    }
+    return set->isMultiset ? count : NUMBER_VAL(1);
+}
+
+Value setRemoveNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("Expected 1 argument, but got %d.", argCount);
+        return NIL_VAL;
+    }
+
+    ObjSet* set = AS_SET(args[-1]);
+    Value key = args[0];
+
+    if (IS_NIL(key)) {
+        runtimeError("Cannot remove nil from a Set.");
+        return NIL_VAL;
+    }
+
+    bool removed = tableDelete2(&set->items, key);
+
+    return BOOL_VAL(removed);
+}
+
+Value setHasNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    Value key = args[0];
+
+    Value value;
+    bool found = tableGet2(&set->items, key, &value);
+
+    return BOOL_VAL(found);
+}
+
+Value setLengthNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    return NUMBER_VAL(set->items.count);
+}
+
+Value setMultisetNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    if (set->items.count > 0)  {
+        runtimeError("Cannot change a non-empty set to multiset.");
+        return NIL_VAL;
+    }
+
+    set->isMultiset = true;
+    return BOOL_VAL(true);
+}
+
+Value setKeysNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (int i = 0; i < set->items.capacity; i++) {
+        Entry2* entry = &set->items.entries[i];
+
+        if (IS_NIL(entry->key)) continue;
+        arrayAppend(array, entry->key);
+    }
+
+    pop();
+    return OBJ_VAL(array);
+}
+
+Value setToMapNative(int argCount, Value* args) {
+    ObjSet* set = AS_SET(args[-1]);
+
+    ObjMap* map = newMap();
+    push(OBJ_VAL(map));
+
+    for (int i = 0; i < set->items.capacity; i++) {
+        Entry2* entry = &set->items.entries[i];
+
+        if (IS_NIL(entry->key)) continue;
+
+        Value val = set->isMultiset ? entry->value : BOOL_VAL(true);
+
+        //mapSet(map, entry->key, val);
+    }
+
+    pop();
+    return OBJ_VAL(map);
+}
+
+void initSetClass() {
+    ObjString* string = NULL;
+    string = copyString("Set", 3);
+    push(OBJ_VAL(string));
+
+    vm.setClass = newClass(string);
+    vm.setClass->superclass = vm.objectClass;
+    vm.setClass->callHandler = setNativeConstructor;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.setClass));
+
+    defineNativeMethod(vm.setClass, "add", setAddNative);
+    defineNativeMethod(vm.setClass, "keys", setKeysNative);
+    defineNativeMethod(vm.setClass, "remove", setRemoveNative);
+    defineNativeMethod(vm.setClass, "has", setHasNative);
+    defineNativeMethod(vm.setClass, "len", setLengthNative);
+    defineNativeMethod(vm.setClass, "length", setLengthNative);
+    defineNativeMethod(vm.setClass, "set_multiset", setMultisetNative);
+    defineNativeMethod(vm.setClass, "to_map", setToMapNative);
 }
 
 #define MATH_DUAL_METHOD_LIST(X) \

@@ -91,6 +91,12 @@ static void blackenObject(Obj* object) {
                 markTable(&map->items);
             }
             break;
+        case OBJ_SET:
+            {
+                ObjSet* set = (ObjSet*)object;
+                markTable2(&set->items);
+            }
+            break;
         case OBJ_ARRAY:
             {
                 ObjArray* array = (ObjArray*)object;
@@ -184,6 +190,13 @@ static void freeObject(Obj* object) {
                 ObjMap* map = (ObjMap*)object;
                 freeTable(&map->items);
                 FREE(ObjMap, object);
+            }
+            break;
+        case OBJ_SET:
+            {
+                ObjSet* set = (ObjSet*)object;
+                freeTable2(&set->items);
+                FREE(ObjSet, object);
             }
             break;
         case OBJ_ARRAY:
