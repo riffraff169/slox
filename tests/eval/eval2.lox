@@ -1,0 +1,6 @@
+eval("
+    fun a() { return \"fred\"; }
+    "
+);
+
+print a(); // expect: fred

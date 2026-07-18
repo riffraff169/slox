@@ -15,7 +15,7 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.0.4
+VERSION = 1.1.0
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
 MODULES = sha1 ssl
@@ -45,7 +45,7 @@ dist:
 	@mkdir -p $(RPM_SOURCES)
 	tar --exclude-vcs --transform "s/^/slox-$(VERSION)\//" \
 		-czf $(RPM_SOURCES)/slox-$(VERSION).tar.gz \
-		src modules lib examples Makefile README.md slox.spec extras
+		src modules lib examples Makefile README.md slox.spec extras tests scripts
 	cp slox.spec $(HOME)/rpmbuild/SPECS/
 	@echo "Clean whitelisted source tarball created at: $(RPM_SOURCES)/slox-$(VERSION).tar.gz"
 

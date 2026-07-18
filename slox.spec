@@ -1,7 +1,7 @@
 %define debug_package %{nil}
 
 Name:       slox
-Version:    1.0.4
+Version:    1.1.0
 Release:    1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -44,6 +44,8 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}/usr/local/bin
 mkdir -p %{buildroot}/usr/local/lib/slox/modules
 mkdir -p %{buildroot}/usr/share/slox/examples
+mkdir -p %{buildroot}/usr/share/slox/tests
+mkdir -p %{buildroot}/usr/share/slox/scripts
 
 install -m 0755 bin/slox %{buildroot}/usr/local/bin/slox
 
@@ -52,6 +54,8 @@ cp lib/*.lox %{buildroot}/usr/local/lib/slox
 cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
 
 cp examples/* %{buildroot}/usr/share/slox/examples
+cp -r tests/* %{buildroot}/usr/share/slox/tests
+cp scripts/* %{buildroot}//usr/share/slox/scripts/
 
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftplugin
@@ -77,6 +81,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Fri  Jul 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.1.0-1
+- Lots of tests added
+
 * Sat  Jul 04 2026 Lance Dillon <riffraff169@yahoo.com> - 1.0.0-1
 - Modularized directory layout integration
 - Added cascading path lookups for native extensions and stdlib

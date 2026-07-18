@@ -1,0 +1,10 @@
+eval("fun dynamicSum(a, b) { return a + b; }");
+print dynamicSum(5, 5); // expect: 10
+
+var prefix = "user_";
+for (var i = 1; i <= 3; i = i + 1) {
+    eval("var " + prefix + String(i) + " = " + String((i * 10)) + ";");
+}
+print user_1; // expect: 10
+print user_2; // expect: 20
+print user_3; // expect: 30
