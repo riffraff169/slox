@@ -1422,6 +1422,10 @@ Value mathAcosNative(int argCount, Value* args) {
 Value numberToIntNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "to_int");
 
+    if (isnan(val) || isinf(val)) return NIL_VAL;
+
+    return NUMBER_VAL(trunc(val));
+    /*
     if (isnan(val)) {
         return OBJ_VAL(copyString("NaN", 3));
     }
@@ -1432,6 +1436,7 @@ Value numberToIntNative(int argCount, Value* args) {
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%0.f", trunc(val));
     return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+    */
 }
 
 Value numberToFixedNative(int argCount, Value* args) {
@@ -1450,6 +1455,27 @@ Value numberToFixedNative(int argCount, Value* args) {
 
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%.*f", decimals, val);
+
+    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+}
+
+Value numberToStringNative(int argCount, Value* args) {
+    double val = AS_NUMBER(args[-1]);
+
+    int precision = 0;
+
+    if (argCount > 0) {
+        if (!IS_NUMBER(args[0])) {
+            runtimeError("Precision must be a number.");
+            return NIL_VAL;
+        }
+        precision =  (int)AS_NUMBER(args[0]);
+        if (precision < 0) precision = 0;
+        if (precision > 20) precision = 20;
+    }
+    double displayVal = (precision == 0) ? trunc(val) : val;
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.*f", precision, displayVal);
 
     return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
 }
@@ -1473,6 +1499,7 @@ void initMathLibrary() {
 
     defineNativeMethod(vm.numberClass, "to_int", numberToIntNative);
     defineNativeMethod(vm.numberClass, "to_fixed", numberToFixedNative);
+    defineNativeMethod(vm.numberClass, "to_string", numberToStringNative);
 
     // or if want single source:
 #define X(name, func, isDual) \

@@ -1,15 +1,15 @@
-print "Spinning up pipeline from Parent Pid: " + Process.pid().to_int();
+print "Spinning up pipeline from Parent Pid: " + Process.pid().to_string();
 
 var pid = Process.fork().unwrap();
 
 if (pid == 0) {
-  print "[Child " + Process.pid().to_int() + "] Executing target task...";
+  print "[Child " + Process.pid().to_string() + "] Executing target task...";
 
   Process.exec("date");
 } else {
-  print "[Parent] Spawned worker process: " + pid.to_int();
+  print "[Parent] Spawned worker process: " + pid.to_string();
 
   var exitStatus = Process.wait(pid).unwrap();
-  print "[Parent] Worker " + pid.to_int() + " finished with exit status: " + exitStatus;
+  print "[Parent] Worker " + pid.to_string() + " finished with exit status: " + exitStatus;
 }
 
