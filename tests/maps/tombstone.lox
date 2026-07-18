@@ -1,0 +1,12 @@
+var m = {};
+for (var i = 0; i < 100; i = i + 1) {
+    m[i] = "value";
+}
+// Delete half of them, creating tombstones
+for (var i = 0; i < 50; i = i + 1) {
+    m.remove(i);
+}
+// Force GC
+GC.gc(); 
+// Verify the remaining keys are still there
+print m[51]; // expect: value

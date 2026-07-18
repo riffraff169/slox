@@ -6,6 +6,7 @@
 #include "table.h"
 #include "value.h"
 #include "vm.h"
+#include "native.h"
 
 #define ALLOCATE_OBJ(type, objectType) \
     (type*)allocateObject(sizeof(type), objectType)
@@ -201,7 +202,7 @@ ObjMap* newMap() {
     ObjMap* map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
     ((Obj*)map)->klass = vm.mapClass;
 
-    initTable(&map->items);
+    initTable2(&map->items);
 
     return map;
 }
@@ -217,11 +218,11 @@ ObjSet* newSet() {
 }
 
 bool mapGet(ObjMap* map, ObjString* key, Value* value) {
-    return tableGet(&map->items, key, value);
+    return tableGet2(&map->items, OBJ_VAL(key), value);
 }
 
 bool mapSet(ObjMap* map, ObjString* key, Value value) {
-    return tableSet(&map->items, key, value);
+    return tableSet2(&map->items, OBJ_VAL(key), value);
 }
 
 bool mapSetByCStr(ObjMap* map, const char* cstr, Value value) {
@@ -318,7 +319,7 @@ static void printFunction(ObjFunction* function) {
 void printArray(ObjArray* array) {
     printf("[");
     for (int i = 0; i < array->count; i++) {
-        printValueSafe(array->values[i]);
+        printValue(array->values[i]);
         if (i < array->count - 1) printf(", ");
     }
     printf("]");
@@ -329,12 +330,18 @@ void printMap(ObjMap* map) {
     bool first = true;
 
     for (int i = 0; i < map->items.capacity; i++) {
-        Entry* entry = &map->items.entries[i];
-        if (entry->key == NULL) continue;
+        Entry2* entry = &map->items.entries[i];
+        if (IS_NIL(entry->key)) continue;
 
         if (!first) printf(", ");
 
-        printf("\"%s\": ", entry->key->chars);
+        /*
+        char *keystr = valueToCString(entry->key);
+        printf("\"%s\": ", keystr);
+        free(keystr);
+        */
+        printValueSafe(entry->key);
+        printf(": ");
         printValueSafe(entry->value);
         first = false;
     }

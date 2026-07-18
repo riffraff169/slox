@@ -3476,11 +3476,11 @@ InterpretResult run() {
                         Value value = peek(1);
                         Value key = peek(2);
 
-                        if (!IS_STRING(key)) {
-                            RUNTIME_ERROR("Map keys must be strings.");
+                        if (IS_NIL(key)) {
+                            RUNTIME_ERROR("Map keys cannot be nil.");
                             break;
                         }
-                        tableSet(&map->items, AS_STRING(key), value);
+                        tableSet2(&map->items, key, value);
                         Value mapVal = pop();
                         popn(2);
                         push(mapVal);
@@ -3544,13 +3544,13 @@ InterpretResult run() {
                     Value targetValue = pop();
 
                     if (IS_MAP(targetValue)) {
-                        if (!IS_STRING(indexValue)) {
-                            RUNTIME_ERROR("Map index must be a string.");
+                        if (IS_NIL(indexValue)) {
+                            RUNTIME_ERROR("Map index cannot be nil.");
                             break;
                         }
 
                         Value result;
-                        if (tableGet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), &result)) {
+                        if (tableGet2(&AS_MAP(targetValue)->items, indexValue, &result)) {
                             push(result);
                         } else {
                             push(NIL_VAL);
@@ -3641,11 +3641,11 @@ InterpretResult run() {
                         break;
                     }
                     if (IS_MAP(targetValue)) {
-                        if (!IS_STRING(indexValue)) {
-                            RUNTIME_ERROR("Map keys must be strings.");
+                        if (IS_NIL(indexValue)) {
+                            RUNTIME_ERROR("Map keys cannot be nil.");
                             break;
                         }
-                        tableSet(&AS_MAP(targetValue)->items, AS_STRING(indexValue), newValue);
+                        tableSet2(&AS_MAP(targetValue)->items, indexValue, newValue);
                         vm.stackTop[-3] = newValue;
                         popn(2);
                         //push(newValue);

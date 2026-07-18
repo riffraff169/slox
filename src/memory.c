@@ -88,7 +88,7 @@ static void blackenObject(Obj* object) {
         case OBJ_MAP:
             {
                 ObjMap* map = (ObjMap*)object;
-                markTable(&map->items);
+                markTable2(&map->items);
             }
             break;
         case OBJ_SET:
@@ -188,7 +188,7 @@ static void freeObject(Obj* object) {
         case OBJ_MAP:
             {
                 ObjMap* map = (ObjMap*)object;
-                freeTable(&map->items);
+                freeTable2(&map->items);
                 FREE(ObjMap, object);
             }
             break;

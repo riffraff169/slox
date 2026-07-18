@@ -31,7 +31,7 @@ cat << EOF >> "${HEADER_FILE}"
 // Automatically extracted signatures
 EOF
 
-awk '/^(Value|void|bool) .+\(.*\)[[:space:]]*{/{sub(/[[:space:]]*{/, ";"); print}' "${SRC_FILE}" >> "${HEADER_FILE}"
+awk '/^(Value|void|bool|char\*) .+\(.*\)[[:space:]]*{/{sub(/[[:space:]]*{/, ";"); print}' "${SRC_FILE}" >> "${HEADER_FILE}"
 
 echo "" >> "${HEADER_FILE}"
 echo "#endif // ${GUARD_NAME}" >> "${HEADER_FILE}"

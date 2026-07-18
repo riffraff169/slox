@@ -873,12 +873,12 @@ Value mapNativeConstructor(int argCount, Value* args) {
         Value key = args[i];
         Value value = args[i+1];
 
-        if (!IS_STRING(key)) {
-            runtimeError("Map keys must be strings.");
+        if (IS_NIL(key)) {
+            runtimeError("Map keys cannot be nil.");
             pop();
             return NIL_VAL;
         }
-        tableSet(&map->items, AS_STRING(key), value);
+        tableSet2(&map->items, key, value);
     }
 
     return pop();
@@ -890,9 +890,9 @@ Value mapKeysNative(int argCount, Value* args) {
     push(OBJ_VAL(valuesArray));
 
     for (int i = 0; i < map->items.capacity; i++) {
-        Entry* entry = &map->items.entries[i];
-        if (entry->key != NULL) {
-            arrayAppend(valuesArray, OBJ_VAL(entry->key));
+        Entry2* entry = &map->items.entries[i];
+        if (!IS_NIL(entry->key)) {
+            arrayAppend(valuesArray, entry->key);
         }
     }
     return pop();
@@ -904,8 +904,8 @@ Value mapValuesNative(int argCount, Value* args) {
     push(OBJ_VAL(valuesArray));
 
     for (int i = 0; i < map->items.capacity; i++) {
-        Entry* entry = &map->items.entries[i];
-        if (entry->key != NULL) {
+        Entry2* entry = &map->items.entries[i];
+        if (!IS_NIL(entry->key)) {
             arrayAppend(valuesArray, entry->value);
         }
     }
@@ -930,16 +930,23 @@ Value mapRemoveNative(int argCount, Value* args) {
     for (int i = 0; i < argCount; i++) {
         Value key = args[i];
 
+        /*
         if (!IS_STRING(key)) {
             runtimeError("Map keys must be strings.");
             pop();
             return NIL_VAL;
         }
+        */
+        if (IS_NIL(key)) {
+            runtimeError("Map keys cannot be nil.");
+            pop();
+            return NIL_VAL;
+        }
 
         Value value;
-        if (mapGetByValue(sourceMap, key, &value)) {
-            mapSetByValue(deletedMap, key, value);
-            tableDelete(&sourceMap->items, AS_STRING(key));
+        if (tableGet2(&sourceMap->items, key, &value)) {
+            tableSet2(&deletedMap->items, key, value);
+            tableDelete2(&sourceMap->items, key);
         }
     }
 
@@ -3035,7 +3042,7 @@ Value processForkStatic(int argCount, Value* args) {
     return okResult(NUMBER_VAL((double)pid));
 }
 
-static char* valueToCString(Value val) {
+char* valueToCString(Value val) {
     if (IS_STRING(val)) {
         return strdup(AS_CSTRING(val));
     } else if (IS_NUMBER(val)) {
@@ -3093,12 +3100,14 @@ Value processExecStatic(int argCount, Value* args) {
 
             ObjMap* envMap = AS_MAP(args[2]);
             for (int i = 0; i < envMap->items.capacity; i++) {
-                Entry* entry = &envMap->items.entries[i];
+                Entry2* entry = &envMap->items.entries[i];
 
-                if (entry->key != NULL) {
+                if (!IS_NIL(entry->key)) {
                     char* valStr = valueToCString(entry->value);
-                    setenv(entry->key->chars, valStr, 1);
+                    char* keyStr = valueToCString(entry->key);
+                    setenv(keyStr, valStr, 1);
                     free(valStr);
+                    free(keyStr);
                 }
             }
         }
@@ -4414,7 +4423,7 @@ Value systemExitNative(int argCount, Value* args) {
 static void setMapField(ObjMap* map, const char* name, double value) {
     ObjString* key = copyString(name, (int)strlen(name));
     push(OBJ_VAL(key));
-    tableSet(&map->items, key, NUMBER_VAL(value));
+    tableSet2(&map->items, OBJ_VAL(key), NUMBER_VAL(value));
     pop();
 }
 
@@ -4658,7 +4667,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
             ObjString* val = copyString(sep + 1, valLen);
             push(OBJ_VAL(val));
 
-            tableSet(&envMap->items, key, OBJ_VAL(val));
+            tableSet2(&envMap->items, OBJ_VAL(key), OBJ_VAL(val));
             pop();
             pop();
         }

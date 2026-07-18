@@ -146,6 +146,7 @@ void initFileLibrary();
 Value processRunStatic(int argCount, Value* args);
 Value processCaptureStatic(int argCount, Value* args);
 Value processForkStatic(int argCount, Value* args);
+char* valueToCString(Value val);
 Value processExecStatic(int argCount, Value* args);
 Value processPidStatic(int argCount, Value* args);
 Value processWaitStatic(int argCount, Value* args);

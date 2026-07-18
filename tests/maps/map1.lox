@@ -1,0 +1,7 @@
+var m = {};
+for (var i = 0; i < 2000; i = i + 1) {
+    m[i] = i * 2;
+    m["key_" + i] = i; // Mix in strings to force different hashes
+}
+print m[1000]; // expect: 2000
+print m["key_1000"]; // expect: 1000

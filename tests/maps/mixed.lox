@@ -1,0 +1,4 @@
+var m = {};
+m[1.0] = "float";
+m[1] = "int"; // If your VM treats these as the same value, this should overwrite
+print m[1.0]; // expect: int

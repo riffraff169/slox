@@ -178,7 +178,7 @@ typedef struct {
 
 typedef struct {
     Obj obj;
-    Table items;
+    Table2 items;
 } ObjMap;
 
 typedef struct {
