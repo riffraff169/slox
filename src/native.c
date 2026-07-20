@@ -858,7 +858,8 @@ void initStringClass() {
     X("values", mapValuesNative) \
     X("has", mapHasNative) \
     X("remove", mapRemoveNative) \
-    X("len", mapLenNative)
+    X("len", mapLenNative) \
+    X("each", mapEachNative)
 
 Value mapNativeConstructor(int argCount, Value* args) {
     if (argCount % 2 != 0) {
@@ -955,6 +956,56 @@ Value mapRemoveNative(int argCount, Value* args) {
 
 Value mapLenNative(int argCount, Value* args) {
     return NUMBER_VAL(AS_MAP(args[-1])->items.count);
+}
+
+Value mapEachNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
+        runtimeError("Map.each() expects a closure argument.");
+        return NIL_VAL;
+    }
+    Value closure = args[0];
+    ObjMap* map = AS_MAP(args[-1]);
+
+    int snapshotCapacity = map->items.capacity;
+    Entry2* snapshotEntries = malloc(sizeof(Entry2) * snapshotCapacity);
+    if (snapshotEntries == NULL) {
+        runtimeError("Out of memory during Map.each() snapshot.");
+        return NIL_VAL;
+    }
+    memcpy(snapshotEntries, map->items.entries, sizeof(Entry2) * snapshotCapacity);
+
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+
+    for (int i = 0; i < snapshotCapacity; i++) {
+        Entry2* entry = &snapshotEntries[i];
+
+        if (IS_NIL(entry->key)) continue;
+
+        push(closure);
+        push(entry->key);
+        push(entry->value);
+
+        VM_CALLBACK_ENTER(priorFrameCount);
+
+        if (callValue(closure, 2)) {
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult res = run();
+                if (res != INTERPRET_OK) {
+                    free(snapshotEntries);
+                    VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                }
+            }
+
+            callbackStackStart[-1] = peek(0);
+        }
+
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
+    }
+
+    VM_CALLBACK_EXIT(oldExitDepth);
+
+    free(snapshotEntries);
+    return NIL_VAL;
 }
 
 void initMapClass() {
