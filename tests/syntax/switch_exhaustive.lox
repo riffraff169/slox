@@ -19,5 +19,6 @@ switch (grade) {
     }
 }
 
+// expect: Passing
 __END__
 Passing

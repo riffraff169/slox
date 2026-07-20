@@ -1,13 +1,16 @@
 // Exponentiation Right-Associativity (Evaluating right-to-left)
 print 2 ** 3 ** 2; // Equivalent to 2 ** (3 ** 2) -> 2 ** 9 -> 512
+// expect: 512
 print (2 ** 3) ** 2; // 8 ** 2 -> 64
+// expect: 64
 
 // Modulo with fractions and negatives (if your VM supports them)
-print 10 % 3;
-print -10 % 3;
+print 10 % 3; // expect: 1
+print -10 % 3; // expect: -1
 
 // Complex precedence mixing standard arithmetic and extensions
 print 5 + 2 * 3 ** 2 % 5; // 5 + 2 * 9 % 5 -> 5 + 18 % 5 -> 5 + 3 -> 8
+// expect: 8
 
 __END__
 512

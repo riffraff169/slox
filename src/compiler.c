@@ -1216,7 +1216,7 @@ ParseRule rules[] = {
     [TOKEN_PLUS_PLUS]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_MINUS_MINUS]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_CARET]            = {NULL,     binary, PREC_XOR},
-    [TOKEN_PERCENT]          = {NULL,     binary, PREC_TERM},
+    [TOKEN_PERCENT]          = {NULL,     binary, PREC_FACTOR},
     [TOKEN_SEMICOLON]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_SLASH]            = {NULL,     binary, PREC_FACTOR},
     [TOKEN_STAR]             = {NULL,     binary, PREC_FACTOR},
@@ -1996,6 +1996,11 @@ static void switchStatement() {
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
     consume(TOKEN_LEFT_BRACE, "Expect '{' before cases.");
 
+    beginScope();
+    Token dummyToken = {.start = "", .length = 0};
+    addLocal(dummyToken);
+    markInitialized();
+
     int endJumps[255];
     int jumpCount = 0;
 
@@ -2032,10 +2037,11 @@ static void switchStatement() {
     }
 
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after last case or default.");
-    emitByte(OP_POP);
+
     for (int i = 0; i < jumpCount; i++) {
         patchJump(endJumps[i]);
     }
+    endScope();
 }
 
 static void ifStatement() {
