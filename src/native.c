@@ -3107,8 +3107,192 @@ Value dirGetcwdNative(int argCount, Value* args) {
         return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
     }
 
+    setLastError(errno, "Could not retrieve current working directory.");
     runtimeError("Could not retrieve current working directory.");
     return NIL_VAL;
+}
+
+Value dirRmdirNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.rmdir() expects a path string.");
+        return NIL_VAL;
+    }
+    const char* path = AS_CSTRING(args[0]);
+    if (rmdir(path) != 0) {
+        setLastError(errno, "rmdir('%s') failed: %s", path, strerror(errno));
+        runtimeError("Could not remove directory '%s'", path);
+        return NIL_VAL;
+    }
+    return NIL_VAL;
+}
+
+Value dirExistsNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.exists() expects a path string.");
+        return NIL_VAL;
+    }
+    const char* path = AS_CSTRING(args[0]);
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        return BOOL_VAL(true);
+    }
+    return BOOL_VAL(false);
+}
+
+Value dirHomeNative(int argCount, Value* args) {
+    const char* home = getenv("HOME");
+#ifdef _WIN32
+    if (!home) home = getenv("USERPROFILE");
+#endif
+    if (!home) home = "/";
+    return OBJ_VAL(copyString(home, (int)strlen(home)));
+} 
+
+Value dirTmpdirNative(int argCount, Value* args) {
+    const char* tmp = getenv("TMPDIR");
+    if (!tmp) tmp = getenv("TMP");
+    if (!tmp) tmp = getenv("TEMP");
+    if (!tmp) tmp = "/tmp";
+    return OBJ_VAL(copyString(tmp, (int)strlen(tmp)));
+}
+
+
+Value dirMkdtempNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.mkdtemp() expects a template path string ending in 'XXXXXX'.");
+        return NIL_VAL;
+    }
+
+    const char* tmpl_in = AS_CSTRING(args[0]);
+    size_t len = strlen(tmpl_in);
+
+    char* tmpl = malloc(len + 1);
+    strcmp(tmpl, tmpl_in);
+
+    if (mkdtemp(tmpl) == NULL) {
+        setLastError(errno, "mkdtemp('%s') failed; %s", tmpl_in, strerror(errno));
+        runtimeError("mkdtemp('%s') failed: %s", tmpl_in, strerror(errno));
+        free(tmpl);
+        return errorResult("mkdtemp('%s') failed: %s", tmpl_in, strerror(errno));
+    }
+
+    Value result = OBJ_VAL(copyString(tmpl, (int)strlen(tmpl)));
+    free(tmpl);
+    return okResult(result);
+}
+
+Value dirEachNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_CLOSURE(args[1])) {
+        runtimeError("Dir.each() expects (path, callback).");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+    Value callback = args[1];
+
+    DIR* dir = opendir(path);
+    if (dir == NULL) {
+        setLastError(errno, "Dir.each('%s') failed: %s", path, strerror(errno));
+        runtimeError("Dir.each('%s') failed: %s", path, strerror(errno));
+        return NIL_VAL;
+    }
+
+    struct dirent* entry;
+
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        Value entryStr = OBJ_VAL(copyString(entry->d_name, (int)strlen(entry->d_name)));
+
+        push(callback);
+        push(entryStr);
+
+        VM_CALLBACK_ENTER(priorFrameCount);
+
+        if (callValue(callback, 1)) {
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult res = run();
+
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+
+            }
+        }
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
+    }
+
+    closedir(dir);
+    VM_CALLBACK_EXIT(oldExitDepth);
+    return NIL_VAL;
+}
+
+#include <glob.h>
+
+Value dirGlobNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.glob() expects a pattern string.");
+        return NIL_VAL;
+    }
+
+    const char* pattern = AS_CSTRING(args[0]);
+    glob_t results;
+
+    int res = glob(pattern, GLOB_TILDE, NULL, &results);
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    if (res == 0) {
+        for (size_t i = 0; i < results.gl_pathc; i++) {
+            Value pathVal = OBJ_VAL(copyString(results.gl_pathv[i], (int)strlen(results.gl_pathv[i])));
+            arrayAppend(array, pathVal);
+        }
+        globfree(&results);
+    } else if (res == GLOB_NOMATCH) {
+        globfree(&results);
+    } else {
+        globfree(&results);
+        pop();
+        runtimeError("glob('%s') failed.", pattern);
+        return NIL_VAL;
+    }
+
+    pop();
+    return OBJ_VAL(array);
+}
+
+Value dirIsemptyNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.isempty() expects a path string.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+    DIR* dir = opendir(path);
+
+    if (dir == NULL) {
+        setLastError(errno, "Dir.isempty('%s') failed: %s", path, strerror(errno));
+        runtimeError("Dir.isempty('%s') failed: %s", path, strerror(errno));
+        return NIL_VAL;
+    }
+
+    struct dirent* entry;
+    bool empty = true;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        empty = false;
+        break;
+    }
+
+    closedir(dir);
+    return BOOL_VAL(empty);
 }
 
 void initDirLibrary(){
@@ -3123,6 +3307,15 @@ void initDirLibrary(){
     defineNativeMethod(dirClass, "chdir", dirChdirNative);
     defineNativeMethod(dirClass, "getcwd", dirGetcwdNative);
     defineNativeMethod(dirClass, "pwd", dirGetcwdNative);
+    defineNativeMethod(dirClass, "rmdir", dirRmdirNative);
+    defineNativeMethod(dirClass, "exists", dirExistsNative);
+    defineNativeMethod(dirClass, "home", dirHomeNative);
+    defineNativeMethod(dirClass, "tempdir", dirTmpdirNative);
+    defineNativeMethod(dirClass, "tmpdir", dirTmpdirNative);
+    defineNativeMethod(dirClass, "mktemp", dirMkdtempNative);
+    defineNativeMethod(dirClass, "each", dirEachNative);
+    defineNativeMethod(dirClass, "glob", dirGlobNative);
+    defineNativeMethod(dirClass, "isempty", dirIsemptyNative);
 
     tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
 

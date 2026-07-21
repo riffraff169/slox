@@ -188,7 +188,7 @@ void raiseException(Value exceptionValue) {
         push(exceptionValue);
         currentFrame->ip = catchTargetIp;
 
-        vm.exceptionThrown = true;
+        //vm.exceptionThrown = true;
     } else if (target->finallyIp != NULL) {
         target->hasUncaughtException = true;
         target->uncaughtException = exceptionValue;
@@ -1585,7 +1585,9 @@ bool vmCall(ObjClosure* closure, int argCount) {
 }
 
 bool callValue(Value callee, int argCount) {
-    //vm.exceptionThrown = false;
+    if (vm.exceptionThrown) {
+        return true;
+    }
 
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
@@ -1730,12 +1732,17 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
                 // 5. call the function (total args is now argCoutn + 1)
                 //Value result = native(argCount + 1, vm.stackTop - argCount - 1);
                 Value result = native(argCount, vm.stackTop - argCount);
-                if (vm.exceptionThrown) {
+
+                if (vm.exceptionThrown || vm.frameCount == 0) {
                     //vm.exceptionThrown = false;
                     //return false;
                     return true;
                 }
-                if (vm.frameCount == 0) return false;
+                /*
+                if (vm.frameCount == 0) {
+                    return false;
+                }
+                */
                 vm.stackTop -= (argCount + 1);
                 push(result);
                 return true;
@@ -1943,6 +1950,7 @@ bool invoke(ObjString* name, int argCount) {
             }
 
             res = invokeFromClass(klass, name, argCount);
+
             if (vm.exceptionThrown) {
                 return true;
             }
