@@ -1,0 +1,9 @@
+//System.trace(true);
+
+try {
+  Dir.chdir("/tmp", fun() {
+      throw Error("boom");
+  });
+} catch (e) {
+  print "Error: " + e.message; // expect: Error: boom
+}

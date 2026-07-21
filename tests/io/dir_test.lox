@@ -1,0 +1,24 @@
+var cwd = Dir.getcwd();
+print "Cwd: " + cwd;
+
+Dir.chdir("lib", fun() {
+    print "Successful cd";
+    print "New cwd: " + Dir.getcwd();
+});
+
+print "Cwd: " + Dir.getcwd();
+
+fun dirlist() {
+  var listres = Dir.list();
+  var list = listres.unwrap();
+  try {
+    print PP.pp(list.sort());
+  } catch (e) {
+    print "Error: " + e.message;
+  }
+
+}
+
+Dir.chdir("/etc", dirlist);
+
+print "Cwd: " + Dir.getcwd();

@@ -115,18 +115,6 @@ void clearLastError() {
     setLastError(0, "%s", "Success");
 }
 
-/*
-static Value resultInitNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-
-    tableSet(&instance->fields, vm.okString, args[0]);
-    tableSet(&instance->fields, vm.valString, args[1]);
-    tableSet(&instance->fields, vm.errString, args[2]);
-
-    return args[-1];
-}
-*/
-
 static Value createResult(Value value, Value errval, bool isok) {
     push(value);
     push(errval);
@@ -183,7 +171,6 @@ void raiseException(Value exceptionValue) {
         exit(70);
     }
 
-    //vm.tryCount--;
     TryBlock* target = &vm.tryStack[vm.tryCount - 1];
 
     vm.stackTop = target->stackTop;
@@ -201,8 +188,7 @@ void raiseException(Value exceptionValue) {
         push(exceptionValue);
         currentFrame->ip = catchTargetIp;
 
-        // XXXX
-        //vm.exceptionThrown = true;
+        vm.exceptionThrown = true;
     } else if (target->finallyIp != NULL) {
         target->hasUncaughtException = true;
         target->uncaughtException = exceptionValue;
@@ -214,8 +200,6 @@ void raiseException(Value exceptionValue) {
     } else {
         vm.tryCount--;
         raiseException(exceptionValue);
-        //push(exceptionValue);
-        //currentFrame->ip = target->catchIp;
     }
 }
 
@@ -343,6 +327,7 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
             originalName->chars, klass->name->chars, 0);
             */
     if (!found) {
+        printf("In callMethodMissing...\n");
         runtimeError("Undefined method '%s'.", originalName->chars);
         return false;
     }
@@ -512,8 +497,6 @@ ObjClass* getClassForValue(Value value) {
             case OBJ_MAP: return vm.mapClass;
             case OBJ_SET: return vm.setClass;
             case OBJ_CLASS: return vm.classClass;
-                //return (ObjClass*)AS_OBJ(value);
-                //return AS_CLASS(value)->obj.klass;
             case OBJ_BOUND_METHOD:
             case OBJ_CLOSURE:
             case OBJ_NATIVE: return vm.functionClass;
@@ -525,7 +508,6 @@ ObjClass* getClassForValue(Value value) {
 }
 
 bool runtimeError(const char* format, ...) {
-    //printf("[DEBUG] runtimeError triggered! tryCount: %d, format: %s\n", vm.tryCount, format);
     fflush(stdout);
 
     va_list args;
@@ -533,7 +515,6 @@ bool runtimeError(const char* format, ...) {
     char buffer[1024];
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    //printf("runtimeError: buffer: %s\n", buffer);
 
     if (vm.tryCount > 0) {
         TryBlock block = vm.tryStack[--vm.tryCount];
@@ -577,7 +558,6 @@ bool runtimeError(const char* format, ...) {
         return false;
     }
 
-    //fputs("\n", stderr);
     fprintf(stderr, "%s\n", buffer);
     int line = 0;
 
@@ -597,7 +577,6 @@ bool runtimeError(const char* format, ...) {
         }
     }
 
-    //fprintf(stderr, "[line %d] in script\n", line);
     resetStack();
     return true;
 }
@@ -810,15 +789,6 @@ static Value vec3NegNative(int argCount, Value* args) {
 }
 
 static inline Value getCheckTarget(int argCount, Value* args) {
-    /*
-    if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) ||
-            IS_BOOL(args[-1]) || IS_NIL(args[-1]) ||
-            IS_INSTANCE(args[-1]) || IS_CLOSURE(args[-1]) ||
-            IS_VEC3(args[-1])) {
-        return args[-1];
-    }
-    return (argCount > 0) ? args[0] : NIL_VAL;
-    */
     if (IS_NATIVE(args[-1])) {
         return (argCount > 0) ? args[0] : NIL_VAL;
     }
@@ -866,7 +836,6 @@ void initVec3Library() {
     vm.vec3Class->getter = vec3GetterNative;
     tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
     
-    //defineNativeMethod(vm.vec3Class, "init", vec3InitNative);
     defineNativeMethod(vm.vec3Class, "dot", vec3DotNative);
     defineNativeMethod(vm.vec3Class, "cross", vec3CrossNative);
     defineNativeMethod(vm.vec3Class, "unit", vec3UnitNative);
@@ -1616,7 +1585,7 @@ bool vmCall(ObjClosure* closure, int argCount) {
 }
 
 bool callValue(Value callee, int argCount) {
-    vm.exceptionThrown = false;
+    //vm.exceptionThrown = false;
 
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
@@ -1688,9 +1657,15 @@ bool callValue(Value callee, int argCount) {
 
                     Value result = native(argCount, vm.stackTop - argCount);
 
+                    /*
                     if (vm.exceptionThrown) {
                         vm.exceptionThrown = false;
                         return false;
+                    }
+                    */
+                    // XXXX
+                    if (vm.exceptionThrown) {
+                        return true;
                     }
                     if (vm.frameCount == 0) return false;
 
@@ -1756,8 +1731,9 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
                 //Value result = native(argCount + 1, vm.stackTop - argCount - 1);
                 Value result = native(argCount, vm.stackTop - argCount);
                 if (vm.exceptionThrown) {
-                    vm.exceptionThrown = false;
-                    return false;
+                    //vm.exceptionThrown = false;
+                    //return false;
+                    return true;
                 }
                 if (vm.frameCount == 0) return false;
                 vm.stackTop -= (argCount + 1);
@@ -1849,45 +1825,9 @@ bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* methodOut) {
 bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
-    /*
-    if (IS_CLASS(receiver)) {
-        ObjClass* klass = AS_CLASS(receiver);
-        Value method;
-        bool found = false;
-
-        ObjClass* currentClass = klass;
-        while (currentClass != NULL) {
-            if (tableGet(&klass->methods, name, &method)) {
-                found = true;
-                break;
-            }
-            currentClass = currentClass->superclass;
-        }
-
-        if (!found) {
-            currentClass = vm.classClass;
-            while (currentClass != NULL) {
-                if (tableGet(&currentClass->methods, name, &method)) {
-                    found = true;
-                    break;
-                }
-                currentClass = currentClass->superclass;
-            }
-        }
-        
-        if (found) {
-            if (IS_CLASS(method)) {
-                vm.stackTop[-argCount - 1] = method;
-            }
-            return callValue(method, argCount);
-        }
-        runtimeError("Undefined static method '%s' on class '%s'.", name->chars, klass->name->chars);
-        return false;
-    }
-    */
-
     ObjClass* klass = getClassForValue(receiver);
     
+
     /*
     printf("DEBUG: Looking for method '%s' on Class '%s' %d\n",
             name->chars, klass->name->chars, klass);
@@ -2004,18 +1944,17 @@ bool invoke(ObjString* name, int argCount) {
 
             res = invokeFromClass(klass, name, argCount);
             if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
+                return true;
             }
         } else {
             res = invokeFromClass(vm.classClass, name, argCount);
             if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
+                return true;
             }
         }
-        if (!res)
+        if (!res) {
             return callMethodMissing(klass, name, argCount);
+        }
         return true;
     } else {
         ObjClass* klass = getClassForValue(receiver);
@@ -2025,8 +1964,9 @@ bool invoke(ObjString* name, int argCount) {
                 vm.exceptionThrown = false;
                 return false;
             }
-            if (!res)
+            if (!res) {
                 return callMethodMissing(klass, name, argCount);
+            }
             return true;
         }
     }
@@ -2134,7 +2074,9 @@ static inline uint32_t read24(uint8_t* ip) {
 }
 
 InterpretResult run() {
-    CallFrame* frame = &vm.frames[vm.frameCount - 1];
+    int initialFrameCount = vm.frameCount;
+
+    //CallFrame* frame = &vm.frames[vm.frameCount - 1];
     //printf("STACK DEPTH: %ld | FRAME: %d | OP: %d\n",
      //       (long)(vm.stackTop - vm.stack), vm.frameCount, *frame->ip);
 
@@ -2169,6 +2111,16 @@ InterpretResult run() {
     } while (false)
 
     for (;;) {
+        if (vm.frameCount < initialFrameCount) {
+            return INTERPRET_OK;
+        }
+
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+        }
+
+        CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
         if (vm.debugTraceExecution) {
             printf("        ");
             for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
@@ -3005,6 +2957,10 @@ InterpretResult run() {
                     //Value exceptionToThrow = pop();
                     raiseException(exception);
 
+                    if (vm.frameCount < initialFrameCount) {
+                        return INTERPRET_OK;
+                    }
+
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;
@@ -3627,6 +3583,7 @@ InterpretResult run() {
 #undef READ_CONSTANT
 #undef READ_STRING
 #undef BINARY_OP
+    return INTERPRET_OK;
 }
 
 InterpretResult interpret(const char* source, const char* filename) {

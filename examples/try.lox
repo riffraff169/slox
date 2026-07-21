@@ -1,3 +1,5 @@
+System.trace(true);
+
 var x = 1;
 try {
   x = 2;
