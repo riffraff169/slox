@@ -1319,6 +1319,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.globals);
     initTable(&vm.strings);
     initTable(&vm.globalConstants);
+    initTable(&vm.requires);
 
     ObjString* stringName = copyString("String", 6);
     push(OBJ_VAL(stringName));
@@ -1462,6 +1463,7 @@ void freeVM() {
     freeTable(&vm.globals);
     freeTable(&vm.strings);
     freeTable(&vm.globalConstants);
+    freeTable(&vm.requires);
 
     vm.initString = NULL;
     vm.toString = NULL;

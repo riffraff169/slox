@@ -198,7 +198,6 @@ static TokenType identifierType() {
                   if (scanner.current - scanner.start > 1 && scanner.start[1] == 'e') {
                       if (scanner.current - scanner.start > 2) {
                           switch (scanner.start[2]) {
-                              case 'q': return checkKeyword(3, 4, "uire", TOKEN_REQUIRE);
                               case 't': return checkKeyword(3, 3, "urn", TOKEN_RETURN);
                           }
                       }

@@ -41,6 +41,7 @@ typedef struct {
     Table globals;
     Table strings;
     Table globalConstants;
+    Table requires;
     ObjString* initString;
     ObjString* toString;
     ObjUpvalue* openUpvalues;

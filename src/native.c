@@ -463,6 +463,60 @@ Value objectIsfrozenNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value requireNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("require() expects a file path string.");
+        return NIL_VAL;
+    }
+
+    ObjString* path = AS_STRING(args[0]);
+
+    Value cachedRequire;
+    if (tableGet(&vm.requires, path, &cachedRequire)) {
+        return cachedRequire;
+    }
+
+    char* source = readFile(path->chars);
+    if (source == NULL) {
+        runtimeError("Could not open file '%s'.", path->chars);
+        return NIL_VAL;
+    }
+
+    ObjFunction* function = compile(source, path);
+    free(source);
+
+    if (function == NULL) {
+        return NIL_VAL;
+    }
+
+    push(OBJ_VAL(function));
+    ObjClosure* closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+    VM_CALLBACK_ENTER(priorFrameCount);
+
+    if (callValue(OBJ_VAL(closure), 0)) {
+        if (vm.frameCount > priorFrameCount) {
+            InterpretResult result = run();
+            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart);
+        }
+
+        Value exportResult = pop();
+
+        if (IS_NIL(exportResult)) {
+            exportResult = BOOL_VAL(true);
+        }
+
+        tableSet(&vm.requires, path, exportResult);
+        VM_CALLBACK_EXIT(oldExitDepth);
+        return exportResult;
+    }
+    VM_CALLBACK_EXIT(oldExitDepth);
+    return NIL_VAL;
+}
+
 #define CORE_GLOBAL_LIST(X) \
     X("clock", clockNative) \
     X("str", strNative) \
@@ -470,7 +524,8 @@ Value objectIsfrozenNative(int argCount, Value* args) {
     X("chr", chrNative) \
     X("eval", evalNative) \
     X("create_instance", createInstanceNative) \
-    X("program", programNative)
+    X("program", programNative) \
+    X("require", requireNative)
 
 #define CORE_DUAL_LIST(X) \
     X("isnumber", isNumberNative) \
