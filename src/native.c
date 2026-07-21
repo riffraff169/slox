@@ -2228,9 +2228,11 @@ Value resultUnwrapNative(int argCount, Value* args) {
         tableGet(&instance->fields, vm.errString, &errVal);
 
         if (IS_STRING(errVal)) {
-            runtimeError("Panic: Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
+            runtimeError("Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
+            return errorResult("Tried to unwrap an error Result: %s", AS_CSTRING(errVal));
         } else {
-            runtimeError("Panic: Tried to unwrap an error Result.");
+            runtimeError("Tried to unwrap an error Result.");
+            return errorResult("Panic: Tried to unwrap an error Result.");
         }
         return NIL_VAL;
     }
@@ -2246,6 +2248,7 @@ Value resultUnwrapOrNative(int argCount, Value* args) {
     if (instance->obj.klass != vm.resultClass) {
         runtimeError("Method unwrap_or() expected a Result instance.");
         return NIL_VAL;
+        //return errorResult("Method unwrap_or() expected a Result instance.");
     }
 
     Value okVal = NIL_VAL;
@@ -2288,6 +2291,7 @@ Value optionUnwrapNative(int argCount, Value* args) {
     if (!AS_BOOL(is_some)) {
         runtimeError("Attempted to unwrap a 'None' Option.");
         return NIL_VAL;
+        //return errorResult("Attempted to unwrap a 'None' Option.");
     }
 
     Value val = NIL_VAL;
@@ -2597,50 +2601,6 @@ Value fileExistsNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
-Value fileListNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("File.list() expects a directory path string.");
-        return NIL_VAL;
-    }
-
-    Value pathValue = NIL_VAL;
-    if (IS_STRING(args[0])) {
-        pathValue = args[0];
-    } else if (argCount >= 2 && IS_STRING(args[1])) {
-        pathValue = args[1];
-    } else {
-        runtimeError("File.list() expects a directory path string.");
-        return NIL_VAL;
-    }
-
-    const char* path = AS_CSTRING(pathValue);
-    DIR* dir = opendir(path);
-
-    if (dir == NULL) {
-        return errorResult("%s", "Unable to open directory.");
-    }
-
-    ObjArray *fileList = newArray();
-    push(OBJ_VAL(fileList));
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        ObjString* name = copyString(entry->d_name, (int)strlen(entry->d_name));
-        push(OBJ_VAL(name));
-        arrayAppend(fileList, OBJ_VAL(name));
-        pop();
-    }
-
-    Value result = okResult(OBJ_VAL(fileList));
-
-    pop();
-
-    return result;
-}
 
 Value fileOpenNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
@@ -2974,6 +2934,37 @@ Value fileFlushNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+
+void initFileLibrary(){
+    ObjString* fileName = copyString("File", 4);
+    push(OBJ_VAL(fileName));
+    ObjClass* fileClass = newClass(fileName);
+    push(OBJ_VAL(fileClass));
+    fileClass->destructor = fileDestructor;
+
+    defineNativeMethod(fileClass, "load", fileLoadNative);
+    defineNativeMethod(fileClass, "save", fileSaveNative);
+    defineNativeMethod(fileClass, "exists", fileExistsNative);
+    defineNativeMethod(fileClass, "open", fileOpenNative);
+    defineNativeMethod(fileClass, "read", fileReadNative);
+    defineNativeMethod(fileClass, "readline", fileReadlineNative);
+    defineNativeMethod(fileClass, "write", fileWriteNative);
+    defineNativeMethod(fileClass, "close", fileCloseNative);
+    defineNativeMethod(fileClass, "seek", fileSeekNative);
+    defineNativeMethod(fileClass, "tell", fileTellNative);
+    defineNativeMethod(fileClass, "stderr", fileStderrNative);
+    defineNativeMethod(fileClass, "flush", fileFlushNative);
+
+    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
+
+    defineClassConstant(fileClass, "SEEK_SET", NUMBER_VAL(SEEK_SET));
+    defineClassConstant(fileClass, "SEEK_CUR", NUMBER_VAL(SEEK_CUR));
+    defineClassConstant(fileClass, "SEEK_END", NUMBER_VAL(SEEK_END));
+
+    popn(2);
+
+}
+
 #ifdef _WIN32
 #include <direct.h>
 #define mkdir(path, mode) _mkdir(path)
@@ -2981,14 +2972,14 @@ Value fileFlushNative(int argCount, Value* args) {
 #include <sys/stat.h>
 #endif
 
-Value fileMkdirNative(int argCount, Value* args) {
+Value dirMkdirNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
-        runtimeError("File.mkdir() must be called as a class method.");
+        runtimeError("Dir.mkdir() must be called as a class method.");
         return NIL_VAL;
     }
 
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("File.mkdir() expects a path string as the first argument.");
+        runtimeError("Dir.mkdir() expects a path string as the first argument.");
         return NIL_VAL;
     }
 
@@ -3009,36 +3000,133 @@ Value fileMkdirNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
-void initFileLibrary(){
-    ObjString* fileName = copyString("File", 4);
-    push(OBJ_VAL(fileName));
-    ObjClass* fileClass = newClass(fileName);
-    push(OBJ_VAL(fileClass));
-    fileClass->destructor = fileDestructor;
+Value dirListNative(int argCount, Value* args) {
+    const char* path = ".";
 
-    defineNativeMethod(fileClass, "load", fileLoadNative);
-    defineNativeMethod(fileClass, "save", fileSaveNative);
-    defineNativeMethod(fileClass, "exists", fileExistsNative);
-    defineNativeMethod(fileClass, "list", fileListNative);
-    defineNativeMethod(fileClass, "open", fileOpenNative);
-    defineNativeMethod(fileClass, "read", fileReadNative);
-    defineNativeMethod(fileClass, "readline", fileReadlineNative);
-    defineNativeMethod(fileClass, "write", fileWriteNative);
-    defineNativeMethod(fileClass, "close", fileCloseNative);
-    defineNativeMethod(fileClass, "seek", fileSeekNative);
-    defineNativeMethod(fileClass, "tell", fileTellNative);
-    defineNativeMethod(fileClass, "stderr", fileStderrNative);
-    defineNativeMethod(fileClass, "flush", fileFlushNative);
-    defineNativeMethod(fileClass, "mkdir", fileMkdirNative);
+    if (argCount >= 1) {
+        if (IS_STRING(args[0])) {
+            path = AS_CSTRING(args[0]);
+        } else if (argCount >= 2 && IS_STRING(args[1])) {
+            path = AS_CSTRING(args[1]);
+        } else {
+            runtimeError("Dir.list() expects a directory path string.");
+            return NIL_VAL;
+        }
+    }
 
-    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
+    DIR* dir = opendir(path);
 
-    defineClassConstant(fileClass, "SEEK_SET", NUMBER_VAL(SEEK_SET));
-    defineClassConstant(fileClass, "SEEK_CUR", NUMBER_VAL(SEEK_CUR));
-    defineClassConstant(fileClass, "SEEK_END", NUMBER_VAL(SEEK_END));
+    if (dir == NULL) {
+        return errorResult("%s", "Unable to open directory.");
+    }
+
+    ObjArray *fileList = newArray();
+    push(OBJ_VAL(fileList));
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        ObjString* name = copyString(entry->d_name, (int)strlen(entry->d_name));
+        push(OBJ_VAL(name));
+        arrayAppend(fileList, OBJ_VAL(name));
+        pop();
+    }
+
+    closedir(dir);
+
+    Value result = okResult(OBJ_VAL(fileList));
+
+    pop();
+
+    return result;
+}
+
+Value dirChdirNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.chdir() expects a path string.");
+        return NIL_VAL;
+    }
+
+    const char* newPath = AS_CSTRING(args[0]);
+
+    char oldCwd[1024];
+    if (getcwd(oldCwd, sizeof(oldCwd)) == NULL) {
+        runtimeError("Could not get current working directory.");
+        return NIL_VAL;
+    }
+
+    if (chdir(newPath) != 0) {
+        runtimeError("Could not change directory to '%s'.", newPath);
+        return NIL_VAL;
+    }
+
+    if (argCount < 2 || !IS_CLOSURE(args[1])) {
+        return NIL_VAL;
+    }
+
+    Value closure = args[1];
+
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+    push(closure);
+    VM_CALLBACK_ENTER(priorFrameCount);
+
+    if (callValue(closure, 0)) {
+        if (vm.frameCount > priorFrameCount) {
+            InterpretResult res = run();
+
+            if (res != INTERPRET_OK) {
+                chdir(oldCwd);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+            }
+        }
+    }
+
+    VM_CALLBACK_EXIT(oldExitDepth);
+
+    chdir(oldCwd);
+
+    return NIL_VAL;
+}
+
+#ifdef _WIN32
+#include <direct.h>
+#define getcwd _getcwd
+#endif
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+Value dirGetcwdNative(int argCount, Value* args) {
+    char buffer[PATH_MAX];
+
+    if (getcwd(buffer, sizeof(buffer)) != NULL) {
+        return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+    }
+
+    runtimeError("Could not retrieve current working directory.");
+    return NIL_VAL;
+}
+
+void initDirLibrary(){
+    ObjString* dirName = copyString("Dir", 3);
+    push(OBJ_VAL(dirName));
+    ObjClass* dirClass = newClass(dirName);
+    push(OBJ_VAL(dirClass));
+    //dirClass->destructor = dirDestructor;
+
+    defineNativeMethod(dirClass, "list", dirListNative);
+    defineNativeMethod(dirClass, "mkdir", dirMkdirNative);
+    defineNativeMethod(dirClass, "chdir", dirChdirNative);
+    defineNativeMethod(dirClass, "getcwd", dirGetcwdNative);
+    defineNativeMethod(dirClass, "pwd", dirGetcwdNative);
+
+    tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
 
     popn(2);
-
 }
 
 Value processRunStatic(int argCount, Value* args) {

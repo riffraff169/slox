@@ -200,6 +200,9 @@ void raiseException(Value exceptionValue) {
         }
         push(exceptionValue);
         currentFrame->ip = catchTargetIp;
+
+        // XXXX
+        //vm.exceptionThrown = true;
     } else if (target->finallyIp != NULL) {
         target->hasUncaughtException = true;
         target->uncaughtException = exceptionValue;
@@ -226,17 +229,6 @@ void defineClassConstant(ObjClass* klass, const char* name, Value value) {
     pop();
     pop();
 }
-
-/*
-static Value optionInitNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-
-    tableSet(&instance->fields, copyString("is_some", 7), args[0]);
-    tableSet(&instance->fields, copyString("val", 3), args[1]);
-
-    return args[-1];
-}
-*/
 
 static uint32_t valueToUint32(Value value) {
     double num = AS_NUMBER(value);
@@ -544,7 +536,6 @@ bool runtimeError(const char* format, ...) {
     //printf("runtimeError: buffer: %s\n", buffer);
 
     if (vm.tryCount > 0) {
-
         TryBlock block = vm.tryStack[--vm.tryCount];
 
         vm.frameCount = block.frameCount;
@@ -581,8 +572,8 @@ bool runtimeError(const char* format, ...) {
 
         vm.frames[vm.frameCount -1].ip = block.catchIp;
 
-        //printf("in try...\n");
         vm.exceptionThrown = true;
+
         return false;
     }
 
@@ -627,16 +618,6 @@ void defineNative(const char* name, NativeFn function) {
     pop();
     pop();
 }
-
-/*
-static void defineNativeInTable(Table* table, const char* name, NativeFn function) {
-    push(OBJ_VAL(copyString(name, (int)strlen(name))));
-    push(OBJ_VAL(newNative(function)));
-    tableSet(table, AS_STRING(vm.stack[0]), vm.stack[1]);
-    pop();
-    pop();
-}
-*/
 
 Value popn(int n) {
     vm.stackTop -= n;
@@ -894,36 +875,6 @@ void initVec3Library() {
     pop();
 }
 
-/*
-static Value arrayInitMethod(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Array constructor expects a pattern string.");
-        return NIL_VAL;
-    }
-
-    ObjArray* array = newArray();
-    return OBJ_VAL(array);
-}
-*/
-
-/*
-static Value mapInitMethod(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Map init constructor expects a string.");
-        return NIL_VAL;
-    }
-}
-*/
-
-/*
-static Value stringInitMethod(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("String init constructor expects a string.");
-        return NIL_VAL;
-    }
-}
-*/
-
 static Value classSuperclassMethod(int argCount, Value* args) {
     if (argCount != 0) {
         runtimeError("Expected 0 arguments but get %d.", argCount);
@@ -964,6 +915,7 @@ static Value objectRootGetter(int argCount, Value* args) {
     return errorResult("Value '%s' not found", name);
 }
 
+/*
 static Value arrayCallHandler(int argCount, Value* args) {
     return OBJ_VAL(newArray());
 }
@@ -971,6 +923,7 @@ static Value arrayCallHandler(int argCount, Value* args) {
 static Value mapCallHandler(int argCount, Value* args) {
     return OBJ_VAL(newMap());
 }
+*/
 
 static Value boolCallHandler(int argCount, Value* args) {
     if (argCount < 1) return BOOL_VAL(false);
@@ -1382,6 +1335,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.numPrecision = 6;
     vm.strictMode = false;
     vm.warnMode = true;
+    vm.exceptionThrown = false;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -1515,6 +1469,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initSystemLibrary(argc, argv, env);
     initProcessClass(); //
     initFileLibrary(); //
+    initDirLibrary(); //
     initRegexClass(); //
     initVec3Library();
     initGCLibrary(); //
@@ -1675,19 +1630,6 @@ bool callValue(Value callee, int argCount) {
                         return false;
                     }
                     return res;
-                    /*
-                    vm.stackTop[-argCount - 1] = bound->receiver;
-                    if (IS_CLOSURE(bound->method)) {
-                        ObjClosure* closure = AS_CLOSURE(bound->method);
-                        return vmCall(closure, argCount);
-                    } else if (IS_NATIVE(bound->method)) {
-                        NativeFn native = AS_NATIVE(bound->method);
-                        Value result = native(argCount, vm.stackTop - argCount);
-                        return true;
-                    }
-                    return false;
-                    */
-                    //return vmCall(bound->method, argCount);
                 }
             case OBJ_CLASS:
                 {
@@ -1743,7 +1685,9 @@ bool callValue(Value callee, int argCount) {
             case OBJ_NATIVE:
                 {
                     NativeFn native = AS_NATIVE(callee);
+
                     Value result = native(argCount, vm.stackTop - argCount);
+
                     if (vm.exceptionThrown) {
                         vm.exceptionThrown = false;
                         return false;
@@ -2988,6 +2932,7 @@ InterpretResult run() {
 
                     block->isReturning = false;
                     block->hasUncaughtException = false;
+                    vm.exceptionThrown = false;
                 }
                 break;
             case OP_END_TRY:
@@ -3648,7 +3593,6 @@ InterpretResult run() {
                         tableSet2(&AS_MAP(targetValue)->items, indexValue, newValue);
                         vm.stackTop[-3] = newValue;
                         popn(2);
-                        //push(newValue);
                         break;
                     } else if (!IS_ARRAY(targetValue)) {
                         RUNTIME_ERROR("Only maps and arrays support subscript assignment.");
