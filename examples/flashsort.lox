@@ -1,0 +1,80 @@
+fun flashsort(a) {
+  var n = a.length();
+  if (n <= 1) return;
+
+  var min_val = a[0];
+  var max_idx = 0;
+
+  for (var i = 1; i < n; i += 1) {
+    if (a[i] < min_val) {
+      min_val = a[i];
+    }
+    if (a[i] > a[max_idx]) {
+      max_idx = i;
+    }
+  }
+
+  if (min_val == a[max_idx]) return;
+
+  var m = Math.floor(0.42 * n);
+  if (m < 1) m = 1;
+
+  var l = [0; m];
+
+  var c1 = (m - 1) / (a[max_idx] - min_val);
+
+  for (var i = 0; i < n; i += 1) {
+    var k = Math.floor(c1 * (a[i] - min_val));
+    l[k] = l[k] + 1;
+  }
+
+  for (var k = 1; k < m; k += 1) {
+    l[k] = l[k] + l[k - 1];
+  }
+
+  var hold = a[max_idx];
+  a[max_idx] = a[0];
+  a[0] = hold;
+
+  var move = 0;
+  var j = 0;
+  var k = m - 1;
+
+  while (move < n - 1) {
+    while (j > l[k] - 1) {
+      j += 1;
+      k = Math.floor(c1 * (a[j] - min_val));
+    }
+
+    var flash = a[j];
+    while (j != l[k]) {
+      k = Math.floor(c1 * (flash - min_val));
+
+      l[k] = l[k] - 1;
+      var hold_idx = l[k];
+
+      hold = a[hold_idx];
+      a[hold_idx] = flash;
+      flash = hold;
+      move += 1;
+    }
+  }
+
+  for (var i = 1; i < n; i += 1) {
+    hold = a[i];
+    var j_insert = i - 1;
+    while (j_insert >= 0 and a[j_insert] > hold) {
+      a[j_insert + 1] = a[j_insert];
+      j_insert = j_insert - 1;
+    }
+    a[j_insert + 1] = hold;
+  }
+}
+
+/*
+var arr = [3, 0, 2, 5, -1, 4, 1, -2];
+
+print "Original array: " , arr;
+flashsort(arr);
+print "Sorted array:   " , arr;
+*/
