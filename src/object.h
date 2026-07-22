@@ -226,8 +226,8 @@ ObjString* takeString(char* chars, int length);
 ObjString* copyString(const char* chars, int length);
 ObjUpvalue* newUpvalue(Value* slot);
 ObjArray* duplicateArray(ObjArray* original);
-void printArray(ObjArray *array);
-void printObject(Value value);
+void printValueMain(Value value);
+void printObject(FILE* stream, Value value);
 uint32_t hashBytes(const uint8_t* key, int length);
 uint32_t hashValue(Value value);
 

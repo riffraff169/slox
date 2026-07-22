@@ -308,103 +308,102 @@ ObjForeign* newForeign(void* ptr, const char* name) {
     return foreign;
 }
 
-static void printFunction(ObjFunction* function) {
+void printValueMain(Value value) {
+    printValue(stdout, value);
+}
+
+static void printFunction(FILE* stream, ObjFunction* function) {
     if (function->name == NULL) {
-        printf("<script>");
+        fprintf(stream, "<script>");
         return;
     }
-    printf("<fn %s>", function->name->chars);
+    fprintf(stream, "<fn %s>", function->name->chars);
 }
 
-void printArray(ObjArray* array) {
-    printf("[");
+void printArray(FILE* stream, ObjArray* array) {
+    fprintf(stream, "[");
     for (int i = 0; i < array->count; i++) {
-        printValueSafe(array->values[i]);
-        if (i < array->count - 1) printf(", ");
+        printValueSafe(stream, array->values[i]);
+        if (i < array->count - 1) fprintf(stream, ", ");
     }
-    printf("]");
+    fprintf(stream, "]");
 }
 
-void printMap(ObjMap* map) {
-    printf("{");
+void printMap(FILE* stream, ObjMap* map) {
+    fprintf(stream, "{");
     bool first = true;
 
     for (int i = 0; i < map->items.capacity; i++) {
         Entry2* entry = &map->items.entries[i];
         if (IS_NIL(entry->key)) continue;
 
-        if (!first) printf(", ");
+        if (!first) fprintf(stream, ", ");
 
-        /*
-        char *keystr = valueToCString(entry->key);
-        printf("\"%s\": ", keystr);
-        free(keystr);
-        */
-        printValueSafe(entry->key);
-        printf(": ");
-        printValueSafe(entry->value);
+        printValueSafe(stream, entry->key);
+        fprintf(stream, ": ");
+        printValueSafe(stream, entry->value);
         first = false;
     }
-    printf("}\n");
+    fprintf(stream, "}\n");
 }
 
-void printSet(ObjSet* set) {
-    printf("Set(");
+void printSet(FILE* stream, ObjSet* set) {
+    fprintf(stream, "Set(");
     bool first = true;
     for (int i = 0; i < set->items.capacity; i++) {
         Entry2* entry = &set->items.entries[i];
         if (IS_NIL(entry->key)) continue;
 
-        if (!first) printf(", ");
-        printValueSafe(entry->key);
+        if (!first) fprintf(stream, ", ");
+        printValueSafe(stream, entry->key);
         if (set->isMultiset) {
-            printf(": ");
-            printValueSafe(entry->value);
+            fprintf(stream, ": ");
+            printValueSafe(stream, entry->value);
         }
         first = false;
     }
-    printf("}\n");
+    fprintf(stream, "}\n");
 }
 
-void printObject(Value value) {
+void printObject(FILE* stream, Value value) {
     switch (OBJ_TYPE(value)) {
         case OBJ_FOREIGN:
-            printf("<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
+            fprintf(stream, "<foreign %s at %p>", AS_FOREIGN(value)->name, AS_FOREIGN(value)->ptr);
             break;
         case OBJ_MAP:
-            printMap(AS_MAP(value));
+            printMap(stream, AS_MAP(value));
             break;
         case OBJ_ARRAY:
-            printArray(AS_ARRAY(value));
+            printArray(stream, AS_ARRAY(value));
             break;
         case OBJ_SET:
-            printSet(AS_SET(value));
+            printSet(stream, AS_SET(value));
             break;
         case OBJ_BOUND_METHOD:
             //printFunction(AS_BOUND_METHOD(value)->method->function);
-            printValue(AS_BOUND_METHOD(value)->method);
+            printValue(stream, AS_BOUND_METHOD(value)->method);
             break;
         case OBJ_CLASS:
-            printf("%s", AS_CLASS(value)->name->chars);
+            fprintf(stream, "%s", AS_CLASS(value)->name->chars);
             break;
         case OBJ_CLOSURE:
-            printFunction(AS_CLOSURE(value)->function);
+            printFunction(stream, AS_CLOSURE(value)->function);
             break;
         case OBJ_FUNCTION:
-            printFunction(AS_FUNCTION(value));
+            printFunction(stream, AS_FUNCTION(value));
             break;
         case OBJ_INSTANCE:
-            printf("%s instance",
+            fprintf(stream, "%s instance",
                     AS_INSTANCE(value)->obj.klass->name->chars);
             break;
         case OBJ_NATIVE:
-            printf("<native fn>");
+            fprintf(stream, "<native fn>");
             break;
         case OBJ_STRING:
-            printf("%s", AS_CSTRING(value));
+            fprintf(stream, "%s", AS_CSTRING(value));
             break;
         case OBJ_UPVALUE:
-            printf("upvalue");
+            fprintf(stream, "upvalue");
             break;
     }
 }

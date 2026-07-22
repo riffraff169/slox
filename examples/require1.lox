@@ -1,0 +1,26 @@
+fun test1(a) {
+  print "Test: ", a;
+}
+
+var xyz = 25;
+
+fun test2(a) {
+  var n1 = a;
+  print n1;
+}
+
+for (var i = 0; i < 25; i += 1) {
+  print i;
+}
+
+fun fs(a) {
+  var n = a.length();
+  if (n <= 1) return;
+
+  var min_val = a[0];
+  var max_idx = 0;
+
+  for (var i = 1; i < n; i += 1) {
+  }
+}
+

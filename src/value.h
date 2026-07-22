@@ -60,7 +60,7 @@ bool valuesEqual(Value a, Value b);
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, Value value);
 void freeValueArray(ValueArray* array);
-void printValueSafe(Value value);
-void printValue(Value value);
+void printValueSafe(FILE* stream, Value value);
+void printValue(FILE* stream, Value value);
 
 #endif

@@ -34,69 +34,56 @@ Value valueToString(Value value) {
         return value;
     }
 
-    char buffer[128];
-    int length = 0;
+    char* ptr = NULL;
+    size_t size = 0;
+    FILE* stream = open_memstream(&ptr, &size);
 
-    if (IS_BOOL(value)) {
-        length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
-    } else if (IS_NIL(value)) {
-        length = snprintf(buffer, sizeof(buffer), "nil");
-    } else if (IS_NUMBER(value)) {
-        length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
-    } else if (IS_VEC3(value)) {
-        length = snprintf(buffer, sizeof(buffer), "Vec3(%g, %g, %g)",
-                AS_VEC3(value).x, AS_VEC3(value).y, AS_VEC3(value).z);
-    } else if (IS_OBJ(value)) {
-        ObjClass* klass = getClassForValue(value);
-        if (klass != NULL) {
-            length = snprintf(buffer, sizeof(buffer), "<object %s>", klass->name->chars);
-        } else {
-            length = snprintf(buffer, sizeof(buffer), "<object>");
-        }
-    } else {
-        length = snprintf(buffer, sizeof(buffer), "unknown");
-    }
+    printValue(stream, value);
+    fclose(stream);
 
-    return OBJ_VAL(copyString(buffer, length));
+    ObjString* result = copyString(ptr, (int)size);
+    free(ptr);
+
+    return OBJ_VAL(result);
 }
 
-void printValueSafe(Value value) {
+void printValueSafe(FILE* stream, Value value) {
     if (IS_STRING(value)) {
-        printf("\"%s\"", AS_CSTRING(value));
+        fprintf(stream, "\"%s\"", AS_CSTRING(value));
     } else {
         switch (value.type) {
             case VAL_BOOL:
-                printf(AS_BOOL(value) ? "true" : "false");
+                fprintf(stream, AS_BOOL(value) ? "true" : "false");
                 break;
             case VAL_NIL:
-                printf("nil");
+                fprintf(stream, "nil");
                 break;
             case VAL_NUMBER:
                 if (vm.numNotation == 1) {
-                    printf("%.*g", vm.numPrecision, AS_NUMBER(value));
+                    fprintf(stream, "%.*g", vm.numPrecision, AS_NUMBER(value));
                 } else {
-                    printf("%.*f", vm.numPrecision, AS_NUMBER(value));
+                    fprintf(stream, "%.*f", vm.numPrecision, AS_NUMBER(value));
                 }
                 break;
             case VAL_OBJ:
-                printObject(value);
+                printObject(stream, value);
                 break;
             case VAL_SPLAT_COUNT:
-                printf("<splat count: %d>\n", AS_SPLAT_COUNT(value));
+                fprintf(stream, "<splat count: %d>\n", AS_SPLAT_COUNT(value));
                 break;
             case VAL_VEC3:
-                printf("Vec3(%g, %g, %g)", AS_VEC3(value).x,
+                fprintf(stream, "Vec3(%g, %g, %g)", AS_VEC3(value).x,
                         AS_VEC3(value).y, AS_VEC3(value).z);
                 break;
         }
     }
 }
 
-void printValue(Value value) {
+void printValue(FILE* stream, Value value) {
     if (IS_STRING(value)) {
-        printf("%s", AS_CSTRING(value));
+        fprintf(stream, "%s", AS_CSTRING(value));
     } else {
-        printValueSafe(value);
+        printValueSafe(stream, value);
     }
 }
 

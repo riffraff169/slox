@@ -166,7 +166,7 @@ void raiseException(Value exceptionValue) {
     vm.exceptionThrown = true;
     if (vm.tryCount == 0) {
         fprintf(stderr, "Unhandled Exception: ");
-        printValue(exceptionValue);
+        printValueMain(exceptionValue);
         fprintf(stderr, "\n");
         exit(70);
     }
@@ -2135,7 +2135,7 @@ InterpretResult run() {
             printf("        ");
             for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
                 printf("[ ");
-                printValue(*slot);
+                printValueMain(*slot);
                 printf(" ]");
             }
             printf("\n");
@@ -2856,17 +2856,17 @@ InterpretResult run() {
                                     Value result = pop();
 
                                     if (!IS_NIL(result)) {
-                                        printValue(result);
+                                        printValueMain(result);
                                     }
                                 }
                                 vm.nativeExitDepth = oldExitDepth;
                             } else {
-                                printValue(value);
+                                printValueMain(value);
                             }
                             //vm.stackTop = stackStart;
                             //pop();
                         } else {
-                            printValue(value);
+                            printValueMain(value);
                             //if (i > 0) printf(" ");
                         }
                     }
@@ -3036,7 +3036,7 @@ InterpretResult run() {
                     /*
                     printf("[DEBUG STACK]: ");
                     for (int i = 0; i < (vm.stackTop - vm.stack); i++) {
-                        printValue(vm.stack[i]);
+                        printValueMain(vm.stack[i]);
                         printf(" | ");
                     }
                     printf("\n");
