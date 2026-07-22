@@ -477,7 +477,7 @@ void defineNative(const char* name, NativeFn function) {
 }
 
 Value popn(int n) {
-    if (vm.stackTop - vm.stack - n<= 0) {
+    if (vm.stackTop - vm.stack - n < 0) {
         fprintf(stderr, "Stack underflow error.");
         exit(1);
     }

@@ -10,8 +10,13 @@
 static ObjClass* imageDataClass = NULL;
 
 static Value nxImageClear(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[0]);
-    ObjArray* color = AS_ARRAY(args[1]);
+    if (argCount < 1 || !IS_ARRAY(args[0])) {
+        runtimeError("clear() expects a color array.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    ObjArray* color = AS_ARRAY(args[0]);
     unsigned char* pixels = (unsigned char*)instance->foreignPtr;
 
     Value wval, hval;
@@ -34,22 +39,22 @@ static Value nxImageClear(int argCount, Value* args) {
 }
 
 static Value nxSetPixel(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])
-            || !IS_ARRAY(args[3])) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])
+            || !IS_ARRAY(args[2])) {
         runtimeError("set_pixel() expects x, y, and a color array.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     unsigned char* pixels = (unsigned char*)instance->foreignPtr;
 
     Value wval, hval;
     tableGet(&instance->fields, copyString("width", 5), &wval);
 
     int width = (int)AS_NUMBER(wval);
-    int x = (int)AS_NUMBER(args[1]);
-    int y = (int)AS_NUMBER(args[2]);
-    ObjArray* color = AS_ARRAY(args[3]);
+    int x = (int)AS_NUMBER(args[0]);
+    int y = (int)AS_NUMBER(args[1]);
+    ObjArray* color = AS_ARRAY(args[2]);
 
     if (x < 0 || x >= width || y < 0) {
         return NIL_VAL;
@@ -71,12 +76,12 @@ static Value nxSetPixel(int argCount, Value* args) {
 }
 
 static Value nxGetPixel(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
         runtimeError("getPixel() expects x and y coordinates.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     unsigned char* pixels = (unsigned char*) instance->foreignPtr;
 
     Value wval, hval;
@@ -85,8 +90,8 @@ static Value nxGetPixel(int argCount, Value* args) {
 
     int width = (int)AS_NUMBER(wval);
     int height = (int)AS_NUMBER(hval);
-    int x = (int)AS_NUMBER(args[1]);
-    int y = (int)AS_NUMBER(args[2]);
+    int x = (int)AS_NUMBER(args[0]);
+    int y = (int)AS_NUMBER(args[1]);
 
     if (x < 0 || x >= width || y < 0 || y >= height) {
         runtimeError("Pixel coordinates out of bounds.");
@@ -141,13 +146,13 @@ static bool has_extension(const char* filename, const char* ext) {
 }
 
 static Value nxImageSave(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[1])) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("save() expects a filename string.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
-    const char* filename = AS_CSTRING(args[1]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    const char* filename = AS_CSTRING(args[0]);
 
     Value wval, hval;
     tableGet(&instance->fields, copyString("width", 5), &wval);
@@ -193,7 +198,7 @@ void lox_module_init(VM* vm) {
     push(OBJ_VAL(dataStr)); // [2] string
     imageDataClass = newClass(dataStr);
     push(OBJ_VAL(imageDataClass)); // [3] class
-                                   //
+
     imageDataClass->destructor = imageDestructor;
     tableSet(&imageModule->fields, dataStr, OBJ_VAL(imageDataClass));
 
@@ -205,7 +210,7 @@ void lox_module_init(VM* vm) {
     pop(); // [4] string
     pop(); // [3] class
     pop(); // [2] string
-    //pop(); // [1] instance
+    pop(); // [1] instance
 
     // 2 setup load/save on imagemodule
     // load
