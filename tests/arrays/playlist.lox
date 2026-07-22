@@ -1,0 +1,41 @@
+class Playlist { // < Iterable {
+  include Iterable;
+  init(name) {
+    this.name = name;
+    this.songs = [];
+  }
+
+  add(song) {
+    this.songs.push(song);
+  }
+
+  iter() {
+    return ArrayIterator(this.songs);
+  }
+}
+
+// ==========================================
+// Test Execution
+// ==========================================
+
+var myPlaylist = Playlist("80s Hits");
+myPlaylist.add("Take On Me");
+myPlaylist.add("Billie Jean");
+myPlaylist.add("Africa");
+
+print "--- Testing Playlist.each() ---"; // expect: --- Testing Playlist.each() ---
+var count = 0;
+myPlaylist.each(fun(song) {
+    count = count + 1;
+    print count + ". " + song;
+});
+// expect: 1. Take On Me
+// expect: 2. Billie Jean
+// expect: 3. Africa
+
+print "--- Testing Playlist.map() ---"; // expect: --- Testing Playlist.map() ---
+var uppercaseSongs = myPlaylist.map(fun(song) {
+    return song.to_upper(); // Or custom transform
+});
+
+print "Transformed: " + uppercaseSongs; // expect: Transformed: ["TAKE ON ME", "BILLIE JEAN", "AFRICA"]

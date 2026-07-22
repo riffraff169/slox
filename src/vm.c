@@ -76,12 +76,6 @@ VM vm;
 InterpretResult run();
 //void initArrayMethods();
 
-bool callValue(Value callee, int argCount);
-bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount);
-Value peek(int distance);
-bool isFalsey(Value value);
-bool isTruthy(Value value);
-
 typedef enum {
     PROP_FOUND,
     PROP_ASYNC,
@@ -217,7 +211,6 @@ void defineClassConstant(ObjClass* klass, const char* name, Value value) {
 static uint32_t valueToUint32(Value value) {
     double num = AS_NUMBER(value);
 
-    //return (uint32_t)fmod(num, MAX32);
     return (uint32_t)(long long)num;
 }
 
@@ -236,77 +229,6 @@ void includeMethods(ObjClass* target, ObjClass* mixin) {
             tableSet(&target->methods, entry->key, entry->value);
         }
     }
-}
-
-static Value objectEachNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a closure callback.");
-        return NIL_VAL;
-    }
-
-    Value receiver = args[-1];
-    ObjClosure* callback = AS_CLOSURE(args[0]);
-
-    Value iterMethod;
-    if (tableGet(&vm.strings, copyString("iter", 4), &iterMethod)) {
-        // invoke iter via vmcall and run() to get the iterator object
-    }
-    Value iteratorObj = pop();
-
-    int oldExitDepth = vm.nativeExitDepth;
-
-    while (true) {
-        // call iteratorObj.done()
-        // if it returns true, break;
-
-        // call iteratorObj.next() to get the current item
-        Value item = pop();
-
-        push(OBJ_VAL(callback));
-        push(item);
-        vm.nativeExitDepth = vm.frameCount;
-
-        if (vmCall(callback, 1)) {
-            InterpretResult state = run();
-            if (state == INTERPRET_RUNTIME_ERROR) {
-                vm.nativeExitDepth = oldExitDepth;
-                return NIL_VAL;
-            }
-            pop();
-        }
-    }
-
-    vm.nativeExitDepth = oldExitDepth;
-    return NIL_VAL;
-}
-
-ObjClass* compileToClass(char* source, char* filename) {
-    return NULL;
-}
-
-static Value compileFileNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("compile_file() expects a string filename argument.");
-        return NIL_VAL;
-    }
-
-    ObjString* filename = AS_STRING(args[0]);
-
-    char* source = readFile(filename->chars);
-    if (source == NULL) {
-        runtimeError("Could not open or read file '%s'.", filename->chars);
-        return NIL_VAL;
-    }
-
-    ObjClass* compiledClass = compileToClass(source, filename->chars);
-
-    free(source);
-
-    if (compiledClass == NULL) {
-        return NIL_VAL;
-    }
-
-    return OBJ_VAL(compiledClass);
 }
 
 static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argCount) {

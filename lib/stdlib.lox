@@ -16,21 +16,42 @@ class Error {
   }
 }
 
+class Iterable {
+  each(fn) {
+    var it = this.iter();
+    while (!it.done()) {
+      fn(it.next());
+    }
+  }
+
+  map(fn) {
+    var result = [];
+    this.each(fun(item) {
+        result.push(fn(item));
+    });
+    return result;
+  }
+}
+
 class ArrayIterator {
   init(array) {
     this.array = array;
-    this.index = -1;
+    this.index = 0;
+  }
+
+  done() {
+    return this.index >= this.array.length();
   }
 
   next()  {
+    var item = this.array[this.index];
     this.index += 1;
-    return this.index < this.array.len();
+    return item;
   }
 
   key() {
     return this.index;
   }
-
 
   val() {
     return this.array[this.index];
@@ -40,18 +61,19 @@ class ArrayIterator {
 class MapIterator {
   init(map) {
     this.map = map;
-    this.keysArray = map.keys();
-    this.valuesArray = map.values();
-    this.index = -1;
+    this.keys = map.keys();
+    this.index = 0;
+  }
+
+  done() {
+    return this.index >= this.keys.length();
   }
 
   next() {
+    var key = this.keys[this.index];
     this.index = this.index + 1;
-    return this.index < this.keysArray.len();
+    return [key, this.map[key]];
   }
-
-  key() { return this.keysArray[this.index]; }
-  val() { return this.valuesArray[this.index]; }
 }
 
 class Serializable {

@@ -1,0 +1,34 @@
+// test_map_each.lox
+
+var sum = 0;
+var keyCount = 0;
+var map = {"a": 10, "b": 20, "c": 30};
+
+// 1. Basic iteration (summing values and counting keys)
+map.each(fun(key, val) {
+    keyCount += 1;
+    sum += val;
+});
+
+print "Key count: " + keyCount; // expect: Key count: 3
+print "Total sum: " + sum;      // expect: Total sum: 60
+
+// 2. Testing key/value association inside callback
+var matched = true;
+map.each(fun(k, v) {
+    if (k == "a" and v != 10) matched = false;
+    if (k == "b" and v != 20) matched = false;
+    if (k == "c" and v != 30) matched = false;
+});
+
+print "Keys match values: " + matched; // expect: Keys match values: true
+
+// 3. Edge Case: Empty map
+var emptyCalls = 0;
+var emptyMap = {};
+
+emptyMap.each(fun(k, v) {
+    emptyCalls += 1;
+});
+
+print "Empty map iterations: " + emptyCalls; // expect: Empty map iterations: 0

@@ -1,0 +1,38 @@
+class Settings {
+  include Iterable;
+
+  init() {
+    this.config = {};
+  }
+
+  set(key, value) {
+    this.config[key] = value;
+  }
+
+  iter() {
+    return MapIterator(this.config);
+  }
+}
+
+var appSettings = Settings();
+appSettings.set("host", "127.0.0.1");
+appSettings.set("port", 8080);
+appSettings.set("debug", true);
+
+print "--- Testing Settings.each() with MapIterator ---"; // expect: --- Testing Settings.each() with MapIterator ---
+appSettings.each(fun(entry) {
+    var key = entry[0];
+    var val = entry[1];
+    print key + " => " + val;
+});
+// expect: debug => true
+// expect: port => 8080
+// expect: host => 127.0.0.1
+
+print "--- Testing Settings.map() transforming Map entries ---"; // expect: --- Testing Settings.map() transforming Map entries ---
+var envVars = appSettings.map(fun(entry) {
+    return entry[0].to_upper() + "=" + entry[1];
+});
+
+print "ENV Configs: " + envVars;
+// expect: ENV Configs: ["DEBUG=true", "PORT=8080", "HOST=127.0.0.1"]
