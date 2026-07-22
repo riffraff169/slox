@@ -249,12 +249,10 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
             originalName->chars, klass->name->chars, 0);
             */
     if (!found) {
-        printf("In callMethodMissing...\n");
         runtimeError("Undefined method '%s'.", originalName->chars);
         return false;
     }
 
-    //push(OBJ_VAL(originalName));
     Value* argsStart = vm.stackTop - argCount;
     ObjArray* argsArray = newArray();
     push(OBJ_VAL(argsArray));
@@ -324,12 +322,7 @@ void* locateAndLoadModule(const char* name) {
 }
 
 void* loadModule(const char* name) {
-    // 1. construct the filename
-    //char path[256];
-    //snprintf(path, sizeof(path), "./liblox_%s.so", name);
-
-    // 2. open the shared library
-    //void* handle = dlopen(path, RTLD_NOW);
+    // 1. open the shared library
     void* handle = locateAndLoadModule(name);
     if (!handle) {
         runtimeError("Could not load module '%s': %s", name, dlerror());
@@ -343,7 +336,7 @@ void* loadModule(const char* name) {
     }
     vm.moduleHandles[vm.moduleCount++] = handle;
 
-    // 3. find the init function
+    // 2. find the init function
     // every module must have a function: void lox_module_init(VM* vm)
     typedef void (*ModuleInitFn)(VM* vm);
     ModuleInitFn init = (ModuleInitFn)dlsym(handle, "lox_module_init");
@@ -354,47 +347,10 @@ void* loadModule(const char* name) {
         return NULL;
     }
 
-    // 4. run the init function to register classes/natives
+    // 3. run the init function to register classes/natives
     init(&vm);
     
     return handle;
-}
-
-static Value arrayIterNative(int argCount, Value* args) {
-    Value arrayVal = args[-1];
-
-    // 1. look up "ArrayIterator" from the global variable state
-    Value iteratorClass;
-    ObjString* className = copyString("ArrayIterator", 13);
-    push(OBJ_VAL(className));
-
-    if (!tableGet(&vm.globals, className, &iteratorClass)) {
-        // fallback or runtime error if stdlib failed to load it
-        pop(); // classname
-        return NIL_VAL;
-    }
-    pop(); // classname
-
-    // 2. instantiate the iterator class by calling it
-    push(iteratorClass);
-    push(arrayVal);
-
-    // this runs callValue(), which sets up a new frome for ArrayIterator.init()
-    VM_CALLBACK_INIT();
-    VM_CALLBACK_ENTER();
-
-    if (vmCall(AS_CLOSURE(iteratorClass), 1)) {
-        InterpretResult state = run();
-
-        VM_CALLBACK_CHECK_ERROR(state);
-    }
-
-    Value iterInstance = peek(0);
-
-    VM_CALLBACK_EXIT();
-    pop();
-
-    return iterInstance;
 }
 
 static void resetStack() {
@@ -521,6 +477,10 @@ void defineNative(const char* name, NativeFn function) {
 }
 
 Value popn(int n) {
+    if (vm.stackTop - vm.stack - n<= 0) {
+        fprintf(stderr, "Stack underflow error.");
+        exit(1);
+    }
     vm.stackTop -= n;
     return *vm.stackTop;
 }
@@ -730,14 +690,6 @@ Value vec3CallHandler(int argCount, Value* args) {
     return VEC3_VAL(v);
 }
 
-Value universalClassGetter(Value receiver, ObjString* name) {
-    if (name == copyString("class", 5)) {
-        ObjClass* klass = getClassForValue(receiver);
-        return OBJ_VAL(klass);
-    }
-    return NIL_VAL;
-}
-
 Value vec3GetterNative(Value receiver, ObjString* name) {
     Vec3 vec = AS_VEC3(receiver);
 
@@ -768,7 +720,7 @@ void initVec3Library() {
 
 static Value classSuperclassMethod(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("Expected 0 arguments but get %d.", argCount);
+        runtimeError("Expected 0 arguments but got %d.", argCount);
         return NIL_VAL;
     }
     Value receiver = args[-1];
@@ -792,29 +744,6 @@ static Value objectClassNameNative(int argCount, Value* args) {
     }
     return NIL_VAL;
 }
-
-static Value objectRootGetter(int argCount, Value* args) {
-    ObjString* name = AS_STRING(args[0]);
-
-    if (name == vm.classString) {
-        Value receiver = args[-1];
-        ObjClass* klass = getClassForValue(receiver);
-
-        return okResult(OBJ_VAL(klass));
-    }
-
-    return errorResult("Value '%s' not found", name);
-}
-
-/*
-static Value arrayCallHandler(int argCount, Value* args) {
-    return OBJ_VAL(newArray());
-}
-
-static Value mapCallHandler(int argCount, Value* args) {
-    return OBJ_VAL(newMap());
-}
-*/
 
 static Value boolCallHandler(int argCount, Value* args) {
     if (argCount < 1) return BOOL_VAL(false);
@@ -1205,7 +1134,6 @@ void runAtExitHooks() {
                     break;
                 }
             }
-            //pop();
         }
     }
 }
@@ -1460,23 +1388,6 @@ bool vmCall(ObjClosure* closure, int argCount) {
         argCount = namedArity;
     }
 
-    // 3. handle variadic rest parameters
-    /*
-    if (function->isVariadic) {
-        if (argCount < function->minArity) {
-            runtimeError("Expected at least %d arguments but got %d.",
-                    function->minArity, argCount);
-            return false;
-        }
-    } else {
-        if (argCount < closure->function->minArity || argCount > closure->function->arity) {
-            runtimeError("Expected between %d and %d arguments but got %d.",
-                    closure->function->minArity, closure->function->arity, argCount);
-            return false;
-        }
-    }
-    */
-
     if (function->isVariadic) {
         int numRest = argCount - namedArity;
         if (numRest < 0) numRest = 0;
@@ -1503,7 +1414,6 @@ bool vmCall(ObjClosure* closure, int argCount) {
     frame->closure = closure;
     frame->ip = closure->function->chunk.code;
 
-    //frame->slots = vm.stackTop - closure->function->arity - 1;
     frame->slots = vm.stackTop - argCount - 1;
     return true;
 }
@@ -1653,8 +1563,6 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
             if (IS_NATIVE(method)) {
                 NativeFn native = AS_NATIVE(method);
 
-                // 5. call the function (total args is now argCoutn + 1)
-                //Value result = native(argCount + 1, vm.stackTop - argCount - 1);
                 Value result = native(argCount, vm.stackTop - argCount);
 
                 if (vm.exceptionThrown || vm.frameCount == 0) {
@@ -1662,11 +1570,6 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
                     //return false;
                     return true;
                 }
-                /*
-                if (vm.frameCount == 0) {
-                    return false;
-                }
-                */
                 vm.stackTop -= (argCount + 1);
                 push(result);
                 return true;
@@ -1719,22 +1622,6 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
     }
 
     runtimeError("Undefined property '%s'.", name->chars);
-    return false;
-}
-
-bool classHasMethod(ObjClass* klass, ObjString* name) {
-    ObjClass* current = klass;
-    Value method;
-    while (current != NULL) {
-        Table *methods = (current->mixinsource != NULL)
-             ? &current->mixinsource->methods
-             : &current->methods;
-
-        if (tableGet(methods, name, &method)) {
-            return true;
-        }
-        current = current->superclass;
-    }
     return false;
 }
 
@@ -1838,7 +1725,6 @@ bool invoke(ObjString* name, int argCount) {
 
         return callMethodMissing(vm.vec3Class ? vm.vec3Class : vm.objectClass, name, argCount);
     } else if (IS_STRING(receiver)) {
-        //ObjClass* currentClass = (IS_STRING(receiver)) ? vm.stringClass : vm.objectClass;
         ObjClass* currentClass = vm.stringClass;
         Value method;
 
@@ -1966,18 +1852,12 @@ static void closeUpvalues(Value* last) {
 
 static void defineMethod(ObjString* name) {
     Value method = peek(0);
-    /*
-    ObjClosure* closure = AS_CLOSURE(method);
-
-    printf("[DEBUG] Defined method '%s' with arity: %d\n",
-            name->chars, closure->function->arity);
-
-            */
     ObjClass* klass = AS_CLASS(peek(1));
     tableSet(&klass->methods, name, method);
     pop();
 }
 
+/*
 static void concatenate() {
     ObjString* b = AS_STRING(peek(0));
     ObjString* a = AS_STRING(peek(1));
@@ -1993,13 +1873,15 @@ static void concatenate() {
     pop();
     push(OBJ_VAL(result));
 }
+*/
 
+/*
 Value numberToValue(double num) {
     char buffer[32];
     int length = snprintf(buffer, sizeof(buffer), "%g", num);
     return OBJ_VAL(copyString(buffer, length));
 }
-
+*/
 
 static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
@@ -2021,7 +1903,6 @@ InterpretResult run() {
 
 #define READ_CONSTANT() \
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
-//#define READ_CONSTANT_LONG(i) (frame->closure->function->chunk.constants.values[i])
 #define READ_CONSTANT_LONG() \
     (frame->ip += 3, \
      frame->closure->function->chunk.constants.values[read24(frame->ip - 3)])
@@ -2386,12 +2267,6 @@ InterpretResult run() {
             case OP_ADD:
                 {
 
-                    /*
-                    if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
-                        concatenate();
-                        break;
-                    } 
-                    */
                     if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
                         Value rawB = peek(0);
                         Value rawA = peek(1);
@@ -2464,7 +2339,6 @@ InterpretResult run() {
                         ObjArray* a = AS_ARRAY(peek(1));
 
                         ObjArray *result = newArray();
-                        //result->obj.klass = vm.arrayClass;
                         push(OBJ_VAL(result));
 
                         for (int i = 0; i < a->count; i++) {
@@ -2662,9 +2536,6 @@ InterpretResult run() {
                 {
                     uint32_t a = valueToUint32(pop());
                     push(NUMBER_VAL((double)~a));
-                    //uint32_t val = (uint32_t)AS_NUMBER(pop());
-
-                    //push(NUMBER_VAL((double)~val));
                 }
                 break;
             case OP_SHL:
@@ -2798,7 +2669,6 @@ InterpretResult run() {
                 break;
             case OP_TRY:
                 {
-                    //uint16_t offset = READ_SHORT();
                     uint16_t catchOffset = READ_SHORT();
                     uint16_t finallyOffset = READ_SHORT();
 
@@ -2810,7 +2680,6 @@ InterpretResult run() {
                     TryBlock* block = &vm.tryStack[vm.tryCount++];
                     block->frameCount = vm.frameCount;
                     block->stackTop = vm.stackTop;
-                    //block->catchIp = frame->ip + offset;
                     block->catchIp = catchOffset == 0 ? NULL : frame->ip + catchOffset;
                     block->finallyIp = finallyOffset == 0 ? NULL : frame->ip + finallyOffset;
 
@@ -2865,8 +2734,6 @@ InterpretResult run() {
                         ObjString* errorName = copyString("Error", 5);
 
                         if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
-                            //pop();
-
                             ObjClass* errorClass = AS_CLASS(errorClassVal);
                             ObjInstance* errorInstance = newInstance(errorClass);
                             push(OBJ_VAL(errorInstance));
@@ -2882,11 +2749,8 @@ InterpretResult run() {
                             pop(); // the origin string
 
                             push(OBJ_VAL(errorInstance));
-                        //} else {
-                        //    pop();
                         }
                     }
-                    //Value exceptionToThrow = pop();
                     raiseException(exception);
 
                     if (vm.frameCount < initialFrameCount) {
@@ -2928,7 +2792,6 @@ InterpretResult run() {
                     if (!IS_CLASS(peek(0))) {
                         RUNTIME_ERROR("Right-hand side of type check must be a class.");
                         break;
-                        //return INTERPRET_RUNTIME_ERROR;
                     }
                     ObjClass* targetClass = AS_CLASS(pop());
                     Value instance = pop();
@@ -3287,8 +3150,6 @@ InterpretResult run() {
 
                     ObjClass* subclass = AS_CLASS(peek(0));
                     subclass->superclass = AS_CLASS(superclass);
-                    //tableAddAll(&AS_CLASS(superclass)->methods,
-                    //        &subclass->methods);
                     pop();
                 }
                 break;
@@ -3325,7 +3186,6 @@ InterpretResult run() {
                     uint8_t count = READ_BYTE();
                     
                     ObjArray* array = newArray();
-                    //array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
 
                     if (count > 0) {
@@ -3356,7 +3216,6 @@ InterpretResult run() {
 
                     int count = (int)AS_NUMBER(sizeVal);
                     ObjArray* array = newArray();
-                    //array->obj.klass = vm.arrayClass;
                     push(OBJ_VAL(array));
                     if (count > 0) {
                         Value* entries = ALLOCATE(Value, count);
