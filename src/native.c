@@ -476,7 +476,7 @@ Value requireNative(int argCount, Value* args) {
         return cachedRequire;
     }
 
-    char* source = readFile(path->chars);
+    char* source = locateAndReadLoxFile(path->chars);
     if (source == NULL) {
         runtimeError("Could not open file '%s'.", path->chars);
         return NIL_VAL;

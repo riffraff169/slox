@@ -1,0 +1,22 @@
+require("argparser.lox");
+
+var ARGV = ["-v", "--output", "out.bin", "--count", "50", "input1.txt", "input2.txt"];
+
+var parser = ArgParser("slox script.lox", "Processes input files into binary output.");
+
+parser.addFlag("verbose", "v", "Enable debug logging");
+parser.addOption("output", "o", "default.bin", "Path to output file");
+parser.addOption("count", "c", "10", "Number of iterations");
+
+var args = parser.parse(ARGV);
+
+if (args != nil) {
+  print "Verbose mode: " + !!args.get("verbose");
+  print "Output file:  " + args.get("output");
+  print "Count:        " + args.get("count");
+
+  print "\nPositional Arguments:";
+  for (var i = 0; i < args.positionals.length(); i += 1) {
+    print "  [" + i + "]: " + args.positionals[i];
+  }
+}

@@ -1,0 +1,36 @@
+// Helper for random integer in range [0, max - 1]
+require("examples/flashsort.lox");
+
+fun randomInt(max) {
+    return Math.floor(Math.random() * max);
+}
+
+/*
+// 1. Build ordered array
+var arr = [];
+for (var i = 0; i < 10000; i = i + 1) {
+    arr.push(i);
+}
+
+// 2. Fisher-Yates shuffle
+for (var i = 9999; i > 0; i = i - 1) {
+    var j = randomInt(i + 1);
+    var temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}
+*/
+
+var arr = [];
+for (var i = 0; i < 10000; i = i + 1) {
+    // For random floats in [0, 1):
+    arr.push(Math.random());
+
+    // Or for random integers between 0 and 100000:
+    // arr.push(Math.floor(Math.random() * 100000));
+}
+
+//print arr;
+var b = arr.dup();
+flashsort(b);
+//print b;
