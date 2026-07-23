@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <girepository.h>
 #include <gdk/gdk.h>
-#include "../vm.h"
+#include <dlfcn.h>
+#include "vm.h"
 
-//static Table keepAlive;
 static ObjInstance* globalRegistry = NULL;
 Value wrap_gobject_to_lox(GObject* obj);
 
@@ -14,13 +14,12 @@ static void stub_callback(void) {
 void initGiModule() {
 }
 
-/*
-ObjString* getClosureKey(GClosure* closure) {
-    char addr[32];
-    sprintf(addr, "%p", (void*)closure);
-    return copyString(addr, strlen(addr));
+static void gobject_weak_notify(gpointer data, GObject* where) {
+    ObjInstance* instance = (ObjInstance*)data;
+    if (instance != NULL) {
+        instance->foreignPtr = NULL;
+    }
 }
-*/
 
 Value scrape_glist_to_lox(GList* list, GType item_type) {
     ObjArray* array = newArray();
@@ -34,22 +33,6 @@ Value scrape_glist_to_lox(GList* list, GType item_type) {
     pop();
     return OBJ_VAL(array);
 }
-
-/*
-static void lox_builder_connect(GtkBuilder* builder, GObject* object,
-                                const char* signal_name, const char* handler_name,
-                                GObject* connect_object, GConnectFlags flags,
-                                gpointer user_data) {
-    // 1. Look up 'handler_name' (e.g., "on_button_clicked") in your Lox Global Table
-    Value loxCallback;
-    if (tableGet(&vm.globals, copyString(handler_name, strlen(handler_name)), &loxCallback)) {
-        // 2. Create a closure and connect it using your generic marshaller
-        GClosure* closure = g_closure_new_simple(sizeof(GClosure), (gpointer)AS_CLOSURE(loxCallback));
-        g_closure_set_marshal(closure, lox_marshal_generic);
-        g_signal_connect_closure(object, signal_name, closure, FALSE);
-    }
-}
-*/
 
 void LoxValueToGValue(Value loxVal, GValue* gval) {
     GType gtype = G_VALUE_TYPE(gval);
@@ -75,38 +58,49 @@ void LoxValueToGValue(Value loxVal, GValue* gval) {
     }
 }
 
-Value wrap_gobject_to_lox(GObject* obj) {
+Value wrap_gobject_with_class(GObject* obj, ObjClass* klass) {
     if (obj == NULL) return NIL_VAL;
-    if (obj && g_object_is_floating(obj)) {
-        g_object_ref_sink(obj);
+
+    ObjInstance* existing = (ObjInstance*)g_object_get_data(obj, "lox_wrapper");
+    if (existing != NULL) {
+        return OBJ_VAL(existing);
     }
 
-    const char* typeName = G_OBJECT_TYPE_NAME(obj);
-    ObjString* key = copyString(typeName, strlen(typeName));
-    push(OBJ_VAL(key)); // push key onto stack
+    ObjInstance* instance = newInstance(klass);
+    instance->foreignPtr = obj;
 
-    Value klassValue;
-    //printf("[DEBUG] In wrap_gobject_to_lox\n");
+    g_object_set_data(obj, "lox_wrapper", instance);
+    g_object_ref_sink(obj);
+    g_object_weak_ref(obj, gobject_weak_notify, instance);
 
-    //printf("[DEBUG] typeName: '%s'\n", key->chars);
+    return OBJ_VAL(instance);
+}
 
-    pop(); // remove key from stack
+Value wrap_gobject_to_lox(GObject* obj) {
+    if (obj == NULL) return NIL_VAL;
+    
+    ObjInstance* existing = (ObjInstance*)g_object_get_data(obj, "lox_wrapper");
+    if (existing != NULL) {
+        return OBJ_VAL(existing);
+    }
 
-    //printf("[DEBUG] Value: ");
-    //printValue(klassValue);
-    //printf("\n");
     GType type = G_TYPE_FROM_INSTANCE(obj);
 
     while (type != 0) {
         const char* name = g_type_name(type);
+        if (name == NULL) break;
 
-        if (tableGet(&globalRegistry->fields, key, &klassValue)) {
-            printValue(klassValue);
+        ObjString* key = copyString(name, strlen(name));
+        push(OBJ_VAL(key));
+
+        Value klassValue;
+        bool found = tableGet(&globalRegistry->fields, key, &klassValue);
+        pop();
+
+        if (found) {
+            //printValueMain(klassValue);
             ObjClass* klass = AS_CLASS(klassValue);
-            ObjInstance* instance = newInstance(klass);
-            instance->foreignPtr = obj;
-            g_object_ref(obj);
-            return OBJ_VAL(instance);
+            return wrap_gobject_with_class(obj, klass);
         }
         type = g_type_parent(type);
     }
@@ -121,26 +115,9 @@ Value wrap_gobject_to_lox(GObject* obj) {
     }
     */
 
-    printf("Warning: No Lox class found for GType %s\n", typeName);
+    printf("Warning: No Lox class found for GType %s\n", G_OBJECT_TYPE_NAME(obj));
     return NIL_VAL;
 }
-
-/*
-Value wrap_boxed_to_lox(gpointer boxed, GType type) {
-    Value klassValue;
-    const char* typeName = g_type_name(type);
-
-    if (tableGet(&globalRegistry->fields, copyString(typeName, strlen(typeName)), &klassValue)) {
-        ObjInstance* instance = newInstance(AS_CLASS(klassValue));
-
-        instance->foreignPtr = g_boxed_copy(type, boxed);
-        instance->isBoxed = true;
-
-        return OBJ_VAL(instance);
-    }
-    return NIL_VAL;
-}
-*/
 
 void giBoxedDestructor(ObjInstance* instance) {
     if (instance->foreignPtr != NULL) {
@@ -153,13 +130,40 @@ void giInstanceDestructor(ObjInstance* instance) {
     if (instance->foreignPtr == NULL) return;
 
     if (G_IS_OBJECT(instance->foreignPtr)) {
-        /*
-        g_signal_handlers_disconnect_matched(instance->foreignPtr,
+        GObject* gobj = (GObject*)instance->foreignPtr;
+
+        g_object_set_data(gobj, "lox_wrapper", NULL);
+
+        g_object_weak_unref(gobj, gobject_weak_notify, instance);
+
+        g_signal_handlers_disconnect_matched(gobj,
                 G_SIGNAL_MATCH_DATA,
                 0, 0, NULL, NULL,
                 NULL); // vm_pointer_or_closure_list
-        */
-        g_object_unref(instance->foreignPtr);
+
+        GType gtk_widget_type = g_type_from_name("GtkWidget");
+        if (gtk_widget_type != G_TYPE_INVALID && g_type_is_a(G_OBJECT_TYPE(gobj), gtk_widget_type)) {
+            typedef void* (*GtkWidgetGetParentFunc)(void* widget);
+            typedef void (*GtkWidgetUnparentFunc)(void* widget);
+
+            static GtkWidgetGetParentFunc get_parent_fn = NULL;
+            static GtkWidgetUnparentFunc unparent_fn = NULL;
+            static bool looked_up = false;
+
+            if (!looked_up) {
+                get_parent_fn = (GtkWidgetGetParentFunc)dlsym(RTLD_DEFAULT, "gtk_widget_get_parent");
+                unparent_fn = (GtkWidgetUnparentFunc)dlsym(RTLD_DEFAULT, "gtk_widget_unparent");
+                looked_up = true;
+            }
+
+            if (get_parent_fn && unparent_fn) {
+                if (get_parent_fn(gobj) != NULL) {
+                    unparent_fn(gobj);
+                }
+            }
+        }
+
+        g_object_unref(gobj);
     } else {
         g_base_info_unref((GIBaseInfo*)instance->foreignPtr);
     }
@@ -227,7 +231,6 @@ Value scrape_boxed_to_lox(gpointer boxed, GType type) {
 static Value GValueToLoxValue(GValue gval) {
     Value result = NIL_VAL;
 
-    //switch (G_TYPE_FUNDAMENTAL(spec->value_type)) {
     GType gtype = G_TYPE_FUNDAMENTAL(G_VALUE_TYPE(&gval));
 
     switch (gtype) {
@@ -255,28 +258,6 @@ static Value GValueToLoxValue(GValue gval) {
                 GObject* obj = g_value_get_object(&gval);
                 if (obj == NULL) return NIL_VAL;
 
-                /*
-                const char* type_name = G_OBJECT_TYPE_NAME(gptr);
-
-                Value klass;
-                Value giModuleValue;
-
-                ObjString* giStr = copyString("gi", 2);
-                push(OBJ_VAL(giStr)); // string
-                tableGet(&vm.globals, giStr, &giModuleValue); // OBJ_VAL(giModule));
-
-                ObjInstance* giModule = AS_INSTANCE(giModuleValue);
-                if (tableGet(&giModule->fields, copyString(type_name, strlen(type_name)), &klass)) {
-                    ObjInstance* instance = newInstance(AS_CLASS(klass));
-                    instance->foreignPtr = gptr;
-                    g_object_ref(gptr);
-                    result = OBJ_VAL(instance);
-                } else {
-                    printf("Warning: No Lox class found for GType %s\n", type_name);
-                    result = NIL_VAL;
-                }
-                pop(); // string
-                */
                 return wrap_gobject_to_lox(obj);
             }
             return result;
@@ -354,9 +335,15 @@ static Value giConnectNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
-    ObjString* signal_name = AS_STRING(args[1]);
-    ObjClosure* closure = AS_CLOSURE(args[2]);
+    int offset = (argCount > 3 || (IS_INSTANCE(args[0]) && AS_INSTANCE(args[0])->foreignPtr == NULL)) ? 1 : 0;
+    ObjInstance* instance = AS_INSTANCE(args[offset + 0]);
+    ObjString* signal_name = AS_STRING(args[offset + 1]);
+    ObjClosure* closure = AS_CLOSURE(args[offset + 2]);
+
+    if (instance->foreignPtr == NULL) {
+        runtimeError("Cannot connect signal '%s' to uninitialized GObject.", signal_name->chars);
+        return NIL_VAL;
+    }
 
     GClosure* gclosure = g_cclosure_new(G_CALLBACK(stub_callback), closure, NULL);
     g_closure_set_marshal(gclosure, lox_marshal_generic);
@@ -369,20 +356,15 @@ static Value giConnectNative(int argCount, Value* args) {
 
     g_closure_add_finalize_notifier(gclosure, closure, (GClosureNotify)unpin_from_lox);
 
-    //g_signal_connect(instance->foreignPtr, signal_name->chars,
-    //        G_CALLBACK(loxSignalProxy), closure);
-
     g_signal_connect_closure(instance->foreignPtr, signal_name->chars,
             gclosure, false);
-
-    //printf("[CONNECT] Closure connected\n");
 
     return NIL_VAL;
 }
 
 static Value giInspectNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[0])) return NIL_VAL;
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    if (!IS_INSTANCE(args[-1])) return NIL_VAL;
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     printf("--- Inspecting Instance %p ---\n", instance);
     for (int i = 0; i < instance->fields.capacity; i++) {
@@ -395,13 +377,16 @@ static Value giInspectNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
-static bool giPropertySetter(ObjInstance* instance, ObjString* name, Value value) {
+static Value giPropertySetter(Value receiver, ObjString* name, Value value) {
+    if (!IS_INSTANCE(receiver)) return BOOL_VAL(false);
+    ObjInstance* instance = AS_INSTANCE(receiver);
+
     GObjectClass* obj_class = G_OBJECT_GET_CLASS(instance->foreignPtr);
     GParamSpec* spec = g_object_class_find_property(obj_class, name->chars);
 
-    if (spec == NULL) return false;
+    if (spec == NULL) return BOOL_VAL(false);
 
-    if (!(spec->flags & G_PARAM_WRITABLE)) return false;
+    if (!(spec->flags & G_PARAM_WRITABLE)) return BOOL_VAL(false);
 
     GValue gval = G_VALUE_INIT;
     g_value_init(&gval, spec->value_type);
@@ -455,26 +440,12 @@ static bool giPropertySetter(ObjInstance* instance, ObjString* name, Value value
     }
 
     g_value_unset(&gval);
-    return success;
+    return BOOL_VAL(success);
 }
 
-static Value giPropertyGetter(ObjInstance* instance, ObjString* name) {
-    /*
-    if (instance->isBoxed) {
-        GdkEvent* event = (GdkEvent*)instance->foreignPtr;
-
-        if (strcmp(name->chars, "x") == 0) {
-            double x,y;
-            gdk_event_get_coords(event, &x, &y);
-            return NUMBER_VAL(x);
-        }
-        if (strcmp(name->chars, "keyval") == 0) {
-            guint keyval;
-            gdk_event_get_keyval(event, &keyval);
-            return NUMBER_VAL(keyval);
-        }
-    }
-    */
+static Value giPropertyGetter(Value receiver, ObjString* name) {
+    if (!IS_INSTANCE(receiver)) return NIL_VAL;
+    ObjInstance* instance = AS_INSTANCE(receiver);
 
     if (instance->foreignPtr == NULL) return NIL_VAL;
 
@@ -531,7 +502,6 @@ static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_i
 }
 
 static Value giClassCallHandler(int argCount, Value* args) {
-    //printf("[DEBUG] In giClassCallHandler\n");
     ObjClass* klass = AS_CLASS(args[-1]);
 
     if (klass->foreignData == NULL) {
@@ -540,7 +510,6 @@ static Value giClassCallHandler(int argCount, Value* args) {
     }
 
     GIBaseInfo* info = (GIBaseInfo*)klass->foreignData;
-    const char* type_init = g_object_info_get_type_init(info);
     GType gtype = g_registered_type_info_get_g_type((GIRegisteredTypeInfo*)info);
 
     if (gtype == G_TYPE_INVALID || gtype == 0) {
@@ -549,7 +518,6 @@ static Value giClassCallHandler(int argCount, Value* args) {
     }
 
     GIFunctionInfo* constructor = NULL;
-    GObject* gptr = NULL;
 
     int n_methods = (g_base_info_get_type(info) == GI_INFO_TYPE_OBJECT)
         ? g_object_info_get_n_methods((GIObjectInfo*)info)
@@ -566,7 +534,7 @@ static Value giClassCallHandler(int argCount, Value* args) {
             constructor = fn;
             break;
         }
-        g_base_info_unref(fn);
+        g_base_info_unref((GIBaseInfo*)fn);
     }
 
     if (constructor) {
@@ -575,9 +543,6 @@ static Value giClassCallHandler(int argCount, Value* args) {
         int total_args = n_metadata_args;
         GIArgument* in_args = malloc(sizeof(GIArgument) * (total_args > 0 ? total_args : 1));
 
-        GIArgument retval = {.v_pointer = NULL };;
-        GError* error = NULL;
-        
         for (int i = 0; i < n_metadata_args; i++) {
             GIArgInfo* arg_info = g_callable_info_get_arg((GICallableInfo*)constructor, i);
             GITypeInfo* type_info = g_arg_info_get_type(arg_info);
@@ -592,54 +557,42 @@ static Value giClassCallHandler(int argCount, Value* args) {
             g_base_info_unref((GIBaseInfo*)arg_info);
         }
 
-        //GIArgument retval = {0};
-        //GError* error = NULL;
-
-        //printf("[DEBUG] Calling constructor: %s\n", g_base_info_get_name((GIBaseInfo*)constructor));
+        GIArgument retval = {.v_pointer = NULL};
+        GError* error = NULL;
 
         g_function_info_invoke(constructor, in_args, total_args, NULL, 0, &retval, &error);
 
-
         free(in_args);
+        g_base_info_unref((GIBaseInfo*)constructor);
 
         if (error) {
-            //printf("[DEBUG] Constructor Error: %s\n", error->message);
+            runtimeError("Constructor Error: %s", error->message);
             g_error_free(error);
-        }
-
-        //printf("[DEBUG] Constructor returned pointer: %p\n", retval.v_pointer);
-
-        ObjInstance* instance = newInstance(klass);
-        instance->foreignPtr = retval.v_pointer;
-
-        /*
-        if (n_metadata_args == 0 && argCount > 0) {
-            if (IS_STRING(args[0])) {
-                ObjString* title_key = copyString("title", 5);
-                giPropertySetter(instance, title_key, args[0]);
-            }
-        }
-        */
-        g_base_info_unref(constructor);
-        return OBJ_VAL(instance);
-        //instance->foreignPtr = gptr;
-        /*
-        if (gptr == NULL) {
-            runtimeError("Failed to allocate GObject for %s", klass->name->chars);
             return NIL_VAL;
         }
-        return OBJ_VAL(instance);
-        */
+
+        if (retval.v_pointer == NULL) {
+            runtimeError("Constructor for %s return NULL.", klass->name->chars);
+            return NIL_VAL;
+        }
+
+        if (G_IS_OBJECT(retval.v_pointer)) {
+            return wrap_gobject_with_class((GObject*)retval.v_pointer, klass);
+        } else {
+            ObjInstance* instance = newInstance(klass);
+            instance->foreignPtr = retval.v_pointer;
+            return OBJ_VAL(instance);
+        }
+
     } else {
-        //printf("[DEBUG] No constructor found for %s, falling back to g_object_new\n", klass->name->chars);
+        GObject* gptr = g_object_new(gtype, NULL);
 
-        gptr = g_object_new(gtype, NULL);
+        if (gptr == NULL) {
+            runtimeError("Failed to allcoate GObject for %s", klass->name->chars);
+            return NIL_VAL;
+        }
 
-        ObjInstance* instance = newInstance(klass);
-        instance->foreignPtr = gptr;
-
-        //printf("[DEBUG] g_object_new_returned: %p\n", instance->foreignPtr);
-        return OBJ_VAL(instance);
+        return wrap_gobject_with_class(gptr, klass);
     }
 }
 
@@ -716,54 +669,139 @@ void debugPrintGIType(GITypeInfo* type_info) {
     }
 }
 
-Value giInvokeNative(int argCount, Value* args) {
-    ObjNative* native = AS_NATIVE_OBJ(args[-1]);
-    GIFunctionInfo* info = (GIFunctionInfo*)native->foreignData;
-    GIFunctionInfoFlags flags = g_function_info_get_flags(info);
+static bool classHasMethod(ObjClass* klass, ObjString* name) {
+    ObjClass* current = klass;
+    Value methodVal;
+    while (current != NULL) {
+        Table* methods = (current->mixinsource != NULL)
+            ? &current->mixinsource->methods
+            : &current->methods;
 
-    bool is_method = (flags & GI_FUNCTION_IS_METHOD) != 0;
-    bool is_constructor = (flags & GI_FUNCTION_IS_CONSTRUCTOR) != 0;
-
-    int lox_idx = 0;
-    int gi_idx = 0;
-    GObject* self = NULL;
-
-    int n_args = g_callable_info_get_n_args((GICallableInfo*)info);
-    GIArgument* in_args = alloca(sizeof(GIArgument) * n_args );
-
-    if (is_method) {
-        if (argCount > 0 && IS_INSTANCE(args[0])) {
-            self = get_gobject_from_value(args[0]);
-            in_args[gi_idx++].v_pointer = self;
-            //in_args[gi_idx++].v_pointer = get_gobject_from_value(args[0]);
-            lox_idx = 1;
+        if (tableGet(methods, name, &methodVal)) {
+            return IS_NATIVE(methodVal);
         }
-    } else {
-        if (argCount > n_args) {
-            lox_idx = 1;
+        current = current->superclass;
+    }
+    return false;
+}
+
+static ObjString* getMethodNameFromFrame(CallFrame* frame, ObjInstance* instance) {
+    Value* constants = frame->closure->function->chunk.constants.values;
+    int constantCount = frame->closure->function->chunk.constants.count;
+
+    ObjString* shortCandidate = NULL;
+    ObjString* longCandidate = NULL;
+
+    if (frame->ip[-3] == OP_INVOKE) {
+        uint8_t idx = frame->ip[-2];
+        if (idx < constantCount && IS_STRING(constants[idx])) {
+            ObjString* str = AS_STRING(constants[idx]);
+            if (classHasMethod(instance->obj.klass, str)) {
+                shortCandidate = str;
+            }
         }
     }
 
-    if (argCount < n_args) {
-        runtimeError("GI Error in %s: Wrong number of args\nWanted %d got %d\n", g_base_info_get_name(info), n_args, argCount);
+    if (frame->ip[-5] == OP_INVOKE_LONG) {
+        uint32_t idx = ((uint32_t)frame->ip[-4] << 16) |
+            ((uint32_t)frame->ip[-3] << 8) |
+            ((uint32_t)frame->ip[-2]);
+        if (idx < constantCount && IS_STRING(constants[idx])) {
+            ObjString* str = AS_STRING(constants[idx]);
+            if (classHasMethod(instance->obj.klass, str)) {
+                longCandidate = str;
+            }
+        }
+    }
+
+    if (shortCandidate != NULL && longCandidate == NULL) return shortCandidate;
+    if (longCandidate != NULL && shortCandidate == NULL) return longCandidate;
+
+    return NULL;
+}
+
+Value giInvokeNative(int argCount, Value* args) {
+    ObjNative* native = NULL;
+
+    if (IS_NATIVE(args[-1])) {
+        native = AS_NATIVE_OBJ(args[-1]);
+    } else if (IS_INSTANCE(args[-1])) {
+        ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+        CallFrame* frame = &vm.frames[vm.frameCount - 1];
+        uint8_t nameIdx = frame->ip[-2];
+        ObjString* methodName = getMethodNameFromFrame(frame, instance);
+
+        ObjClass* current = instance->obj.klass;
+        Value methodVal;
+
+        while (current != NULL) {
+            Table* methods = (current->mixinsource != NULL)
+                ? &current->mixinsource->methods
+                : &current->methods;
+
+            if (tableGet(methods, methodName, &methodVal)) {
+                if (IS_NATIVE(methodVal)) {
+                    native = AS_NATIVE_OBJ(methodVal);
+                }
+                break;
+            }
+            current = current->superclass;
+        }
+    }
+
+    if (native == NULL || native->foreignData == NULL) {
+        runtimeError("Undefined GI function or method.");
         return NIL_VAL;
     }
 
-    GIArgument return_value;
-    GError* error = NULL;
+    GIFunctionInfo* info = (GIFunctionInfo*)native->foreignData;
+    GIFunctionInfoFlags flags = g_function_info_get_flags(info);
+    bool is_method = (flags & GI_FUNCTION_IS_METHOD) != 0;
+
+    int n_args = g_callable_info_get_n_args((GICallableInfo*)info);
+    int total_gi_args = n_args + (is_method ? 1 : 0);
+    GIArgument* in_args = alloca(sizeof(GIArgument) * total_gi_args);
+
+    int gi_idx = 0;
+    int lox_idx = 0;
+
+    if (is_method) {
+        GObject* self = NULL;
+
+        if (IS_INSTANCE(args[-1])) {
+            self = get_gobject_from_value(args[-1]);
+            lox_idx = 0;
+        } else if (argCount > 0 && IS_INSTANCE(args[0])) {
+            self = get_gobject_from_value(args[0]);
+            lox_idx = 1;
+        }
+
+        if (self == NULL) {
+            runtimeError("GI Error in %s: Expected valid instance receiver.", g_base_info_get_name(info));
+            return NIL_VAL;
+        }
+
+        in_args[gi_idx++].v_pointer = self;
+    }
+
+    if (argCount < n_args) {
+        runtimeError("GI Error in %s: Expected %d args, got %d.", g_base_info_get_name(info), n_args, argCount);
+        return NIL_VAL;
+    }
 
     for (int i = 0; i < n_args; i++) {
         GIArgInfo* arg_info = g_callable_info_get_arg((GICallableInfo*)info, i);
         GITypeInfo* type_info = g_arg_info_get_type(arg_info);
 
-        //printf("Arg %d: ", i);
-        //debugPrintGIType(type_info);
         convertLoxToGI(args[lox_idx++], &in_args[gi_idx++], type_info);
 
         g_base_info_unref(type_info);
         g_base_info_unref(arg_info);
     }
 
+    GIArgument return_value;
+    GError* error = NULL;
     if (!g_function_info_invoke(info, in_args, gi_idx, NULL, 0, &return_value, &error)) {
         runtimeError("GI Error in %s: %s", g_base_info_get_name(info), error->message);
         g_error_free(error);
@@ -772,123 +810,27 @@ Value giInvokeNative(int argCount, Value* args) {
 
     GITypeInfo* ret_type = g_callable_info_get_return_type((GICallableInfo*)info);
     Value result = GIArgumentToLox(&return_value, ret_type);
-    //Value result = convertGIToLox(&return_value, ret_type);
 
     g_base_info_unref(ret_type);
     return result;
 }
 
-/*
-static Value giInvokeNative(int argCount, Value* args) {
-    ObjNative* native = AS_NATIVE_OBJ(args[-1]);
-    GIFunctionInfo* fn_info = (GIFunctionInfo*)native->foreignData;
-
-    GIFunctionInfoFlags flags = g_function_info_get_flags(info);
-    bool is_method = (flags & GI_FUNCTION_IS_METHOD) != 0;
-
-    // 1. get metadata count
-    int n_metadata_args = g_callable_info_get_n_args((GICallableInfo*)fn_info);
-    // 2. the total arguments we pass
-    int total_gi_args = is_method ? n_metadata_args + 1 : n_metadata_args;
-
-    int lox_arg_offset = 0;
-    GObject* self = NULL;
-    int lox_arg_start = is_method ? 1 : 0;
-    int actual_arg_count = argCount - lox_arg_start;
-
-    // allocate the giargument array
-    GIArgument* in_args = malloc(sizeof(GIArgument) * (total_gi_args > 0 ? total_gi_args : 1));
-    int gi_idx = 0;
-
-    // 3. handle instance (this)
-    if (is_method) {
-        if (argCount > 0 && IS_INSTANCE(args[0])) {
-            self = get_gobject_from_value(args[0]);
-            lox_arg_offset = 1;
-            //printf("[ERROR] args[0] is not an instance! Type tag: %d\n", AS_OBJ(args[0])->type);
-        } else {
-            runtimeError("Method %s requires an instance.", g_base_info_get_name(info));
-            return NIL_VAL;
-        }
-    } else {
-            //ObjInstance* instance = AS_INSTANCE(args[0]);
-            //in_args[gi_idx++].v_pointer = instance->foreignPtr;
-
-            //printf("[DEBUG] Extracted pointer from Instance: %p\n", in_args[0].v_pointer);
-            //in_args[0].v_pointer = NULL;
-        //}
-        int gi_expected_args = g_callable_info_get_n_args((GICallableInfo*)info);
-        if (argCount > gi_expected_args) {
-            lox_arg_offset = 1;
-        }
-    }
-
-    // 4. handle logical args
-    for (int i = 0; i < argCount; i++) {
-        GIArgInfo* arg_info = g_callable_info_get_arg((GICallableInfo*)fn_info, i);
-        if (arg_info == NULL) continue;
-
-        GITypeInfo* type_info = g_arg_info_get_type(arg_info);
-
-        int lox_idx = is_method ? i + 1 : i;
-
-        if (lox_idx < argCount) {
-            convertLoxToGI(args[lox_idx], &in_args[gi_idx++], type_info);
-        } else {
-            in_args[gi_idx++].v_pointer = NULL;
-        }
-
-        g_base_info_unref((GIBaseInfo*)type_info);
-        g_base_info_unref((GIBaseInfo*)arg_info);
-    }
-
-    GIArgument return_val;
-    GError* error = NULL;
-
-    //printf("[DEBUG] First GI Arg (this): %p\n", in_args[0].v_pointer);
-
-    g_function_info_invoke(fn_info,
-        in_args, total_gi_args,
-        NULL, 0,
-        &return_val, &error);
-
-    free(in_args);
-
-    if (error) {
-        //printf("[INVOKE]: GI Runtime Error: %s\n", error->message);
-        g_error_free(error);
-    } else {
-        const char* name = g_base_info_get_name((GIBaseInfo*)fn_info);
-        //printf("[INVOKE]: Successfully called '%s' on %p\n", name, in_args[0].v_pointer);
-    }
-
-    return NIL_VAL;
-}
-*/
-
 static void registerGIMethod(ObjClass* klass, GIBaseInfo* info) {
-    //printf("[registerGIMethod] enter registerGIMethod\n");
     const char* fn_name = g_base_info_get_name(info);
     ObjString* method_name = copyString(fn_name, strlen(fn_name));
     push(OBJ_VAL(method_name));
-    //printf("[registerGIMethod] after push\n");
 
     Value existing;
-    if (!tableGet(&klass->methods, method_name, &existing)) {
-        //printf("[registerGIMethod] got existing value\n");
 
+    if (!tableGet(&klass->methods, method_name, &existing)) {
         ObjNative* native = newNative(giInvokeNative);
         push(OBJ_VAL(native));
-        //printf("[registerGIMethod] newNative\n");
         native->foreignData = g_base_info_ref(info);
-        //printf("[registerGIMethod] set foreignData\n");
+
         tableSet(&klass->methods, method_name, OBJ_VAL(native));
-        //printf("[registerGIMethod] after tableSet\n");
         pop();
     }
-    //printf("[registerGIMethod] before pop\n");
     pop();
-    //printf("[registerGIMethod] enter registerGIMethod\n");
 }
 
 static void loadMethodsIntoNamespace(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* info) {
@@ -942,6 +884,19 @@ static void loadMethodsIntoClass(ObjClass* klass, GIBaseInfo* info) {
                 registerGIMethod(klass, fn_info);
                 g_base_info_unref(fn_info);
             }
+
+            int n_ifaces = g_object_info_get_n_interfaces(current_info);
+            for (int i = 0; i < n_ifaces; i++) {
+                GIInterfaceInfo* iface_info = g_object_info_get_interface(current_info, i);
+                int n_iface_methods = g_interface_info_get_n_methods(iface_info);
+                for (int j = 0; j < n_iface_methods; j++) {
+                    GIFunctionInfo* fn_info = g_interface_info_get_method(iface_info, j);
+                    registerGIMethod(klass, fn_info);
+                    g_base_info_unref(fn_info);
+                }
+                g_base_info_unref(iface_info);
+            }
+
             GIObjectInfo* parent = g_object_info_get_parent(current_info);
             g_base_info_unref((GIBaseInfo*)current_info);
             current_info = parent;
@@ -959,6 +914,25 @@ static void loadMethodsIntoClass(ObjClass* klass, GIBaseInfo* info) {
 static GMainLoop* lox_gi_main_loop = NULL;
 
 static Value giQuitNative(int argCount, Value* args) {
+    GType gtk_window_type = g_type_from_name("GtkWindow");
+    if (gtk_window_type != G_TYPE_INVALID) {
+        typedef GList* (*GtkWindowGetListFunc)(void);
+        typedef void (*GtkWindowDestroyFunc)(void* window);
+
+        GtkWindowGetListFunc get_toplevels = (GtkWindowGetListFunc)dlsym(RTLD_DEFAULT, "gtk_window_list_topelevels");
+        GtkWindowDestroyFunc destroy_win = (GtkWindowDestroyFunc)dlsym(RTLD_DEFAULT, "gtk_window_destroy");
+
+        if (get_toplevels && destroy_win) {
+            GList* list = get_toplevels();
+            for (GList* l = list; l != NULL; l = l->next) {
+                if (g_type_is_a(G_OBJECT_TYPE(l->data), gtk_window_type)) {
+                    destroy_win(l->data);
+                }
+            }
+            g_list_free(list);
+        }
+    }
+
     if (lox_gi_main_loop != NULL && g_main_loop_is_running(lox_gi_main_loop)) {
         g_main_loop_quit(lox_gi_main_loop);
     }
@@ -1038,7 +1012,6 @@ void register_gdk_constants() {
 }
 
 static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* info) {
-    //printf("[loadMethods] in loadMethods\n");
     GIInfoType type = g_base_info_get_type(info);
     int n_methods = 0;
 
@@ -1047,8 +1020,6 @@ static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* in
     } else if (type == GI_INFO_TYPE_STRUCT) {
         n_methods = g_struct_info_get_n_methods((GIObjectInfo*)info);
     }
-
-    //printf("[loadMethods] before loop\n");
 
     for (int i = 0; i < n_methods; i++) {
         GIFunctionInfo* fn_info = NULL;
@@ -1071,48 +1042,92 @@ static void loadMethods(ObjInstance* nsInstance, ObjClass* klass, GIBaseInfo* in
         g_base_info_unref(fn_info);
     }
 
-    //printf("[loadMethods] after loop\n");
     if (type == GI_INFO_TYPE_OBJECT) {
-        //printf("[loadMethods] loading OBJECT\n");
         GIObjectInfo* parent = g_object_info_get_parent((GIObjectInfo*)info);
-        //printf("[loadMethods] got parent\n");
         while (parent != NULL) {
-            //printf("[loadMethods] parent is not NULL\n");
             int pn = g_object_info_get_n_methods(parent);
-            //printf("[loadMethods] got number of parent methods\n");
             for (int i = 0; i < pn; i++) {
-                //printf("[loadMethods] got parent method %d\n", i);
                 GIFunctionInfo* p_fn = g_object_info_get_method(parent, i);
-                //printf("[loadMethods] got parent method info %d\n", i);
 
                 if (g_function_info_get_flags(p_fn) & GI_FUNCTION_IS_METHOD) {
-                    //printf("[loadMethods] before registerGIMethod\n");
                     registerGIMethod(klass, (GIBaseInfo*)p_fn);
-                    //printf("[loadMethods] after registerGIMethod\n");
                 }
                 g_base_info_unref(p_fn);
             }
             GIObjectInfo* next = g_object_info_get_parent(parent);
-            //printf("[loadMethods] got next parent\n");
 
             g_base_info_unref(parent);
-            //printf("[loadMethods] unref parent\n");
             parent = next;
         }
-        //printf("[loadMethods] done loading OBJECT\n");
     }
-    //printf("[loadMethods] exit loadMethods\n");
+}
 
+static ObjClass* getOrRegisterGIClass(GIBaseInfo* info) {
+    const char* ns = g_base_info_get_namespace(info);
+    const char* name = g_base_info_get_name(info);
+
+    char fullTypeName[512];
+    if (strcmp(ns, "GObject") == 0) {
+        snprintf(fullTypeName, sizeof(fullTypeName), "%s", name);
+    } else {
+        snprintf(fullTypeName, sizeof(fullTypeName), "%s%s", ns, name);
+    }
+
+
+    ObjString* key = copyString(fullTypeName, (int)strlen(fullTypeName));
+    push(OBJ_VAL(key));
+
+    Value existing;
+    if (tableGet(&globalRegistry->fields, key, &existing)) {
+        pop();
+        return AS_CLASS(existing);
+    }
+
+    ObjString* className = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(className));
+
+    ObjClass* klass = newClass(className);
+    push(OBJ_VAL(klass));
+
+    tableSet(&globalRegistry->fields, key, OBJ_VAL(klass));
+
+    klass->foreignData = g_base_info_ref(info);
+    klass->callHandler = giClassCallHandler;
+    klass->getter = giPropertyGetter;
+    klass->setter = giPropertySetter;
+    klass->destructor = giInstanceDestructor;
+    initTable(&klass->methods);
+
+    GIInfoType type = g_base_info_get_type(info);
+    if (type == GI_INFO_TYPE_OBJECT) {
+        GIObjectInfo* parent_info = g_object_info_get_parent((GIObjectInfo*)info);
+        if (parent_info != NULL) {
+            ObjClass* parentClass = getOrRegisterGIClass((GIBaseInfo*)parent_info);
+            klass->superclass = parentClass;
+            g_base_info_unref((GIBaseInfo*)parent_info);
+        }
+    }
+
+    ObjInstance* nsInstance = newInstance(klass);
+    push(OBJ_VAL(nsInstance));
+    loadMethods(nsInstance, klass, info);
+    pop(); // nsInstance
+
+    pop(); // klass
+    pop(); // className
+    pop(); // key
+
+    return klass;
 }
 
 static Value giLoadNative(int argCount, Value* args) {
-    //printf("[DEBUG] in giLoadNative\n");
-    if (argCount != 1 || !IS_STRING(args[0])) {
+    int strIndex = (argCount > 0 && IS_INSTANCE(args[0])) ? 1 : 0;
+    if (!IS_STRING(args[strIndex])) {
         runtimeError("gi.load() expects 1 string argument (the namespace).");
         return NIL_VAL;
     }
 
-    const char* namespace = AS_CSTRING(args[0]);
+    const char* namespace = AS_CSTRING(args[strIndex]);
     GError* error = NULL;
 
     g_irepository_require(NULL, namespace, NULL, 0, &error);
@@ -1121,22 +1136,12 @@ static Value giLoadNative(int argCount, Value* args) {
         g_error_free(error);
         return NIL_VAL;
     }
-    //printf("[DEBUG] g_irepository_require\n");
-
 
     ObjInstance* module = newInstance(vm.moduleClass);
     push(OBJ_VAL(module)); // [1] module
     initTable(&module->fields);
 
-    //printf("[DEBUG] initTable\n");
-    /*
-    ObjInstance* registry = newInstance(vm.moduleClass);
-    tableSet(&module->fields, copyString("__registry", 10), OBJ_VAL(registry));
-    globalRegistry = registry;
-    */
-
     int n_infos = g_irepository_get_n_infos(NULL, namespace);
-    //printf("[DEBUG] getting n infos\n");
 
     for (int i = 0; i < n_infos; i++) {
         GIBaseInfo* info = g_irepository_get_info(NULL, namespace, i);
@@ -1144,7 +1149,6 @@ static Value giLoadNative(int argCount, Value* args) {
         GIInfoType type = g_base_info_get_type(info);
 
         if (type == GI_INFO_TYPE_FUNCTION) {
-            //printf("[DEBUG] adding function\n");
             ObjNative* native = newNative(giInvokeNative);
             push(OBJ_VAL(native));
 
@@ -1154,62 +1158,8 @@ static Value giLoadNative(int argCount, Value* args) {
 
             pop();
         } else if (type == GI_INFO_TYPE_OBJECT || type == GI_INFO_TYPE_STRUCT) {
-            //printf("[DEBUG] adding object or struct\n");
-            ObjString* className = copyString(name, strlen(name));
-            push(OBJ_VAL(className));
-
-            const char* namespace = g_base_info_get_namespace(info);
-
-            char fullTypeName[512];
-
-            ObjClass* klass = newClass(className);
-            push(OBJ_VAL(klass));
-
-            klass->foreignData = g_base_info_ref(info);
-            klass->callHandler = giClassCallHandler;
-            klass->getter = giPropertyGetter;
-            klass->setter = giPropertySetter;
-            klass->destructor = giInstanceDestructor;
-
-            ObjInstance* nsInstance = newInstance(klass);
-            push(OBJ_VAL(nsInstance));
-
-            //snprintf(fullTypeName, fullLen, "%s%s", namespace, name);
-
-            const char* typeName = g_base_info_get_name(info);
-            if (strcmp(namespace, "GObject") == 0) {
-                snprintf(fullTypeName, sizeof(fullTypeName), "%s", name);
-            } else {
-                snprintf(fullTypeName, sizeof(fullTypeName), "%s%s", namespace, name);
-            }
-            ObjString* loxTypeName = copyString(fullTypeName, (int)strlen(fullTypeName));
-            push(OBJ_VAL(loxTypeName));
-
-            tableSet(&globalRegistry->fields, loxTypeName, OBJ_VAL(klass));
-            pop();
-
-            initTable(&klass->methods);
-
-            //printf("[DEBUG] loading methods\n");
-            loadMethods(nsInstance, klass, info);
-            //printf("[DEBUG] done loading methods\n");
-            /*
-            if (type == GI_INFO_TYPE_OBJECT) {
-                loadMethodsForObject(nsInstance, klass, info);
-            } else if (type == GI_INFO_TYPE_STRUCT) {
-                loadMethodsForStruct(nsInstance, klass, info);
-            }
-            */
-            //loadMethodsIntoNamespace(nsInstance, klass, info);
-            //loadMethodsIntoClass(klass, info);
-
-            tableSet(&module->fields, className, OBJ_VAL(klass));
-
-            //printf("[LOADER]: Registered Class '%s' (Internal: %s)\n", name, fullTypeName);
-
-            pop();
-            pop();
-            pop();
+            ObjClass* klass = getOrRegisterGIClass(info);
+            tableSet(&module->fields, klass->name, OBJ_VAL(klass));
         }
 
         if (type == GI_INFO_TYPE_ENUM || type == GI_INFO_TYPE_FLAGS) {
@@ -1226,7 +1176,6 @@ static Value giLoadNative(int argCount, Value* args) {
                 int64_t val = g_value_info_get_value(val_info);
 
                 tableSet(&enumInstance->fields, copyString(val_name, strlen(val_name)), NUMBER_VAL((double)val));
-                //printf("[LOADER]: Registered Enum '%s' Val: %s)\n", name, val_name);
                 g_base_info_unref(val_info);
             }
 
@@ -1246,7 +1195,6 @@ static Value giLoadNative(int argCount, Value* args) {
                     g_type_info_get_tag(type_info) == GI_TYPE_TAG_UINT32) {
                 tableSet(&module->fields, copyString(name, strlen(name)),
                         NUMBER_VAL((double)arg.v_int));
-                //printf("[LOADER]: Registered Constant '%s' Val: %d)\n", name, arg.v_int);
             }
             g_base_info_unref(type_info);
         }
@@ -1276,11 +1224,6 @@ void lox_module_init(VM* vm) {
     tableSet(&vm->globals, giStr, OBJ_VAL(giModule));
     globalRegistry = newInstance(vm->moduleClass);
     tableSet(&giModule->fields, copyString("__registry", 16), OBJ_VAL(globalRegistry));
-
-    /*
-    static Table* registryTable = NULL;
-    registryTable = &internalRegistry->fields;
-    */
 
     ObjNative* loopFn = newNative(giLoopNative);
     push(OBJ_VAL(loopFn)); // [4] loop

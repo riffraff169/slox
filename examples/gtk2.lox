@@ -1,0 +1,57 @@
+//System.trace(true);
+
+import "gi";
+var Gdk = gi.load("Gdk");
+var Gtk = gi.load("Gtk");
+Gtk.init();
+
+var win = Gtk.Window();
+win.title = "Lox Layout";
+win.default_width = 400;
+win.default_height = 300;
+
+win.present();
+
+//gi.loop();
+var box = Gtk.Box();
+box.orientation = Gtk.Orientation.vertical;
+
+var btn = Gtk.Button();
+btn.label = "Click Me";
+
+gi.connect(btn, "clicked", fun(sender) {
+  print "--- Signal Debug ---";
+  print sender;
+
+  var currentLabel = sender.label;
+  print "Old Label: " + currentLabel;
+
+  sender.label = "It Works!";
+});
+
+gi.connect(win, "close-request", fun(sender) {
+  print "Quitting!";
+  System.exit(1);
+});
+
+box.append(btn);
+win.child = box;
+
+print "Window Title is: " + win.title;
+win.present();
+
+var controller = Gtk.EventControllerKey();
+
+win.add_controller(controller);
+
+gi.connect(controller, "key-pressed", fun(ctrl, keyval, keycode, state) {
+  if ((state & Gdk.ModifierType.control_mask) != 0 and keyval == Gdk.KEY_q) {
+    print "Control-Q pressed! Quitting...";
+    gi.quit();
+    return false;
+  }
+  print "Key pressed: ", keyval;
+  return true;
+});
+
+gi.loop();

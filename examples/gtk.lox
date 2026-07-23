@@ -1,0 +1,11 @@
+import "gi";
+var Gtk = gi.load("Gtk");
+
+Gtk.init();
+
+var win = Gtk.Window();
+win.set_title("Hello lox!");
+win.set_default_size(400, 400);
+win.present();
+
+gi.loop();
