@@ -1,0 +1,24 @@
+class Person {
+  init(name) {
+    this.name = name;
+  }
+
+  greet() {
+    print "Hello, " + this.name;
+  }
+}
+
+var p1 = Person("Alice");
+
+class Person {
+  sayGoodbye() {
+    print "Goodbye, " + this.name;
+  }
+}
+
+p1.greet(); // expect: Hello, Alice
+p1.sayGoodbye(); // expect: Goodbye, Alice
+
+var p2 = Person("Bob");
+p2.sayGoodbye(); // expect: Goodbye, Bob
+

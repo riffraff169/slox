@@ -337,9 +337,24 @@ Value setFieldNative(int argCount, Value* args) {
 
 Value getMethodsNative(int argCount, Value* args) {
     Value receiver = args[-1];
-    ObjClass* klass = getClassForValue(receiver);
 
-    if (klass == NULL) {
+    bool recurse = false;
+    if (argCount > 0) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("Recurse argument must be a boolean.");
+            return NIL_VAL;
+        }
+        recurse = AS_BOOL(args[0]);
+    }
+
+    ObjClass* targetClass = NULL;
+    if (IS_CLASS(receiver)) {
+        targetClass = AS_CLASS(receiver);
+    } else {
+        targetClass = getClassForValue(receiver);
+    }
+
+    if (targetClass == NULL) {
         runtimeError("Cannot get methods of a non-object/non-class.");
         return NIL_VAL;
     }
@@ -347,18 +362,28 @@ Value getMethodsNative(int argCount, Value* args) {
     ObjArray* list = newArray();
     push(OBJ_VAL(list));
 
-    ObjClass* current = klass;
+    Table seen;
+    initTable(&seen);
+
+    ObjClass* current = targetClass;
     while (current != NULL) {
         Table* table = &current->methods;
         for (int i = 0; i < table->capacity; i++) {
             Entry* entry = &table->entries[i];
             if (entry->key != NULL) {
-                arrayAppend(list, OBJ_VAL(entry->key));
+                Value dummy;
+                if (!tableGet(&seen, entry->key, &dummy)) {
+                    tableSet(&seen, entry->key, BOOL_VAL(true));
+                    arrayAppend(list, OBJ_VAL(entry->key));
+                }
             }
         }
+
+        if (!recurse) break;
         current = current->superclass;
     }
 
+    freeTable(&seen);
     return pop();
 }
 
