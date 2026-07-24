@@ -1,0 +1,29 @@
+class File {
+  mkdir_p(path) {
+    var parts = path.split("/");
+    var accumulated = [];
+    var isAbsolute = (path.length() > 0 and path[0] == "/");
+
+    for (var i = 0; i < parts.length(); i += 1) {
+      var part = parts[i];
+      if (part == "") continue;
+
+      accumulated.push(part);
+      var current = accumulated.join("/");
+      if (isAbsolute) {
+        current = "/" + current;
+      }
+
+      if (this.exists(current)) {
+        if (!Dir.exists(current)) {
+          print "Error: " + current + " exists and is not a directory.";
+          return false;
+        }
+      } else {
+        Dir.mkdir(current);
+      }
+    }
+    return true;
+  }
+}
+
