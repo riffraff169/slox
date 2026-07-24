@@ -2989,6 +2989,44 @@ Value fileFlushNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+Value fileCopyNative(int argCount, Value* args) {
+    /*
+    int src_fd = open(src, O_RDONLY);
+    if (src_fd < 0) return false;
+
+    struct stat stat_buf;
+    fstat(src_fd, &stat_buf);
+
+    int dest_fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC, stat_buf.st_mode);
+    if (dest_fd < 0) { close(src_fd); return false; }
+
+    off_t bytes_copied = 0;
+    ssize_t result = sendfile(dest_fd, src_fd, &bytes_copied, stat_buf.st_size);
+
+    close(src_fd);
+    close(dest_fd);
+    return result >= 0;
+    */
+}
+
+Value fileChmodNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
+        return BOOL_VAL(false);
+    }
+    const char* path = AS_CSTRING(args[0]);
+    mode_t mode = (mode_t)AS_NUMBER(args[1]);
+    return BOOL_VAL(chmod(path, mode) == 0);
+}
+
+Value fileChownNative(int argCount, Value* args) {
+    if (argCount < 3 || !IS_STRING(args[0]) || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+        return BOOL_VAL(false);
+    }
+    const char* path = AS_CSTRING(args[0]);
+    uid_t uid = (uid_t)AS_NUMBER(args[1]);
+    gid_t gid = (gid_t)AS_NUMBER(args[2]);
+    return BOOL_VAL(chown(path, uid, gid) == 0);
+}
 
 void initFileLibrary(){
     ObjString* fileName = copyString("File", 4);
@@ -3009,6 +3047,9 @@ void initFileLibrary(){
     defineNativeMethod(fileClass, "tell", fileTellNative);
     defineNativeMethod(fileClass, "stderr", fileStderrNative);
     defineNativeMethod(fileClass, "flush", fileFlushNative);
+    defineNativeMethod(fileClass, "copy", fileCopyNative);
+    defineNativeMethod(fileClass, "chmod", fileChmodNative);
+    defineNativeMethod(fileClass, "chown", fileChownNative);
 
     tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 

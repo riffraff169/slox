@@ -3135,10 +3135,30 @@ InterpretResult run() {
                 }
                 break;
             case OP_CLASS:
-                push(OBJ_VAL(newClass(READ_STRING())));
+                {
+                    ObjString* name = READ_STRING();
+                    Value existing;
+
+                    if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
+                        push(existing);
+                    } else {
+                        ObjClass* klass = newClass(name);
+                        push(OBJ_VAL(klass));
+                    }
+                }
                 break;
             case OP_CLASS_LONG:
-                push(OBJ_VAL(newClass(READ_STRING_LONG())));
+                {
+                    ObjString* name = READ_STRING_LONG();
+                    Value existing;
+
+                    if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
+                        push(existing);
+                    } else {
+                        ObjClass* klass = newClass(name);
+                        push(OBJ_VAL(klass));
+                    }
+                }
                 break;
             case OP_INHERIT:
                 {
