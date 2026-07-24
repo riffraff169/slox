@@ -3255,9 +3255,9 @@ InterpretResult run() {
                     Value indexValue = pop();
                     Value targetValue = pop();
 
-                    if (IS_MAP(targetValue)) {
+                    if (IS_MAP(targetValue) || IS_SET(targetValue)) {
                         if (IS_NIL(indexValue)) {
-                            RUNTIME_ERROR("Map index cannot be nil.");
+                            RUNTIME_ERROR("Index cannot be nil.");
                             break;
                         }
 
@@ -3349,7 +3349,22 @@ InterpretResult run() {
                     Value targetValue = peek(2);
 
                     if (IS_SET(targetValue)) {
-                        RUNTIME_ERROR("Cannot assign values to a Set. Use .add() instead.");
+                        if (IS_NIL(indexValue)) {
+                            RUNTIME_ERROR("Set keys cannot be nil.");
+                            break;
+                        }
+                        ObjSet* set = AS_SET(targetValue);
+
+                        if (IS_NIL(newValue) || (IS_BOOL(newValue) && !AS_BOOL(newValue)) ||
+                                (IS_NUMBER(newValue) && AS_NUMBER(newValue) <= 0)) {
+                            tableDelete2(&set->items, indexValue);
+                        } else {
+                            Value setVal = set->isMultiset ? newValue : NUMBER_VAL(1);
+                            tableSet2(&set->items, indexValue, setVal);
+                        }
+
+                        vm.stackTop[-3] = newValue;
+                        popn(2);
                         break;
                     }
                     if (IS_MAP(targetValue)) {

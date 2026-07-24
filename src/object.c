@@ -217,19 +217,19 @@ ObjSet* newSet() {
     return set;
 }
 
-bool mapGet(ObjMap* map, ObjString* key, Value* value) {
-    return tableGet2(&map->items, OBJ_VAL(key), value);
+bool mapGet(ObjMap* map, Value key, Value* value) {
+    return tableGet2(&map->items, key, value);
 }
 
-bool mapSet(ObjMap* map, ObjString* key, Value value) {
-    return tableSet2(&map->items, OBJ_VAL(key), value);
+bool mapSet(ObjMap* map, Value key, Value value) {
+    return tableSet2(&map->items, key, value);
 }
 
 bool mapSetByCStr(ObjMap* map, const char* cstr, Value value) {
     ObjString* key = copyString(cstr, (int)strlen(cstr));
     push(OBJ_VAL(key));
 
-    bool res = mapSet(map, key, value);
+    bool res = mapSet(map, OBJ_VAL(key), value);
 
     pop();
     return res;

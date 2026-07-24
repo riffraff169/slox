@@ -235,12 +235,12 @@ static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;
 }
 
-bool mapGet(ObjMap* map, ObjString* key, Value* value);
-bool mapSet(ObjMap* map, ObjString* key, Value value);
+bool mapGet(ObjMap* map, Value key, Value* value);
+bool mapSet(ObjMap* map, Value key, Value value);
 bool mapSetByCStr(ObjMap* map, const char* cstr, Value value);
 
-#define mapGetByValue(map, valKey, outVal) mapGet((map), AS_STRING(valKey), (outVal))
-#define mapSetByValue(map, valKey, value) mapSet((map), AS_STRING(valKey), (value))
+#define mapGetByValue(map, valKey, outVal) mapGet((map), (valKey), (outVal))
+#define mapSetByValue(map, valKey, value) mapSet((map), (valKey), (value))
 
 #define mapGetByCStr(map, cstr, outVal) \
     mapGet((map), copyString(cstr, (int)strlen(cstr)), (outVal))

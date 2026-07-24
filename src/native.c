@@ -938,6 +938,7 @@ void initStringClass() {
     X("values", mapValuesNative) \
     X("has", mapHasNative) \
     X("remove", mapRemoveNative) \
+    X("delete", mapRemoveNative) \
     X("len", mapLenNative) \
     X("each", mapEachNative)
 
@@ -1248,9 +1249,10 @@ Value setToMapNative(int argCount, Value* args) {
 
         if (IS_NIL(entry->key)) continue;
 
-        Value val = set->isMultiset ? entry->value : BOOL_VAL(true);
+        Value val = set->isMultiset ? entry->value : NUMBER_VAL(1.0);
 
-        //mapSet(map, entry->key, val);
+        mapSet(map, entry->key, val);
+        //tableSet2(&map->items, entry->key, val);
     }
 
     pop();
@@ -2271,23 +2273,23 @@ void initArrayClass() {
 }
 
 Value resultNativeConstructor(int argCount, Value* args) {
+    /*
     if (argCount < 1 || argCount > 2) {
         runtimeError("Result() rexpects 1 or 2 arguments, got %d.", argCount);
         return NIL_VAL;
     }
+    */
 
     ObjInstance* instance = newInstance(vm.resultClass);
     push(OBJ_VAL(instance));
 
-    Value isOk = args[0];
-    Value payload = (argCount == 2) ? args[1] : NIL_VAL;
+    Value ok = (argCount > 0) ? args[0] : BOOL_VAL(false);
+    Value val = (argCount > 1) ? args[1] : NIL_VAL;
+    Value err = (argCount > 2) ? args[2] : NIL_VAL;
 
-    tableSet(&instance->fields, vm.okString, isOk);
-    if (AS_BOOL(isOk)) {
-        tableSet(&instance->fields, vm.valString, payload);
-    } else {
-        tableSet(&instance->fields, vm.errString, payload);
-    }
+    tableSet(&instance->fields, vm.okString, ok);
+    tableSet(&instance->fields, vm.valString, val);
+    tableSet(&instance->fields, vm.errString, err);
 
     pop();
     return OBJ_VAL(instance);
@@ -2344,19 +2346,23 @@ Value resultUnwrapOrNative(int argCount, Value* args) {
 }
 
 Value optionNativeConstructor(int argCount, Value* args) {
+    /*
     if (argCount < 1 || argCount > 2) {
         runtimeError("Option() expects 1 or 2 arguments, got %d", argCount);
         return NIL_VAL;
     }
+    */
 
     ObjInstance* instance = newInstance(vm.optionClass);
     push(OBJ_VAL(instance));
 
-    Value isSome = args[0];
-    Value payload = (argCount == 2) ? args[1] : NIL_VAL;
+    Value is_some = (argCount > 0) ? args[0] : BOOL_VAL(false);
+    Value val = (argCount > 1) ? args[1] : NIL_VAL;
+    Value err = (argCount > 2) ? args[2] : NIL_VAL;
 
-    tableSet(&instance->fields, vm.isSomeString, isSome);
-    tableSet(&instance->fields, vm.valString, payload);
+    tableSet(&instance->fields, vm.isSomeString, is_some);
+    tableSet(&instance->fields, vm.valString, val);
+    tableSet(&instance->fields, vm.errString, err);
 
     pop();
     return OBJ_VAL(instance);
@@ -2368,10 +2374,9 @@ Value optionUnwrapNative(int argCount, Value* args) {
     Value is_some = NIL_VAL;
     tableGet(&instance->fields, vm.isSomeString, &is_some);
 
-    if (!AS_BOOL(is_some)) {
+    if (isFalsey(is_some)) {
         runtimeError("Attempted to unwrap a 'None' Option.");
         return NIL_VAL;
-        //return errorResult("Attempted to unwrap a 'None' Option.");
     }
 
     Value val = NIL_VAL;
@@ -3654,12 +3659,12 @@ Value processPipeStatic(int argCount, Value* args) {
 
     ObjString* readKey = copyString("read", 4);
     push(OBJ_VAL(readKey));
-    mapSet(pipeMap, readKey, NUMBER_VAL((double)fds[0]));
+    mapSet(pipeMap, OBJ_VAL(readKey), NUMBER_VAL((double)fds[0]));
     pop();
 
     ObjString* writeKey = copyString("write", 5);
     push(OBJ_VAL(writeKey));
-    mapSet(pipeMap, writeKey, NUMBER_VAL((double)fds[1]));
+    mapSet(pipeMap, OBJ_VAL(writeKey), NUMBER_VAL((double)fds[1]));
     pop();
 
     pop();
@@ -4201,17 +4206,17 @@ Value gcStatsNative(int argCount, Value* args) {
 
     ObjString* keyStr = copyString("allocated", 9);
     push(OBJ_VAL(keyStr));
-    mapSet(stats, keyStr, NUMBER_VAL((double)vm.bytesAllocated));
+    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.bytesAllocated));
     pop();
 
     keyStr = copyString("threshold", 9);
     push(OBJ_VAL(keyStr));
-    mapSet(stats, keyStr, NUMBER_VAL((double)vm.nextGC));
+    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.nextGC));
     pop();
 
     keyStr = copyString("collections", 11);
     push(OBJ_VAL(keyStr));
-    mapSet(stats, keyStr, NUMBER_VAL((double)vm.gcCount));
+    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.gcCount));
     pop();
 
     pop();

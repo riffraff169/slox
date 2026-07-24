@@ -1,4 +1,4 @@
-class File {
+class Dir {
   mkdir_p(path) {
     var parts = path.split("/");
     var accumulated = [];
@@ -14,13 +14,13 @@ class File {
         current = "/" + current;
       }
 
-      if (this.exists(current)) {
-        if (!Dir.exists(current)) {
+      if (File.exists(current)) {
+        if (!this.exists(current)) {
           print "Error: " + current + " exists and is not a directory.";
           return false;
         }
       } else {
-        Dir.mkdir(current);
+        this.mkdir(current);
       }
     }
     return true;
