@@ -362,7 +362,7 @@ void printSet(FILE* stream, ObjSet* set) {
         }
         first = false;
     }
-    fprintf(stream, "}\n");
+    fprintf(stream, ")\n");
 }
 
 void printObject(FILE* stream, Value value) {
