@@ -1,0 +1,32 @@
+fun divide(a, b) {
+    if (b == 0) {
+        throw "Division by zero is not allowed";
+    }
+    return a / b;
+}
+
+fun processCalculation(x, y) {
+    print "Starting calculation...";
+
+    try {
+        var result = divide(x, y);
+        print "Result: " + result;
+    } catch (err) {
+        print "Caught error: " + err;
+    } finally {
+        print "Calculation complete.";
+    }
+}
+
+// Successful execution
+processCalculation(10, 2);
+// expect: Starting calculation...
+// expect: Result: 5
+// expect: Calculation complete.
+
+// Triggers catch block
+processCalculation(10, 0);
+// expect: Starting calculation...
+// expect: Caught error: Division by zero is not allowed
+// expect: Calculation complete.
+

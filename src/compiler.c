@@ -1827,9 +1827,10 @@ static void throwStatement() {
 }
 
 static void tryStatement() {
+    int tryLocalCount = current->localCount;
+
     consume(TOKEN_LEFT_BRACE, "Expect '{' before try body.");
 
-    //int tryJump = emitJump(OP_TRY);
     emitByte(OP_TRY);
     int catchJumpPlaceholder = currentChunk()->count;
     emitBytes(0xff, 0xff);
@@ -1840,7 +1841,6 @@ static void tryStatement() {
 
     int endTryJump = emitJump(OP_END_TRY);
 
-    //patchJump(tryJump);
     int catchTarget = 0;
     int catchSuccessJump = -1;
     int mismatchJump = -1;
@@ -1867,6 +1867,8 @@ static void tryStatement() {
 
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
         consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
+
+        current->localCount = tryLocalCount;
 
         if (hasTypeCheck) {
             emitByte(OP_DUP);
@@ -1905,6 +1907,9 @@ static void tryStatement() {
         hasFinally = true;
         finallyTarget = currentChunk()->count;
         consume(TOKEN_LEFT_BRACE, "Expect '{' before finally body.");
+
+        current->localCount = tryLocalCount;
+
         block();
         emitByte(OP_END_FINALLY);
     }
@@ -1923,8 +1928,6 @@ static void tryStatement() {
 
     patchTryOffset(catchJumpPlaceholder, catchTarget, 4);
     patchTryOffset(finallyJumpPlaceholder, hasFinally ? finallyTarget: 0, 2);
-    //patchJump(catchSuccessJump);
-    //patchJump(endTryJump);
 }
 
 static void forStatement() {

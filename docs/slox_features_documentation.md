@@ -490,6 +490,35 @@ The interpreter compiler parses Lox source files into bytecode execution units. 
   ```
 * Loop Control: `break;` and `continue;` statements within loop blocks.
 
+* **try/catch**:
+```lox
+fun divide(a, b) {
+    if (b == 0) {
+        throw "Division by zero is not allowed";
+    }
+    return a / b;
+}
+
+fun processCalculation(x, y) {
+    print "Starting calculation...";
+
+    try {
+        var result = divide(x, y);
+        print "Result: " + result;
+    } catch (err) {
+        print "Caught error: " + err;
+    } finally {
+        print "Calculation complete.\n";
+    }
+}
+
+// Successful execution
+processCalculation(10, 2);
+
+// Triggers catch block
+processCalculation(10, 0);
+```
+
 ### Functions & Closures
 * Named function declaration:
   ```lox
