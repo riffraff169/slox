@@ -1842,11 +1842,22 @@ static void tryStatement() {
     int endTryJump = emitJump(OP_END_TRY);
 
     int catchTarget = 0;
-    int catchSuccessJump = -1;
-    int mismatchJump = -1;
+    int catchSuccessJumps[256];
+    int catchSuccessCount = 0;
+    int lastMismatchJump = -1;
 
-    if (match(TOKEN_CATCH)) {
-        catchTarget = currentChunk()->count;
+    while (match(TOKEN_CATCH)) {
+        if (lastMismatchJump != -1) {
+            patchJump(lastMismatchJump);
+            emitByte(OP_POP);
+            lastMismatchJump = -1;
+        }
+
+        int currentCatchStart = currentChunk()->count;
+        if (catchTarget == 0) {
+            catchTarget = currentCatchStart;
+        }
+
         consume(TOKEN_LEFT_PAREN, "Expect '(' after 'catch'.");
 
         consume(TOKEN_IDENTIFIER, "Expect exception type name.");
@@ -1875,7 +1886,7 @@ static void tryStatement() {
             namedVariable(typeName, false);
             emitByte(OP_INSTANCEOF);
 
-            mismatchJump = emitJump(OP_JUMP_IF_FALSE);
+            lastMismatchJump = emitJump(OP_JUMP_IF_FALSE);
             emitByte(OP_POP);
 
             beginScope();
@@ -1884,11 +1895,13 @@ static void tryStatement() {
             block();
             endScope();
 
-            catchSuccessJump = emitJump(OP_JUMP);
+            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
     
+            /*
             patchJump(mismatchJump);
             emitByte(OP_POP);
             emitByte(OP_THROW);
+            */
         } else {
             beginScope();
             addLocal(exceptionVar);
@@ -1896,8 +1909,14 @@ static void tryStatement() {
             block();
             endScope();
 
-            catchSuccessJump = emitJump(OP_JUMP);
+            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
         }
+    }
+
+    if (lastMismatchJump != -1) {
+        patchJump(lastMismatchJump);
+        emitByte(OP_POP);
+        emitByte(OP_THROW);
     }
 
     int finallyTarget = 0;
@@ -1922,8 +1941,9 @@ static void tryStatement() {
     int successTarget = hasFinally ? finallyTarget : finalDestination;
 
     patchTryOffset(endTryJump, successTarget, 2);
-    if (catchSuccessJump != -1) {
-        patchTryOffset(catchSuccessJump, successTarget, 2);
+
+    for (int i = 0; i < catchSuccessCount; i++) {
+        patchTryOffset(catchSuccessJumps[i], successTarget, 2);
     }
 
     patchTryOffset(catchJumpPlaceholder, catchTarget, 4);

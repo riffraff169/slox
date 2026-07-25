@@ -2799,14 +2799,27 @@ InterpretResult run() {
                 break;
             case OP_INSTANCEOF:
                 {
-                    if (!IS_CLASS(peek(0))) {
+                    Value klassVal = pop();
+                    Value instanceVal = pop();
+
+                    if (!IS_CLASS(klassVal)) {
                         RUNTIME_ERROR("Right-hand side of type check must be a class.");
                         break;
                     }
-                    ObjClass* targetClass = AS_CLASS(pop());
-                    Value instance = pop();
+                    ObjClass* klass = AS_CLASS(klassVal);
+                    bool result = false;
+                    ObjClass* iclass = IS_INSTANCE(instanceVal)
+                        ? AS_INSTANCE(instanceVal)->obj.klass
+                        : getClassForValue(instanceVal);
 
-                    push(BOOL_VAL(isInstanceOf(instance, targetClass)));
+                    while (iclass != NULL) {
+                        if (iclass == klass) {
+                            result = true;
+                            break;
+                        }
+                        iclass = iclass->superclass;
+                    }
+                    push(BOOL_VAL(result));
                 }
                 break;
             case OP_CALL:

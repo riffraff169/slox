@@ -1,0 +1,56 @@
+// tests/exceptions/chained_catch.lox
+
+class BaseError < Error {}
+class CustomError < BaseError {}
+class UnrelatedError < Error {}
+
+// 1. Subclass matching and chained catch order
+try {
+  throw CustomError("something went wrong");
+} catch (UnrelatedError ue) {
+  print "FAIL: Caught UnrelatedError";
+} catch (BaseError be) {
+  print "Caught BaseError: " + be.message; // expect: Caught BaseError: something went wrong
+} catch (e) {
+  print "FAIL: Caught generic fallback";
+}
+
+// 2. Primitive type matching (Number)
+try {
+  throw 42;
+} catch (String s) {
+  print "FAIL: Caught String";
+} catch (Number n) {
+  print "Caught Number: " + n; // expect: Caught Number: 42
+} catch (e) {
+  print "FAIL: Caught generic fallback";
+}
+
+// 3. Primitive type matching (String)
+try {
+  throw "a string exception";
+} catch (Number n) {
+  print "FAIL: Caught Number";
+} catch (String s) {
+  print "Caught String: " + s; // expect: Caught String: a string exception
+}
+
+// 4. Fallback to untyped catch when typed catches miss
+try {
+  throw true;
+} catch (Number n) {
+  print "FAIL: Caught Number";
+} catch (String s) {
+  print "FAIL: Caught String";
+} catch (e) {
+  print "Caught fallback: " + e; // expect: Caught fallback: true
+}
+
+// 5. Inherited constructor with default parameters
+class DefaultMsgError < Error {}
+
+try {
+  throw DefaultMsgError();
+} catch (DefaultMsgError de) {
+  print "Default message: " + de.message; // expect: Default message: Error
+}
