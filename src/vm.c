@@ -1457,8 +1457,18 @@ bool callValue(Value callee, int argCount) {
 
                     vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
                     Value initializer;
-                    if (tableGet(&klass->methods, vm.initString,
-                                &initializer)) {
+                    bool foundInit = false;
+                    ObjClass* currentClass = klass;
+
+                    while (currentClass != NULL) {
+                        if (tableGet(&currentClass->methods, vm.initString, &initializer)) {
+                            foundInit = true;
+                            break;
+                        }
+                        currentClass = currentClass->superclass;
+                    }
+
+                    if (foundInit) {
                         if (IS_NATIVE(initializer)) {
                             NativeFn native = AS_NATIVE(initializer);
                             Value result = native(argCount, vm.stackTop - argCount);

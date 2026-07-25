@@ -11,7 +11,7 @@ class StdTest {
 }
 
 class Error {
-  init(msg) {
+  init(msg = "Error") {
     this.message = msg;
   }
 }

@@ -2789,9 +2789,12 @@ Value fileReadNative(int argCount, Value* args) {
 
     size_t bytesRead = fread(buffer, 1, length, handle);
 
-    if (bytesRead == 0 && ferror(handle)) {
+    if (bytesRead == 0) {
         free(buffer);
-        return errorResult("%s", "Error reading data from file descriptor.");
+        if (ferror(handle)) {
+            return errorResult("%s", "Error reading data from file descriptor.");
+        }
+        return errorResult("%s", "EOF");
     }
 
     ObjString* resultString = copyString(buffer, (int)bytesRead);
