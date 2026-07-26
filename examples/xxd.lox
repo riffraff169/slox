@@ -1,0 +1,282 @@
+require("argparser.lox");
+require("color.lox");
+
+class XXDError < Error { }
+
+fun formatHex(byteval, usecolor) {
+  var hexStr = byteval.hex(2, false);
+  if (!usecolor) return hexStr;
+
+  if (byteval == 0) {
+    return Color.DIM + hexStr + Color.RESET;
+  } else if (byteval == 10 or byteval == 13 or byteval == 9) {
+    return Color.YELLOW + hexStr + Color.RESET;
+  } else if (byteval >= 32 and byteval <= 126) {
+    return Color.GREEN + hexStr + Color.RESET;
+  } else {
+    return Color.RED + hexStr + Color.RESET;
+  }
+}
+
+fun formatascii(realbyte, usecolor) {
+  var charstr = ".";
+  if (realbyte >= 32 and realbyte <= 126) {
+    charstr = chr(realbyte);
+  }
+
+  if (!usecolor) return charstr;
+
+  if (realbyte == 0) {
+    return Color.DIM + "." + Color.RESET;
+  } else if (realbyte == 10 or realbyte == 13 or realbyte == 9 or realbyte == 32) {
+    return Color.YELLOW + charstr + Color.RESET;
+  } else if (realbyte >= 32 and realbyte <= 126) {
+    return Color.GREEN + charstr + Color.RESET;
+  } else {
+    return Color.RED + charstr + Color.RESET;
+  }
+}
+
+fun getByteColor(byteval) {
+  if (byteval == 0) return Color.DIM;
+  if (byteval == 10 or byteval == 13 or byteval == 9) return Color.YELLOW;
+  if (byteval >= 32 and byteval <= 126) return Color.GREEN;
+  return Color.RED;
+}
+
+fun getAsciiColor(realbyte) {
+  if (realbyte == 0) return Color.DIM;
+  if (realbyte == 10 or realbyte == 13 or realbyte == 9 or realbyte == 32) return Color.YELLOW;
+  if (realbyte >= 32 and realbyte <= 126) return Color.GREEN;
+  return Color.RED;
+}
+
+fun getColor(byteval) {
+  if (byteval == 0) return Color.DIM;
+  if (byteval == 10 or byteval == 13 or byteval == 9) return Color.YELLOW;
+  if (byteval >= 32 and byteval <= 126) return Color.GREEN;
+  return Color.RED;
+}
+
+fun toBits(byteVal) {
+  var bits = "";
+  for (var b = 7; b >= 0; b = b - 1) {
+    var bit = (byteVal / (1 << b)) % 2;
+    if (bit == 1)
+      bits = bits + "1";
+    else
+      bits = bits + "0";
+  }
+  return bits;
+}
+
+fun sanitizeVarName(filepath) {
+  var parts = filepath.split("/").join("_").split("\\");
+  var filename = parts[parts.length() - 1];
+
+  return filename.tr(".-: ", "____");
+}
+
+fun runXXD(opts) {
+  var useColor = opts["color"];
+  var infile = File.open(opts["inputfile"], "rb").unwrap();
+  var outfile = File.open(opts["outputfile"], "wb").unwrap();
+
+  var writeline = fun(line) {
+    outfile.write(line + "\n");
+  };
+
+  if (opts["includemode"]) {
+    var varname = sanitizeVarName(opts["inputfile"]);
+    writeline("unsigned char " + varname + "[] = {");
+
+    var totalbytes = 0;
+    var linebuffer = "  ";
+    var bytesinline = 0;
+
+    while (true) {
+      var result = infile.read(1024);
+      if (!result or result.unwrap().length() == 0) break;
+
+      var chunk = result.unwrap();
+      for (var i = 0; i < chunk.length(); i += 1) {
+        if (totalbytes > 0) {
+          linebuffer = linebuffer + ", ";
+          if (bytesinline == 12) {
+            writeline(linebuffer);
+            linebuffer = "  ";
+            bytesinline = 0;
+          }
+        }
+
+        var byteval = chunk[i];
+        linebuffer = linebuffer + byteval.hex(2, true);
+        bytesinline += 1;
+        totalbytes += 1;
+      }
+    }
+
+    if (bytesinline > 0) {
+      writeline(linebuffer);
+    }
+
+    writeline("};");
+    writeline("unsigned int " + varname + "_len = " + totalbytes + ";");
+  } else {
+    var totaloffset = 0;
+    var cols = 16;
+    if (opts["bitsmode"]) {
+      cols = 6; // Standard xxd -b defaults to 6 octets per line
+    }
+    //var cReset = Color.RESET;
+    //var cDim = Color.DIM;
+    //var cYellow = Color.YELLOW;
+
+    while (true) {
+      var result = infile.read(1024);
+      if (!result or result.unwrap().length() == 0) break;
+
+      var chunk = result.unwrap();
+      var chunklen = chunk.length();
+      var chunkindex = 0;
+
+      while (chunkindex < chunklen) {
+        var linebytes = cols;
+        if (chunkindex + linebytes > chunklen) {
+          linebytes = chunklen - chunkindex;
+        }
+
+        // 1. Line Offset
+        var line = totaloffset.hex(8, false) + ": ";
+        if (useColor) {
+          line = Color.DIM + totaloffset.hex(8, false) + ": " + Color.RESET + " ";
+        }
+
+
+        // 2. Hex Payload Loop
+        var activeHexColor = "";
+
+        for (var b = 0; b < cols; b += 1) {
+          if (b < linebytes) {
+            var byteidx = chunkindex + b;
+
+            if (opts["littleendian"]) {
+              var groupstart = b - (b % opts["groupsize"]);
+              var groupoffset = b % opts["groupsize"];
+              var revidx = groupstart + (opts["groupsize"] - 1 - groupoffset);
+
+              if (revidx < linebytes) {
+                byteidx = chunkindex + revidx;
+              }
+            }
+
+            var byteval = chunk[byteidx];
+
+            if (useColor) {
+              var c = getColor(byteval);
+              if (c != activeHexColor) {
+                line = line + c;
+                activeHexColor = c;
+              }
+            }
+
+            if (opts["bitsmode"]) {
+              line = line + toBits(byteval);
+            } else {
+              line = line + byteval.hex(2, false);
+            }
+          } else {
+            if (useColor and activeHexColor != "") {
+              line = line + Color.RESET;
+              activeHexColor = "";
+            }
+
+            if (opts["bitsmode"]) {
+              line = line + "        ";
+            } else {
+              line = line + "  ";
+            }
+          }
+          
+          if (opts["groupsize"] > 0 and (b + 1) % opts["groupsize"] == 0 and b < cols - 1) {
+            line = line + " ";
+          }
+        }
+
+        if (useColor and activeHexColor != "") {
+          line = line + Color.RESET;
+          activeHexColor = "";
+        }
+
+        // 3. ASCII Sidebar Loop
+        var asciisidebar = "";
+        var activeAsciiColor = "";
+
+        for (var b = 0; b < linebytes; b += 1) {
+          var realbyte = chunk[chunkindex + b];
+          var charstr = ".";
+          if (realbyte >= 32 and realbyte <= 126) {
+            charstr = chr(realbyte);
+          }
+
+          if (useColor) {
+            var c = getColor(realbyte);
+            if (c != activeAsciiColor) {
+              asciisidebar = asciisidebar + c;
+              activeAsciiColor = c;
+            }
+          }
+          asciisidebar = asciisidebar + charstr;
+        }
+
+        if (useColor and activeAsciiColor != "") {
+          asciisidebar = asciisidebar + Color.RESET;
+        }
+
+        writeline(line + " " + asciisidebar);
+        totaloffset = totaloffset + linebytes;
+        chunkindex = chunkindex + cols;
+      }
+
+    }
+
+    infile.close();
+    if (outfile != nil) outfile.close();
+  }
+}
+
+var parser = ArgParser("xxd.lox", "xxd in slox");
+parser.addOption("output", "o", "STDOUT", "Output file (default: stdout)");
+parser.addOption("groupsize", "g", nil, "Bytes per group");
+parser.addFlag("little-endian", "e", "Little-endian dump");
+parser.addFlag("bits", "b", "Bit/Binary dump");
+parser.addFlag("include", "i", "C include style output");
+parser.addFlag("nocolor", "n", "Turn off color");
+
+var opts = parser.parse(System.ARGS);
+
+if (opts.positionals.length() < 1) {
+  print "Usage: xxd [options] <input_file>";
+  System.exit(1);
+}
+
+var config = {
+  "inputfile": opts.positionals[0],
+  "outputfile": opts.get("output"),
+  "bitsmode": opts.get("bits"),
+  "littleendian": opts.get("little-endian"),
+  "includemode": opts.get("include"),
+  "groupsize": 2,
+  "color": !opts.get("nocolor")
+};
+
+var customGroup = opts.get("groupsize");
+if (customGroup != nil) {
+  config["groupsize"] = Number(customGroup);
+} else if (config["bitsmode"]) {
+  config["groupsize"] = 1;
+} else if (config["littleendian"]) {
+  config["groupsize"] = 4;
+}
+
+runXXD(config);

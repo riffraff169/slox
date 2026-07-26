@@ -779,7 +779,13 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
         if (tableGet(&instance->fields, name, result)) {
             return PROP_FOUND;
         }
+    } else if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        if (tableGet(&klass->fields, name, result)) {
+            return PROP_FOUND;
+        }
     }
+
 
     // 1b. class constants pipeline
     ObjClass* constClass = NULL;
@@ -1166,6 +1172,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.includePathCount = 0;
 
+    vm.debugPrintCode = false;
+    vm.debugTraceExecution = false;
+
     initTable(&vm.globals);
     initTable(&vm.strings);
     initTable(&vm.globalConstants);
@@ -1298,9 +1307,6 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initSetClass(); //done
     initIOClass(); // done
     initStructClass(); //
-
-    vm.debugPrintCode = false;
-    vm.debugTraceExecution = false;
 
     initValueArray(&vm.atExitHooks);
 

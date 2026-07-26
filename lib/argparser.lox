@@ -86,6 +86,7 @@ class ArgParser {
 
       print line + "\n\t" + opt.help + defaultInfo;
     }
+    //System.exit(1);
   }
 
   parse(args) {

@@ -1,0 +1,72 @@
+// color.lox
+
+class Color {
+  // Static ANSI Escape Codes
+  const ESC = chr(27);
+
+  const RESET     = chr(27) + "[0m";
+  const BOLD      = chr(27) + "[1m";
+  const DIM       = chr(27) + "[2m";
+
+  // Foreground Colors
+  const BLACK     = chr(27) + "[30m";
+  const RED       = chr(27) + "[31m";
+  const GREEN     = chr(27) + "[32m";
+  const YELLOW    = chr(27) + "[33m";
+  const BLUE      = chr(27) + "[34m";
+  const MAGENTA   = chr(27) + "[35m";
+  const CYAN      = chr(27) + "[36m";
+  const WHITE     = chr(27) + "[37m";
+
+  // Bright Foreground Colors
+  const BRIGHT_RED    = chr(27) + "[91m";
+  const BRIGHT_GREEN  = chr(27) + "[92m";
+  const BRIGHT_YELLOW = chr(27) + "[93m";
+  const BRIGHT_CYAN   = chr(27) + "[96m";
+
+  // Background Colors
+  const BG_RED    = chr(27) + "[41m";
+  const BG_GREEN  = chr(27) + "[42m";
+  const BG_YELLOW = chr(27) + "[43m";
+
+  // Map of template tag names to ANSI escape strings
+  const CODES = {
+    "reset":     Color.RESET,
+    "bold":      Color.BOLD,
+    "dim":       Color.DIM,
+    "red":       Color.RED,
+    "green":     Color.GREEN,
+    "yellow":    Color.YELLOW,
+    "blue":      Color.BLUE,
+    "magenta":   Color.MAGENTA,
+    "cyan":      Color.CYAN,
+    "white":     Color.WHITE,
+    "b_red":     Color.BRIGHT_RED,
+    "b_green":   Color.BRIGHT_GREEN,
+    "b_yellow":  Color.BRIGHT_YELLOW,
+    "b_cyan":    Color.BRIGHT_CYAN
+  };
+
+  // Replaces tags like "{red}" or "{bold}" with ANSI codes
+  format(template) {
+    var result = template;
+    
+    // We can iterate over static map keys if Map supports keys() / iterate,
+    // or manually chain replacements for known tags:
+    var tags = [
+      "reset", "bold", "dim", "red", "green", "yellow", 
+      "blue", "magenta", "cyan", "white", "b_red", "b_green"
+    ];
+
+    for (var i = 0; i < tags.length(); i += 1) {
+      var tag = tags[i];
+      var search = "{" + tag + "}";
+      if (result.contains(search)) {
+        result = result.split(search).join(Color.CODES[tag]);
+      }
+    }
+
+    // Always append reset at the end to prevent color bleed in terminal
+    return result + Color.RESET;
+  }
+}

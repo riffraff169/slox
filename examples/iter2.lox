@@ -1,7 +1,6 @@
-var a = {"father": "fred", "friend": "barney", "wife": "wilma"};
+var a = [1,2,3,4,5];
 print a;
 
-a.keys().each(fun(k) {
-  print "Key: ", k;
-  print "Value: ", a[k];
+a.each(fun(val) {
+  print val;
 });

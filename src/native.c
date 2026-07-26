@@ -605,7 +605,8 @@ void initCoreLibrary() {
     X("to_array", stringToarrayNative) \
     X("to_number", toNumberNative) \
     X("tokens", stringTokensNative) \
-    X("format", stringFormatNative)
+    X("format", stringFormatNative) \
+    X("tr", stringTrNative)
 
 Value stringTrimNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
@@ -922,6 +923,64 @@ Value stringFormatNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
+int expandSet(const char* set, int len, uint8_t* out) {
+    int outLen = 0;
+    for (int i = 0; i < len; i++) {
+        if (i + 2 < len && set[i + 1] == '-') {
+            uint8_t start = (uint8_t)set[i];
+            uint8_t end = (uint8_t)set[i + 2];
+            if (start <= end) {
+                for (uint8_t c = start; c <= end; c++) {
+                    out[outLen++] = c;
+                }
+            }
+            i += 2;
+        } else {
+            out[outLen++] = (uint8_t)set[i];
+        }
+    }
+    return outLen;
+}
+
+Value stringTrNative(int argCount, Value* args) {
+    if (argCount != 2 | !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("tr() expects two string arguments.");
+        return NIL_VAL;
+    }
+
+    ObjString* self = AS_STRING(args[-1]);
+    ObjString* fromStr = AS_STRING(args[0]);
+    ObjString* toStr = AS_STRING(args[1]);
+
+    uint8_t map[256];
+    for (int i = 0; i < 256; i++) {
+        map[i] = (uint8_t)i;
+    }
+
+    uint8_t fromChars[256];
+    uint8_t toChars[256];
+    int fromLen = expandSet(fromStr->chars, fromStr->length, fromChars);
+    int toLen = expandSet(toStr->chars, toStr->length, toChars);
+
+    if (fromLen == 0) {
+        return OBJ_VAL(self);
+    }
+
+    for (int i = 0; i < fromLen; i++) {
+        uint8_t src = fromChars[i];
+        uint8_t dst = (i < toLen) ? toChars[i] : toChars[toLen - 1];
+        map[src] = dst;
+    }
+
+    char* resultBuf = ALLOCATE(char, self->length + 1);
+    for (int i = 0; i < self->length; i++) {
+        resultBuf[i] = (char)map[(uint8_t)self->chars[i]];
+    }
+    resultBuf[self->length] = '\0';
+
+    return OBJ_VAL(takeString(resultBuf, self->length));
+}
+
 void initStringClass() {
     ObjString* empty = copyString("", 0);
     push(OBJ_VAL(empty));
@@ -939,6 +998,7 @@ void initStringClass() {
     X("has", mapHasNative) \
     X("remove", mapRemoveNative) \
     X("delete", mapRemoveNative) \
+    X("len", mapLenNative) \
     X("len", mapLenNative) \
     X("each", mapEachNative)
 
@@ -5108,6 +5168,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
             i += 2;
         } else if (strcmp(argv[i], "--no-stdlib") == 0 || strcmp(argv[i], "-n") == 0) {
             vm.noStdLib = true;
+            i++;
+        } else if (strcmp(argv[i], "--trace") == 0 || strcmp(argv[i], "-t") == 0) {
+            vm.debugTraceExecution = true;
             i++;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);

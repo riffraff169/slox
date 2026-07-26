@@ -1,0 +1,9 @@
+var cwd = Dir.getcwd();
+print "Cwd: " + cwd;
+
+Dir.chdir("lib", fun() {
+    print "Successful cd";
+    print "New cwd: " + Dir.getcwd();
+});
+
+print "Cwd: " + Dir.getcwd();
