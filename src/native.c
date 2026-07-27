@@ -5242,3 +5242,154 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
 
     popn(4);
 }
+
+static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+Value base64EncodeNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Base64.encode() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* str = AS_STRING(args[0]);
+    const unsigned char* data = (const unsigned char*)AS_CSTRING(args[0]);
+    int len = str->length;
+
+    if (len == 0) {
+        return OBJ_VAL(copyString("", 0));
+    }
+
+    int out_len = 4 * ((len + 2) / 3);
+    char* out = ALLOCATE(char, out_len + 1);
+
+    int j =0;
+    for (int i = 0; i < len; i += 3) {
+        uint32_t b0 = data[i];
+        uint32_t b1 = (i + 1 < len) ? data[i + 1] : 0;
+        uint32_t b2 = (i + 2 < len) ? data[i + 2] : 0;
+
+        uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
+
+        out[j++] = b64_table[(triple >> 18) & 63];
+        out[j++] = b64_table[(triple >> 12) & 63];
+        out[j++] = (i + 1 < len) ? b64_table[(triple >> 6) & 63] : '=';
+        out[j++] = (i + 2 < len) ? b64_table[triple & 63] : '=';
+    }
+    out[out_len] = '\0';
+
+    ObjString* result = takeString(out, out_len);
+    return OBJ_VAL(result);
+}
+
+static const int b64_decode_table[256] = {
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -3, -3, -1, -1, -3, -1, -1, // '\t' (9), '\n' (10), '\r' (13)
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63, // ' ' (32), '+' (43), '/' (47)
+    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -2, -1, -1, // '0'-'9' (48-57), '=' (61)
+    -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, // 'A'-'O' (65-79)
+    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1, // 'P'-'Z' (80-90)
+    -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // 'a'-'o' (97-111)
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, // 'p'-'z' (112-122)
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
+};
+
+Value base64DecodeNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Base64.decode() expects a string argument.");
+        return NIL_VAL;
+    }
+
+    ObjString* str = AS_STRING(args[0]);
+    const char* in = AS_CSTRING(args[0]);
+    int inLen = str->length;
+
+    if (inLen == 0) {
+        return OBJ_VAL(copyString("", 0));
+    }
+
+    if (inLen % 4 != 0) {
+        runtimeError("Invalid Base64 string length.");
+        return NIL_VAL;
+    }
+
+    size_t maxOutLen = (inLen / 4) * 3 + 3;
+    char* out = ALLOCATE(char, maxOutLen + 1);
+
+    size_t outLen = 0;
+    int group[4];
+    int groupSize = 0;
+
+    for (int i = 0; i < inLen; i++) {
+        unsigned char c = (unsigned char)in[i];
+        int val = b64_decode_table[c];
+
+        if (val == -3) continue;
+
+        if (val == -1) {
+            FREE_ARRAY(char, out, maxOutLen + 1);
+            runtimeError("Invalid character in Base64 string.");
+            return NIL_VAL;
+        }
+
+        group[groupSize++] = val;
+
+        if (groupSize == 4) {
+            int v0 = group[0];
+            int v1 = group[1];
+            int v2 = group[2];
+            int v3 = group[3];
+
+            if (v0 < 0 || v1 < 0) {
+                FREE_ARRAY(char, out, maxOutLen + 1);
+                runtimeError("Malformed Base64 padding or sequence.");
+                return NIL_VAL;
+            }
+
+            uint32_t triple = (v0 << 18) | (v1 << 12) | ((v2 < 0 ? 0 : v2) << 6) | (v3 < 0 ? 0 : v3);
+
+            out[outLen++] = (triple >> 16) & 0xff;
+
+            if (v2 >= 0) {
+                out[outLen++] = (triple >> 8) & 0xff;
+            }
+            if (v3 >= 0) {
+                out[outLen++] = triple & 0xff;
+            }
+            groupSize = 0;
+        }
+    }
+
+    if (groupSize != 0) {
+        FREE_ARRAY(char, out, maxOutLen + 1);
+        runtimeError("Truncated Base64 input string.");
+        return NIL_VAL;
+    }
+
+    out[outLen] = '\0';
+
+    size_t exactCapacity = outLen + 1;
+    out = GROW_ARRAY(char, out, maxOutLen + 1, exactCapacity);
+
+    ObjString* result = takeString(out, (int)outLen);
+    return OBJ_VAL(result);
+}
+
+void initBase64Class() {
+    ObjString* base64Name = copyString("Base64", 6);
+    push(OBJ_VAL(base64Name));
+    ObjClass* base64Class = newClass(base64Name);
+    push(OBJ_VAL(base64Class));
+
+    defineNativeMethod(base64Class, "encode", base64EncodeNative);
+    defineNativeMethod(base64Class, "decode", base64DecodeNative);
+
+    tableSet(&vm.globals, base64Name, OBJ_VAL(base64Class));
+}
+

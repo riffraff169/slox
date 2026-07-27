@@ -1307,6 +1307,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initSetClass(); //done
     initIOClass(); // done
     initStructClass(); //
+    initBase64Class();
 
     initValueArray(&vm.atExitHooks);
 

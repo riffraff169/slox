@@ -1,0 +1,67 @@
+import "image";
+
+fun displayImage(filepath) {
+  print GC.stats();
+  var img = Image.load(filepath);
+  if (img == nil) {
+    print "Failed to load image: " + filepath;
+    return;
+  }
+
+  var termSize = `stty size`.unwrap().split(" ");
+  var termRows = termSize[0];
+  var termCols = termSize[1];
+
+  print GC.stats();
+  print "Rendering " + filepath + " (" + img.width + "x" + img.height + ")...";
+
+  var rawBytes = img.get_bytes();
+  var clock1 = clock();
+  var b64Data = Base64.encode(rawBytes);
+  var clock2 = clock();
+  print clock2 - clock1;
+  print GC.stats();
+
+  var esc = chr(27);
+  var chunkSize = 4096;
+  var offset = 0;
+  var totalLen = b64Data.length();
+
+  var stream = "";
+
+  while (offset < totalLen) {
+    var end = offset + chunkSize;
+    if (end > totalLen) {
+      end = totalLen;
+    }
+
+    var chunk = b64Data.slice(offset, end);
+    var hasMore = "1";
+    if (end >= totalLen) {
+      hasMore = "0";
+    }
+
+    if (offset == 0) {
+      // First Chunk Control Parameters
+      // a=T      : Action = Transmit and Display
+      // f=32     : FOrmat = 32-bit RGBA
+      // s=w, v=h : Source dimensions in pixels
+      // c=cols   : Tell Wezterm to scale image to fit current terminal column width
+      // m=1/0    : 1 if more chunks follow, 0 on final chunk
+      var header = esc + "_Ga=T,f=32,s=" + img.width + ",v=" + img.height;
+      header = header + ",c=" + termCols + ",m=" + hasMore + ";" + chunk + esc + "\\";;
+      STDOUT.write(header);
+
+    } else {
+      var seq = esc + "_Gm=" + hasMore + ";" + chunk + esc + "\\";
+      STDOUT.write(seq);
+    }
+
+    offset += chunkSize;
+  }
+
+  print stream;
+  print GC.stats();
+}
+
+displayImage("earthmap.jpg");
