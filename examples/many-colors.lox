@@ -1,0 +1,59 @@
+require("color.lox");
+
+var width = 16;
+var height = 16;
+
+// ============================================================================
+// 1. Diagonal Gradient (Upper-Left to Lower-Right)
+// Blends from Cyan [0, 255, 255] down to Gold [255, 204, 0]
+// ============================================================================
+print "Diagonal Gradient (16x16):";
+
+var startR = 0;   var startG = 255; var startB = 255; // Cyan
+var endR   = 255; var endG   = 204; var endB   = 0;   // Gold
+
+var maxSteps = (width - 1) + (height - 1);
+
+for (var y = 0; y < height; y += 1) {
+  var line = "";
+  for (var x = 0; x < width; x += 1) {
+    // Progress factor t from 0.0 (top-left) to 1.0 (bottom-right)
+    var t = (x + y) / maxSteps;
+
+    // Linear interpolation coerced to integer via bitwise OR
+    var r = (startR + t * (endR - startR)) | 0;
+    var g = (startG + t * (endG - startG)) | 0;
+    var b = (startB + t * (endB - startB)) | 0;
+
+    line = line + Color.rgb(r, g, b, true) + "  ";
+  }
+  line = line + Color.RESET;
+  print line;
+}
+print "";
+
+// ============================================================================
+// 2. 2D Bilinear Color Surface (4-Corner Blend)
+// Top-Left: Magenta | Top-Right: Yellow
+// Bottom-Left: Blue  | Bottom-Right: Green
+// ============================================================================
+print "2D Bilinear Surface (16x16):";
+
+for (var y = 0; y < height; y += 1) {
+  var line = "";
+  for (var x = 0; x < width; x += 1) {
+    // Normalize coordinates to [0.0, 1.0]
+    var u = x / (width - 1);
+    var v = y / (height - 1);
+
+    // Calculate RGB channels across 2D plane
+    var r = (u * 255) | 0;
+    var g = (v * 255) | 0;
+    var b = ((1.0 - u) * 255) | 0;
+
+    line = line + Color.rgb(r, g, b, true) + "  ";
+  }
+  line = line + Color.RESET;
+  print line;
+}
+print "";

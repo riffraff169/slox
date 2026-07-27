@@ -1,0 +1,45 @@
+var esc = chr(27);
+
+// 1. Display System Colors (0-15)
+print "System colors:";
+
+var sysLine1 = "";
+for (var color = 0; color < 8; color += 1) {
+  sysLine1 = sysLine1 + esc + "[48;5;" + color + "m  ";
+}
+sysLine1 = sysLine1 + esc + "[0m";
+print sysLine1;
+
+var sysLine2 = "";
+for (var color = 8; color < 16; color += 1) {
+  sysLine2 = sysLine2 + esc + "[48;5;" + color + "m  ";
+}
+sysLine2 = sysLine2 + esc + "[0m";
+print sysLine2;
+print "";
+
+// 2. Display 6x6x6 Color Cube (16-231)
+print "Color cube, 6x6x6:";
+
+for (var green = 0; green < 6; green += 1) {
+  var line = "";
+  for (var red = 0; red < 6; red += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var color = 16 + (red * 36) + (green * 6) + blue;
+      line = line + esc + "[48;5;" + color + "m  ";
+    }
+    line = line + esc + "[0m ";
+  }
+  print line;
+}
+print "";
+
+// 3. Display Grayscale Ramp (232-255)
+print "Grayscale ramp:";
+
+var grayLine = "";
+for (var color = 232; color < 256; color += 1) {
+  grayLine = grayLine + esc + "[48;5;" + color + "m  ";
+}
+grayLine = grayLine + esc + "[0m";
+print grayLine;

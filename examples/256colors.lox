@@ -1,0 +1,75 @@
+var esc = chr(27);
+
+// Pre-computed RGB steps for the 6x6x6 color cube (int(0..5 * 42.5))
+var cubeSteps = [0, 42, 85, 127, 170, 212];
+
+// 1. Redefine palette colors via OSC 4 sequences
+var paletteInit = "";
+
+for (var red = 0; red < 6; red += 1) {
+  for (var green = 0; green < 6; green += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var colorNum = 16 + (red * 36) + (green * 6) + blue;
+      var rHex = cubeSteps[red].hex(2, false);
+      var gHex = cubeSteps[green].hex(2, false);
+      var bHex = cubeSteps[blue].hex(2, false);
+
+      paletteInit = paletteInit + esc + "]4;" + colorNum + ";rgb:" + rHex + "/" + gHex + "/" + bHex + esc + "\\";
+    }
+  }
+}
+
+for (var gray = 0; gray < 24; gray += 1) {
+  var level = (gray * 10) + 8;
+  var levelHex = level.hex(2, false);
+  var colorNum = 232 + gray;
+
+  paletteInit = paletteInit + esc + "]4;" + colorNum + ";rgb:" + levelHex + "/" + levelHex + "/" + levelHex + esc + "\\";
+}
+
+// Send palette configuration sequence to the terminal
+print paletteInit;
+
+// 2. Display System Colors (0-15)
+print "System colors:";
+
+var sysLine1 = "";
+for (var color = 0; color < 8; color += 1) {
+  sysLine1 = sysLine1 + esc + "[48;5;" + color + "m  ";
+}
+sysLine1 = sysLine1 + esc + "[0m";
+print sysLine1;
+
+var sysLine2 = "";
+for (var color = 8; color < 16; color += 1) {
+  sysLine2 = sysLine2 + esc + "[48;5;" + color + "m  ";
+}
+sysLine2 = sysLine2 + esc + "[0m";
+print sysLine2;
+print "";
+
+// 3. Display 6x6x6 Color Cube (16-231)
+print "Color cube, 6x6x6:";
+
+for (var green = 0; green < 6; green += 1) {
+  var line = "";
+  for (var red = 0; red < 6; red += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var color = 16 + (red * 36) + (green * 6) + blue;
+      line = line + esc + "[48;5;" + color + "m  ";
+    }
+    line = line + esc + "[0m ";
+  }
+  print line;
+}
+print "";
+
+// 4. Display Grayscale Ramp (232-255)
+print "Grayscale ramp:";
+
+var grayLine = "";
+for (var color = 232; color < 256; color += 1) {
+  grayLine = grayLine + esc + "[48;5;" + color + "m  ";
+}
+grayLine = grayLine + esc + "[0m";
+print grayLine;

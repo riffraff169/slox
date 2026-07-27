@@ -1,0 +1,38 @@
+require("color.lox");
+
+// ============================================================================
+// True Color 6x6x6 Cube using RGB Arrays & Color.makeColor()
+// ============================================================================
+var cubeSteps = [0, 95, 135, 175, 215, 255];
+
+print "True Color Cube (RGB Arrays):";
+
+for (var green = 0; green < 6; green += 1) {
+  var line = "";
+  for (var red = 0; red < 6; red += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var rgb = [cubeSteps[red], cubeSteps[green], cubeSteps[blue]];
+      
+      // Demonstrates passing an [R, G, B] array to Color.makeColor()
+      line = line + Color.makeColor(rgb, true) + "  ";
+    }
+    line = line + Color.RESET + " ";
+  }
+  print line;
+}
+print "";
+
+// ============================================================================
+// True Color Grayscale Ramp using Color.rgb()
+// ============================================================================
+print "True Color Grayscale Ramp:";
+
+var grayLine = "";
+for (var gray = 0; gray < 24; gray += 1) {
+  var level = (gray * 10) + 8;
+  
+  // Demonstrates direct RGB integers
+  grayLine = grayLine + Color.rgb(level, level, level, true) + "  ";
+}
+grayLine = grayLine + Color.RESET;
+print grayLine;

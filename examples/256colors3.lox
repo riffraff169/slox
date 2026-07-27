@@ -1,0 +1,22 @@
+require("color.lox");
+
+var cubeSteps = [0, 95, 135, 175, 215, 255]; // Standard xterm RGB step values
+
+print "True Color 6x6x6 Cube:";
+
+for (var green = 0; green < 6; green += 1) {
+  var line = "";
+  for (var red = 0; red < 6; red += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var r = cubeSteps[red];
+      var g = cubeSteps[green];
+      var b = cubeSteps[blue];
+
+      // Direct 24-bit background color escape
+      line = line + Color.rgb(r, g, b, true) + "  ";
+    }
+    line = line + Color.RESET + " ";
+  }
+  print line;
+}
+print Color.RESET;

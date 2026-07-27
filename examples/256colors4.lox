@@ -1,0 +1,54 @@
+require("color.lox");
+
+// ============================================================================
+// 1. System Colors (0 - 15)
+// Standard ANSI colors 0-7 and bright variants 8-15
+// ============================================================================
+print "System colors:";
+
+var sysLine1 = "";
+for (var color = 0; color < 8; color += 1) {
+  sysLine1 = sysLine1 + Color.palette(color, true) + "  ";
+}
+sysLine1 = sysLine1 + Color.RESET;
+print sysLine1;
+
+var sysLine2 = "";
+for (var color = 8; color < 16; color += 1) {
+  sysLine2 = sysLine2 + Color.palette(color, true) + "  ";
+}
+sysLine2 = sysLine2 + Color.RESET;
+print sysLine2;
+print "";
+
+// ============================================================================
+// 2. Color Cube 6x6x6 (16 - 231)
+// Standard 216-color RGB matrix
+// ============================================================================
+print "Color cube, 6x6x6:";
+
+for (var green = 0; green < 6; green += 1) {
+  var line = "";
+  for (var red = 0; red < 6; red += 1) {
+    for (var blue = 0; blue < 6; blue += 1) {
+      var colorNum = 16 + (red * 36) + (green * 6) + blue;
+      line = line + Color.palette(colorNum, true) + "  ";
+    }
+    line = line + Color.RESET + " ";
+  }
+  print line;
+}
+print "";
+
+// ============================================================================
+// 3. Grayscale Ramp (232 - 255)
+// 24 shades of gray from dark to light
+// ============================================================================
+print "Grayscale ramp:";
+
+var grayLine = "";
+for (var color = 232; color < 256; color += 1) {
+  grayLine = grayLine + Color.palette(color, true) + "  ";
+}
+grayLine = grayLine + Color.RESET;
+print grayLine;
