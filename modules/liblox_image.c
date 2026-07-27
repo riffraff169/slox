@@ -110,6 +110,30 @@ static Value nxGetPixel(int argCount, Value* args) {
     return pop();
 }
 
+static Value nxGetRawBytes(int argCount, Value* args) {
+    if (!IS_INSTANCE(args[-1])) {
+        runtimeError("get_bytes() must be called on an Image.Data instance.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* imgData = AS_INSTANCE(args[-1]);
+    if (imgData->foreignPtr == NULL) {
+        runtimeError("Image buffer is empty or has already been freed.");
+        return NIL_VAL;
+    }
+
+    Value wVal = NIL_VAL, hVal = NIL_VAL;
+    tableGet(&imgData->fields, copyString("width", 5), &wVal);
+    tableGet(&imgData->fields, copyString("height", 6), &hVal);
+
+    int w = (int)AS_NUMBER(wVal);
+    int h = (int)AS_NUMBER(hVal);
+    int totalBytes = w * h * 4;
+
+    ObjString* rawString = copyString((const char*)imgData->foreignPtr, totalBytes);
+    return OBJ_VAL(rawString);
+}
+
 static Value nxImageLoad(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("load() expects a path string.");
@@ -241,6 +265,11 @@ void lox_module_init(VM* vm) {
     ObjNative* setPixelFn = newNative(nxSetPixel);
     push(OBJ_VAL(setPixelFn));
     tableSet(&imageDataClass->methods, copyString("set_pixel", 9), OBJ_VAL(setPixelFn));
+    pop();
+
+    ObjNative* getRawBytesFn = newNative(nxGetRawBytes);
+    push(OBJ_VAL(getRawBytesFn));
+    tableSet(&imageDataClass->methods, copyString("get_bytes", 9), OBJ_VAL(getRawBytesFn));
     pop();
 
     //pop(); // [2] string

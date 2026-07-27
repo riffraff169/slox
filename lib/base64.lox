@@ -1,0 +1,125 @@
+class Base64 {
+  encode(data) {
+    var charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var result = "";
+    var lineBuffer = "";
+    var len = data.length();
+    var i = 0;
+
+    while (i < len) {
+      var b0 = data[i];
+      var b1 = 0;
+      var b2 = 0;
+
+      if (i + 1 < len) {
+        b1 = data[i + 1];
+      }
+      if (i + 2 < len) {
+        b2 = data[i + 2];
+      }
+
+      var triple = (b0 << 16) | (b1 << 8) | b2;
+
+      var c0 = (triple >> 18) & 63;
+      var c1 = (triple >> 12) & 63;
+      var c2 = (triple >> 6)  & 63;
+      var c3 = triple         & 63;
+
+      var char0 = chr(charset[c0]);
+      var char1 = chr(charset[c1]);
+      var char2 = "=";
+      var char3 = "=";
+
+      if (i + 1 < len) {
+        char2 = chr(charset[c2]);
+      }
+      if (i + 2 < len) {
+        char3 = chr(charset[c3]);
+      }
+
+      lineBuffer = lineBuffer + char0 + char1 + char2 + char3;
+
+      if (lineBuffer.length() >= 4096) {
+        result = result + lineBuffer;
+        lineBuffer = "";
+      }
+
+      i += 3;
+    }
+
+    if (lineBuffer.length() > 0) {
+      result = result + lineBuffer;
+    }
+    return result;
+  }
+
+  decode(data) {
+    var charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    var lookup = {};
+    for (var i = 0; i < 64; i += 1) {
+      var ascii = charset[i];
+      lookup[ascii] = i;
+    }
+
+    var result = "";
+    var lineBuffer = "";
+    var len = data.length();
+    var i = 0;
+
+    var eqCode = 61;
+
+    while (i < len) {
+      var a0 = data[i];
+      var a1 = data[i + 1];
+      var a2 = data[i + 2];
+      var a3 = data[i + 3];
+
+      var v0 = 0;
+      var v1 = 0;
+      var v2 = 0;
+      var v3 = 0;
+
+      if (lookup[a0]) {
+        v0 = lookup[a0];
+      }
+      if (lookup[a1]) {
+        v1 = lookup[a1];
+      }
+      if (lookup[a2]) {
+        v2 = lookup[a2];
+      }
+      if (lookup[a3]) {
+        v3 = lookup[a3];
+      }
+
+      var triple = (v0 << 18) | (v1 << 12) | (v2 << 6) | v3;
+
+      var b0 = (triple >> 16) & 255;
+      lineBuffer = lineBuffer + chr(b0);
+
+      if (a2 != eqCode) {
+        var b1 = (triple >> 8) & 255;
+        lineBuffer = lineBuffer + chr(b1);
+      }
+
+      if (a3 != eqCode) {
+        var b2 = triple & 255;
+        lineBuffer = lineBuffer + chr(b2);
+      }
+
+      if (lineBuffer.length() >= 4096) {
+        result = result + lineBuffer;
+        lineBuffer = "";
+      }
+
+      i += 4;
+    }
+
+    if (lineBuffer.length() > 0) {
+      result = result + lineBuffer;
+    }
+
+    return result;
+  }
+}

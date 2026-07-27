@@ -1196,7 +1196,7 @@ static void backtick(bool canAssign) {
     }
 
     emitConstant(OBJ_VAL(string));
-    emitInvoke("execute", 1);
+    emitInvoke("capture", 1);
 }
 
 static void lambda(bool canAssign);

@@ -77,6 +77,15 @@ class Color {
     return 0;
   }
 
+  palette(index, isBg = false) {
+    var mode = "38";
+    if (isBg) {
+      mode = "48";
+    }
+
+    return chr(27) + "[" + mode + ";5;" + index + "m";
+  }
+
   makeColor(val, isBg = false) {
     var r = 0;
     var g = 0;

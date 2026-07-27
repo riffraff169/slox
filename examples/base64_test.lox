@@ -1,0 +1,13 @@
+require("base64.lox");
+
+var original = "slox VM + stb_image + WezTerm!";
+
+var encoded = Base64.encode(original);
+print "Encoded: " + encoded;
+
+var decoded = Base64.decode(encoded);
+print "Decoded: " + decoded;
+
+if (original == decoded) {
+  print "Round-trip successful!";
+}
