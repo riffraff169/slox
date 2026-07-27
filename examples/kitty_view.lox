@@ -1,7 +1,7 @@
+require("argparser.lox");
 import "image";
 
 fun displayImage(filepath) {
-  print GC.stats();
   var img = Image.load(filepath);
   if (img == nil) {
     print "Failed to load image: " + filepath;
@@ -12,15 +12,10 @@ fun displayImage(filepath) {
   var termRows = termSize[0];
   var termCols = termSize[1];
 
-  print GC.stats();
   print "Rendering " + filepath + " (" + img.width + "x" + img.height + ")...";
 
   var rawBytes = img.get_bytes();
-  var clock1 = clock();
   var b64Data = Base64.encode(rawBytes);
-  var clock2 = clock();
-  print clock2 - clock1;
-  print GC.stats();
 
   var esc = chr(27);
   var chunkSize = 4096;
@@ -61,7 +56,15 @@ fun displayImage(filepath) {
   }
 
   print stream;
-  print GC.stats();
 }
 
-displayImage("earthmap.jpg");
+var parser = ArgParser("kitty_view.lox", "kitty protocol viewer");
+var opts = parser.parse(System.ARGS);
+
+if (opts.positionals.length() < 1) {
+  print "Usage: xxd [options] <input_file>";
+  System.exit(1);
+}
+
+//displayImage("earthmap.jpg");
+displayImage(opts.positionals[0]);
