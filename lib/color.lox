@@ -69,4 +69,72 @@ class Color {
     // Always append reset at the end to prevent color bleed in terminal
     return result + Color.RESET;
   }
+
+  hexCharVal(c) {
+    if (c >= 48 and c <= 57) return c - 48; // '0' - '9'
+    if (c >= 65 and c <= 70) return c - 55; // 'A' - 'F'
+    if (c >= 97 and c <= 102) return c - 87; // 'a' - 'f'
+    return 0;
+  }
+
+  makeColor(val, isBg = false) {
+    var r = 0;
+    var g = 0;
+    var b = 0;
+
+    if (typeof(val) == "Number") {
+      r = (val >> 16) & 255;
+      g = (val >> 8) & 255;
+      b = val & 255;
+    } else if (typeof(val) == "Array") {
+      r = val[0];
+      g = val[1];
+      b = val[2];
+    } else if (typeof(val) == "Map") {
+      if (val["red"]) {
+        r = val["red"];
+      } else if (val["r"]) {
+        r = val["r"];
+      }
+
+      if (val["green"]) {
+        g = val["green"];
+      } else if (val["g"]) {
+        g = val["g"];
+      }
+
+      if (val["blue"]) {
+        b = val["blue"];
+      } else if (val["b"]) {
+        b = val["b"];
+      }
+    } else if (typeof(val) == "String") {
+      var start = 0;
+      // skip leading '#' if present
+      if (val.length() > 0 and val[0] == 35) {
+        start = 1;
+      }
+
+      if (val.length() - start >= 6) {
+        r = (this.hexCharVal(val[start]) << 4) | this.hexCharVal(val[start + 1]);
+        g = (this.hexCharVal(val[start + 2]) << 4) | this.hexCharVal(val[start + 3]);
+        b = (this.hexCharVal(val[start + 4]) << 4) | this.hexCharVal(val[start + 5]);
+      }
+    }
+
+    var mode = "38"; // 38 = Foreground
+    if (isBg != nil and isBg) {
+      mode = "48"; // 48 = Background
+    }
+
+    return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
+  }
+
+  rgb(r,g,b, isBg) {
+    var mode = "38";
+    if (isBg != nil and isBg)
+      mode = "48";
+    return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
+  }
+
 }

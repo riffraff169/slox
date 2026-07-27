@@ -3858,10 +3858,19 @@ Value structPackNative(int argCount, Value* args) {
             Value currentVal = array->values[val_index];
 
             switch (type) {
-                case 'B': totalSize += 1;  break;
-                case 'H': totalSize += 2;  break;
-                case 'I': totalSize += 4;  break;
-                case 'Q': totalSize += 8;  break;
+                case 'B': 
+                case 'H':
+                case 'I':
+                case 'Q':
+                    if (!IS_NUMBER(currentVal)) {
+                        runtimeError("Expected number value for '%c' format specifier.", type);
+                        return NIL_VAL;
+                    }
+                    if (type == 'B') totalSize += 1;
+                    else if (type == 'H') totalSize += 2;
+                    else if (type == 'I') totalSize += 4;
+                    else if (type == 'Q') totalSize += 8;
+                    break;
                 case 's':
                       {
                           if (!IS_STRING(currentVal)) {
