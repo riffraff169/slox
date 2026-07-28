@@ -255,13 +255,13 @@ parser.addFlag("nocolor", "n", "Turn off color");
 
 var opts = parser.parse(System.ARGS);
 
-if (opts.positionals.length() < 1) {
+if (opts.args.length() < 1) {
   print "Usage: xxd [options] <input_file>";
   System.exit(1);
 }
 
 var config = {
-  "inputfile": opts.positionals[0],
+  "inputfile": opts.args[0],
   "outputfile": opts.get("output"),
   "bitsmode": opts.get("bits"),
   "littleendian": opts.get("little-endian"),

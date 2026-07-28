@@ -407,3 +407,11 @@ fun readExact(socket, targetLength) {
 
   return dataReceived;
 }
+
+class AssertionError < Error {}
+
+fun assert(expr, msg = "failed assertion") {
+  if (!expr) {
+    throw AssertionError(msg);
+  }
+}

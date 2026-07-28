@@ -1,0 +1,81 @@
+require("color.lox");
+
+class TestRunner {
+  init(suiteName) {
+    this.suiteName = suiteName;
+    this.total = 0;
+    this.passed = 0;
+    this.failed = 0;
+
+    STDOUT.write(Color.BOLD + "\n=== Running Suite: " + suiteName + " ===" + Color.RESET + "\n\n");
+  }
+
+  assertEqual(actual, expected, msg) {
+    if (actual != expected) {
+      var detail = "Expected '" + expected + "', got '" + actual + "'";
+      if (msg) detail = msg + " -> " + detail;
+      this.fail(detail);
+      return false;
+    }
+    return true;
+  }
+
+  assertTrue(condition, msg) {
+    if (!condition) {
+      var detail = "Expected condition to be true";
+      if (msg) detail = msg;
+      this.fail(detail);
+      return false;
+    }
+    return true;
+  }
+
+  assertContains(haystack, needle, msg) {
+    if (!haystack.contains(needle)) {
+      var detail = "'" + haystack + "' does not containt '" + needle + "'";
+      if (msg) detail = msg + " -> " + detail;
+      this.fail(detail);
+      return false;
+    }
+    return true;
+  }
+
+  test(name, testFunc) {
+    this.total = this.total + 1;
+    STDOUT.write("  " + Color.BOLD + "[RUN] " + Color.RESET + name + " ... ");
+
+    this.currentFailed = false;
+
+    testFunc(this);
+
+    if (this.currentFailed) {
+      this.failed = this.failed + 1;
+      STDOUT.write(Color.RED + "FAIL" + Color.RESET + "\n");
+    } else {
+      this.passed = this.passed + 1;
+      STDOUT.write(Color.GREEN + "PASS" + Color.RESET + "\n");
+    }
+  }
+
+  fail(message) {
+    this.currentFailed = true;
+    STDOUT.write("\n    " + Color.RED + "x " + message + Color.RESET + "\n        ");
+  }
+
+  summary() {
+    STDOUT.write("\n" + Color.BOLD + "--------------------------------------" + Color.RESET + "\n");
+    STDOUT.write("Results: ");
+    STDOUT.write(Color.GREEN + this.passed + " passed" + Color.RESET + ", ");
+
+    if (this.failed > 0) {
+      STDOUT.write(Color.RED + this.failed + " failed" + Color.RESET);
+    } else {
+      STDOUT.write("0 failed");
+    }
+
+    STDOUT.write(" (" + this.total + " total)\n\n");
+
+    return this.failed == 0;
+  }
+}
+

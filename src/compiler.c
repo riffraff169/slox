@@ -489,6 +489,7 @@ static void addLocal(Token name) {
     local->name = name;
     local->depth = -1;
     local->isCaptured = false;
+    local->isConst = false;
 }
 
 static void declareVariable() {
@@ -1575,6 +1576,7 @@ static void classDeclaration() {
 
         beginScope();
         addLocal(syntheticToken("super"));
+        current->locals[current->localCount - 1].isConst = true;
         defineVariable(0);
 
         namedVariable(className, false);

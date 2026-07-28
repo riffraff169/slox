@@ -16,7 +16,7 @@ if (args != nil) {
   print "Count:        " + args.get("count");
 
   print "\nPositional Arguments:";
-  for (var i = 0; i < args.positionals.length(); i += 1) {
-    print "  [" + i + "]: " + args.positionals[i];
+  for (var i = 0; i < args.args.length(); i += 1) {
+    print "  [" + i + "]: " + args.args[i];
   }
 }

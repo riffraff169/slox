@@ -61,10 +61,10 @@ fun displayImage(filepath) {
 var parser = ArgParser("kitty_view.lox", "kitty protocol viewer");
 var opts = parser.parse(System.ARGS);
 
-if (opts.positionals.length() < 1) {
+if (opts.args.length() < 1) {
   print "Usage: xxd [options] <input_file>";
   System.exit(1);
 }
 
 //displayImage("earthmap.jpg");
-displayImage(opts.positionals[0]);
+displayImage(opts.args[0]);
