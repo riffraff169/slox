@@ -1,0 +1,26 @@
+import "sqlite";
+
+class Sqlite {
+  with(path, callback) {
+    var db = Sqlite(path);
+    try {
+      callback(db);
+    } finally {
+      db.close();
+    }
+  }
+
+  transaction(callback) {
+    this.exec("BEGIN TRANSACTION;");
+    try {
+      var result = callback(this);
+      this.exec("COMMIT;");
+      return result;
+    } catch (e) {
+      this.exec("ROLLBACK;");
+      throw e;
+    }
+  }
+}
+
+
