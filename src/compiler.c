@@ -1839,7 +1839,9 @@ static void tryStatement() {
     int finallyJumpPlaceholder = currentChunk()->count;
     emitBytes(0xff, 0xff);
 
+    beginScope();
     block();
+    endScope();
 
     int endTryJump = emitJump(OP_END_TRY);
 
@@ -1929,9 +1931,12 @@ static void tryStatement() {
         finallyTarget = currentChunk()->count;
         consume(TOKEN_LEFT_BRACE, "Expect '{' before finally body.");
 
-        current->localCount = tryLocalCount;
+        //current->localCount = tryLocalCount;
 
+        beginScope();
         block();
+        endScope();
+
         emitByte(OP_END_FINALLY);
     }
 
