@@ -82,6 +82,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Fri  Jul 31 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.1-2
+- updated spec and Makefile
+
 * Fri  Jul 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.0-1
 - More features
 
