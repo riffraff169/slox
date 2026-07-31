@@ -46,7 +46,7 @@ update-spec:
 	sed -i 's/^Version:.*/Version:    $(VERSION)/' slox.spec
 	sed -i 's/^Release:.*/Release:    $(RELEASE)%{?dist}/' slox.spec
 
-dist: update-spec
+dist: #update-spec
 	@mkdir -p $(RPM_SOURCES)
 	tar --exclude-vcs --transform "s/^/slox-$(VERSION)\//" \
 		-czf $(RPM_SOURCES)/slox-$(VERSION).tar.gz \
