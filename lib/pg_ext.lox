@@ -1,0 +1,12 @@
+import "pg";
+
+class Postgres {
+  with(connStr, callback) {
+    var db = Postgres(connStr);
+    try {
+      callback(db);
+    } finally {
+      db.close();
+    }
+  }
+}

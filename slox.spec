@@ -55,7 +55,8 @@ cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
 
 cp examples/* %{buildroot}/usr/share/slox/examples
 cp -r tests/* %{buildroot}/usr/share/slox/tests
-cp scripts/* %{buildroot}//usr/share/slox/scripts/
+cp scripts/* %{buildroot}/usr/share/slox/scripts/
+cp docs/* %{buildroot}/usr/share/slox/
 
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftplugin
@@ -81,6 +82,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Fri  Jul 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.0-1
+- More features
+
 * Fri  Jul 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.1.0-1
 - Lots of tests added
 
