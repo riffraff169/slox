@@ -15,7 +15,7 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.3.0
+VERSION = 1.4.0
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
 MODULES = sha1 ssl
@@ -35,7 +35,7 @@ modules:
 	$(MAKE) -C $(MOD_DIR)
 
 $(MOD_SO): liblox_%.so; $(MOD_DIR)/liblox_%.c
-	@echo "Building m odule: %@"
+	@echo "Building module: %@"
 	$(CC) $(CFLAGS) $(MOD_CFLAGS) -shared -o  $@ $< $(MOD_LIBS)
 
 clean:

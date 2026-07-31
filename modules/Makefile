@@ -6,7 +6,7 @@ BEARSSL_A = $(BEARSSL_DIR)/build/libbearssl.a
 
 TARGET_DIR = .
 
-MODULE_TARGETS = $(TARGET_DIR)/liblox_sha1.so $(TARGET_DIR)/liblox_image.so $(TARGET_DIR)/liblox_gi.so $(TARGET_DIR)/liblox_sqlite.so
+MODULE_TARGETS = $(TARGET_DIR)/liblox_sha1.so $(TARGET_DIR)/liblox_image.so $(TARGET_DIR)/liblox_gi.so $(TARGET_DIR)/liblox_sqlite.so $(TARGET_DIR)/liblox_pg.so
 
 ifneq ($(wildcard BearSSL/src),)
 	MODULE_TARGETS += $(TARGET_DIR)/liblox_ssl.so
@@ -47,6 +47,10 @@ $(TARGET_DIR)/liblox_gi.so: liblox_gi.c
 $(TARGET_DIR)/liblox_sqlite.so: liblox_sqlite.c
 	@echo "Building standard module: $@"
 	$(CC) $(CFLAGS) -shared -o $@ $(LIBS) $< -lsqlite3
+
+$(TARGET_DIR)/liblox_pg.so: liblox_pg.c
+	@echo "Building standard module: $@"
+	$(CC) $(CFLAGS) -shared -o $@ $(LIBS) $< -lpq
 
 clean:
 	rm -f $(MODULE_TARGETS) *.d
