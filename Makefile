@@ -15,7 +15,8 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.4.0
+VERSION = 1.4.1
+RELEASE = 2
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
 MODULES = sha1 ssl
@@ -41,7 +42,11 @@ $(MOD_SO): liblox_%.so; $(MOD_DIR)/liblox_%.c
 clean:
 	rm -rf $(SRC_DIR)/*.o $(SRC_DIR)/*.d $(BIN_DIR)
 
-dist:
+update-spec:
+	sed -i 's/^Version:.*/Version:    $(VERSION)/' slox.spec
+	sed -i 's/^Release:.*/Release:    $(RELEASE)%{?dist}/' slox.spec
+
+dist: update-spec
 	@mkdir -p $(RPM_SOURCES)
 	tar --exclude-vcs --transform "s/^/slox-$(VERSION)\//" \
 		-czf $(RPM_SOURCES)/slox-$(VERSION).tar.gz \

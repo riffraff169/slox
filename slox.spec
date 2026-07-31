@@ -1,8 +1,8 @@
 %define debug_package %{nil}
 
 Name:       slox
-Version:    1.4.0
-Release:    1%{?dist}
+Version:    1.4.1
+Release:    2%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
 License:    MIT
