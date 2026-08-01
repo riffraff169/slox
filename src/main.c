@@ -99,6 +99,11 @@ char* locateAndReadLoxFile(const char* name) {
         }
     }
 
+    snprintf(pathBuffer, sizeof(pathBuffer), "/usr/lib64/slox/lib/%s", name);
+    if (access(pathBuffer, R_OK) == 0) {
+        return readFile(pathBuffer);
+    }
+
     snprintf(pathBuffer, sizeof(pathBuffer), "/usr/local/lib/slox/%s", name);
     if (access(pathBuffer, R_OK) == 0) {
         return readFile(pathBuffer);

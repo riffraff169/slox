@@ -312,6 +312,12 @@ void* locateAndLoadModule(const char* name) {
         }
     }
 
+    snprintf(pathBuffer, sizeof(pathBuffer), "/usr/lib64/slox/modules/%s", filename);
+    if (access(pathBuffer, F_OK) == 0) {
+        handle = dlopen(pathBuffer, RTLD_NOW | RTLD_GLOBAL);
+        if (handle) return handle;
+    }
+
     snprintf(pathBuffer, sizeof(pathBuffer), "/usr/local/lib/slox/modules/%s", filename);
     if (access(pathBuffer, F_OK) == 0) {
         handle = dlopen(pathBuffer, RTLD_NOW | RTLD_GLOBAL);
