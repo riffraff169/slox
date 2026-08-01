@@ -1,8 +1,11 @@
 %define debug_package %{nil}
+%bcond_without gtk
+%bcond_without sqlite
+%bcond_without postgres
 
 Name:       slox
-Version:    1.4.1
-Release:    2%{?dist}
+Version: 1.4.2
+Release: 2%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
 License:    MIT
@@ -14,6 +17,48 @@ BuildRequires:  make
 BuildRequires:  readline-devel
 BuildRequires:  pcre2-devel
 BuildRequires:  pkgconfig
+BuildRequires:  ca-certificates
+
+%description
+An optimized variant of the Lox VM featuring a recurseive descent serializer,
+custom native C modules, and a cascading search path for its standard library.
+
+# GTK4 / GObject Introspection Subpackage
+%if %{with gtk}
+%package gtk
+Summary:        GTK4 and GObject Introspection bindings for slox
+BuildRequires:  gobject-introspection-devel
+BuildRequires:  gtk4-devel
+Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+%description gtk
+Provideds the liblogx_gi.so native module for building graphical UI
+applications using GTK4 in slox.
+%endif
+
+# SQLite Subpackage
+%if %{with sqlite}
+%package sqlite
+Summary:        SQLite database bindings for slox
+BuildRequires:  sqlite-devel
+Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+%description sqlite
+Provides the liblox_sqlite.so native C module and sqlite_ext.lox
+helper library for slox.
+%endif
+
+# postgres
+%if %{with postgres}
+%package postgres
+Summary:        PostgreSQL database bindings for slox
+BuildRequires:  postgresql-devel
+Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+%description postgres
+Provides the liblox_pg.so native C module and pg_ext.lox
+helper library for slox.
+%endif
 
 %package vim
 Summary:        Vim support for the Lox programming language
@@ -27,36 +72,85 @@ for slox (.lox) source files
 # Disable standard RPM build-root policies that block installations to /usr/local
 %define _unpackaged_files_terminate_build 0
 
-%description
-An optimized variant of the Lox VM featuring a recurseive descent serializer,
-custom native C modules, and a cascading search path for its standard library.
-
 %prep
-%setup -q
+%autosetup
+
+#%setup -q
 
 %build
 # Compile both the binary target and the sub-modules via your root Makeifle
-make %{?_smp_mflags}
+#make %{?_smp_mflags}
+%make_build
 
 %install
 rm -rf %{buildroot}
+mkdir -p %{buildroot}%{_bindir}
+mkdir -p %{buildroot}%{_libdir}/slox/modules
+mkdir -p %{buildroot}%{_libdir}/slox/lib
+mkdir -p %{buildroot}%{_libdir}/slox/examples
+mkdir -p %{buildroot}%{_libdir}/slox/tests
+mkdir -p %{buildroot}%{_libdir}/slox/scripts
+mkdir -p %{buildroot}%{_docdir}/slox/
 
-mkdir -p %{buildroot}/usr/local/bin
-mkdir -p %{buildroot}/usr/local/lib/slox/modules
-mkdir -p %{buildroot}/usr/share/slox/examples
-mkdir -p %{buildroot}/usr/share/slox/tests
-mkdir -p %{buildroot}/usr/share/slox/scripts
+install -m 0755 bin/slox %{buildroot}%{_bindir}/slox
+install -m 0755 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules
+install -m 0755 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules
 
-install -m 0755 bin/slox %{buildroot}/usr/local/bin/slox
+if [ -f modules/liblox_ssl.so ]; then
+    install -m 0755 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
+fi
 
-cp lib/*.lox %{buildroot}/usr/local/lib/slox
+%if %{with gtk}
+if [ -f modules/liblox_gi.so ]; then
+    install -m 0755 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
+fi
+%endif
 
-cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
+%if %{with sqlite}
+if [ -f modules/liblox_sqlite.so ]; then
+    install -m 0755 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
+    #if [ -f modules/sqlite_ext.lox ]; then
+    #    install -m 00644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
+    #fi
+fi
+%endif
 
-cp examples/* %{buildroot}/usr/share/slox/examples
-cp -r tests/* %{buildroot}/usr/share/slox/tests
-cp scripts/* %{buildroot}/usr/share/slox/scripts/
-cp docs/* %{buildroot}/usr/share/slox/
+
+%if %{with postgres}
+if [ -f modules/liblox_pg.so ]; then
+    install -m 0755 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
+    #if [ -f modules/pg_ext.lox ]; then
+    #    install -m 00644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
+    #fi
+fi
+%endif
+
+cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
+
+# Core modules (always built)
+install -m 0755 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0755 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
+
+[ -f modules/liblox_ssl.so ] && install -m 0755 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
+[ -f modules/liblox_gi.so ] && install -m 0755 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
+
+# Database modules and Lox helpers
+if [ -f modules/liblox_sqlite.so ]; then
+    install -m 0755 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
+    [ -f modules/sqlite_ext.lox ] && install -m 0644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
+fi
+
+
+if [ -f modules/liblox_pg.so ]; then
+    install -m 0755 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
+    [ -f modules/pg_ext.lox ] && install -m 0644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
+fi
+#cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
+
+cp examples/* %{buildroot}%{_libdir}/slox/examples/
+cp -r tests/* %{buildroot}%{_libdir}/slox/tests/
+cp scripts/* %{buildroot}%{_libdir}/slox/scripts/
+cp docs/* %{buildroot}%{_docdir}/slox/
 
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftplugin
@@ -70,11 +164,34 @@ cp extras/lox-syntax.vim %{buildroot}%{_datadir}/vim/vimfiles/syntax/lox.vim
 rm -rf %{buildroot}
 
 %files
-/usr/local/bin/slox
-/usr/local/lib/slox/
-/usr/share/slox/
-
+%{_bindir}/slox
+%{_libdir}/slox/modules/liblox_sha1.so
+%{_libdir}/slox/modules/liblox_image.so
+%{_libdir}/slox/modules/liblox_ssl.so
+%{_libdir}/slox/lib/
+%{_libdir}/slox/examples/
+%{_libdir}/slox/tests/
+%{_libdir}/slox/scripts/
 %doc README.md
+%doc docs/*.md
+
+%if %{with gtk}
+%files gtk
+%{_libdir}/slox/modules/liblox_gi.so
+%endif
+
+%if %{with sqlite}
+%files sqlite
+%{_libdir}/slox/modules/liblox_sqlite.so
+%{_libdir}/slox/lib/sqlite_ext.lox
+%endif
+
+%if %{with postgres}
+%files postgres
+%{_libdir}/slox/modules/liblox_pg.so
+%{_libdir}/slox/lib/pg_ext.lox
+%endif
+
 
 %files vim
 %{_datadir}/vim/vimfiles/ftdetect/lox.vim
@@ -82,6 +199,15 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sat  Aug 01 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.2-2-1
+- more misc build changes
+
+* Sat  Aug 01 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.2-1-1
+- more misc build changes
+
+* Sat  Aug 01 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.2-1-1
+- more misc build changes
+
 * Fri  Jul 31 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.1-2
 - updated spec and Makefile
 

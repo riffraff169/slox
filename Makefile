@@ -15,7 +15,7 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.4.1
+VERSION = 1.4.2
 RELEASE = 2
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
@@ -33,11 +33,13 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 modules:
-	$(MAKE) -C $(MOD_DIR)
+	@chmod +x modules/build_modules.sh
+	@cd modules && ./build_modules.sh
+	#$(MAKE) -C $(MOD_DIR)
 
-$(MOD_SO): liblox_%.so; $(MOD_DIR)/liblox_%.c
-	@echo "Building module: %@"
-	$(CC) $(CFLAGS) $(MOD_CFLAGS) -shared -o  $@ $< $(MOD_LIBS)
+#$(MOD_SO): liblox_%.so; $(MOD_DIR)/liblox_%.c
+#	@echo "Building module: %@"
+#	$(CC) $(CFLAGS) $(MOD_CFLAGS) -shared -o  $@ $< $(MOD_LIBS)
 
 clean:
 	rm -rf $(SRC_DIR)/*.o $(SRC_DIR)/*.d $(BIN_DIR)

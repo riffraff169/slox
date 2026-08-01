@@ -1,0 +1,37 @@
+require("sqlite_ext.lox");
+
+Sqlite.with("test.db", fun(db) {
+    db.exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT);");
+
+    var inserted = db.exec("INSERT INTO users (name) VALUES (?);", ["riffraff"]);
+    print "Rows inserted: " + inserted;
+
+    var rows = db.exec("SELECT * FROM users WHERE name = ?;", ["riffraff"]);
+    rows.each(fun(row) {
+        print "ID: " + row["id"] + ", Name: " + row["name"];
+    });
+});
+
+Sqlite.with("test.db", fun(db) {
+    // success
+    db.transaction(fun(tx) {
+        tx.exec("INSERT INTO users (name) VALUES (?);", ["alice"]);
+        tx.exec("INSERT INTO users (name) VALUES (?);", ["bob"]);
+    });
+
+    print "After success: " + db.exec("SELECT COUNT(*) AS cnt FROM users;")[0]["cnt"];
+
+    // fail
+
+    try {
+      db.transaction(fun(tx) {
+          tx.exec("INSERT INTO users(name) VALUES (?);", ["charlie"]);
+          tx.exec("INVALID SQL QUERY HERE;");
+      });
+    } catch (e) {
+      print "Transaction failed and rolled back safely! Error: " + e.message;
+    }
+
+
+    print "After rollback: " + db.exec("SELECT COUNT(*) AS cnt FROM users;")[0]["cnt"];
+});

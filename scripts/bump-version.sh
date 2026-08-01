@@ -12,6 +12,7 @@ fi
 # 1. Update Makefile
 sed -i "s/^VERSION =.*/VERSION = $NEW_VER/" Makefile 2>/dev/null || \
 sed -i "s/^VERSION=.*/VERSION=$NEW_VER/" Makefile
+sed -i "s/^RELEASE =.*/RELEASE = $NEW_REL/" Makefile
 
 # 2. Update slox.spec Version line
 sed -i "s/^Version:.*/Version: $NEW_VER/" slox.spec

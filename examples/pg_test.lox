@@ -1,0 +1,12 @@
+require("pg_ext.lox");
+
+Postgres.with("postgresql://riffraff:secret@localhost:5432/mydb", fun(db) {
+    db.query("CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, name TEXT);");
+
+    db.query("INSERT INTO items (name) VALUES ($1);", ["Widget A"]);
+
+    var rows = db.query("SELECT * FROM items WHERE name = $1;", ["Widget A"]);
+    rows.each(fun(row) {
+        print "ID: " + row["id"] + " | Name: " + row["name"];
+    });
+});
