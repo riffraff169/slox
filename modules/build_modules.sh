@@ -99,6 +99,16 @@ else
     SKIPPED+=("postgres (postgresql-devel / libpq missing)")
 fi
 
+if pkg-config --exists yaml-0.1 2>/dev/null; then
+    YAML_CFLAGS=$(pkg-config --cflags yaml-0.1)
+    YAML_LIBS=$(pkg-config --libs yaml-0.1)
+    compile_mod "yaml" "liblox_yaml.c" "$TARGET_DIR/liblox_yaml.so" $YAML_CFLAGS $YAML_LIBS
+elif [ -f /usr/include/yaml.h ];then
+    compile_mod "yaml" "liblox_yaml.c" "$TARGET_DIR/liblox_yaml.so" "-lyaml"
+else
+    SKIPPED+=("yaml (libyaml-devel missing)")
+fi
+
 # -------------------------------------------------------------------
 # Summary Output
 # -------------------------------------------------------------------
