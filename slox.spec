@@ -2,6 +2,7 @@
 %bcond_without gtk
 %bcond_without sqlite
 %bcond_without postgres
+%bcond_without yaml
 
 Name:       slox
 Version: 1.4.3
@@ -58,6 +59,18 @@ Requires:       %{name}%{?_isa} = %{version}-%{release}
 %description postgres
 Provides the liblox_pg.so native C module and pg_ext.lox
 helper library for slox.
+%endif
+
+# yaml
+%if %{with yaml}
+%package yaml
+Summary:        YAML parsing bindings for lox
+BuildRequires:  libyaml-devel
+Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+%description yaml
+Provides the liblox_yaml.so native module for reading and parsing
+YAML configuration files
 %endif
 
 %package vim
@@ -123,6 +136,10 @@ if [ -f modules/liblox_pg.so ]; then
     #    install -m 00644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
     #fi
 fi
+%endif
+
+%if %{with yaml}
+[ -f modules/liblox_yaml.so ] && install -m 0755 modules/liblox_yaml.so  %{buildroot}%{_libdir}/slox/modules/
 %endif
 
 cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
@@ -192,6 +209,10 @@ rm -rf %{buildroot}
 %{_libdir}/slox/lib/pg_ext.lox
 %endif
 
+%if %{with yaml}
+%files yaml
+%{_libdir}/slox/modules/liblox_yaml.so
+%endif
 
 %files vim
 %{_datadir}/vim/vimfiles/ftdetect/lox.vim
