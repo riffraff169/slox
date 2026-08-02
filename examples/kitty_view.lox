@@ -1,3 +1,4 @@
+#!/usr/bin/env slox
 require("argparser.lox");
 import "image";
 
@@ -8,11 +9,44 @@ fun displayImage(filepath) {
     return;
   }
 
-  var termSize = `stty size`.unwrap().split(" ");
-  var termRows = termSize[0];
-  var termCols = termSize[1];
+  var rawSize = `stty size`.unwrap().trim().split(" ");
+  var cleanSize = [];
+  for (var i = 0; i < rawSize.length(); i += 1) {
+    if (rawSize[i].length() > 0) {
+      cleanSize.push(rawSize[i]);
+    }
+  }
+
+  var termRows = 24;
+  var termCols = 80;
+  if (cleanSize.length() > 0)
+    termRows = Number(cleanSize[0]);
+  if (cleanSize.length() > 1)
+    termCols =  Number(cleanSize[1]);
+
+  var maxRows = termRows - 2;
+  var maxCols = termCols - 1;
+
+  var cellRation = 2.0;
+  var imgAspect = img.width / img.height;
+  var colsPerRow = imgAspect * cellRation;
+
+  var targetCols = maxCols;
+  var targetRows = (maxCols / colsPerRow);
+
+  if (targetRows > maxRows) {
+    targetRows = maxRows;
+    targetCols = maxRows * colsPerRow;
+  }
+
+  var c = targetCols.floor();
+  var r = targetRows.floor();
+
+  if (c < 1) c = 1;
+  if (r < 1) r = 1;
 
   print "Rendering " + filepath + " (" + img.width + "x" + img.height + ")...";
+  //print "Terminal size: '" + termCols + "'x'" + termRows + "'";
 
   var rawBytes = img.get_bytes();
   var b64Data = Base64.encode(rawBytes);
@@ -39,12 +73,12 @@ fun displayImage(filepath) {
     if (offset == 0) {
       // First Chunk Control Parameters
       // a=T      : Action = Transmit and Display
-      // f=32     : FOrmat = 32-bit RGBA
+      // f=32     : Format = 32-bit RGBA
       // s=w, v=h : Source dimensions in pixels
       // c=cols   : Tell Wezterm to scale image to fit current terminal column width
       // m=1/0    : 1 if more chunks follow, 0 on final chunk
       var header = esc + "_Ga=T,f=32,s=" + img.width + ",v=" + img.height;
-      header = header + ",c=" + termCols + ",m=" + hasMore + ";" + chunk + esc + "\\";;
+      header = header + ",c=" + c + ",r=" + r + ",m=" + hasMore + ";" + chunk + esc + "\\";;
       STDOUT.write(header);
 
     } else {
@@ -62,7 +96,7 @@ var parser = ArgParser("kitty_view.lox", "kitty protocol viewer");
 var opts = parser.parse(System.ARGS);
 
 if (opts.args.length() < 1) {
-  print "Usage: xxd [options] <input_file>";
+  print "Usage: kitty_view.lox [options] <input_file>";
   System.exit(1);
 }
 

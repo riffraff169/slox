@@ -5,7 +5,7 @@
 
 Name:       slox
 Version: 1.4.2
-Release: 2%{?dist}
+Release: 3%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
 License:    MIT
@@ -199,6 +199,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sat  Aug 01 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.2-3-1
+- update load path for rpm libdir
+
 * Sat  Aug 01 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.2-2-1
 - more misc build changes
 
