@@ -33,6 +33,9 @@ printf "* %s %s - %s-1\n%s\n\n" "$CHG_DATE" "$USER_EMAIL" "$NEW_VER-$NEW_REL" "$
 sed -i '/^%changelog/r changelog.tmp' slox.spec
 rm changelog.tmp
 
+git add Makefile slox.spec
+git commit -m "Bump version to $NEW_VER-$NEW_REL"
+
 git tag -a "$TAG_NAME" -m "Version $NEW_VER"
 
 #echo "Version bumped to $NEW_VER in Makefile and slox.spec!"
