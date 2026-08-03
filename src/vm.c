@@ -1176,7 +1176,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.moduleCapacity = 0;
     vm.moduleHandles = NULL;
 
-    vm.includePathCount = 0;
+    vm.includePaths = NULL;
 
     vm.debugPrintCode = false;
     vm.debugTraceExecution = false;

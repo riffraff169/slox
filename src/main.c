@@ -67,6 +67,21 @@ char* readFile(const char* path) {
 char* locateAndReadLoxFile(const char* name) {
     char pathBuffer[PATH_MAX];
 
+    if (vm.includePaths == NULL) return NULL;
+
+    for (int i = 0; i < vm.includePaths->count; i++) {
+        Value val = vm.includePaths->values[i];
+        if (!IS_STRING(val)) continue;
+
+        ObjString* dir = AS_STRING(val);
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/%s", dir->chars, name);
+
+        if (access(pathBuffer, R_OK) == 0) {
+            return readFile(pathBuffer);
+        }
+    }
+
+    /*
     snprintf(pathBuffer, sizeof(pathBuffer), "./%s", name);
     if (access(pathBuffer, R_OK) == 0) {
         return readFile(pathBuffer);
@@ -109,6 +124,7 @@ char* locateAndReadLoxFile(const char* name) {
         return readFile(pathBuffer);
     }
 
+    */
     return NULL;
 }
 

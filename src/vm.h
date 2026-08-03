@@ -120,8 +120,7 @@ typedef struct {
 
     bool debugPrintCode;
     bool debugTraceExecution;
-    const char* includePaths[MAX_INCLUDE_PATHS];
-    int includePathCount;
+    ObjArray* includePaths;
     const char* scriptName;
 
     ValueArray atExitHooks;

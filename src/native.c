@@ -5152,6 +5152,54 @@ Value systemSleepNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value systemGetIncludesNative(int argCount, Value* args) {
+    return OBJ_VAL(vm.includePaths);
+}
+
+Value systemAddIncludeNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    arrayAppend(vm.includePaths, args[0]);
+    return BOOL_VAL(true);
+}
+
+Value systemRemoveIncludeNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjString* target = AS_STRING(args[0]);
+    ObjArray* currentPaths = vm.includePaths;
+    if (currentPaths == NULL) return BOOL_VAL(false);
+
+    ObjArray* filteredPaths = newArray();
+    push(OBJ_VAL(filteredPaths));
+
+    bool removed = false;
+    for (int i = 0; i < currentPaths->count; i++) {
+        Value val = currentPaths->values[i];
+        if (IS_STRING(val)) {
+            ObjString* str = AS_STRING(val);
+            if (str->length == target->length &&
+                    memcmp(str->chars, target->chars, target->length) == 0) {
+                removed = true;
+                break;
+            }
+        }
+        arrayAppend(filteredPaths, val);
+    }
+
+    pop();
+    if (removed) {
+        vm.includePaths = filteredPaths;
+        return BOOL_VAL(true);
+    }
+
+    return BOOL_VAL(false);
+}
+
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjString* systemName = copyString("System", 6);
     push(OBJ_VAL(systemName));
@@ -5171,12 +5219,32 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemClass, "strict", systemStrictNative);
     defineNativeMethod(systemClass, "warn", systemWarnNative);
     defineNativeMethod(systemClass, "sleep", systemSleepNative);
+    defineNativeMethod(systemClass, "get_includes", systemGetIncludesNative);
+    defineNativeMethod(systemClass, "add_include", systemAddIncludeNative);
+    defineNativeMethod(systemClass, "remove_include", systemRemoveIncludeNative);
 
-    vm.includePathCount = 0;
     vm.scriptName = NULL;
 
-    ObjArray* argsArray = newArray();
-    push(OBJ_VAL(argsArray));
+    vm.includePaths = newArray();
+
+    arrayAppend(vm.includePaths, OBJ_VAL(copyString(".", 1)));
+    arrayAppend(vm.includePaths, OBJ_VAL(copyString("./lib", 5)));
+
+    const char* home = getenv("HOME");
+    if (home != NULL) {
+        char pathBuf[PATH_MAX];
+
+        snprintf(pathBuf, sizeof(pathBuf), "%s/.local/share/slox/lib", home);
+        arrayAppend(vm.includePaths, OBJ_VAL(copyString(pathBuf, strlen(pathBuf))));
+    
+        snprintf(pathBuf, sizeof(pathBuf), "%s/.local/slox/lib", home);
+        arrayAppend(vm.includePaths, OBJ_VAL(copyString(pathBuf, strlen(pathBuf))));
+    }
+
+    const char* sysLib = "/usr/local/lib/slox";
+    arrayAppend(vm.includePaths, OBJ_VAL(copyString(sysLib, strlen(sysLib))));
+    sysLib = "/usr/lib64/slox/lib";
+    arrayAppend(vm.includePaths, OBJ_VAL(copyString(sysLib, strlen(sysLib))));
 
     int i = 1;
     while (i < argc && argv[i][0] == '-') {
@@ -5185,9 +5253,10 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
                 fprintf(stderr, "Error: -I option requires a directory path.\n");
                 exit(64);
             }
-            if (vm.includePathCount < 64) {
-                vm.includePaths[vm.includePathCount++] = argv[i + 1];
-            }
+            const char* path = argv[i + 1];
+
+            arrayAppend(vm.includePaths, OBJ_VAL(copyString(path, strlen(path))));
+
             i += 2;
         } else if (strcmp(argv[i], "--no-stdlib") == 0 || strcmp(argv[i], "-n") == 0) {
             vm.noStdLib = true;
@@ -5216,6 +5285,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     tableSet(&systemClass->fields, exeKey, OBJ_VAL(exeVal));
     pop(); // pop exeVal
     pop(); // pop exeKey
+
+    ObjArray* argsArray = newArray();
+    push(OBJ_VAL(argsArray));
 
     for (int j = i; j < argc; j++) {
         ObjString* argStr = copyString(argv[j], strlen(argv[j]));
