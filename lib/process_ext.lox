@@ -1,0 +1,7 @@
+class Process {
+  captureShell(cmd) {
+    var shellCmd = "bash -c \"" + cmd + "\"";
+
+    return Process.capture(shellCmd);
+  }
+}

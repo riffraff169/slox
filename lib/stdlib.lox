@@ -415,3 +415,24 @@ fun assert(expr, msg = "failed assertion") {
     throw AssertionError(msg);
   }
 }
+
+fun stringReplaceAll(str, target, replacement) {
+  if (target == "" or target == nil) return str;
+
+  var result  = "";
+  var current = str;
+  var targetLen = target.length();
+
+  while (true) {
+    var idx = current.find(target);
+    if (idx == -1 or idx == nil) {
+      result = result + current;
+      break;
+    }
+
+    result = result + current.slice(0, idx) + replacement;
+    current = current.slice(idx + targetLen, current.length());
+  }
+
+  return result;
+}

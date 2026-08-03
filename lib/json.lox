@@ -1,0 +1,17 @@
+class Json {
+  parse(jsonstr) {
+    if (jsonstr == nil or jsonstr.length() == 0) return nil;
+
+    var code = jsonstr;
+
+    code = stringReplaceAll(code, ": null", ": nil");
+    code = stringReplaceAll(code, ":null", ":nil");
+    code = stringReplaceAll(code, "[null", "[nil");
+    code = stringReplaceAll(code, ",null", ",nil");
+    code = stringReplaceAll(code, ", null", ", nil");
+
+    eval("var __json_res = " + code + ";");
+    return __json_res;
+  }
+}
+
