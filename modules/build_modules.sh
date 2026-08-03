@@ -22,12 +22,36 @@ compile_mod() {
     shift 3
     local flags=("$@")
 
-    echo "[+] Building $name ($out)..."
-    if $CC $CFLAGS $INC "$src" $LDFLAGS "${flags[@]}" -o "$out"; then
-        BUILT+=("$name")
+    local rebuild=false
+    if [ ! -f "$out" ]; then
+        rebuild=true
+    elif [ "$src" -nt "$out" ]; then
+        rebuild=true
     else
-        echo "    [!] Failed to compile $name"
-        SKIPPED+=("$name (compile error)")
+        for header in ../src/*.h; do
+            if [ "$header" -nt "$out" ]; then
+                rebuild=true
+                break
+            fi
+        done
+
+        if [ "$rebuild" = false ] && [ -f "TrustAnchors.h" ] && [ "TrustAnchors.h" -nt "$out" ]; then
+            echo rebuild 4
+            rebuild=true
+        fi
+    fi
+
+    if [ "$rebuild" = true ]; then
+        echo "[+] Building $name ($out)..."
+        if $CC $CFLAGS $INC "$src" $LDFLAGS "${flags[@]}" -o "$out"; then
+            BUILT+=("$name")
+        else
+            echo "    [!] Failed to compile $name"
+            SKIPPED+=("$name (compile error)")
+        fi
+    else
+        echo "[-] Skipping $name (up to date)"
+        SKIPPED+=("$name (up to date)")
     fi
 }
 
@@ -51,8 +75,22 @@ if [ -d "BearSSL/src" ]; then
     done
 
     if [ -n "$CA_BUNDLE" ]; then
-        echo "[+] Generating TrustAnchors.h from $CA_BUNDLE..."
-        BearSSL/build/brssl ta "$CA_BUNDLE" > TrustAnchors.h
+        gen_ta=false
+
+        if [ ! -f "TrustAnchors.h" ]; then
+            gen_ta=true
+        elif [ "$CA_BUNDLE" -nt "TrustAnchors.h" ]; then
+            gen_ta=true
+        elif [ "liblox_ssl.c" -nt "TrustAnchors.h" ]; then
+            gen_ta=true
+        fi
+
+        if [ "$gen_ta" = true ]; then
+            echo "[+] Generating TrustAnchors.h from $CA_BUNDLE..."
+            BearSSL/build/brssl ta "$CA_BUNDLE" > TrustAnchors.h
+        else
+            echo "[-] TrustAnchors.h is up to date."
+        fi
     fi
 
     SSL_FLAGS=(-IBearSSL/inc -DHAVE_BEARSSL -Wl,--whole-archive BearSSL/build/libbearssl.a -Wl,--no-whole-archive)
