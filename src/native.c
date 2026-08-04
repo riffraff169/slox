@@ -2055,12 +2055,12 @@ Value arraySliceNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
 
-    int start = (argCount >= 2 && IS_NUMBER(args[0])) ? (int)AS_NUMBER(args[0]) : 0;
+    int start = (argCount >= 1 && IS_NUMBER(args[0])) ? (int)AS_NUMBER(args[0]) : 0;
     if (start < 0) start = count + start;
     if (start < 0) start = 0;
     if (start > count) start = count;
 
-    int end = (argCount >= 3 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : count;
+    int end = (argCount >= 2 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : count;
     if (end < 0) end = count + end;
     if (end < 0) end = 0;
     if (end > count) end = count;

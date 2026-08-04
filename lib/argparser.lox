@@ -1,9 +1,10 @@
 class ArgOption {
-  init(name, shortName, isFlag, defaultValue, help) {
+  init(name, shortName, isFlag, defaultValue, help, optional = false) {
     this.name = name;
     this.shortName = shortName;
     this.isFlag = isFlag;
     this.defaultValue = defaultValue;
+    this.optional = optional;
     this.help = help;
   }
 }
@@ -39,8 +40,8 @@ class ArgParser {
     this.registerOption(opt);
   }
 
-  addOption(name, shortName, defaultValue, help) {
-    var opt = ArgOption(name, shortName, false, defaultValue, help);
+  addOption(name, shortName, defaultValue, help, optional = false) {
+    var opt = ArgOption(name, shortName, false, defaultValue, help, optional);
     this.registerOption(opt);
   }
 
@@ -79,14 +80,17 @@ class ArgParser {
         line = line + " <value>";
       }
 
-      var defaultInfo = "";
-      if (!opt.isFlag and opt.defaultValue != nil) {
-        defaultInfo = " (default: " + opt.defaultValue + ")";
+      var metaInfo = "";
+      if (!opt.isFlag) {
+        if (opt.defaultValue != nil) {
+          metaInfo = " (default: " + opt.defaultValue + ")";
+        } else if (!opt.optional) {
+          metaInfo = " [REQUIRED]";
+        }
       }
 
-      print line + "\n\t" + opt.help + defaultInfo;
+      print line + "\n\t" + opt.help + metaInfo;
     }
-    //System.exit(1);
   }
 
   parse(args) {
@@ -135,6 +139,15 @@ class ArgParser {
           parsed.args.push(arg);
           idx += 1;
         }
+      }
+    }
+
+    for (var i = 0; i < this.optionList.length(); i += 1) {
+      var opt = this.optionList[i];
+      if (!opt.optional and parsed.get(opt.name) == nil) {
+        print "Error: Missing required option '--" + opt.name + "'";
+        this.printHelp();
+        return nil;
       }
     }
     return parsed;
