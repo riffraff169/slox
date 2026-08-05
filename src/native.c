@@ -3134,6 +3134,21 @@ Value fileUnlinkNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+Value fileRenameNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        return BOOL_VAL(false);
+    }
+
+    const char* oldPath = AS_CSTRING(args[0]);
+    const char* newPath = AS_CSTRING(args[1]);
+
+    if (rename(oldPath, newPath) == 0) {
+        return BOOL_VAL(true);
+    }
+
+    return BOOL_VAL(false);
+}
+
 void initFileLibrary(){
     ObjString* fileName = copyString("File", 4);
     push(OBJ_VAL(fileName));
@@ -3157,6 +3172,7 @@ void initFileLibrary(){
     defineNativeMethod(fileClass, "chmod", fileChmodNative);
     defineNativeMethod(fileClass, "chown", fileChownNative);
     defineNativeMethod(fileClass, "unlink", fileUnlinkNative);
+    defineNativeMethod(fileClass, "rename", fileRenameNative);
 
     tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
