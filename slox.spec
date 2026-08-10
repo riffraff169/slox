@@ -5,7 +5,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.4.13
+Version: 1.4.14
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -220,6 +220,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Mon  Aug 10 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.14-1-1
+- assign if nil
+
 * Mon  Aug 10 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.13-1-1
 - added nil chaining
 
