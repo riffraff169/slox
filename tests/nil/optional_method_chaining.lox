@@ -1,0 +1,65 @@
+// --- Setup Test Classes ---
+class Account {
+  init(balance) {
+    this.balance = balance;
+  }
+
+  getBalance() {
+    return this.balance;
+  }
+
+  deposit(amount) {
+    this.balance = this.balance + amount;
+    return this.balance;
+  }
+}
+
+class User {
+  init(name, account) {
+    this.name = name;
+    this.account = account;
+  }
+
+  getName() {
+    return this.name;
+  }
+
+  getAccount() {
+    return this.account;
+  }
+}
+
+// Track side-effects to verify short-circuiting
+var sideEffectRan = false;
+fun triggerSideEffect() {
+  sideEffectRan = true;
+  return 100;
+}
+
+// --- Test 1: Valid object method call ---
+var user = User("Alice", Account(250));
+print "Test 1 (Valid method call):"; // expect: Test 1 (Valid method call):
+print user?.getName(); // expect: Alice
+
+// --- Test 2: Valid method call with arguments ---
+print "Test 2 (Valid method with args):"; // expect: Test 2 (Valid method with args):
+print user?.getAccount()?.deposit(50); // expect: 300
+
+// --- Test 3: Nil object method call ---
+var nilUser = nil;
+print "Test 3 (Nil target method call):"; // expect: Test 3 (Nil target method call):
+print nilUser?.getName(); // expect: nil
+
+// --- Test 4: Argument short-circuiting on nil target ---
+print "Test 4 (Short-circuit argument evaluation):"; // expect: Test 4 (Short-circuit argument evaluation):
+sideEffectRan = false;
+var result = nilUser?.getName(triggerSideEffect());
+
+print result;         // expect: nil
+print sideEffectRan;  // expect: false
+// (arguments must NOT evaluate at runtime!)
+
+// --- Test 5: Deep method chaining with nil mid-chain ---
+print "Test 5 (Deep chain with nil middle):"; // expect: Test 5 (Deep chain with nil middle):
+var userNoAccount = User("Bob", nil);
+print userNoAccount?.getAccount()?.getBalance(); // expect: nil

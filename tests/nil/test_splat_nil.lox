@@ -1,0 +1,39 @@
+// --- Setup Helper Class ---
+class Calculator {
+  addThree(a, b, c) {
+    return a + b + c;
+  }
+
+  sumArray(prefix, a, b, c) {
+    return prefix + ": " + (a + b + c);
+  }
+}
+
+// Side-effect tracker to verify argument short-circuiting
+var sideEffectRan = false;
+fun getSplatData() {
+  sideEffectRan = true;
+  return [10, 20, 30];
+}
+
+// --- Test 1: Valid instance + splat arguments ---
+print "Test 1 (Valid instance with splat):"; // expect: Test 1 (Valid instance with splat):
+var calc = Calculator();
+var nums = [5, 10, 15];
+
+print calc?.addThree(*nums); // expect: 30
+
+// --- Test 2: Valid instance + positional + splat arguments ---
+print "Test 2 (Positional + splat):"; // expect: Test 2 (Positional + splat):
+print calc?.sumArray("Total", *nums); // expect: Total: 30
+
+// --- Test 3: Nil instance + splat argument short-circuiting ---
+print "Test 3 (Nil instance with splat):"; // expect: Test 3 (Nil instance with splat):
+sideEffectRan = false;
+var nilCalc = nil;
+
+var result = nilCalc?.addThree(*getSplatData());
+
+print result;         // expect: nil
+print sideEffectRan;  // expect: false
+// (getSplatData() must NOT execute)
