@@ -890,6 +890,38 @@ static void number(bool canAssign) {
     emitConstant(NUMBER_VAL(value));
 }
 
+static void optionalDot(bool canAssign) {
+    consume(TOKEN_IDENTIFIER, "Expect property name after '?.");
+    int name = identifierConstant(&parser.previous);
+
+    int nilJump = emitJump(OP_JUMP_IF_NIL);
+
+    if (canAssign && match(TOKEN_EQUAL)) {
+        error("Cannot assign to optional chaining expression.");
+    } else if (match(TOKEN_LEFT_PAREN)) {
+        ArgResult args = argumentList();
+        if (name < 256) {
+            if (args.hasSplat) {
+                emitBytes(OP_INVOKE_SPLAT, (uint8_t)name);
+                emitByte((uint8_t)args.totalSlots);
+            } else {
+                emitBytes(OP_INVOKE, (uint8_t)name);
+                emitByte((uint8_t)args.totalSlots);
+            }
+        } else {
+            emitByte(OP_INVOKE_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+            emitByte(args.totalSlots);
+        }
+    } else {
+        emitGetProp(name);
+    }
+
+    patchJump(nilJump);
+}
+
 static void nullish(bool canAssign) {
     int nilJump = emitJump(OP_JUMP_IF_NIL);
     int endJump = emitJump(OP_JUMP);
@@ -1273,6 +1305,7 @@ ParseRule rules[] = {
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
     [TOKEN_QQ]               = {NULL,     nullish,PREC_NULLISH},
+    [TOKEN_Q_DOT]            = {NULL,     optionalDot, PREC_CALL},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
     [TOKEN_BACKTICK_STRING]  = {backtick, NULL,   PREC_NONE},
 //    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},

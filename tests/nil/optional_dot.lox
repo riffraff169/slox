@@ -1,0 +1,7 @@
+print nil ?? "default"; // expect: default
+print false ?? "default"; // expect: false
+print 0 ?? 100; // expect: 0
+print nil ?? nil ?? 42; // expect: 42
+
+var user = nil;
+print user?.address?.zipcode; // expect: nil

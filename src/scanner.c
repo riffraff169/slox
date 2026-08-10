@@ -577,6 +577,8 @@ Token scanToken() {
             return backtickString();
         case '?':
             if (match('?')) return makeToken(TOKEN_QQ);
+            if (match('.')) return makeToken(TOKEN_Q_DOT);
+            return makeToken(TOKEN_QUESTION);
     }
 
     return errorToken("Unexpected character.");
