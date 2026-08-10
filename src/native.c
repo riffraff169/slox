@@ -3549,15 +3549,25 @@ Value processRunStatic(int argCount, Value* args) {
 
     const char* command = AS_CSTRING(args[0]);
 
+    errno = 0;
     int status = system(command);
+    if (status == -1) {
+        // system() itself failed (eg failed to fork child process)
+        const char* errStr = errno != 0 ? strerror(errno) : "Failed to execute shell command";
+        return errorResult("%s", errStr);
+    }
 
 #ifdef WEXITSTATUS
-    if (status != -1) {
-        status = WEXITSTATUS(status);
-    }
+    int exitCode = WEXITSTATUS(status);
+#else
+    int exitCode = status;
 #endif
 
-    return okResult(NUMBER_VAL((double)status));
+    if (exitCode != 0) {
+        return errorResult("Command exited with code %d", exitCode);
+    }
+
+    return okResult(NUMBER_VAL(0.0));
 }
 
 Value processCaptureStatic(int argCount, Value* args) {
