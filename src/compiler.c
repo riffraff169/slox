@@ -19,6 +19,7 @@ typedef struct {
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,
+    PREC_TERNARY,
     PREC_OR,
     PREC_NULLISH,
     PREC_XOR,
@@ -680,6 +681,23 @@ static void call(bool canAssign) {
     }
 }
 
+static void ternary(bool canAssign) {
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+
+    emitByte(OP_POP);
+    parsePrecedence(PREC_TERNARY);
+
+    consume(TOKEN_COLON, "Expect ':' after 'then' branch of ternary operator.");
+
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(elseJump);
+    emitByte(OP_POP);
+    parsePrecedence(PREC_TERNARY);
+
+    patchJump(endJump);
+}
+
 static void dot(bool canAssign) {
     //consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
     // check if the next token is a standard identifier or our 'class' keyword
@@ -1306,6 +1324,7 @@ ParseRule rules[] = {
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
     [TOKEN_QQ]               = {NULL,     nullish,PREC_NULLISH},
     [TOKEN_Q_DOT]            = {NULL,     optionalDot, PREC_CALL},
+    [TOKEN_QUESTION]         = {NULL,     ternary,PREC_TERNARY},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
     [TOKEN_BACKTICK_STRING]  = {backtick, NULL,   PREC_NONE},
 //    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},
