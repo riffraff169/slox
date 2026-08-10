@@ -20,6 +20,7 @@ typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,
     PREC_OR,
+    PREC_NULLISH,
     PREC_XOR,
     PREC_AND,
     PREC_EQUALITY,
@@ -889,6 +890,17 @@ static void number(bool canAssign) {
     emitConstant(NUMBER_VAL(value));
 }
 
+static void nullish(bool canAssign) {
+    int nilJump = emitJump(OP_JUMP_IF_NIL);
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(nilJump);
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_NULLISH + 1);
+    patchJump(endJump);
+}
+
 static void or_(bool canAssign) {
     int endJump = emitJump(OP_JUMP_IF_TRUE);
 
@@ -1260,6 +1272,7 @@ ParseRule rules[] = {
     [TOKEN_WHILE]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ERROR]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EOF]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_QQ]               = {NULL,     nullish,PREC_NULLISH},
     [TOKEN_INTERPOLATION]    = {interpolation, NULL, PREC_NONE},
     [TOKEN_BACKTICK_STRING]  = {backtick, NULL,   PREC_NONE},
 //    [TOKEN_IMPORT]           = {import,   NULL, PREC_NONE},

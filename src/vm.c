@@ -2789,6 +2789,12 @@ InterpretResult run() {
                     frame->ip += offset;
                 }
                 break;
+            case OP_JUMP_IF_NIL:
+                {
+                    uint16_t offset = READ_SHORT();
+                    if (IS_NIL(peek(0))) frame->ip += offset;
+                }
+                break;
             case OP_JUMP_IF_FALSE:
                 {
                     uint16_t offset = READ_SHORT();

@@ -65,6 +65,7 @@ typedef enum {
     OP_END_TRY,
     OP_THROW,
     OP_JUMP,
+    OP_JUMP_IF_NIL,
     OP_JUMP_IF_FALSE,
     OP_JUMP_IF_TRUE,
     OP_LOOP,
