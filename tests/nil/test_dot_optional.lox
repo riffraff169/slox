@@ -1,0 +1,14 @@
+class A { 
+  init() { 
+    this.x = nil; 
+    this.y = 100;
+  } 
+}
+
+var a = A();
+
+print a.x ??= 12; // expect: 12
+print a.x;        // expect: 12
+
+print a.y ??= 42; // expect: 100
+print a.y;        // expect: 100

@@ -2816,6 +2816,14 @@ InterpretResult run() {
             case OP_DUP:
                 push(peek(0));
                 break;
+            case OP_SWAP:
+                {
+                    Value a = pop();
+                    Value b = pop();
+                    push(a);
+                    push(b);
+                }
+                break;
             case OP_INSTANCEOF:
                 {
                     Value klassVal = pop();

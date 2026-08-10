@@ -699,7 +699,6 @@ static void ternary(bool canAssign) {
 }
 
 static void dot(bool canAssign) {
-    //consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
     // check if the next token is a standard identifier or our 'class' keyword
     if (!match(TOKEN_IDENTIFIER) && !match(TOKEN_CLASS)) {
         error("Expect property name after '.'.");
@@ -711,23 +710,29 @@ static void dot(bool canAssign) {
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
         emitSetProp(name);
-        /*
-        if (name < 256) {
-            emitBytes(OP_SET_PROPERTY, (uint8_t)name);
-        } else {
-            emitByte(OP_SET_PROPERTY_LONG);
-            emitByte((uint8_t)((name >> 16) & 0xff));
-            emitByte((uint8_t)((name >> 8) & 0xff));
-            emitByte((uint8_t)(name & 0xff));
-        }
-        */
+    } else if (canAssign && match(TOKEN_QQ_EQUAL)) {
+        emitByte(OP_DUP);
+        emitGetProp(name);
+
+        int nilJump = emitJump(OP_JUMP_IF_NIL);
+
+        emitByte(OP_SWAP);
+        emitByte(OP_POP);
+        int endJump = emitJump(OP_JUMP);
+
+        patchJump(nilJump);
+        emitByte(OP_POP);
+
+        expression();
+        emitSetProp(name);
+
+        patchJump(endJump);
     } else if (canAssign && (match(TOKEN_PLUS_EQUAL) || match(TOKEN_MINUS_EQUAL) ||
                 match(TOKEN_STAR_EQUAL) || match(TOKEN_SLASH_EQUAL) ||
                 match(TOKEN_PERCENT_EQUAL))) {
         TokenType opType = parser.previous.type;
 
         emitByte(OP_DUP);
-        //emitBytes(OP_GET_PROPERTY, name);
         emitGetProp(name);
 
         expression();
@@ -760,16 +765,6 @@ static void dot(bool canAssign) {
         }
     } else {
         emitGetProp(name);
-        /*
-        if (name < 256) {
-            emitBytes(OP_GET_PROPERTY, (uint8_t)name);
-        } else {
-            emitByte(OP_GET_PROPERTY_LONG);
-            emitByte((uint8_t)((name >> 16) & 0xff));
-            emitByte((uint8_t)((name >> 8) & 0xff));
-            emitByte((uint8_t)(name & 0xff));
-        }
-        */
     }
 }
 
@@ -1071,6 +1066,23 @@ static void namedVariable(Token name, bool canAssign) {
         }
         expression();
         emitSetVar(setOp, arg);
+    } else if (canAssign && match(TOKEN_QQ_EQUAL)) {
+        if (isConst) {
+            error("Cannot reassign to a constant variable.");
+        }
+
+        emitGetVar(getOp, arg);
+
+        int nilJump = emitJump(OP_JUMP_IF_NIL);
+        int skipJump = emitJump(OP_JUMP);
+
+        patchJump(nilJump);
+        emitByte(OP_POP);
+
+        expression();
+        emitSetVar(setOp, arg);
+
+        patchJump(skipJump);
     } else if (canAssign && (match(TOKEN_PLUS_EQUAL) || match(TOKEN_MINUS_EQUAL) ||
                 match(TOKEN_STAR_EQUAL) || match(TOKEN_SLASH_EQUAL) ||
                 match(TOKEN_PERCENT_EQUAL))) {

@@ -318,6 +318,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return constantLongInstruction("OP_SETTER_LONG", chunk, offset);
         case OP_DUP:
             return simpleInstruction("OP_DUP", offset);
+        case OP_SWAP:
+            return simpleInstruction("OP_SWAP", offset);
         case OP_MAP:
             return byteInstruction("OP_MAP", chunk, offset);
         case OP_ARRAY:

@@ -8,6 +8,7 @@ typedef enum {
     OP_CONSTANT,
     OP_CONSTANT_LONG,
     OP_DUP,
+    OP_SWAP,
     OP_INSTANCEOF,
     OP_NIL,
     OP_TRUE,
