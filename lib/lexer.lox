@@ -1,0 +1,153 @@
+class Token {
+  init(type, text) {
+    this.type = type;
+    this.text = text;
+  }
+}
+
+class SloxLexer {
+  init(source) {
+    this.source = source;
+    this.start = 0;
+    this.current = 0;
+    this.len = source.length();
+
+    this.keywords = {
+      "var": "TYPE",
+      "const": "TYPE",
+      "class": "TYPE",
+      "fun": "TYPE",
+      "print": "TYPE",
+
+      "if": "CONTROL",
+      "else": "CONTROL",
+      "for": "CONTROL",
+      "while": "CONTROL",
+      "return": "CONTROL",
+      "break": "CONTROL",
+      "continue": "CONTROL",
+      "switch": "CONTROL",
+      "case": "CONTROL",
+      "default": "CONTROL",
+
+      "this": "MODIFIER",
+      "super": "MODIFIER",
+
+      "true": "LITERAL",
+      "false": "LITERAL",
+      "nil": "LITERAL"
+    };
+  }
+
+  isAtEnd() {
+    return this.current >= this.len;
+  }
+
+  advance() {
+    var c = this.source[this.current];
+    this.current = this.current + 1;
+    return c;
+  }
+
+  peek() {
+    if (this.isAtEnd()) return 0;
+    return this.source[this.current];
+  }
+
+  peekNext() {
+    if (this.current + 1 >= this.len) return 0;
+    return this.source[this.current + 1];
+  }
+
+  scanTokens() {
+    var tokens = [];
+    while (!this.isAtEnd()) {
+      this.start = this.current;
+      var token = this.scanToken();
+      if (token != nil) {
+        tokens.push(token);
+      }
+    }
+    return tokens;
+  }
+
+  scanToken() {
+    var c = this.advance();
+
+    if (c == ' ' or c == '\t' or c == '\r' or c == '\n') {
+      while (!this.isAtEnd() and (this.peek() == ' ' or this.peek() == '\t' or this.peek() == '\r' or this.peek() == '\n')) {
+        this.advance();
+      }
+      return Token("WHITESPACE", this.source.slice(this.start, this.current));
+    }
+
+    if (c == '{' or c == '}' or c == '(' or c == ')' or c == '[' or c == ']') {
+      return Token("BRACKET", this.source.slice(this.start, this.current));
+    }
+
+
+    if (c == '/') {
+      if (this.peek() == '/') {
+        // line comment
+        while (!this.isAtEnd() and this.peek() != '\n') {
+          this.advance();
+        }
+        return Token("COMMENT", this.source.slice(this.start, this.current));
+      } else if (this.peek() == '*') {
+        // block comment
+        this.advance();
+        while (!this.isAtEnd()) {
+          if (this.peek() == '*' and this.peekNext() == '/') {
+            this.advance();
+            this.advance();
+            break;
+          }
+          this.advance();
+        }
+        return Token("COMMENT", this.source.slice(this.start, this.current));
+      }
+    }
+
+    if (c == '"') {
+      while (!this.isAtEnd() and this.peek() != '"') {
+        if (this.peek() == '\\') this.advance();
+        this.advance();
+      }
+      if (!this.isAtEnd()) this.advance();
+      return Token("STRING", this.source.slice(this.start, this.current));
+    }
+
+    if (this.isDigit(c)) {
+      while (this.isDigit(this.peek())) this.advance();
+      if (this.peek() == '.' and this.isDigit(this.peekNext())) {
+        this.advance();
+        while (this.isDigit(this.peek())) this.advance();
+      }
+      return Token("NUMBER", this.source.slice(this.start, this.current));
+    }
+
+    if (this.isAlpha(c)) {
+      while (this.isAlphaNumeric(this.peek())) this.advance();
+      var text = this.source.slice(this.start, this.current);
+      var type = "IDENTIFIER";
+      if (this.keywords.has(text)) {
+        type = this.keywords[text];
+      }
+      return Token(type, text);
+    }
+
+    return Token("OPERATOR", this.source.slice(this.start, this.current));
+  }
+
+  isDigit(c) {
+    return c >= '0' and c <= '9';
+  }
+  
+  isAlpha(c) {
+    return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_';
+  }
+
+  isAlphaNumeric(c) {
+    return this.isAlpha(c) or this.isDigit(c);
+  }
+}

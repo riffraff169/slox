@@ -1,0 +1,82 @@
+require("lexer.lox");
+require("color.lox");
+
+class SloxColorizer {
+  escapeHtml(text) {
+    var out = text;
+    out = out.split("&").join("&amp;");
+    out = out.split("<").join("&lt;");
+    out = out.split(">").join("&gt;");
+    return out;
+  }
+
+  toTerminal(source) {
+    var lexer = SloxLexer(source);
+    var tokens = lexer.scanTokens();
+    var result = "";
+
+    var themes = {
+      "TYPE": "b_cyan",
+      "CONTROL": "b_yellow",
+      "MODIFIER": "magenta",
+      "LITERAL": "b_red",
+      "BRACKET": "white",
+      "STRING": "green",
+      "NUMBER": "cyan",
+      "COMMENT": "dim",
+      "OPERATOR": "white",
+      "IDENTIFIER": "reset"
+    };
+
+    for (var i = 0; i < tokens.length(); i += 1) {
+      var tok = tokens[i];
+      if (tok.type == "WHITESPACE") {
+        result = result + tok.text;
+      } else if (themes.has(tok.type)) {
+        var tag = themes[tok.type];
+        result = result + Color.CODES[tag] + tok.text + Color.RESET;
+      } else {
+        result = result + tok.text;
+      }
+    }
+    return result;
+  }
+
+  toHtml(source, standaloneDocument = false) {
+    var lexer = SloxLexer(source);
+    var tokens = lexer.scanTokens();
+    var body = "";
+
+    var styles = {
+      "TYPE":       "color: #569cd6; font-weight: bold;",
+      "CONTROL":    "color: #c586c0; font-weight: bold;",
+      "MODIFIER":   "color: #4ec9b0;",
+      "LITERAL":    "color: #569cd6;",
+      "BRACKET":    "color: #ffd700;",
+      "STRING":     "color: #ce9178;",
+      "NUMBER":     "color: #b5cea8;",
+      "COMMENT":    "color: #6a9955; font-style: italic;",
+      "OPERATOR":   "color: #d4d4d4;",
+      "IDENTIFIER": "color: #9cdcfe;"
+    };
+
+    for (var i = 0; i < tokens.length(); i += 1) {
+      var tok = tokens[i];
+      var escapedText = this.escapeHtml(tok.text);
+
+      if (tok.type == "WHITESPACE") {
+        body = body + escapedText;
+      } else if (styles.has(tok.type)) {
+        body = body + "<span style=\"" + styles[tok.type] + "\">" + escapedText + "</span>";
+      } else {
+        body = body + escapedText;
+      }
+    }
+
+    if (!standaloneDocument) return body;
+
+    return "<html>\n<head>\n" +
+      "<style>body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; padding: 1em: }</style>\n" +
+      "</head>\n<body>\n<pre>" + body + "</pre>\n</body>\n</html>";
+  }
+}

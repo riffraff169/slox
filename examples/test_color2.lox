@@ -1,0 +1,10 @@
+require("sloxcolorizer.lox");
+
+var sampleCode = File.load("test_color2.lox");
+
+// 1. Output directly to ANSI Terminal
+print SloxColorizer.toTerminal(sampleCode);
+
+// 2. Generate HTML File content
+var htmlOutput = SloxColorizer.toHtml(sampleCode, true);
+// Stdio.write_file("output.html", htmlOutput); // If your Slox VM has file write builtins

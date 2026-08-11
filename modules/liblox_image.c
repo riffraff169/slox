@@ -1,10 +1,15 @@
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include "vm.h"
+
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
+
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "stb/stb_image_resize2.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
 static ObjClass* imageDataClass = NULL;
@@ -108,6 +113,64 @@ static Value nxGetPixel(int argCount, Value* args) {
     arrayAppend(rgba, NUMBER_VAL(pixels[offset + 3]));  // a
 
     return pop();
+}
+
+static Value nxImageScale(int argCount, Value* args) {
+    if (argCount < 3 || !IS_INSTANCE(args[-1]) || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+        runtimeError("scale() expects (max_width, max_height).");
+        return NIL_VAL;
+    }
+
+    ObjInstance* imgObj = AS_INSTANCE(args[-1]);
+    unsigned char* data = (unsigned char*)imgObj->foreignPtr;
+    if (!data) return NIL_VAL;
+
+    int max_w = (int)AS_NUMBER(args[0]);
+    int max_h = (int)AS_NUMBER(args[1]);
+    if (max_w <= 0 || max_h <= 0) return args[-1];
+
+    Value wVal, hVal;
+    if (!tableGet(&imgObj->fields, copyString("width", 5), &wVal) ||
+            !tableGet(&imgObj->fields, copyString("height", 6), &hVal)) {
+        runtimeError("ImageData missing width or height fields.");
+        return NIL_VAL;
+    }
+
+    int w = (int)AS_NUMBER(wVal);
+    int h = (int)AS_NUMBER(hVal);
+
+    if (w <= max_w && h <= max_h) {
+        return args[-1];
+    }
+
+    double scale_w = (double)max_w / w;
+    double scale_h = (double)max_h / h;
+    double scale = (scale_w < scale_h) ? scale_w : scale_h;
+
+    int new_w = (int)(w * scale);
+    int new_h = (int)(h * scale);
+    if (new_w < 1) new_w = 1;
+    if (new_h < 1) new_h = 1;
+
+    unsigned char* new_data = (unsigned char*)malloc((size_t)new_w * new_h * 4);
+    if (!new_data) {
+        runtimeError("Failed to allcoate memory for scaled image.");
+        return NIL_VAL;
+    }
+
+    stbir_resize_uint8_linear(
+            data, w, h, 0,
+            new_data, new_w, new_h, 0,
+            STBIR_RGBA
+            );
+
+    stbi_image_free(data);
+    imgObj->foreignPtr = new_data;
+
+    tableSet(&imgObj->fields, copyString("width", 5), NUMBER_VAL(new_w));
+    tableSet(&imgObj->fields, copyString("height", 6), NUMBER_VAL(new_h));
+
+    return args[-1];
 }
 
 static Value nxGetRawBytes(int argCount, Value* args) {
@@ -272,6 +335,10 @@ void lox_module_init(VM* vm) {
     tableSet(&imageDataClass->methods, copyString("get_bytes", 9), OBJ_VAL(getRawBytesFn));
     pop();
 
+    ObjNative* scaleFn = newNative(nxImageScale);
+    push(OBJ_VAL(scaleFn));
+    tableSet(&imageDataClass->methods, copyString("scale", 5), OBJ_VAL(scaleFn));
+    pop();
     //pop(); // [2] string
     //pop(); // [1] instance
 }
