@@ -496,8 +496,17 @@ Value requireNative(int argCount, Value* args) {
 
     ObjString* path = AS_STRING(args[0]);
 
+    bool reload = false;
+    if (argCount >= 2) {
+        if (!IS_BOOL(args[1])) {
+            runtimeError("Second argument to require() must be a boolean.");
+            return NIL_VAL;
+        }
+        reload = AS_BOOL(args[1]);
+    }
+
     Value cachedRequire;
-    if (tableGet(&vm.requires, path, &cachedRequire)) {
+    if (!reload && tableGet(&vm.requires, path, &cachedRequire)) {
         return cachedRequire;
     }
 

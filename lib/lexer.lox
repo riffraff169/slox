@@ -10,7 +10,11 @@ class SloxLexer {
     this.source = source;
     this.start = 0;
     this.current = 0;
-    this.len = source.length();
+    if (source == nil) {
+      this.len = 0;
+    } else {
+      this.len = source.length();
+    }
 
     this.keywords = {
       "var": "TYPE",
@@ -29,6 +33,9 @@ class SloxLexer {
       "switch": "CONTROL",
       "case": "CONTROL",
       "default": "CONTROL",
+      "try": "CONTROL",
+      "catch": "CONTROL",
+      "finally": "CONTROL",
 
       "this": "MODIFIER",
       "super": "MODIFIER",
@@ -74,6 +81,7 @@ class SloxLexer {
   scanToken() {
     var c = this.advance();
 
+    // 1. whitespace and newlines
     if (c == ' ' or c == '\t' or c == '\r' or c == '\n') {
       while (!this.isAtEnd() and (this.peek() == ' ' or this.peek() == '\t' or this.peek() == '\r' or this.peek() == '\n')) {
         this.advance();
@@ -81,12 +89,17 @@ class SloxLexer {
       return Token("WHITESPACE", this.source.slice(this.start, this.current));
     }
 
+    // 2. brackets and delimiters
     if (c == '{' or c == '}' or c == '(' or c == ')' or c == '[' or c == ']') {
       return Token("BRACKET", this.source.slice(this.start, this.current));
     }
 
-
-    if (c == '/') {
+    // 3 comments or division
+    if (c == '#') {
+      while (!this.isAtEnd() and this.peek() != '\n') {
+        this.advance();
+      }
+    } else if (c == '/') {
       if (this.peek() == '/') {
         // line comment
         while (!this.isAtEnd() and this.peek() != '\n') {
@@ -108,6 +121,17 @@ class SloxLexer {
       }
     }
 
+    // 4a. raw strings
+    if ((c == 'r' or c == 'R') and this.peek() == '"') {
+      this.advance();
+      while (!this.isAtEnd() and this.peek() != '"') {
+        this.advance();
+      }
+      if (!this.isAtEnd()) this.advance();
+      return Token("STRING", this.source.slice(this.start, this.current));
+    }
+
+    // 4b. standard strings
     if (c == '"') {
       while (!this.isAtEnd() and this.peek() != '"') {
         if (this.peek() == '\\') this.advance();
@@ -117,11 +141,35 @@ class SloxLexer {
       return Token("STRING", this.source.slice(this.start, this.current));
     }
 
+    // 5. numbers (hex, octal, scientific)
     if (this.isDigit(c)) {
-      while (this.isDigit(this.peek())) this.advance();
-      if (this.peek() == '.' and this.isDigit(this.peekNext())) {
+      if (c == '0' and (this.peek() == 'x' or this.peek() == 'X')) {
         this.advance();
+        while (this.isHexDigit(this.peek())) this.advance();
+      } else if (c == '0' and (this.peek() == '0' or this.peek() == 'O')) {
+        this.advance(); 
+        while (this.isOctDigit(this.peek())) this.advance();
+      } else if (c == '0' and this.isDigit(this.peek())) {
+        while (this.isOctDigit(this.peek())) this.advance();
+      } else {
+        // standard decimal part
         while (this.isDigit(this.peek())) this.advance();
+        if (this.peek() == '.' and this.isDigit(this.peekNext())) {
+          this.advance();
+          while (this.isDigit(this.peek())) this.advance();
+        }
+
+        // scientific notation 1e10, 1.23e-4, 5e+2
+        if (this.peek() == 'e' or this.peek() == 'E') {
+          var next = this.peekNext();
+          if (this.isDigit(next) or next == '+' or next == '-') {
+            this.advance();
+            if (this.peek() == '+' or this.peek() == '-') {
+              this.advance();
+            }
+            while (this.isDigit(this.peek())) this.advance();
+          }
+        }
       }
       return Token("NUMBER", this.source.slice(this.start, this.current));
     }
@@ -137,6 +185,16 @@ class SloxLexer {
     }
 
     return Token("OPERATOR", this.source.slice(this.start, this.current));
+  }
+
+  isHexDigit(c) {
+    return (c >= '0' and c <= '9') or
+      (c >= 'a' and c <= 'f') or
+      (c >= 'A' and c <= 'F');
+  }
+
+  isOctDigit(c) {
+    return c >= '0' and c <= '7';
   }
 
   isDigit(c) {
