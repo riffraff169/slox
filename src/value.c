@@ -30,8 +30,49 @@ void freeValueArray(ValueArray* array) {
 }
 
 Value valueToString(Value value) {
+    // 1. fast path already a string
     if (IS_STRING(value)) {
         return value;
+    }
+
+    // 2. check if instance has a custom to_string method
+    if (IS_INSTANCE(value)) {
+        ObjInstance* instance = AS_INSTANCE(value);
+        Value method;
+
+        if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
+            int oldExitDepth = vm.nativeExitDepth;
+            Value* callbackStackStart = vm.stackTop;
+            int framesBefore = vm.frameCount;
+
+            push(value);
+
+            if (callValue(method, 0)) {
+                if (vm.frameCount > framesBefore) {
+                    vm.nativeExitDepth = framesBefore;
+                    InterpretResult result = run();
+
+                    if (result == INTERPRET_RUNTIME_ERROR) {
+                        vm.stackTop = callbackStackStart;
+                        vm.nativeExitDepth = oldExitDepth;
+                        return NIL_VAL; // return nil on runtime error
+                    }
+                }
+
+                Value resultVal = pop();
+                vm.nativeExitDepth = oldExitDepth;
+
+                if (IS_STRING(resultVal)) {
+                    return resultVal;
+                }
+
+                if (!valuesEqual(resultVal, value)) {
+                    return valueToString(resultVal);
+                }
+            }
+
+            vm.nativeExitDepth = oldExitDepth;
+        }
     }
 
     char* ptr = NULL;

@@ -461,6 +461,9 @@ fun isAlphaNumeric(c) {
 
 fun parseHex(str) {
   var val = 0;
+  if (str == nil) return 0;
+  if (isnumber(str))
+    return str;
   var len = str.length() ?? 0;
   if (len == 0) return 0;
   var start = 0;
