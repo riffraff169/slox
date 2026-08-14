@@ -2926,6 +2926,7 @@ InterpretResult run() {
 
                     Value receiver = peek(totalArgs);
 
+                    /*
                     if (!IS_INSTANCE(receiver)) {
                         RUNTIME_ERROR("Only instances have methods.");
                         break;
@@ -2935,6 +2936,12 @@ InterpretResult run() {
                     if (!invokeFromClass(instance->obj.klass, method, totalArgs)) {
                         RUNTIME_ERROR("Call failed.");
                         break;
+                    }
+                    */
+                    if (!invoke(method, totalArgs)) {
+                        RUNTIME_ERROR("Call failed.");
+                        break;
+                        //return INTERPRET_RUNTIME_ERROR;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
                 }

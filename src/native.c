@@ -2720,19 +2720,24 @@ Value fileLoadNative(int argCount, Value* args) {
 }
 
 Value fileSaveNative(int argCount, Value* args) {
-    if (argCount <= 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("File.read() expects (path, content).");
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("File.save() expects (path, content).");
         return NIL_VAL;
     }
 
     const char* path = AS_CSTRING(args[0]);
-    const char* content = AS_CSTRING(args[1]);
+    ObjString* content = AS_STRING(args[1]);
 
-    FILE* file = fopen(path, "w");
+    FILE* file = fopen(path, "wb");
     if (file == NULL) return errorResult("%s", "Unable to open file.");
 
-    fprintf(file, "%s", content);
+    size_t bytesWritten = fwrite(content->chars, sizeof(char), content->length, file);
     fclose(file);
+
+    if (bytesWritten < (size_t)content->length) {
+        return errorResult("%s", "Failed to write complete binary payload.");
+    }
+
     return okResult(BOOL_VAL(true));
 }
 
