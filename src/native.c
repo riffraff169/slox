@@ -1525,12 +1525,16 @@ Value mathMaxNative(int argCount, Value* args) {
 }
 
 Value mathParseNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[1])) return NIL_VAL;
+    if (argCount < 2 || !IS_STRING(args[0])) return NIL_VAL;
+    int base = 0;
+    if (argCount >= 2 && IS_NUMBER(args[1])) {
+        base = AS_NUMBER(args[1]);
+    }
 
-    const char* str = AS_CSTRING(args[1]);
+    const char* str = AS_CSTRING(args[0]);
     char* endptr;
 
-    unsigned long long result = strtoull(str, &endptr, 0);
+    unsigned long long result = strtoull(str, &endptr, base);
 
     if (str == endptr) return NIL_VAL;
 
@@ -1547,7 +1551,12 @@ Value fromHexNative(int argCount, Value* args) {
 }
 
 Value fromBinNative(int argCount, Value* args) {
-    return mathParseNative(argCount, args);
+    if (argCount != 1 || !IS_STRING(args[0])) return NIL_VAL;
+
+    const char* str = AS_CSTRING(args[0]);
+
+    uint32_t result = (uint32_t)strtoul(str, NULL, 2);
+    return NUMBER_VAL((double)result);
 }
 
 Value mathRoundNative(int argCount, Value* args) {

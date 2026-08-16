@@ -459,37 +459,6 @@ fun isAlphaNumeric(c) {
   return isAlpha(c) or isDigit(c);
 }
 
-fun parseHex(str) {
-  var val = 0;
-  if (str == nil) return 0;
-  if (isnumber(str))
-    return str;
-  var len = str.length() ?? 0;
-  if (len == 0) return 0;
-  var start = 0;
-
-  if (str[0] == '$') {
-    start = 1;
-  } else if (str.length() > 1 and str[0] == '0' and (str[1] == 'x' or str[1] == 'X')) {
-    start = 2;
-  }
-
-  for (var i = start; i < str.length(); i += 1) {
-    var c = str[i];
-
-    if (isDigit(c)) {
-      val = (val * 16) + (c - '0');
-    } else if (c >= 'a' and c <= 'f') {
-      val = (val * 16) + (c - 'a' + 10);
-    } else if (c >= 'A' and c <= 'F') {
-      val = (val * 16) + (c - 'A' + 10);
-    } else {
-      break;
-    }
-  }
-  return val;
-}
-
 fun parseBinary(str) {
   var val = 0;
   var len = str.length() ?? 0;
