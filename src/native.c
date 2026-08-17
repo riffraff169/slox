@@ -611,6 +611,7 @@ void initCoreLibrary() {
     X("length", stringLenNative) \
     X("split", stringSplitNative) \
     X("slice", stringSliceNative) \
+    X("substring", stringSliceNative) \
     X("to_array", stringToarrayNative) \
     X("to_number", toNumberNative) \
     X("tokens", stringTokensNative) \
