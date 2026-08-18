@@ -1,0 +1,93 @@
+class Modal {
+  init(parentPlane, title, message, options) {
+    this.parent = parentPlane;
+    this.title = title;
+    this.message = message;
+    this.options = options;
+    this.selected = 0;
+
+    // Centered modal dimensions (8 rows x 46 cols)
+    var height = 8;
+    var width = 46;
+    var y = 7;
+    var x = 17;
+
+    // Create a child plane that sits on top of parent content
+    this.plane = parentPlane.create_child(y, x, height, width);
+  }
+
+  draw() {
+    this.plane.erase();
+
+    // High-contrast warning/dialog styling (Slate background, Gold border)
+    this.plane.set_bgrgb(30, 41, 59);
+    this.plane.set_fgrgb(251, 191, 36);
+    this.plane.box();
+
+    // Render Title & Message text
+    this.plane.put_str_aligned(1, "center", this.title);
+    this.plane.set_fgrgb(241, 245, 249);
+    this.plane.put_str_aligned(3, "center", this.message);
+
+    // Render interactive action buttons on row 5
+    this.plane.set_fgrgb(56, 189, 248);
+    var buttonRow = "";
+    for (var i = 0; i < this.options.length(); i = i + 1) {
+      if (i == this.selected) {
+        buttonRow = buttonRow + " [" + this.options[i] + "] ";
+      } else {
+        buttonRow = buttonRow + "  " + this.options[i] + "  ";
+      }
+    }
+    this.plane.put_str_aligned(5, "center", buttonRow);
+  }
+
+  next() {
+    if (this.selected < this.options.length() - 1) {
+      this.selected = this.selected + 1;
+      this.draw();
+    }
+  }
+
+  prev() {
+    if (this.selected > 0) {
+      this.selected = this.selected - 1;
+      this.draw();
+    }
+  }
+
+  // Blocks until an option is chosen, destroys its plane, and returns the choice
+  show(nc) {
+    this.draw();
+    nc.render();
+
+    var choice = nil;
+    var active = true;
+
+    while (active) {
+      var key = nc.get_key();
+
+      if (key == "Left" or key == "h") {
+        this.prev();
+        nc.render();
+      } else if (key == "Right" or key == "l") {
+        this.next();
+        nc.render();
+      } else if (key == "Enter") {
+        choice = this.options[this.selected];
+        active = false;
+      } else if (key == "Escape" or key == "q") {
+        choice = nil; // Dialog canceled
+        active = false;
+      }
+    }
+
+    // Unbind and destroy the modal child plane
+    this.plane.destroy();
+    
+    // Refresh screen to expose the original parent content underneath
+    nc.render();
+
+    return choice;
+  }
+}

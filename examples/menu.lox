@@ -1,0 +1,69 @@
+class Menu {
+  init(parentPlane, y, x, width, title, items) {
+    this.parent = parentPlane;
+    this.y = y;
+    this.x = x;
+    this.width = width;
+    this.title = title;
+    this.items = items;
+    this.selected = 0;
+
+    // Allocate a dedicated child plane for the widget
+    // Height: top border (1) + title (1) + spacer (1) + items + bottom border (1)
+    var height = items.length() + 4;
+    this.plane = parentPlane.create_child(y, x, height, width);
+    
+    this.draw();
+  }
+
+  draw() {
+    this.plane.erase();
+
+    // Box frame & header styling (Dark slate background, Cyan border)
+    this.plane.set_bgrgb(15, 23, 42);
+    this.plane.set_fgrgb(56, 189, 248);
+    this.plane.box();
+
+    // Render centered title
+    this.plane.put_str_aligned(1, "center", this.title);
+
+    // Render menu items
+    for (var i = 0; i < this.items.length(); i = i + 1) {
+      var row = i + 3;
+
+      if (i == this.selected) {
+        // Highlight active item (Inverted Cyan badge)
+        this.plane.set_bgrgb(56, 189, 248);
+        this.plane.set_fgrgb(15, 23, 42);
+        this.plane.put_str_aligned(row, "center", " > " + this.items[i] + " < ");
+      } else {
+        // Unselected item
+        this.plane.set_bgrgb(15, 23, 42);
+        this.plane.set_fgrgb(226, 232, 240);
+        this.plane.put_str_aligned(row, "center", "   " + this.items[i] + "   ");
+      }
+    }
+  }
+
+  next() {
+    if (this.selected < this.items.length() - 1) {
+      this.selected = this.selected + 1;
+      this.draw();
+    }
+  }
+
+  prev() {
+    if (this.selected > 0) {
+      this.selected = this.selected - 1;
+      this.draw();
+    }
+  }
+
+  get_selected() {
+    return this.items[this.selected];
+  }
+
+  destroy() {
+    this.plane.destroy();
+  }
+}

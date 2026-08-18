@@ -1,0 +1,44 @@
+import "notcurses";
+
+require("menu.lox");
+require("modal.lox");
+
+var nc = Notcurses();
+var stdplane = nc.get_stdplane();
+
+// Draw main app screen content
+stdplane.set_fgrgb(148, 163, 184);
+stdplane.put_str(2, 4, "=== SERVER DASHBOARD ===");
+stdplane.put_str(4, 4, "Press [x] to execute system restart.");
+stdplane.put_str(5, 4, "Press [q] to exit application.");
+nc.render();
+
+var running = true;
+while (running) {
+  var key = nc.get_key();
+
+  if (key == "q") {
+    running = false;
+  } else if (key == "x") {
+    // Instantiate and popup the modal dialog over the active dashboard
+    var confirmModal = Modal(
+      stdplane, 
+      "CONFIRM SYSTEM RESTART", 
+      "Are you sure you want to reboot?", 
+      ["Confirm", "Cancel"]
+    );
+
+    // Execution blocks here until the user selects an option
+    var result = confirmModal.show(nc);
+
+    // Process the result returned by the modal
+    if (result == "Confirm") {
+      stdplane.put_str(8, 4, "Status: Rebooting server now...");
+    } else {
+      stdplane.put_str(8, 4, "Status: Reboot operation canceled. ");
+    }
+    nc.render();
+  }
+}
+
+nc.stop();

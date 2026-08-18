@@ -18,6 +18,11 @@ typedef struct {
     SloxNCContext* ctx;
 } SloxPlaneWrapper;
 
+#define GET_PLANE_OR_NIL(argIdx) \
+    ObjInstance* self = AS_INSTANCE(args[argIdx]); \
+    SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr; \
+    if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+
 void ncDestructor(ObjInstance* inst) {
     if (inst->foreignPtr) {
         SloxNCContext* ctx = (SloxNCContext*)inst->foreignPtr;
@@ -101,11 +106,33 @@ Value ncGetKey(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    if (key < 128) {
-        char buf[2] = {(char)key, '\0'};
-        return OBJ_VAL(copyString(buf, 1));
+    switch (key) {
+        case NCKEY_UP:      return OBJ_VAL(copyString("Up", 2));
+        case NCKEY_DOWN:    return OBJ_VAL(copyString("Down", 4));
+        case NCKEY_LEFT:    return OBJ_VAL(copyString("Left", 4));
+        case NCKEY_RIGHT:   return OBJ_VAL(copyString("Right", 5));
+        case NCKEY_ENTER:
+        case '\r':
+        case '\n':          return OBJ_VAL(copyString("Enter", 5));
+        case NCKEY_ESC:     return OBJ_VAL(copyString("Escape", 6));
+        case 127:
+        case '\b':          return OBJ_VAL(copyString("Backspace", 9));
+        case NCKEY_TAB:     return OBJ_VAL(copyString("Tab", 3));
+        case NCKEY_HOME:    return OBJ_VAL(copyString("Home", 4));
+        case NCKEY_END:     return OBJ_VAL(copyString("End", 3));
+        case NCKEY_PGUP:    return OBJ_VAL(copyString("PageUp", 6));
+        case NCKEY_PGDOWN:  return OBJ_VAL(copyString("PageDown", 8));
+        case NCKEY_DEL:     return OBJ_VAL(copyString("Delete", 6));
+        default: break;
     }
 
+    if (key < 0x110000 && key >= 32 && key != 127) {
+        char buf[5] = {0};
+        int len = wctomb(buf, (wchar_t)key);
+        if (len > 0) {
+            return OBJ_VAL(copyString(buf, len));
+        }
+    }
     return NUMBER_VAL((double)key);
 }
 
@@ -141,9 +168,12 @@ Value planeCreateChild(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+    GET_PLANE_OR_NIL(-1);
+    /*
     ObjInstance* self = AS_INSTANCE(args[-1]);
     SloxPlaneWrapper* parentPw = (SloxPlaneWrapper*)self->foreignPtr;
     if (!parentPw || parentPw->ctx->stopped || !parentPw->plane) return NIL_VAL;
+    */
 
     int y = (int)AS_NUMBER(args[0]);
     int x = (int)AS_NUMBER(args[1]);
@@ -157,13 +187,13 @@ Value planeCreateChild(int argCount, Value* args) {
         .cols = cols,
     };
 
-    struct ncplane* child = ncplane_create(parentPw->plane, &opts);
+    struct ncplane* child = ncplane_create(pw->plane, &opts);
     if (!child) return NIL_VAL;
 
     SloxPlaneWrapper* childPw = malloc(sizeof(SloxPlaneWrapper));
     childPw->plane = child;
-    childPw->ctx = parentPw->ctx;
-    parentPw->ctx->refCount++;
+    childPw->ctx = pw->ctx;
+    pw->ctx->refCount++;
 
     ObjInstance* childInst = newInstance(planeClass);
     childInst->foreignPtr = (void*)childPw;
@@ -178,15 +208,109 @@ Value planePutStr(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+    GET_PLANE_OR_NIL(-1);
+    /*
     ObjInstance* self = AS_INSTANCE(args[-1]);
     SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr;
     if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+    */
 
     int y = (int)AS_NUMBER(args[0]);
     int x = (int)AS_NUMBER(args[1]);
     const char* str = AS_CSTRING(args[2]);
 
     ncplane_putstr_yx(pw->plane, y, x, str);
+    return NIL_VAL;
+}
+
+// Plane.put_str_aligned(y, align, "text")
+Value planePutStrAligned(int argCount, Value* args) {
+    if (argCount < 3 || !IS_NUMBER(args[0]) || !IS_STRING(args[2])) {
+        return NIL_VAL;
+    }
+
+    GET_PLANE_OR_NIL(-1);
+    /*
+    ObjInstance* self = AS_INSTANCE(args[-1]);
+    SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr;
+    if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+    */
+
+    int y = (int)AS_NUMBER(args[0]);
+    const char* str = AS_CSTRING(args[2]);
+
+    ncalign_e align = NCALIGN_LEFT;
+
+    if (IS_STRING(args[1])) {
+        const char* alignStr = AS_CSTRING(args[1]);
+        if (strcmp(alignStr, "center") == 0) {
+            align = NCALIGN_CENTER;
+        } else if (strcmp(alignStr, "right") == 0) {
+            align = NCALIGN_RIGHT;
+        } else {
+            align = NCALIGN_LEFT;
+        }
+    } else if (IS_NUMBER(args[1])) {
+        align = (ncalign_e)AS_NUMBER(args[1]);
+    }
+
+    ncplane_putstr_aligned(pw->plane, y, align, str);
+    return NIL_VAL;
+}
+
+// Plane.box([ystop], [xstop])
+// if args are omitted, draws a border around the entire plane boundary
+Value planeBox(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    /*
+    ObjInstance* self = AS_INSTANCE(args[-1]);
+    SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr;
+    if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+    */
+
+    unsigned ystop = 0;
+    unsigned xstop = 0;
+
+    if (argCount >= 2 && IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
+        ystop = (unsigned)AS_NUMBER(args[0]);
+        xstop = (unsigned)AS_NUMBER(args[1]);
+    } else {
+        unsigned rows, cols;
+        ncplane_dim_yx(pw->plane, &rows, &cols);
+        ystop = rows > 0 ? rows - 1 : 0;
+        xstop = cols > 0 ? cols - 1 : 0;
+    }
+
+    nccell ul = {0}, ur = {0}, ll = {0}, lr = {0}, hl = {0}, vl = {0};
+
+    bool round = false;
+
+    if (argCount >= 3 && IS_BOOL(args[2])) {
+        if (AS_BOOL(args[2]) == true) {
+            if (nccells_rounded_box(pw->plane, 0, 0, &ul, &ur, &ll, &lr, &hl, &vl) < 0) {
+                return NIL_VAL;
+            }
+        } else {
+            if (nccells_load_box(pw->plane, 0, 0, &ul, &ur, &ll, &lr, &hl, &vl, "┌┐└┘─│") < 0) {
+                return NIL_VAL;
+            }
+        }
+    } else {
+        if (nccells_load_box(pw->plane, 0, 0, &ul, &ur, &ll, &lr, &hl, &vl, "┌┐└┘─│") < 0) {
+            return NIL_VAL;
+        }
+    }
+
+    // null tells nocurses to use default utf8-8 box drawing lines
+    ncplane_box(pw->plane, &ul, &ur, &ll, &lr, &hl, &vl, ystop, xstop, 0);
+
+    nccell_release(pw->plane, &ul);
+    nccell_release(pw->plane, &ur);
+    nccell_release(pw->plane, &ll);
+    nccell_release(pw->plane, &lr);
+    nccell_release(pw->plane, &hl);
+    nccell_release(pw->plane, &vl);
+
     return NIL_VAL;
 }
 
@@ -216,9 +340,12 @@ bool parseRgbArgs(int argCount, Value* args, uint32_t* r, uint32_t* g, uint32_t*
 
 // Plane.set_fgrgb(r, g, b) or Plane.set_fgrgb([r, g, b])
 Value planeSetFgRgb(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    /*
     ObjInstance* self = AS_INSTANCE(args[-1]);
     SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr;
     if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+    */
 
     uint32_t r, g, b;
     if (!parseRgbArgs(argCount, args, &r, &g, &b)) {
@@ -231,9 +358,12 @@ Value planeSetFgRgb(int argCount, Value* args) {
 
 // Plane.set_bgrgb(r, g, b) or Plane.setBgRgb([r, g, b])
 Value planeSetBgRgb(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    /*
     ObjInstance* self = AS_INSTANCE(args[-1]);
     SloxPlaneWrapper* pw = (SloxPlaneWrapper*)self->foreignPtr;
     if (!pw || pw->ctx->stopped || !pw->plane) return NIL_VAL;
+    */
 
     uint32_t r, g, b;
     if (!parseRgbArgs(argCount, args, &r, &g, &b)) {
@@ -283,6 +413,8 @@ void lox_module_init(VM* vm) {
     nativeBindFunction(planeClass, "set_bgrgb", planeSetBgRgb);
     nativeBindFunction(planeClass, "erase", planeErase);
     nativeBindFunction(planeClass, "destroy", planeDestroy);
+    nativeBindFunction(planeClass, "put_str_aligned", planePutStrAligned);
+    nativeBindFunction(planeClass, "box", planeBox);
 
     pop();
     pop();

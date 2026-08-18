@@ -1,0 +1,51 @@
+import "notcurses";
+
+require("menu.lox");
+
+var nc = Notcurses();
+var stdplane = nc.get_stdplane();
+
+// Draw background grid or status bar
+stdplane.set_fgrgb(100, 116, 139);
+stdplane.put_str(0, 0, "slox TUI Framework - Nav: [j/k or Up/Down], Select: [Enter], Quit: [q]");
+
+// Instantiate the Lox Menu widget
+var menuItems = ["View System Logs", "Configure Network", "Restart Daemon", "Shutdown"];
+var menu = Menu(stdplane, 4, 10, 40, "MAIN MENU", menuItems);
+
+nc.render();
+
+var running = true;
+while (running) {
+  var key = nc.get_key();
+
+  if (key == "q") {
+    running = false;
+  } else if (key == "j" or key == "Down") {
+    menu.next();
+    nc.render();
+  } else if (key == "k" or key == "Up") {
+    menu.prev();
+    nc.render();
+  } else if (key == "Enter") {
+    var choice = menu.get_selected();
+    
+    // Clear menu and draw selection modal
+    menu.destroy();
+    
+    var alert = stdplane.create_child(8, 12, 5, 36);
+    alert.set_bgrgb(30, 41, 59);
+    alert.set_fgrgb(250, 204, 21); // Yellow
+    alert.box();
+    alert.put_str_aligned(2, "center", "Selected: " + choice);
+    
+    nc.render();
+    
+    // Wait for dismiss key
+    nc.get_key();
+    alert.destroy();
+    running = false;
+  }
+}
+
+nc.stop();
