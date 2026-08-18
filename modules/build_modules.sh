@@ -147,6 +147,14 @@ else
     SKIPPED+=("yaml (libyaml-devel missing)")
 fi
 
+if pkg-config --exists notcurses 2>/dev/null; then
+    NOTCURSES_CFLAGS=$(pkg-config --cflags notcurses)
+    NOTCURSES_LIBS=$(pkg-config --libs notcurses)
+    compile_mod "notcurses"  "liblox_notcurses.c" "$TARGET_DIR/liblox_notcurses.so" $NOTCURSES_CFLAGS $NOTCURSES_LIBS
+else
+    SKIPPED=("notcurses (notcurses-devel missing)")
+fi
+
 # -------------------------------------------------------------------
 # Summary Output
 # -------------------------------------------------------------------

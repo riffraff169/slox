@@ -159,5 +159,6 @@ void clearLastError();
 void defineClassConstant(ObjClass* klass, const char* name, Value value);
 bool isCallable(Value value);
 void runAtExitHooks();
+void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn);
 
 #endif

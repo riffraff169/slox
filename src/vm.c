@@ -1815,6 +1815,17 @@ bool invoke(ObjString* name, int argCount) {
     return false;
 }
 
+void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn) {
+    ObjString* methodStr = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(methodStr));
+    ObjNative* newFn = newNative(fn);
+    push(OBJ_VAL(newFn));
+    tableSet(&klass->methods, methodStr, OBJ_VAL(newFn));
+
+    pop();
+    pop();
+}
+
 static bool bindMethod(ObjClass* klass, ObjString* name) {
     Value method;
     ObjClass* current = klass;
