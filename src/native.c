@@ -2656,7 +2656,19 @@ void closeFileInternal(ObjInstance* inst) {
     if (inst->foreignPtr !=  NULL) {
         FILE* handle = (FILE*)inst->foreignPtr;
 
-        if (handle != stdout && handle != stderr && handle != stdin) {
+        bool isPipe = false;
+        Value isPipeVal;
+        ObjString* isPipeKey = copyString("__is_pipe", 9);
+        push(OBJ_VAL(isPipeKey));
+
+        if (tableGet(&inst->fields, isPipeKey, &isPipeVal) && IS_BOOL(isPipeVal)) {
+            isPipe = AS_BOOL(isPipeVal);
+        }
+        pop();
+
+        if (isPipe) {
+            pclose(handle);
+        } else if (handle != stdout && handle != stderr && handle != stdin) {
             fclose(handle);
         }
         inst->foreignPtr = NULL;
@@ -3849,6 +3861,43 @@ Value processWriteStatic(int argCount, Value* args) {
     return okResult(NUMBER_VAL((double)bytesWritten));
 }
 
+Value processPopenStatic(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("Process.popen() requires a command.");
+        return NIL_VAL;
+    }
+
+    const char* cmd = AS_CSTRING(args[0]);
+    const char* mode = (argCount > 1 && IS_STRING(args[1])) ? AS_CSTRING(args[1]) : "r";
+
+    FILE* fp = popen(cmd, mode);
+    if (fp == NULL) return NIL_VAL;
+
+    Value fileClassVal;
+    ObjString* className = copyString("File", 4);
+    push(OBJ_VAL(className));
+
+    if (!tableGet(&vm.globals, className, &fileClassVal) || !IS_CLASS(fileClassVal)) {
+        pop();
+        pclose(fp);
+        runtimeError("Could not resolve 'File' class.");
+        return NIL_VAL;
+    }
+    pop();
+
+    ObjInstance* fileInstance = newInstance(AS_CLASS(fileClassVal));
+    push(OBJ_VAL(fileInstance));
+    fileInstance->foreignPtr = (void*)fp;
+
+    ObjString* ispipe = copyString("__is_pipe", 9);
+    push(OBJ_VAL(ispipe));
+    tableSet(&fileInstance->fields, ispipe, BOOL_VAL(true));
+    pop();
+    pop();
+
+    return OBJ_VAL(fileInstance);
+}
+
 void initProcessClass() {
     ObjString* processName = copyString("Process", 7);
     push(OBJ_VAL(processName));
@@ -3866,7 +3915,7 @@ void initProcessClass() {
     defineNativeMethod(processClass, "read", processReadStatic);
     defineNativeMethod(processClass, "write", processWriteStatic);
     defineNativeMethod(processClass, "close", processCloseStatic);
-
+    defineNativeMethod(processClass, "popen", processPopenStatic);
 
     processClass->isFrozen = true;
 
