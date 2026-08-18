@@ -3,9 +3,10 @@
 %bcond_without sqlite
 %bcond_without postgres
 %bcond_without yaml
+%bcond_without notcurses
 
 Name:       slox
-Version: 1.4.21
+Version: 1.4.22
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -71,6 +72,17 @@ Requires:       %{name}%{?_isa} = %{version}-%{release}
 %description yaml
 Provides the liblox_yaml.so native module for reading and parsing
 YAML configuration files
+%endif
+
+# notcurses
+%if %{with notcurses}
+%package notcurses
+Summary:        Notcurses support for the Lox programming language
+BuildRequires:  notcurses-devel
+Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+%description notcurses
+Provides notcurses module for slox
 %endif
 
 %package vim
@@ -140,6 +152,12 @@ fi
 
 %if %{with yaml}
 [ -f modules/liblox_yaml.so ] && install -m 0755 modules/liblox_yaml.so  %{buildroot}%{_libdir}/slox/modules/
+%endif
+
+%if %{with notcurses}
+if [ -f modules/liblox_notcurses.so ]; then
+    install -m 0755 modules/liblox_notcurses.so %{buildroot}%{_libdir}/slox/modules/
+fi
 %endif
 
 cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
@@ -214,12 +232,20 @@ rm -rf %{buildroot}
 %{_libdir}/slox/modules/liblox_yaml.so
 %endif
 
+%if %{with notcurses}
+%files notcurses
+%{_libdir}/slox/modules/liblox_notcurses.so
+%endif
+
 %files vim
 %{_datadir}/vim/vimfiles/ftdetect/lox.vim
 %{_datadir}/vim/vimfiles/ftplugin/lox.vim
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Tue  Aug 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.22-1-1
+- Bump version to 1.4.21-1
+
 * Tue  Aug 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.21-1-1
 - base notcurses plus some examples
 
