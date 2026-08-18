@@ -6,7 +6,7 @@
 %bcond_without notcurses
 
 Name:       slox
-Version: 1.4.23
+Version: 1.4.24
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -243,6 +243,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Tue  Aug 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.24-1-1
+- fixed logic error
+
 * Tue  Aug 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.4.23-1-1
 - added Process.popen()
 
