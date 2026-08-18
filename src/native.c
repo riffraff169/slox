@@ -2959,10 +2959,7 @@ Value fileReadlineNative(int argCount, Value* args) {
 
     if (!readAny) {
         free(buffer);
-        ObjString* emptyString = copyString("", 0);
-        push(OBJ_VAL(emptyString));
-        Value finalResult = okResult(OBJ_VAL(emptyString));
-        pop();
+        Value finalResult = errorResult("EOF");
         return finalResult;
     }
 
