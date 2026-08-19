@@ -15,7 +15,7 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.4.27
+VERSION = 1.4.28
 RELEASE = 1
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
