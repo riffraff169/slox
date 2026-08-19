@@ -17,7 +17,7 @@ class Logger {
     this.show_colors = options["colors"] ?? true;
 
     this.counts = {
-      "TRACE": 0, "DEBUG": 0, "INFO"; 0,
+      "TRACE": 0, "DEBUG": 0, "INFO": 0,
       "WARN": 0, "ERROR": 0, "FATAL": 0
     };
 
@@ -61,7 +61,7 @@ class Logger {
       var col = this.get_color_for(tag, level);
 
       if (isstring(col) and !col.contains(chr(27))) {
-        formatted_tag = Color.format"{" + col + "}[" + tag "]");
+        formatted_tag = Color.format("{" + col + "}[" + tag + "]");
       } else if (isnumber(col) or typeof(col) == "Array" or typeof(col) == "Map" or (isstring(col) and col.contains("#"))) {
         formatted_tag = Color.makeColor(col) + "[" + tag + "]" + Color.RESET;
       } else {
