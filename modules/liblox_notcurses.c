@@ -410,7 +410,9 @@ void lox_module_init(VM* vm) {
     nativeBindFunction(planeClass, "create_child", planeCreateChild);
     nativeBindFunction(planeClass, "put_str", planePutStr);
     nativeBindFunction(planeClass, "set_fgrgb", planeSetFgRgb);
+    nativeBindFunction(planeClass, "set_fg", planeSetFgRgb);
     nativeBindFunction(planeClass, "set_bgrgb", planeSetBgRgb);
+    nativeBindFunction(planeClass, "set_bg", planeSetBgRgb);
     nativeBindFunction(planeClass, "erase", planeErase);
     nativeBindFunction(planeClass, "destroy", planeDestroy);
     nativeBindFunction(planeClass, "put_str_aligned", planePutStrAligned);

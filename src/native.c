@@ -2652,7 +2652,7 @@ void initRegexClass() {
     pop();
 }
 
-void closeFileInternal(ObjInstance* inst) {
+int closeFileInternal(ObjInstance* inst) {
     if (inst->foreignPtr !=  NULL) {
         FILE* handle = (FILE*)inst->foreignPtr;
 
@@ -2665,18 +2665,21 @@ void closeFileInternal(ObjInstance* inst) {
             isPipe = AS_BOOL(isPipeVal);
         }
         pop();
+        int res;
 
         if (isPipe) {
-            pclose(handle);
+            res = pclose(handle);
         } else if (handle != stdout && handle != stderr && handle != stdin) {
-            fclose(handle);
+            res = fclose(handle);
         }
         inst->foreignPtr = NULL;
+        return res;
     }
+    return 0;
 }
 
 void fileDestructor(ObjInstance* inst) {
-    closeFileInternal(inst);
+    (void)closeFileInternal(inst);
 }
 
 Value fileLoadNative(int argCount, Value* args) {
@@ -3016,8 +3019,8 @@ Value fileCloseNative(int argCount, Value* args) {
     }
 
     ObjInstance* inst = AS_INSTANCE(args[-1]);
-    closeFileInternal(inst);
-    return okResult(NIL_VAL);
+    int res = closeFileInternal(inst);
+    return okResult(NUMBER_VAL(res));
 }
 
 Value fileSeekNative(int argCount, Value* args) {

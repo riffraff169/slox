@@ -1,7 +1,7 @@
 require("color.lox");
 
 class Logger {
-  init(options) {
+  init(options = nil) {
     options = options ?? {};
 
     this.TRACE = 0;
@@ -40,7 +40,7 @@ class Logger {
     this.counts[tag] = 0;
   }
 
-  dispatch(tag, level, msg, context) {
+  dispatch(tag, level, msg, context = nil) {
     if (level < this.min_level) return;
 
     this.counts[tag] = (this.counts[tag] ?? 0) + 1;
@@ -87,14 +87,14 @@ class Logger {
     }
   }
 
-  trace(msg, ctx) { this.dispatch("TRACE", this.TRACE, msg, ctx); }
-  debug(msg, ctx) { this.dispatch("DEBUG", this.DEBUG, msg, ctx); }
-  info(msg, ctx) { this.dispatch("INFO", this.INFO, msg, ctx); }
-  warn(msg, ctx) { this.dispatch("WARN", this.WARN, msg, ctx); }
-  error(msg, ctx) { this.dispatch("ERROR", this.ERROR, msg, ctx); }
-  fatal(msg, ctx) { this.dispatch("FATAL", this.FATAL, msg, ctx); }
+  trace(msg, ctx = nil) { this.dispatch("TRACE", this.TRACE, msg, ctx); }
+  debug(msg, ctx = nil) { this.dispatch("DEBUG", this.DEBUG, msg, ctx); }
+  info(msg, ctx = nil) { this.dispatch("INFO", this.INFO, msg, ctx); }
+  warn(msg, ctx = nil) { this.dispatch("WARN", this.WARN, msg, ctx); }
+  error(msg, ctx = nil) { this.dispatch("ERROR", this.ERROR, msg, ctx); }
+  fatal(msg, ctx = nil) { this.dispatch("FATAL", this.FATAL, msg, ctx); }
 
-  custom(tag, msg, ctx) {
+  custom(tag, msg, ctx = nil) {
     var tag_info = this.custom_tags[tag];
     var lvl = tag_info ? tag_info["level"] : this.INFO;
     this.dispatch(tag, lvl, msg, ctx);
