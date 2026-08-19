@@ -1891,6 +1891,21 @@ static void defineMethod(ObjString* name) {
     pop();
 }
 
+Value multiplyString(ObjString* string, int count) {
+    if (count <= 0 || string->length == 0) {
+        return OBJ_VAL(copyString("", 0));
+    }
+
+    int length = string->length * count;
+
+    char* chars = ALLOCATE(char, length + 1);
+    for (int i = 0; i < count; i++) {
+        memcpy(chars + (i * string->length), string->chars, string->length);
+    }
+    chars[length] = '\0';
+
+    return OBJ_VAL(takeString(chars, length));
+}
 /*
 static void concatenate() {
     ObjString* b = AS_STRING(peek(0));
@@ -2464,6 +2479,13 @@ InterpretResult run() {
                         c.y = a.y * b.y;
                         c.z = a.z * b.z;
                         push(VEC3_VAL(c));
+                    } else if (IS_STRING(peek(1)) && IS_NUMBER(peek(0))) {
+                        ObjString* str = AS_STRING(peek(1));
+                        int count = (int)AS_NUMBER(peek(0));
+                        Value result = multiplyString(str, count);
+                        pop();
+                        pop();
+                        push(result);
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
