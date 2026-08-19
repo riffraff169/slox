@@ -1,0 +1,121 @@
+require("color.lox");
+
+class Logger {
+  init(options) {
+    options = options ?? {};
+
+    this.TRACE = 0;
+    this.DEBUG = 1;
+    this.INFO = 2;
+    this.WARN = 3;
+    this.ERROR = 4;
+    this.FATAL = 5;
+    this.OFF = 6;
+
+    this.min_level = options["level"] ?? this.INFO;
+    this.app_name = options["app_name"] ?? "";
+    this.show_colors = options["colors"] ?? true;
+
+    this.counts = {
+      "TRACE": 0, "DEBUG": 0, "INFO"; 0,
+      "WARN": 0, "ERROR": 0, "FATAL": 0
+    };
+
+    this.custom_tags = {};
+  }
+
+  set_level(level) {
+    this.min_level = level ?? this.info;
+  }
+
+  set_app_name(name) {
+    this.app_name = name ?? "";
+  }
+
+  register_tag(tag, level, color) {
+    this.custom_tags[tag] = {
+      "level": level ?? this.INFO,
+      "color": color ?? "white"
+    };
+    this.counts[tag] = 0;
+  }
+
+  dispatch(tag, level, msg, context) {
+    if (level < this.min_level) return;
+
+    this.counts[tag] = (this.counts[tag] ?? 0) + 1;
+
+    var ctx_str = "";
+    if (context) {
+      if (isnumber(context) and context > 0) {
+        ctx_str = " Line " + String(context) + ":";
+      } else if (isstring(context) and context.length() > 0) {
+        ctx_str = " [" + context + "]:";
+      }
+    }
+
+    var app_str = this.app_name.length() > 0 ? "(" + this.app_name + ") " : "";
+
+    var formatted_tag = "[" + tag + "]";
+    if (this.show_colors) {
+      var col = this.get_color_for(tag, level);
+
+      if (isstring(col) and !col.contains(chr(27))) {
+        formatted_tag = Color.format"{" + col + "}[" + tag "]");
+      } else if (isnumber(col) or typeof(col) == "Array" or typeof(col) == "Map" or (isstring(col) and col.contains("#"))) {
+        formatted_tag = Color.makeColor(col) + "[" + tag + "]" + Color.RESET;
+      } else {
+        formatted_tag = String(col) + "[" + tag + "]" + Color.RESET;
+      }
+    }
+
+    print app_str + formatted_tag + ctx_str + " " + msg;
+  }
+
+  get_color_for(tag, level) {
+    var tag_info = this.custom_tags[tag];
+    if (tag_info) return tag_info["color"];
+
+    switch (level) {
+      case this.TRACE: return "cyan";
+      case this.DEBUG: return "blue";
+      case this.INFO:  return "green";
+      case this.WARN:  return "yellow";
+      case this.ERROR: return "red";
+      case this.FATAL: return "b_red";
+      default: return "white";
+    }
+  }
+
+  trace(msg, ctx) { this.dispatch("TRACE", this.TRACE, msg, ctx); }
+  debug(msg, ctx) { this.dispatch("DEBUG", this.DEBUG, msg, ctx); }
+  info(msg, ctx) { this.dispatch("INFO", this.INFO, msg, ctx); }
+  warn(msg, ctx) { this.dispatch("WARN", this.WARN, msg, ctx); }
+  error(msg, ctx) { this.dispatch("ERROR", this.ERROR, msg, ctx); }
+  fatal(msg, ctx) { this.dispatch("FATAL", this.FATAL, msg, ctx); }
+
+  custom(tag, msg, ctx) {
+    var tag_info = this.custom_tags[tag];
+    var lvl = tag_info ? tag_info["level"] : this.INFO;
+    this.dispatch(tag, lvl, msg, ctx);
+  }
+
+  error_count() {
+    return (this.counts["ERROR"] ?? 0) + (this.counts["FATAL"] ?? 0);
+  }
+
+  warn_count() {
+    return this.counts["WARN"] ?? 0;
+  }
+
+  summary() {
+    var errs = this.error_count();
+    var warns = this.warn_count();
+
+    if (errs > 0) {
+      this.error("Execution finished with " + String(errs) + " error(s) and " + String(warns) + " warning(s).");
+    } else {
+      this.info("Execution completed successfully with " + String(warns) + " warning(s).");
+    }
+  }
+}
