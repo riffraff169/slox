@@ -14,7 +14,7 @@ class Logger {
 
     this.min_level = options["level"] ?? this.INFO;
     this.app_name = options["app_name"] ?? "";
-    this.show_colors = options["colors"] ?? true;
+    this.show_colors = options["colors"] ?? false;
 
     this.counts = {
       "TRACE": 0, "DEBUG": 0, "INFO": 0,
