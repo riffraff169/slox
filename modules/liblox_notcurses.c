@@ -205,7 +205,7 @@ Value ncCallhandler(int argCount, Value* args) {
 Value ncEnableMice(int argCount, Value* args) {
     ObjInstance* self = AS_INSTANCE(args[-1]);
     SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
-    if (!ctx || ctx->stopped | !ctx->nc) return NIL_VAL;
+    if (!ctx || ctx->stopped || !ctx->nc) return NIL_VAL;
 
     if (argCount < 1 || !IS_BOOL(args[0])) {
         runtimeError(".enable_mice() parameter must be a boolean. Default false");
