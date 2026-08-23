@@ -202,6 +202,26 @@ Value ncCallhandler(int argCount, Value* args) {
     return OBJ_VAL(inst);
 }
 
+Value ncEnableMice(int argCount, Value* args) {
+    ObjInstance* self = AS_INSTANCE(args[-1]);
+    SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
+    if (!ctx || ctx->stopped | !ctx->nc) return NIL_VAL;
+
+    if (argCount < 1 || !IS_BOOL(args[0])) {
+        runtimeError(".enable_mice() parameter must be a boolean. Default false");
+        return NIL_VAL;
+    }
+    // NCMICE_ALL_EVENTS or NCMICE_BUTTON_EVENT
+    int res = 0;
+    if (AS_BOOL(args[0]) == true) {
+        res = notcurses_mice_enable(ctx->nc, NCMICE_ALL_EVENTS);
+        return NUMBER_VAL((double)res);
+    } else {
+        res = notcurses_mice_disable(ctx->nc);
+    }
+    return NUMBER_VAL((double)res);
+}
+
 // plane methods
 //
 // Plane.create_child(y, x, rows, cols)
@@ -535,6 +555,7 @@ void lox_module_init(VM* vm) {
     nativeBindFunction(ncClass, "get_key", ncGetKey);
     nativeBindFunction(ncClass, "stop", ncStop);
     nativeBindFunction(ncClass, "new_plane", ncNewPlane);
+    nativeBindFunction(ncClass, "enable_mice", ncEnableMice);
 
     pop();
     pop();
