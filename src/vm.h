@@ -55,8 +55,6 @@ typedef struct {
     ObjString* yString;
     ObjString* zString;
 
-    //Table arrayMethods;
-
     bool isGC;
     size_t bytesAllocated;
     size_t nextGC;
@@ -126,6 +124,10 @@ typedef struct {
     const char* scriptName;
 
     ValueArray atExitHooks;
+
+    ObjFiber* fibers;
+    ObjFiber* currentFiber;
+    ObjFiber* firstFiber;
 } VM;
 
 typedef enum {

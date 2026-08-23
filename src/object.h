@@ -219,6 +219,19 @@ typedef struct {
     const char* name;
 } ObjForeign;
 
+typedef struct ObjFiber {
+    Obj obj;
+    CallFrame frames[FRAMES_MAX];
+    int frameCount;
+    Value stack[STACK_MAX];
+    Value* stackTop;
+    ObjUpvalue* openUpvalues;
+
+    TryBlock tryStack[TRY_STACK_MAX];
+
+    struct ObjFiber* next;
+} ObjFiber;
+
 ObjForeign* newForeign(void* ptr, const char* name);
 ObjRegex* newRegex(pcre2_code* code, ObjString* pattern);
 ObjMap* newMap();
