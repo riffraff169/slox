@@ -65,7 +65,6 @@ Value ncStop(int argCount, Value* args) {
     return NIL_VAL;
 }
 
-
 Value ncRender(int argCount, Value* args) {
     ObjInstance*self = AS_INSTANCE(args[-1]);
     SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
@@ -93,6 +92,39 @@ Value ncGetStdPlane(int argCount, Value* args) {
     return OBJ_VAL(planeInst);
 }
 
+Value ncNewPlane(int argCount, Value *args) {
+    if (argCount < 4 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1]) ||
+            !IS_NUMBER(args[2]) || !IS_NUMBER(args[3])) {
+        return NIL_VAL;
+    }
+
+    ObjInstance* self = AS_INSTANCE(args[-1]);
+    SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
+    if (!ctx || ctx->stopped | !ctx->nc) return NIL_VAL;
+
+    struct ncplane* stdp = notcurses_stdplane(ctx->nc);
+
+    struct ncplane_options opts = {
+        .y = (int)AS_NUMBER(args[0]),
+        .x = (int)AS_NUMBER(args[1]),
+        .rows = (int)AS_NUMBER(args[2]),
+        .cols = (int)AS_NUMBER(args[3])
+    };
+
+    struct ncplane* new_p = ncplane_create(stdp, &opts);
+    if (!new_p) return NIL_VAL;
+
+    SloxPlaneWrapper* pw = malloc(sizeof(SloxPlaneWrapper));
+    pw->plane = new_p;
+    pw->ctx = ctx;
+    ctx->refCount++;
+
+    ObjInstance* planeInst = newInstance(planeClass);
+    planeInst->foreignPtr = (void*)pw;
+
+    return OBJ_VAL(planeInst);
+}
+
 Value ncGetKey(int argCount, Value* args) {
     ObjInstance*self = AS_INSTANCE(args[-1]);
     SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
@@ -104,6 +136,17 @@ Value ncGetKey(int argCount, Value* args) {
 
     if (key == (uint32_t)-1 || key == 0) {
         return NIL_VAL;
+    }
+
+    if (key >= NCKEY_BUTTON1 && key <= NCKEY_BUTTON11) {
+        ObjArray* arr = newArray();
+        push(OBJ_VAL(arr));
+        arrayAppend(arr, OBJ_VAL(copyString("mouse_click", 11)));
+        arrayAppend(arr, NUMBER_VAL(key - NCKEY_BUTTON1 + 1));
+        arrayAppend(arr, NUMBER_VAL(ni.y));
+        arrayAppend(arr, NUMBER_VAL(ni.x));
+        pop();
+        return OBJ_VAL(arr);
     }
 
     switch (key) {
@@ -199,6 +242,58 @@ Value planeCreateChild(int argCount, Value* args) {
     childInst->foreignPtr = (void*)childPw;
 
     return OBJ_VAL(childInst);
+}
+
+// Plane.dim_yx(rows, cols)
+Value planeGetDim(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    unsigned rows, cols;
+
+    ncplane_dim_yx(pw->plane, &rows, &cols);
+
+    ObjArray* arr = newArray();
+    push(OBJ_VAL(arr));
+    arrayAppend(arr, NUMBER_VAL(rows));
+    arrayAppend(arr, NUMBER_VAL(cols));
+    pop();
+    return OBJ_VAL(arr);
+}
+
+Value planeAbsYx(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    int y, x;
+    ncplane_abs_yx(pw->plane, &y, &x);
+
+    ObjArray* arr = newArray();
+    push(OBJ_VAL(arr));
+    arrayAppend(arr, NUMBER_VAL(y));
+    arrayAppend(arr, NUMBER_VAL(x));
+    pop();
+    return OBJ_VAL(arr);
+}
+
+Value planeMoveYx(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+        return NIL_VAL;
+    }
+    GET_PLANE_OR_NIL(-1);
+
+    int y = (int)AS_NUMBER(args[0]);
+    int x = (int)AS_NUMBER(args[1]);
+    ncplane_move_yx(pw->plane, y, x);
+    return NIL_VAL;
+}
+
+Value planeMoveTop(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    ncplane_move_top(pw->plane);
+    return NIL_VAL;
+}
+
+Value planeMoveBottom(int argCount, Value* args) {
+    GET_PLANE_OR_NIL(-1);
+    ncplane_move_bottom(pw->plane);
+    return NIL_VAL;
 }
 
 // Plane.put_str(y, x, "text")
@@ -409,6 +504,11 @@ void lox_module_init(VM* vm) {
 
     nativeBindFunction(planeClass, "create_child", planeCreateChild);
     nativeBindFunction(planeClass, "put_str", planePutStr);
+    nativeBindFunction(planeClass, "get_dim", planeGetDim);
+    nativeBindFunction(planeClass, "abs_yx", planeAbsYx);
+    nativeBindFunction(planeClass, "move_yx", planeMoveYx);
+    nativeBindFunction(planeClass, "move_top", planeMoveTop);
+    nativeBindFunction(planeClass, "move_bottom", planeMoveBottom);
     nativeBindFunction(planeClass, "set_fgrgb", planeSetFgRgb);
     nativeBindFunction(planeClass, "set_fg", planeSetFgRgb);
     nativeBindFunction(planeClass, "set_bgrgb", planeSetBgRgb);
@@ -434,6 +534,7 @@ void lox_module_init(VM* vm) {
     nativeBindFunction(ncClass, "get_stdplane", ncGetStdPlane);
     nativeBindFunction(ncClass, "get_key", ncGetKey);
     nativeBindFunction(ncClass, "stop", ncStop);
+    nativeBindFunction(ncClass, "new_plane", ncNewPlane);
 
     pop();
     pop();

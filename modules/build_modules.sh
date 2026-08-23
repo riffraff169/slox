@@ -36,7 +36,6 @@ compile_mod() {
         done
 
         if [ "$rebuild" = false ] && [ -f "TrustAnchors.h" ] && [ "TrustAnchors.h" -nt "$out" ]; then
-            echo rebuild 4
             rebuild=true
         fi
     fi
