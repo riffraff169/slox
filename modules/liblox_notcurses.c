@@ -11,6 +11,7 @@ typedef struct {
     struct notcurses* nc;
     bool stopped;
     int refCount;
+    bool track_motion;
 } SloxNCContext;
 
 typedef struct {
@@ -133,20 +134,51 @@ Value ncGetKey(int argCount, Value* args) {
     struct timespec ts = {0, 0};
     struct ncinput ni;
     uint32_t key = notcurses_get(ctx->nc, &ts, &ni);
+    /*
+    if (key != (uint32_t)-1 && key != 0) {
+        fprintf(stderr, "[DEBUG] Got key: %u | is_mouse: %d | evtype: %d | y: %d x: %d\n", 
+            key, nckey_mouse_p(key), ni.evtype, ni.y, ni.x);
+    }
+    */
 
     if (key == (uint32_t)-1 || key == 0) {
         return NIL_VAL;
     }
 
-    if (key >= NCKEY_BUTTON1 && key <= NCKEY_BUTTON11) {
-        ObjArray* arr = newArray();
-        push(OBJ_VAL(arr));
-        arrayAppend(arr, OBJ_VAL(copyString("mouse_click", 11)));
-        arrayAppend(arr, NUMBER_VAL(key - NCKEY_BUTTON1 + 1));
-        arrayAppend(arr, NUMBER_VAL(ni.y));
-        arrayAppend(arr, NUMBER_VAL(ni.x));
-        pop();
-        return OBJ_VAL(arr);
+    if (nckey_mouse_p(key)) {
+        // mouse motion / hover events
+        if (key == NCKEY_MOTION) {
+            if (!ctx->track_motion) {
+                return NIL_VAL;
+            }
+
+            ObjArray* arr = newArray();
+            push(OBJ_VAL(arr));
+            arrayAppend(arr, OBJ_VAL(copyString("mouse_move", 10)));
+            arrayAppend(arr, NUMBER_VAL(0));
+            arrayAppend(arr, NUMBER_VAL(ni.y));
+            arrayAppend(arr, NUMBER_VAL(ni.x));
+            pop();
+            return OBJ_VAL(arr);
+        }
+
+        // mouse click events
+        if (ni.evtype == NCTYPE_PRESS) {
+            int button = 1;
+            if (key >= NCKEY_BUTTON1 && key <= NCKEY_BUTTON11) {
+                button = key - NCKEY_BUTTON1 + 1;
+            }
+
+            ObjArray* arr = newArray();
+            push(OBJ_VAL(arr));
+            arrayAppend(arr, OBJ_VAL(copyString("mouse_click", 11)));
+            arrayAppend(arr, NUMBER_VAL(button));
+            arrayAppend(arr, NUMBER_VAL(ni.y));
+            arrayAppend(arr, NUMBER_VAL(ni.x));
+            pop();
+            return OBJ_VAL(arr);
+        }
+        return NIL_VAL;
     }
 
     switch (key) {
@@ -207,17 +239,34 @@ Value ncEnableMice(int argCount, Value* args) {
     SloxNCContext* ctx = (SloxNCContext*)self->foreignPtr;
     if (!ctx || ctx->stopped || !ctx->nc) return NIL_VAL;
 
-    if (argCount < 1 || !IS_BOOL(args[0])) {
-        runtimeError(".enable_mice() parameter must be a boolean. Default false");
-        return NIL_VAL;
+    bool enable = false;
+    bool allow_motion = false;
+
+    // enable/disable (default false)
+    if (argCount >= 1) {
+        if (!IS_BOOL(args[0])) {
+            runtimeError("First parameter of enable_mice() must be a boolean.");
+            return NIL_VAL;
+        }
+        enable = AS_BOOL(args[0]);
     }
+
+    // allow_motion (default false)
+    if (argCount >= 2) {
+        if (!IS_BOOL(args[1])) {
+            runtimeError("Second parameter of enable_mice() must be a boolean.");
+            return NIL_VAL;
+        }
+        allow_motion = AS_BOOL(args[1]);
+    }
+
+    ctx->track_motion = enable && allow_motion;
+
     // NCMICE_ALL_EVENTS or NCMICE_BUTTON_EVENT
-    int res = 0;
-    if (AS_BOOL(args[0]) == true) {
-        res = notcurses_mice_enable(ctx->nc, NCMICE_ALL_EVENTS);
-        return NUMBER_VAL((double)res);
-    } else {
-        res = notcurses_mice_disable(ctx->nc);
+    int mode = allow_motion ? NCMICE_ALL_EVENTS : NCMICE_BUTTON_EVENT;
+    int res = enable ? notcurses_mice_enable(ctx->nc, mode) : notcurses_mice_disable(ctx->nc);
+    if (res != 0) {
+        runtimeError("Notcurses mouse enable failed with code: %d\n", res);
     }
     return NUMBER_VAL((double)res);
 }
