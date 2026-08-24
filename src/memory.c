@@ -5,6 +5,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "vm.h"
+//#include "slox_ffi.h"
 
 #ifdef DEBUG_LOG_GC
 #include <stdio.h>
@@ -168,6 +169,12 @@ static void blackenObject(Obj* object) {
         case OBJ_UPVALUE:
             markValue(((ObjUpvalue*)object)->closed);
             break;
+            /*
+        case OBJ_BOX:
+            if (((ObjBox*)object)->isManaged) {
+            }
+            break;
+            */
         case OBJ_NATIVE:
         case OBJ_STRING:
             break;
@@ -185,6 +192,16 @@ static void freeObject(Obj* object) {
                 FREE(ObjForeign, object);
             }
             break;
+            /*
+        case OBJ_BOX:
+            {
+                ObjBox* box = (ObjBox*)object;
+                if (box->isManaged) {
+                    free(box->ptr);
+                }
+            }
+            break;
+            */
         case OBJ_REGEX:
             {
                 ObjRegex* re = (ObjRegex*)object;
@@ -255,7 +272,13 @@ static void freeObject(Obj* object) {
             }
             break;
         case OBJ_NATIVE:
-            FREE(ObjNative, object);
+            {
+                ObjNative* native = (ObjNative*)object;
+                if (native->destructor != NULL) {
+                    native->destructor(native);
+                }
+                FREE(ObjNative, object);
+            }
             break;
         case OBJ_STRING:
             {

@@ -3941,7 +3941,7 @@ Value structPackNative(int argCount, Value* args) {
 
     const char* format = AS_CSTRING(args[0]);
     ObjArray* array = AS_ARRAY(args[1]);
-    bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : true;
+    bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : false;
 
     const char* f = format;
     int val_index = 0;
@@ -3963,29 +3963,42 @@ Value structPackNative(int argCount, Value* args) {
 
         const char type = *f;
         if (type != '\0') {
+            int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
+
+            /*
             if (val_index >= array->count) {
                 runtimeError("Format string requires more values than provided in the array.");
                 return NIL_VAL;
             }
 
+            */
             Value currentVal = array->values[val_index];
 
             switch (type) {
-                case 'B': 
-                case 'H':
-                case 'I':
-                case 'Q':
+                case 'x':
+                    totalSize += hasWidth ? width : 1;
+                    // 'x' does not consume a value from the array
+                    break;
+                case 'B': case 'b':
+                case 'H': case 'h':
+                case 'I': case 'i':
+                case 'Q': case 'q':
                     if (!IS_NUMBER(currentVal)) {
                         runtimeError("Expected number value for '%c' format specifier.", type);
                         return NIL_VAL;
                     }
-                    if (type == 'B') totalSize += 1;
-                    else if (type == 'H') totalSize += 2;
-                    else if (type == 'I') totalSize += 4;
-                    else if (type == 'Q') totalSize += 8;
+                    if (type == 'B' || type == 'b') totalSize += 1 * count;
+                    else if (type == 'H' || type == 'h') totalSize += 2 * count;
+                    else if (type == 'I' || type == 'i') totalSize += 4 * count;
+                    else if (type == 'Q' || type == 'q') totalSize += 8 * count;
                     break;
                 case 's':
                       {
+                          if (val_index >= array->count) {
+                              runtimeError("Format string requires more values than provided in the array.");
+                              return NIL_VAL;
+                          }
+                          Value currentVal = array->values[val_index++];
                           if (!IS_STRING(currentVal)) {
                               runtimeError("Expected string value for 's' format specifier.");
                               return NIL_VAL;
@@ -3997,7 +4010,26 @@ Value structPackNative(int argCount, Value* args) {
                       runtimeError("Unknown format specifier '%c'.", *f);
                       return NIL_VAL;
             }
+
+            if (type != 's' && type != 'x') {
+                for (int i = 0; i < count; i++) {
+                    if (val_index >= array->count) {
+                        runtimeError("Format string requires more values than provided in the array.");
+                        return NIL_VAL;
+                    }
+                    if (!IS_NUMBER(array->values[val_index++])) {
+                        runtimeError("Expected number value for '%c' specifier.", type);
+                        return NIL_VAL;
+                    }
+                }
+            }
+            /*
+            if (type != 's' && !IS_NUMBER(currentVal)) {
+                runtimeError("Expected number value for '%c' format specifier.", type);
+                return NIL_VAL;
+            }
             val_index++;
+            */
             f++;
         }
     }
@@ -4024,10 +4056,12 @@ Value structPackNative(int argCount, Value* args) {
 
         const char type = *f;
         switch (type) {
+            case 'b':
             case 'B':
                 double num = AS_NUMBER(array->values[val_index++]);
                 *cursor++ = (uint8_t)num;
                 break;
+            case 'h':
             case 'H':
                 {
                     uint16_t val = (uint16_t)AS_NUMBER(array->values[val_index++]);
@@ -4040,6 +4074,7 @@ Value structPackNative(int argCount, Value* args) {
                     }
                 }
                 break;
+            case 'i':
             case 'I':
                 {
                     uint32_t val = (uint32_t)AS_NUMBER(array->values[val_index++]);
@@ -4056,6 +4091,7 @@ Value structPackNative(int argCount, Value* args) {
                     }
                 }
                 break;
+            case 'q':
             case 'Q':
                 {
                     uint64_t val = (uint64_t)AS_NUMBER(array->values[val_index++]);
@@ -4070,19 +4106,35 @@ Value structPackNative(int argCount, Value* args) {
                     }
                 }
                 break;
+            case 'x':
+                {
+                    int padBytes = hasWidth ? width : 1;
+                    memset(cursor, 0, padBytes);
+                    cursor += padBytes;
+                }
+                break;
             case 's':
                 {
                     ObjString* s = AS_STRING(array->values[val_index++]);
-                    int finalWidth = hasWidth ? width : s->length;
-                    int copyLen = (s->length < finalWidth) ? s->length : finalWidth;
+                    int targetWidth = hasWidth ? width : s->length;
+                    int copyLen = (s->length < targetWidth) ? s->length : targetWidth;
 
-                    memcpy(cursor, s->chars, copyLen);
-                    cursor += copyLen;
+                    if (copyLen > 0) {
+                        memcpy(cursor, s->chars, copyLen);
+                    }
+                    if (copyLen < targetWidth) {
+                        memset(cursor + copyLen, 0, targetWidth - copyLen);
+                    }
 
+                    //memcpy(cursor, s->chars, copyLen);
+                    cursor += targetWidth;
+
+                    /*
                     if (copyLen < finalWidth) {
                         memset(cursor, 0, finalWidth - copyLen);
                         cursor += (finalWidth - copyLen);
                     }
+                    */
                 }
                 break;
         }

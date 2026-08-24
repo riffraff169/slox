@@ -1,5 +1,5 @@
-#ifndef clox_object_h
-#define clox_object_h
+#ifndef slox_object_h
+#define slox_object_h
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -54,6 +54,7 @@ typedef enum {
     OBJ_SET,
     OBJ_FOREIGN,
     OBJ_REGEX,
+    OBJ_BOX,
     OBJ_VEC3
 } ObjType;
 
@@ -77,13 +78,16 @@ typedef struct {
     bool isfree;
 } ObjFunction;
 
+typedef struct ObjNative ObjNative;
 typedef Value (*NativeFn)(int argCount, Value* args);
+typedef void (*NativeDestructorFn)(ObjNative* native);
 
-typedef struct {
+typedef struct ObjNative {
     Obj obj;
     NativeFn function;
     ObjString* name;
     void* foreignData;
+    NativeDestructorFn destructor;
 } ObjNative;
 
 struct ObjString {

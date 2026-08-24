@@ -101,6 +101,8 @@ ObjNative* newNative(NativeFn function) {
     native->function = function;
     native->foreignData = NULL;
     native->obj.klass = vm.nativeFunctionClass;
+    native->name = NULL;
+    native->destructor = NULL;
     return native;
 }
 
