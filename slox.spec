@@ -6,7 +6,7 @@
 %bcond_without notcurses
 
 Name:       slox
-Version: 1.5.1
+Version: 1.5.2
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -20,6 +20,11 @@ BuildRequires:  readline-devel
 BuildRequires:  pcre2-devel
 BuildRequires:  pkgconfig
 BuildRequires:  ca-certificates
+
+Requires:   readline
+Requires:   pcre2
+Requires:   libffi
+Requires:   ca-certificates
 
 %description
 An optimized variant of the Lox VM featuring a recurseive descent serializer,
@@ -203,6 +208,7 @@ rm -rf %{buildroot}
 %{_libdir}/slox/modules/liblox_sha1.so
 %{_libdir}/slox/modules/liblox_image.so
 %{_libdir}/slox/modules/liblox_ssl.so
+%{_libdir}/slox/modules/liblox_ffi.so
 %{_libdir}/slox/lib/
 %{_libdir}/slox/examples/
 %{_libdir}/slox/tests/
@@ -243,6 +249,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Mon  Aug 24 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.2-1-1
+- Bump version to 1.5.1-1
+
 * Mon  Aug 24 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.1-1-1
 - Bump version to 1.5.0-1
 
