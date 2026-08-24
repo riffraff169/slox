@@ -154,6 +154,14 @@ else
     SKIPPED=("notcurses (notcurses-devel missing)")
 fi
 
+if pkg-config --exists libffi 2>/dev/null; then
+    LIBFFI_CFLAGS=$(pkg-config --cflags libffi)
+    LIBFFI_LIBS=$(pkg-config --libs libffi)
+    compile_mod "libffi" "liblox_ffi.c" "$TARGET_DIR/liblox_ffi.so" $LIBFFI_CFLAGS $LIBFFI_LIBS
+else
+    SKIPPED=("libffi (libffi-devel missing)")
+fi
+
 # -------------------------------------------------------------------
 # Summary Output
 # -------------------------------------------------------------------

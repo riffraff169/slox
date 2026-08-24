@@ -1,0 +1,32 @@
+import "ffi";
+
+class MultiFFI {
+  init(paths) {
+    this.handles = [];
+    for (var i = 0; i < paths.length(); i += 1) {
+      try {
+        this.handles.push(FFI(paths[i]));
+        //print "MultiFFI: Added " + paths[i];
+      } catch (e) {
+        //print "MultiFFI: Skipped " + paths[i];
+        // skip libraries that fail to load
+      }
+    }
+  }
+
+  bind(symbolName, returnType, argTypes) {
+    for (var i = 0; i < this.handles.length(); i += 1) {
+      try {
+        var sym = this.handles[i].bind(symbolName, returnType, argTypes);
+        //print "Found symbol " + symbolName + ": " + i;
+        return sym;
+      } catch (Error e) {
+        print "Not found " + symbolName + ": " + i + " - " + e.message;
+        // try next library
+      } catch (e) {
+        print "Not found " + symbolName + ": " + i + " - " + e;
+      }
+    }
+    throw("Symbol '" + symbolName + "' not found in any loaded libraries.");
+  }
+}

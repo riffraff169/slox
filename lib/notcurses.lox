@@ -1,0 +1,147 @@
+import "ffi";
+require("multiffi.lox");
+
+class Plane {
+  const NCALIGN_LEFT = 0;
+  const NCALIGN_CENTER = 1;
+  const NCALIGN_RIGHT = 2;
+
+  init(ptr, ffiLib) {
+    this.ptr = ptr;
+    this.ffi = ffiLib;
+
+    this.fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "pointer"]);
+    this.fnPutStr = ffiLib.bind("ncplane_putstr", "int32", ["pointer", "string"]);
+    this.fnPutStrAlign = ffiLib.bind("ncplane_putstr_aligned", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnSetFgRgb = ffiLib.bind("ncplane_set_fg_rgb", "int32", ["pointer", "int32"]);
+    this.fnSetBgRgb = ffiLib.bind("ncplane_set_bg_rgb", "int32", ["pointer", "int32"]);
+    this.fnErase = ffiLib.bind("ncplane_erase", "void", ["pointer"]);
+    this.fnDestroy = ffiLib.bind("ncplane_destroy", "int32", ["pointer"]);
+    this.fnBox = ffiLib.bind("ncplane_box", "int32",
+        ["pointer", "pointer", "pointer", "pointer",
+        "pointer", "pointer", "pointer", "int32", "int32", "int32"]);
+  }
+
+  create_child(y, x, rows, cols, flags) {
+    if (flags == nil) flags = 0;
+    // pack 48-bytes ncplane_options struct
+    var opts = Struct.pack("I I I I Q Q Q Q", [y, x, rows, cols, 0, 0, 0, flags]);
+    var childPtr = this.fnCreate(this.ptr, opts);
+    if (childPtr == nil) return nil;
+    return Plane(childPtr, this.ffi);
+  }
+
+  put_str(str) {
+    return this.fnPutStr(this.ptr, str);
+  }
+
+  put_str_aligned(y, align, str) {
+    return this.fnPutStrAlign(this.ptr, y, align, str);
+  }
+
+  set_fgrgb(rgb) {
+    return this.fnSetFgRgb(this.ptr, rgb);
+  }
+  set_fg(rgb) { return this.set_fgrgb(rgb); }
+
+  set_bgrgb(rgb) {
+    return this.fnSetBgRgb(this.ptr, rgb);
+  }
+  set_bg(rgb) { return this.set_bgrgb(rgb); }
+
+  erase() {
+    this.fnErase(this.ptr);
+  }
+
+  destroy() {
+    if (this.ptr != nil) {
+      var res = this.fnDestroy(this.ptr);
+      this.ptr = nil;
+      return res;
+    }
+    return 0;
+  }
+
+  box(ystop, xstop, edges) {
+    ystop = ystop ?? 0;
+    xstop = xstop ?? 0;
+    edges = edges ?? 0;
+    return this.fnBox(this.ptr, nil, nil, nil, nil, nil, nil, ystop, xstop, edges);
+  }
+}
+
+class Notcurses {
+  const NCOPTION_INHIBIT_SETLOCALE    = 0x0001;
+  const NCOPTION_NO_CLEAR_BITMAPS     = 0x0002;
+  const NCOPTION_NO_WINCH_SIGHANDLER  = 0x0004;
+  const NCOPTION_NO_QUIT_SIGHANDLERS  = 0x0008;
+  const NCOPTION_SUPPRESS_BANNERS     = 0x0010;
+  const NCOPTION_NO_ALTERNATE_SCREEN  = 0x0020;
+  const NCOPTION_NO_FONT_CHANGES      = 0x0040;
+
+  init(flags = nil) {
+    if (flags == nil) {
+      flags = this.NCOPTION_SUPPRESS_BANNERS | this.NCOPTION_NO_ALTERNATE_SCREEN;
+    }
+
+    /*
+    if (libPath == nil) libPath = ["libnotcurses.so", "libnotcurses-core.so", "libnotcurses-ffi.so"];
+    if (libPath == nil) libPath = ["/usr/lib64/libnotcurses-core.so.3", "/usr/lib64/libnotcurses-ffi.so.3", "/usr/lib64/libnotcurses.so.3"];
+    */
+
+    this.ffi = MultiFFI([
+        "libnotcurses-ffi.so",
+        "libnotcurses-core.so",
+        "libnotcurses.so"]);
+
+    this.ninit = this.ffi.bind("notcurses_init", "pointer", ["pointer", "pointer"]);
+    this.nstop = this.ffi.bind("notcurses_stop", "int32", ["pointer"]);
+    this.nrender = this.ffi.bind("notcurses_render", "int32", ["pointer"]);
+    this.nstd = this.ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
+    this.nget = this.ffi.bind("notcurses_get", "int32", ["pointer", "pointer", "pointer"]);
+
+    // pack struct notcurses_options:
+    // termtype (NULL), renderfp(NULL), flags, margin_t, margin_r, margin_b, margin_l
+    // Q = termtype (null/0)
+    // I = loglevel (0)
+    // I I I I = 4 margins (0, 0, 0, 0)
+    // I = 4-byte padding for uint64 alignment
+    // Q = flags
+    var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
+
+    this.ptr = this.ninit(opts, nil);
+    if (this.ptr == nil) {
+      print "Failed to initialize Notcurses.";
+      return;
+    }
+
+    // cache stdplane wrapper
+    this.stdplane = Plane(this.nstd(this.ptr), this.ffi);
+  }
+
+  render() {
+    return this.nrender(this.ptr);
+  }
+
+  get_stdplane() {
+    return this.stdplane;
+  }
+
+  get_key() {
+    return this.nget(this.ptr, nil, nil);
+  }
+
+  stop() {
+    if (this.ptr != nil) {
+      this.nstop(this.ptr);
+      this.ptr = nil;
+    }
+  }
+}
+
+if (System.ARGS.length() >= 1 and System.ARGS[0] == "test") {
+  var lib = FFI("libnotcurses.so");
+  var nc = Notcurses(lib);
+
+  nc.stop();
+}
