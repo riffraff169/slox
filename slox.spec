@@ -170,6 +170,7 @@ cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
 # Core modules (always built)
 install -m 0755 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
 install -m 0755 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0755 modules/liblox_ffi.so %{buildroot}%{_libdir}/slox/modules/
 
 [ -f modules/liblox_ssl.so ] && install -m 0755 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
 [ -f modules/liblox_gi.so ] && install -m 0755 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
