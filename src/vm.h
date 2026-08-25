@@ -89,6 +89,7 @@ typedef struct {
     ObjClass* moduleClass;
     ObjClass* gcClass;
     ObjClass* classClass;
+    ObjClass* bufferClass;
     int nativeExitDepth;
     bool noStdLib;
 

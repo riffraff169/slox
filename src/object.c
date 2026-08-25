@@ -310,6 +310,14 @@ ObjForeign* newForeign(void* ptr, const char* name) {
     return foreign;
 }
 
+ObjBuffer* newBuffer(size_t size) {
+    ObjBuffer* buffer = ALLOCATE_OBJ(ObjBuffer, OBJ_BUFFER);
+    buffer->obj.klass = vm.bufferClass;
+    buffer->size = size;
+    buffer->bytes = (uint8_t*)calloc(1, size);
+    return buffer;
+}
+
 void printValueMain(Value value) {
     printValue(stdout, value);
 }
@@ -403,6 +411,9 @@ void printObject(FILE* stream, Value value) {
             break;
         case OBJ_STRING:
             fprintf(stream, "%s", AS_CSTRING(value));
+            break;
+        case OBJ_BUFFER:
+            fprintf(stream, "Buffer");
             break;
         case OBJ_UPVALUE:
             fprintf(stream, "upvalue");

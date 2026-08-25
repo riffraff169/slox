@@ -291,6 +291,13 @@ static void freeObject(Obj* object) {
         case OBJ_UPVALUE:
             FREE(ObjUpvalue, object);
             break;
+        case OBJ_BUFFER:
+            {
+                ObjBuffer* buffer = (ObjBuffer*)object;
+                free(buffer->bytes);
+                FREE(ObjBuffer, object);
+            }
+            break;
     }
 }
 
@@ -337,6 +344,8 @@ static void markRoots() {
     markObject((Obj*)vm.errstrString);
     markObject((Obj*)vm.resultClass);
     markObject((Obj*)vm.optionClass);
+    markObject((Obj*)vm.classClass);
+    markObject((Obj*)vm.bufferClass);
     markObject((Obj*)vm.okString);
     markObject((Obj*)vm.valString);
     markObject((Obj*)vm.errString);

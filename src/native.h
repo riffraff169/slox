@@ -225,5 +225,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]);
 Value base64EncodeNative(int argCount, Value* args);
 Value base64DecodeNative(int argCount, Value* args);
 void initBase64Class();
+Value bufferAllocNative(int argCount, Value* args);
+Value bufferSizeNative(int argCount, Value* args);
+Value bufferFillNative(int argCount, Value* args);
+void initBufferClass();
 
 #endif // NATIVE_H

@@ -2950,13 +2950,13 @@ Value fileReadlineNative(int argCount, Value* args) {
         if (length >= capacity - 1) {
             size_t oldCapacity = capacity;
             capacity = oldCapacity * 2;
-            char* newBuffer = (char*)realloc(buffer, capacity);
+            char* newBuff = (char*)realloc(buffer, capacity);
 
-            if (newBuffer == NULL) {
+            if (newBuff == NULL) {
                 free(buffer);
                 return errorResult("%s", "Out of memory while reading line.");
             }
-            buffer = newBuffer;
+            buffer = newBuff;
         }
     }
 
@@ -5478,6 +5478,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
     popn(4);
+
 }
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -5630,3 +5631,40 @@ void initBase64Class() {
     tableSet(&vm.globals, base64Name, OBJ_VAL(base64Class));
 }
 
+Value bufferAllocNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        return NIL_VAL;
+    }
+
+    size_t size = (size_t)AS_NUMBER(args[0]);
+    ObjBuffer* buffer = newBuffer(size);
+    return OBJ_VAL(buffer);
+}
+
+Value bufferSizeNative(int argCount, Value* args) {
+    return NUMBER_VAL(AS_BUFFER(args[-1])->size);
+}
+
+Value bufferFillNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_NUMBER(args[0])) {
+        return NIL_VAL;
+    }
+
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    int fillval = (int)AS_NUMBER(args[0]);
+    memset(buf->bytes, fillval, buf->size);
+    return NIL_VAL;
+}
+
+void initBufferClass() {
+    ObjString* bufferStr = copyString("Buffer", 6);
+    push(OBJ_VAL(bufferStr));
+    vm.bufferClass = newClass(bufferStr);
+    tableSet(&vm.globals, bufferStr, OBJ_VAL(vm.bufferClass));
+
+    defineNativeMethod(vm.bufferClass, "alloc", bufferAllocNative);
+    defineNativeMethod(vm.bufferClass, "size", bufferSizeNative);
+    defineNativeMethod(vm.bufferClass, "fill", bufferFillNative);
+
+    pop();
+}

@@ -385,9 +385,11 @@ ObjClass* getClassForValue(Value value) {
             case OBJ_CLOSURE:
             case OBJ_NATIVE: return vm.functionClass;
             case OBJ_INSTANCE: return AS_INSTANCE(value)->obj.klass;
+            case OBJ_BUFFER: return vm.bufferClass;
             default: return AS_OBJ(value)->klass;
         }
     }
+   
     return NULL;
 }
 
@@ -1314,6 +1316,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initIOClass(); // done
     initStructClass(); //
     initBase64Class();
+    initBufferClass();
 
     initValueArray(&vm.atExitHooks);
 

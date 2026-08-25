@@ -115,15 +115,21 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "string") == 0) {
             const char** ptr = (const char**)malloc(sizeof(char*));
-            *ptr = IS_STRING(val) ? AS_CSTRING(val) : NULL;
+            if (IS_BUFFER(val)) {
+                *ptr = (const char*)AS_BUFFER(val)->bytes;
+            } else if (IS_STRING(val)) {
+                *ptr = AS_CSTRING(val);
+            } else {
+                *ptr = NULL;
+            }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "pointer") == 0) {
             void** ptr = (void**)malloc(sizeof(void*));
             if (IS_NIL(val)) {
                 *ptr = NULL;
-            } else if (IS_STRING(val)) {
-                *ptr = (void*)AS_CSTRING(val);
+            } else if (IS_BUFFER(val)) {
+                *ptr = (void*)AS_BUFFER(val)->bytes;
             } else if (IS_NUMBER(val)) {
                 *ptr = (void*)(uintptr_t)AS_NUMBER(val);
             } else if (IS_INSTANCE(val) && AS_INSTANCE(val)->foreignPtr) {

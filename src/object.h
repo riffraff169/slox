@@ -12,6 +12,7 @@
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
 #define IS_FOREIGN(value)       isObjType(value, OBJ_FOREIGN)
+#define IS_BUFFER(value)        isObjType(value, OBJ_BUFFER)
 #define IS_REGEX(value)         isObjType(value, OBJ_REGEX)
 #define IS_MAP(value)           isObjType(value, OBJ_MAP)
 #define IS_SET(value)           isObjType(value, OBJ_SET)
@@ -25,6 +26,7 @@
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 
 #define AS_FOREIGN(value)       ((ObjForeign*)AS_OBJ(value))
+#define AS_BUFFER(value)        ((ObjBuffer*)AS_OBJ(value))
 #define AS_REGEX(value)         ((ObjRegex*)AS_OBJ(value))
 #define AS_MAP(value)           ((ObjMap*)AS_OBJ(value))
 #define AS_SET(value)           ((ObjSet*)AS_OBJ(value))
@@ -55,6 +57,7 @@ typedef enum {
     OBJ_FOREIGN,
     OBJ_REGEX,
     OBJ_BOX,
+    OBJ_BUFFER,
     OBJ_VEC3
 } ObjType;
 
@@ -77,6 +80,12 @@ typedef struct {
     ObjString* filename;
     bool isfree;
 } ObjFunction;
+
+typedef struct {
+    Obj obj;
+    size_t size;
+    uint8_t* bytes;
+} ObjBuffer;
 
 typedef struct ObjNative ObjNative;
 typedef Value (*NativeFn)(int argCount, Value* args);
@@ -115,10 +124,6 @@ typedef struct ObjInstance ObjInstance;
 typedef struct ObjClass ObjClass;
 
 typedef Value (*ClassCallFn)(int argCount, Value* args);
-/*
-typedef Value (*ForeignGetFn)(ObjInstance* instance, ObjString* name);
-typedef bool (*ForeignSetFn)(ObjInstance* instance, ObjString* name, Value value);
-*/
 typedef Value (*ForeignGetFn)(Value receiver, ObjString* name);
 typedef Value (*ForeignSetFn)(Value receiver, ObjString* name, Value value);
 typedef void (*DestructorFn)(ObjInstance* instance);
@@ -234,6 +239,7 @@ void printValueMain(Value value);
 void printObject(FILE* stream, Value value);
 uint32_t hashBytes(const uint8_t* key, int length);
 uint32_t hashValue(Value value);
+ObjBuffer* newBuffer(size_t size);
 
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;
