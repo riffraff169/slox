@@ -2731,10 +2731,30 @@ InterpretResult run() {
                     uint16_t catchOffset = READ_SHORT();
                     uint16_t finallyOffset = READ_SHORT();
 
+                    /*
                     if (vm.tryCount >= TRY_STACK_MAX) {
+                        fprintf(stderr, "\n=================== TRY STACK OVERFLOW ===================\n");
+                        fprintf(stderr, "Current tryCount: %d (MAX: %d)\n", vm.tryCount, TRY_STACK_MAX);
+                        fprintf(stderr, "Lox Call Stack (most recent call first):\n");
+
+                        for (int i = vm.frameCount - 1; i >= 0; i--) {
+                            CallFrame* f = &vm.frames[i];
+                            ObjFunction* fn = f->closure->function;
+                            size_t instruction = f->ip - fn->chunk.code - 1;
+                            int line = getLine(&fn->chunk, instruction);
+
+                            const char* file = fn->filename ? fn->filename->chars : "unknown";
+                            fprintf(stderr, "[%2d] %s() in %s:%d\n",
+                                    i,
+                                    file,
+                                    "unknown",
+                                    line);
+                        }
+                        fprintf(stderr, "=========================================================\n");
                         RUNTIME_ERROR("Stack overflow: too many nested try blocks.");
                         break;
                     }
+                    */
 
                     TryBlock* block = &vm.tryStack[vm.tryCount++];
                     block->frameCount = vm.frameCount;
@@ -3177,6 +3197,7 @@ InterpretResult run() {
                 {
                     Value result = pop();
 
+                    bool divertedToFinally = false;
                     if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
                         TryBlock* block = &vm.tryStack[vm.tryCount - 1];
                         if (block->finallyIp != NULL && !block->isReturning) {
@@ -3184,9 +3205,16 @@ InterpretResult run() {
                             block->returnValue = result;
                             vm.stackTop = block->stackTop;
                             frame->ip = block->finallyIp;
+                            divertedToFinally = true;
                             break;
                         }
+                        vm.tryCount--;
                     }
+
+                    if (divertedToFinally) {
+                        break;
+                    }
+
                     //Value result = pop();
                     closeUpvalues(frame->slots);
 

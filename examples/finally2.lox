@@ -1,0 +1,98 @@
+print "=== Starting OP_RETURN Try-Stack Unwind Tests ===";
+
+// -------------------------------------------------------------------
+// Test 1: Return directly inside try (No finally) - Exceed MAX (64)
+// -------------------------------------------------------------------
+fun returnFromTry(val) {
+  try {
+    return val * 2;
+  } catch (e) {
+    return -1;
+  }
+}
+
+print "[Test 1] Running 100 returns inside try (no finally)...";
+var t1_success = true;
+for (var i = 0; i < 100; i = i + 1) {
+  var res = returnFromTry(i);
+  if (res != i * 2) {
+    t1_success = false;
+    print "  FAIL: Iteration " + i + " returned " + res;
+    break;
+  }
+}
+if (t1_success) print "  -> PASSED: 100 iterations completed without stack overflow.";
+
+// -------------------------------------------------------------------
+// Test 2: Return directly inside catch block - Exceed MAX (64)
+// -------------------------------------------------------------------
+fun returnFromCatch() {
+  try {
+    throw "err";
+  } catch (e) {
+    return 42;
+  }
+}
+
+print "[Test 2] Running 100 returns inside catch...";
+var t2_success = true;
+for (var i = 0; i < 100; i = i + 1) {
+  if (returnFromCatch() != 42) {
+    t2_success = false;
+    break;
+  }
+}
+if (t2_success) print "  -> PASSED: 100 catch-returns completed cleanly.";
+
+// -------------------------------------------------------------------
+// Test 3: Return inside try WITH a finally block
+// -------------------------------------------------------------------
+var finallyExecCount = 0;
+
+fun returnWithFinally() {
+  try {
+    return "try_value";
+  } finally {
+    finallyExecCount = finallyExecCount + 1;
+  }
+}
+
+print "[Test 3] Verifying finally execution and try-stack unwinding...";
+for (var i = 0; i < 100; i = i + 1) {
+  var ret = returnWithFinally();
+  if (ret != "try_value") {
+    print "  FAIL: Return value corrupted: " + ret;
+    break;
+  }
+}
+
+if (finallyExecCount == 100) {
+  print "  -> PASSED: Finally executed 100/100 times and preserved return values.";
+} else {
+  print "  FAIL: Finally executed " + finallyExecCount + " times instead of 100.";
+}
+
+// -------------------------------------------------------------------
+// Test 4: Nested try blocks with early return
+// -------------------------------------------------------------------
+fun nestedTryReturn() {
+  try {
+    try {
+      try {
+        return "deep";
+      } catch (e1) {}
+    } catch (e2) {}
+  } catch (e3) {}
+}
+
+print "[Test 4] Running 100 deep nested try returns...";
+var t4_success = true;
+for (var i = 0; i < 100; i = i + 1) {
+  if (nestedTryReturn() != "deep") {
+    t4_success = false;
+    break;
+  }
+}
+if (t4_success) print "  -> PASSED: Nested try frames unwound cleanly.";
+
+print "=== All Tests Completed Successfully ===";

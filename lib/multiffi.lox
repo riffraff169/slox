@@ -16,17 +16,20 @@ class MultiFFI {
 
   bind(symbolName, returnType, argTypes) {
     for (var i = 0; i < this.handles.length(); i += 1) {
+      var sym = nil;
       try {
-        var sym = this.handles[i].bind(symbolName, returnType, argTypes);
+        sym = this.handles[i].bind(symbolName, returnType, argTypes);
         //print "Found symbol " + symbolName + ": " + i;
-        return sym;
       } catch (Error e) {
-        print "Not found " + symbolName + ": " + i + " - " + e.message;
+        sym = nil;
+        print "MultiFFI: Not found " + symbolName + ": " + i + " - " + e.message;
         // try next library
       } catch (e) {
-        print "Not found " + symbolName + ": " + i + " - " + e;
+        sym = nil;
+        print "MultiFFI: Not found " + symbolName + ": " + i + " - " + e;
       }
+      return sym;
     }
-    throw("Symbol '" + symbolName + "' not found in any loaded libraries.");
+    throw("MultiFFI: Symbol '" + symbolName + "' not found in any loaded libraries.");
   }
 }

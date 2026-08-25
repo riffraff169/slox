@@ -305,7 +305,6 @@ Value ffiBindMethod(int argCount, Value* args) {
     const char* rtypeStr = AS_CSTRING(args[1]);
 
     void* fnPtr = dlsym(lib->handle, symName);
-
     if (!fnPtr) {
         fnPtr = dlsym(RTLD_DEFAULT, symName);
     }
@@ -324,28 +323,26 @@ Value ffiBindMethod(int argCount, Value* args) {
     int numArgs = 0;
     ffi_type** argTypes = NULL;
     char** argTypeNames = NULL;
+
     if (argCount > 2 && IS_ARRAY(args[2])) {
         ObjArray* arr = AS_ARRAY(args[2]);
         numArgs = arr->count;
         if (numArgs > 0) {
             argTypes = (ffi_type**)malloc(sizeof(ffi_type*) * numArgs);
-            argTypeNames = (char**)malloc(sizeof(char*) * numArgs);
+            argTypeNames = (char**)calloc(numArgs, sizeof(char*));
 
             for (int i = 0; i < numArgs; i++) {
                 if (!IS_STRING(arr->values[i])) {
                     runtimeError("Argument types must be strings.");
-                    free(argTypes);
-                    free(argTypeNames);
-                    return NIL_VAL;
+                    goto cleanup_args;
                 }
                 const char* typeName = AS_CSTRING(arr->values[i]);
                 argTypes[i] = parseFFIType(typeName);
-                argTypeNames[i] = strdup(typeName);
-
                 if (!argTypes[i]) {
                     runtimeError("Unknown argument type '%s'.", typeName);
-                    return NIL_VAL;
+                    goto cleanup_args;
                 }
+                argTypeNames[i] = strdup(typeName);
             }
         }
     }
@@ -360,13 +357,25 @@ Value ffiBindMethod(int argCount, Value* args) {
 
     if (ffi_prep_cif(&fn->cif, FFI_DEFAULT_ABI, numArgs, rtype, argTypes) != FFI_OK) {
         runtimeError("ffi_prep_cif failed for symbol '%s'.", symName);
-        return NIL_VAL;
+        free(fn->rtypeName);
+        free(fn);
+        goto cleanup_args;
     }
 
     ObjNative* nativeFn = newNative(ffiNativeCallHandler);
     nativeFn->foreignData = (void*)fn;
     nativeFn->destructor = freeFFIFuncDestructor;
     return OBJ_VAL(nativeFn);
+
+cleanup_args:
+    if (argTypeNames) {
+        for (int i = 0; i < numArgs; i++) {
+            if (argTypeNames[i]) free(argTypeNames[i]);
+        }
+        free(argTypeNames);
+    }
+    if (argTypes) free(argTypes);
+    return NIL_VAL;
 }
 
 void lox_module_init(VM* vm) {

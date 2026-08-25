@@ -45,6 +45,10 @@ class Plane {
     this.fnChannels = ffiLib.bind("ncplane_channels", "uint64", ["pointer"]);
   }
 
+  erase() {
+    this.fnErase(this.ptr);
+  }
+
   create_child(y, x, rows, cols, flags = 0) {
     //flags = flags ?? 0;
     //if (flags == nil) flags = 0;
