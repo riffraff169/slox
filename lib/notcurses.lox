@@ -1,16 +1,19 @@
 import "ffi";
+
 require("multiffi.lox");
 
 class Plane {
-  const NCALIGN_LEFT = 0;
-  const NCALIGN_CENTER = 1;
-  const NCALIGN_RIGHT = 2;
+  const NCALIGN_UNALIGNED = 0;
+  const NCALIGN_LEFT = 1;
+  const NCALIGN_CENTER = 2;
+  const NCALIGN_RIGHT = 3;
+
 
   init(ptr, ffiLib) {
     this.ptr = ptr;
     this.ffi = ffiLib;
 
-    this.fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "pointer"]);
+    this.fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "string"]);
     this.fnPutStr = ffiLib.bind("ncplane_putstr", "int32", ["pointer", "string"]);
     this.fnPutStrAlign = ffiLib.bind("ncplane_putstr_aligned", "int32", ["pointer", "int32", "int32", "string"]);
     this.fnSetFgRgb = ffiLib.bind("ncplane_set_fg_rgb", "int32", ["pointer", "int32"]);
@@ -18,36 +21,70 @@ class Plane {
     this.fnErase = ffiLib.bind("ncplane_erase", "void", ["pointer"]);
     this.fnDestroy = ffiLib.bind("ncplane_destroy", "int32", ["pointer"]);
     this.fnBox = ffiLib.bind("ncplane_box", "int32",
-        ["pointer", "pointer", "pointer", "pointer",
-        "pointer", "pointer", "pointer", "int32", "int32", "int32"]);
+        ["pointer", // plane
+        "string", // ul
+        "string", // ur
+        "string", // ll
+        "string", // lr
+        "string", // hl
+        "string", // vl
+        "int32", // ystop
+        "int32", // xstop
+        "int32" // edges / ctlflags
+        ]);
+
+    this.fnPutStrYx = ffiLib.bind("ncplane_putstr_yx", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnDimY = ffiLib.bind("ncplane_dim_y", "int32", ["pointer"]);
+    this.fnDimX = ffiLib.bind("ncplane_dim_x", "int32", ["pointer"]);
+    this.fnYx = ffiLib.bind("ncplane_yx", "void", ["pointer", "pointer", "pointer"]);
+    this.fnAtYxCell = ffiLib.bind("ncplane_at_yx_cell", "int32", ["pointer", "int32", "int32", "pointer"]);
+
+    this.fnCellLoad = ffiLib.bind("nccell_load", "int32", ["pointer", "pointer", "string"]);
+
+    this.fnCellRelease = ffiLib.bind("nccell_release", "void", ["pointer", "pointer"]);
+    this.fnChannels = ffiLib.bind("ncplane_channels", "uint64", ["pointer"]);
   }
 
-  create_child(y, x, rows, cols, flags) {
-    if (flags == nil) flags = 0;
+  create_child(y, x, rows, cols, flags = 0) {
+    //flags = flags ?? 0;
+    //if (flags == nil) flags = 0;
     // pack 48-bytes ncplane_options struct
-    var opts = Struct.pack("I I I I Q Q Q Q", [y, x, rows, cols, 0, 0, 0, flags]);
+    var opts = Struct.pack("I I I I Q Q Q Q Q Q", [y, x, rows, cols, 0, 0, 0, flags, 0, 0]);
     var childPtr = this.fnCreate(this.ptr, opts);
     if (childPtr == nil) return nil;
     return Plane(childPtr, this.ffi);
   }
 
-  put_str(str) {
-    return this.fnPutStr(this.ptr, str);
+  // either put_str("hello") or put_str(y, x, "hello")
+  put_str(a1, a2 = nil, a3 = nil) {
+    if (a2 == nil and a3 == nil)
+      return this.fnPutStr(this.ptr, a1);
+    return this.fnPutStrYx(this.ptr, a1 ,a2, a3);
   }
 
+  // either string name ("center") or integer alignment enum
   put_str_aligned(y, align, str) {
+    if (align == "center") align = this.NCALIGN_CENTER;
+    else if (align == "left") align = this.NCALIGN_LEFT;
+    else if (align == "right") align = this.NCALIGN_RIGHT;
     return this.fnPutStrAlign(this.ptr, y, align, str);
   }
 
-  set_fgrgb(rgb) {
+  set_fg(r, g = nil, b = nil) {
+    var rgb = r;
+    if (g != nil and b != nil)
+      rgb = (r << 16) | (g << 8) | b;
     return this.fnSetFgRgb(this.ptr, rgb);
   }
-  set_fg(rgb) { return this.set_fgrgb(rgb); }
+  set_fgrgb(rgb) { return this.set_fg(rgb); }
 
-  set_bgrgb(rgb) {
+  set_bg(r, g = nil, b = nil) {
+    var rgb = r;
+    if (g != nil and b != nil)
+      rgb = (r << 16) |  (g << 8) | b;
     return this.fnSetBgRgb(this.ptr, rgb);
   }
-  set_bg(rgb) { return this.set_bgrgb(rgb); }
+  set_bgrgb(rgb) { return this.set_bg(rgb); }
 
   erase() {
     this.fnErase(this.ptr);
@@ -62,11 +99,86 @@ class Plane {
     return 0;
   }
 
-  box(ystop, xstop, edges) {
-    ystop = ystop ?? 0;
-    xstop = xstop ?? 0;
-    edges = edges ?? 0;
-    return this.fnBox(this.ptr, nil, nil, nil, nil, nil, nil, ystop, xstop, edges);
+  createCell(egc, channels) {
+    var buf = Buffer.alloc(32);
+    this.fnCellLoad(this.ptr, buf, egc);
+
+    var fields = Struct.unpackNative("I B B H Q Q Q", buf);
+
+    fields[4] = channels;
+
+    var cellStr = Struct.packNative("I B B H Q Q Q", fields);
+
+    return [cellStr, buf];
+  }
+
+  box(ystop = 0, xstop = 0, rounded = false, edges = 0) {
+    var edgesStr = "┌┐└┘─│";
+
+    if (ystop == 0 or xstop == 0) {
+      var dim = this.get_dim();
+      if (ystop == 0) ystop = dim[0] - 1;
+      if (xstop == 0) xstop = dim[1] - 1;
+    }
+
+    var channels = this.fnChannels(this.ptr);
+    var res = 0;
+
+    var ulObj = rounded ? this.createCell("╭", channels) : this.createCell("┌", channels);
+    var urObj = rounded ? this.createCell("╮", channels) : this.createCell("┐", channels);
+    var llObj = rounded ? this.createCell("╰", channels) : this.createCell("└", channels);
+    var lrObj = rounded ? this.createCell("╯", channels) : this.createCell("┘", channels);
+    var hlObj = this.createCell("─", channels);
+    var vlObj = this.createCell("│", channels);
+
+    var ctlflags = edges;
+    if (rounded)
+      ctlflags = ctlflags | 1;
+    res = this.fnBox(
+        this.ptr,
+        ulObj[0], urObj[0], llObj[0], lrObj[0], hlObj[0], vlObj[0],
+        ystop, xstop, ctlflags
+        );
+
+    this.fnCellRelease(this.ptr, ulObj[1]);
+    this.fnCellRelease(this.ptr, urObj[1]);
+    this.fnCellRelease(this.ptr, llObj[1]);
+    this.fnCellRelease(this.ptr, lrObj[1]);
+    this.fnCellRelease(this.ptr, hlObj[1]);
+    this.fnCellRelease(this.ptr, vlObj[1]);
+
+    return res;
+  }
+
+  get_dim() {
+    return [this.fnDimY(this.ptr), this.fnDimX(this.ptr)];
+  }
+
+  get_pos() {
+    /*
+    var yBuf = Struct.packNative("I", [0]);
+    var xBuf = Struct.packNative("I", [0]);
+    */
+    var yBuf = Buffer.alloc(4);
+    var xBuf = Buffer.alloc(4);
+
+    this.fnYx(this.ptr, yBuf, xBuf);
+
+    var y = Struct.unpackNative("I", yBuf)[0];
+    var x = Struct.unpackNative("I", xBuf)[0];
+    return [y, x];
+  }
+
+  contains_point(screenY, screenX) {
+    var pos = this.get_pos();
+    var dim = this.get_dim();
+    return (screenY >= pos[0] and screenY < (pos[0] + dim[0]) and
+        screenX >= pos[1] and screenX < (pos[1] + dim[1]));
+  }
+
+  to_local(screenY, screenX) {
+    var pos = this.get_pos();
+    return [screenY - pos[0], screenX - pos[1]];
   }
 }
 
@@ -84,21 +196,16 @@ class Notcurses {
       flags = this.NCOPTION_SUPPRESS_BANNERS | this.NCOPTION_NO_ALTERNATE_SCREEN;
     }
 
-    /*
-    if (libPath == nil) libPath = ["libnotcurses.so", "libnotcurses-core.so", "libnotcurses-ffi.so"];
-    if (libPath == nil) libPath = ["/usr/lib64/libnotcurses-core.so.3", "/usr/lib64/libnotcurses-ffi.so.3", "/usr/lib64/libnotcurses.so.3"];
-    */
-
     this.ffi = MultiFFI([
         "libnotcurses-ffi.so",
         "libnotcurses-core.so",
         "libnotcurses.so"]);
 
-    this.ninit = this.ffi.bind("notcurses_init", "pointer", ["pointer", "pointer"]);
-    this.nstop = this.ffi.bind("notcurses_stop", "int32", ["pointer"]);
-    this.nrender = this.ffi.bind("notcurses_render", "int32", ["pointer"]);
-    this.nstd = this.ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
-    this.nget = this.ffi.bind("notcurses_get", "int32", ["pointer", "pointer", "pointer"]);
+    this.fnInit = this.ffi.bind("notcurses_init", "pointer", ["string", "pointer"]);
+    this.fnStop = this.ffi.bind("notcurses_stop", "int32", ["pointer"]);
+    this.fnRender = this.ffi.bind("notcurses_render", "int32", ["pointer"]);
+    this.fnStdPlane = this.ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
+    this.fnGet = this.ffi.bind("notcurses_get", "int32", ["pointer", "pointer", "pointer"]);
 
     // pack struct notcurses_options:
     // termtype (NULL), renderfp(NULL), flags, margin_t, margin_r, margin_b, margin_l
@@ -109,18 +216,18 @@ class Notcurses {
     // Q = flags
     var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
 
-    this.ptr = this.ninit(opts, nil);
+    this.ptr = this.fnInit(opts, nil);
     if (this.ptr == nil) {
       print "Failed to initialize Notcurses.";
       return;
     }
 
     // cache stdplane wrapper
-    this.stdplane = Plane(this.nstd(this.ptr), this.ffi);
+    this.stdplane = Plane(this.fnStdPlane(this.ptr), this.ffi);
   }
 
   render() {
-    return this.nrender(this.ptr);
+    return this.fnRender(this.ptr);
   }
 
   get_stdplane() {
@@ -133,7 +240,7 @@ class Notcurses {
 
   stop() {
     if (this.ptr != nil) {
-      this.nstop(this.ptr);
+      this.fnStop(this.ptr);
       this.ptr = nil;
     }
   }

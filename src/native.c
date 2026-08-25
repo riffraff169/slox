@@ -5664,6 +5664,20 @@ Value bufferFillNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value bufferWriteUint64Native(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+        return NIL_VAL;
+    }
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    size_t offset = (size_t)AS_NUMBER(args[0]);
+    uint64_t val = (uint64_t)AS_NUMBER(args[1]);
+
+    if (offset + sizeof(uint64_t) <= buf->size) {
+        memcpy(buf->bytes + offset, &val, sizeof(uint64_t));
+    }
+    return NIL_VAL;
+}
+
 void initBufferClass() {
     ObjString* bufferStr = copyString("Buffer", 6);
     push(OBJ_VAL(bufferStr));
@@ -5673,6 +5687,7 @@ void initBufferClass() {
     defineNativeMethod(vm.bufferClass, "alloc", bufferAllocNative);
     defineNativeMethod(vm.bufferClass, "size", bufferSizeNative);
     defineNativeMethod(vm.bufferClass, "fill", bufferFillNative);
+    defineNativeMethod(vm.bufferClass, "write_uint64", bufferWriteUint64Native);
 
     pop();
 }
