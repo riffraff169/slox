@@ -479,3 +479,11 @@ fun parseBinary(str) {
   }
   return val;
 }
+
+class Struct {
+  packNative(fmt, values) { return this.pack(fmt, values, false); }
+  unpackNative(fmt, buf) { return this.unpack(fmt, buf, false); }
+
+  packNet(fmt, values) { return this.pack(fmt, values, true); }
+  unpackNet(fmt, buf) { return this.unpack(fmt, buf, true); }
+}
