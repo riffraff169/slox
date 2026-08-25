@@ -4157,14 +4157,22 @@ Value structUnpackNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    if (!IS_STRING(args[1])) {
-        runtimeError("Second argument to Struct.unpack() must be a data string.");
+    if (!IS_STRING(args[1]) && !IS_BUFFER(args[1])) {
+        runtimeError("Second argument to Struct.unpack() must be a data string or buffer.");
         return NIL_VAL;
     }
 
     const char* format = AS_CSTRING(args[0]);
-    ObjString* data = AS_STRING(args[1]);
-    const uint8_t* buffer = (const uint8_t*)data->chars;
+    const uint8_t* buffer;
+    int bufferlen;
+    if (IS_STRING(args[1])) {
+        ObjString* data = AS_STRING(args[1]);
+        buffer = (const uint8_t*)data->chars;
+        bufferlen = data->length;
+    } else {
+        buffer = AS_BUFFER(args[1])->bytes;
+        bufferlen = AS_BUFFER(args[1])->size;
+    }
     bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : true;
 
     ObjArray* result = newArray();
@@ -4199,13 +4207,13 @@ Value structUnpackNative(int argCount, Value* args) {
             case 'H': requiredSize = 2; break;
             case 'I': requiredSize = 4; break;
             case 'Q': requiredSize = 8; break;
-            case 's': requiredSize = hasWidth ? width : (data->length - offset); break;
+            case 's': requiredSize = hasWidth ? width : (bufferlen - offset); break;
             default:
                       runtimeError("Unknown format specifier '%c'.", type);
                       return NIL_VAL;
         }
 
-        if (offset + requiredSize > data->length) {
+        if (offset + requiredSize > bufferlen) {
             runtimeError("Buffer underflow: Data string is too short o unpack the specified format.");
             return NIL_VAL;
         }
