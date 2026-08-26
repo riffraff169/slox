@@ -90,10 +90,6 @@ class Plane {
   }
   set_bgrgb(rgb) { return this.set_bg(rgb); }
 
-  erase() {
-    this.fnErase(this.ptr);
-  }
-
   destroy() {
     if (this.ptr != nil) {
       var res = this.fnDestroy(this.ptr);
@@ -194,6 +190,12 @@ class Notcurses {
   const NCOPTION_SUPPRESS_BANNERS     = 0x0010;
   const NCOPTION_NO_ALTERNATE_SCREEN  = 0x0020;
   const NCOPTION_NO_FONT_CHANGES      = 0x0040;
+  const PRETERUNICODEBASE = 1115000;
+
+  const NCMICE_NO_EVENTS = 0;
+  const NCMICE_BUTTON_EVENT = 1;
+  const NCMICE_MOVE_EVENT = 2;
+  const NCMICE_ALL_EVENTS = 3; // NCMICE_BUTTON_EVENT | NCMICE_MOVE_EVENT
 
   init(flags = nil) {
     if (flags == nil) {
@@ -210,6 +212,8 @@ class Notcurses {
     this.fnRender = this.ffi.bind("notcurses_render", "int32", ["pointer"]);
     this.fnStdPlane = this.ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
     this.fnGet = this.ffi.bind("notcurses_get", "int32", ["pointer", "pointer", "pointer"]);
+    this.fnMiceEnable = this.ffi.bind("notcurses_mice_enable", "int32", ["pointer", "int32"]);
+    this.fnMiceDisable = this.ffi.bind("notcurses_mice_disable", "int32", ["pointer"]);
 
     // pack struct notcurses_options:
     // termtype (NULL), renderfp(NULL), flags, margin_t, margin_r, margin_b, margin_l
@@ -228,6 +232,119 @@ class Notcurses {
 
     // cache stdplane wrapper
     this.stdplane = Plane(this.fnStdPlane(this.ptr), this.ffi);
+    this.inputBuf = nil;
+  }
+
+  enable_mouse(enable = true, allow_motion = false) {
+    if (!enable) {
+      return this.fnMiceDisable(this.ptr) == 0;
+    }
+    var mode = allow_motion ? this.NCMICE_ALL_EVENTS : this.NCMICE_BUTTON_EVENT;
+    if (this.ptr == nil) return false;
+
+    return this.fnMiceEnable(this.ptr, mode) == 0;
+  }
+
+  translate_key(k) {
+    if (k == nil or k <= 0 or k == this.PRETERUNICODEBASE) return nil;
+
+    if (k == 9) return "Tab";
+    if (k == 27) return "Esc";
+    if (k == 10 or k == 13) return "Enter";
+
+    // notcurses special keys (PRETERUNICODEBASE offset mapping)
+    if (k >= this.PRETERUNICODEBASE) {
+      var offset = k - this.PRETERUNICODEBASE;
+
+      if (offset == 1) return "Resize";
+      if (offset == 2) return "Up";
+      if (offset == 3) return "Right";
+      if (offset == 4) return "Down";
+      if (offset == 5) return "Left";
+      if (offset == 6) return "Insert";
+      if (offset == 7) return "Delete";
+      if (offset == 8) return "Backspace";
+      if (offset == 9) return "PageDown";
+      if (offset == 10) return "PageUp";
+      if (offset == 11) return "Home";
+      if (offset == 12) return "End";
+      if (offset == 121) return "Enter";
+
+      // function keys (f00 - f19)
+      if (offset >= 20 and offset <= 39) {
+        return "F" + String(offset - 20);
+      }
+
+      // mouse / scroll wheel
+      if (offset >= 200 and offset <= 211) {
+        if (offset == 204) return "ScrollUp";
+        if (offset == 205) return "ScrollDown";
+
+        if (offset == 200) return "Motion";
+        if (offset == 201) return "Button1";
+        if (offset == 202) return "Button2";
+        if (offset == 203) return "Button3";
+        return "Button" + String(offset - 200);
+      }
+      return nil;
+    }
+
+    // standard printable ascii
+    if (k >= 32 and k <= 127) {
+      return chr(k);
+    }
+
+    return nil;
+  }
+
+  get_event() {
+    if (this.inputBuf == nil) {
+      this.inputBuf = Buffer.alloc(64);
+    }
+
+    var k = this.fnGet(this.ptr, nil, this.inputBuf);
+    if (k <= 0 or k == this.PRETERUNICODEBASE) return nil;
+
+    //var fields = Struct.unpackNative("I I I I I B B B B I", this.inputBuf);
+    var fields = Struct.unpackNative("I I I B B B B B B B B I I I I", this.inputBuf);
+    
+    var id = fields[0];
+    var y = fields[1];
+    var x = fields[2];
+    var alt = fields[8] != 0;
+    var shift = fields[9] != 0;
+    var ctrl = fields[10] != 0;
+    var typeNum = fields[11];
+    var modifiers = fields[12];
+    var ypx = fields[13];
+    var xpx = fields[14];
+
+    if (modifiers != 0) {
+      if ((modifiers & 1) != 0) shift = true;
+      if ((modifiers & 2) != 0) alt = true;
+      if ((modifiers & 4) != 0) ctrl = true;
+    }
+
+    var evtype = "press";
+    if (typeNum == 2) evtype = "repeat";
+    if (typeNum == 3) evtype = "release";
+
+    var isMouse = (id >= this.PRETERUNICODEBASE + 200 and id <= this.PRETERUNICODEBASE + 211);
+
+    return {
+      "id": id,
+      "key": this.translate_key(id),
+      "x": x,
+      "y": y,
+      "ypx": ypx,
+      "xpx": xpx,
+      "ctrl": ctrl,
+      "alt": alt,
+      "shift": shift,
+      "type": evtype,
+      "modifiers": modifiers,
+      "is_mouse": isMouse
+    };
   }
 
   render() {
@@ -238,8 +355,17 @@ class Notcurses {
     return this.stdplane;
   }
 
+  get_key_code() {
+    return this.fnGet(this.ptr, nil, nil);
+  }
+
   get_key() {
-    return this.nget(this.ptr, nil, nil);
+    var ev = this.get_event();
+    if (ev == nil) return nil;
+
+    if (ev["type"] == "release") return nil;
+
+    return ev["key"];
   }
 
   stop() {
