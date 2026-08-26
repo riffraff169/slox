@@ -1,0 +1,7 @@
+try {
+  throw Error("this is an error");
+} catch (Error e) {
+  print "Error: ${e.message}";
+} catch (e) {
+  print "Unknown error: " + e;
+}

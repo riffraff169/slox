@@ -1,0 +1,6 @@
+try {
+  throw 123;
+} catch (Number f) {
+  print typeof(f);
+  print "Caught " + f;
+}

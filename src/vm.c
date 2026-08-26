@@ -403,10 +403,35 @@ bool runtimeError(const char* format, ...) {
     va_end(args);
 
     if (vm.tryCount > 0) {
+        // 1. capture stack trace before unwinding call frames
+        int savedFrameCount = vm.frameCount;
+        
+        // 2. unwind frame count and stack top to try block boundary
         TryBlock block = vm.tryStack[--vm.tryCount];
-
         vm.frameCount = block.frameCount;
         vm.stackTop = block.stackTop;
+
+        ObjArray* stackTrace = newArray();
+        push(OBJ_VAL(stackTrace));
+
+        for (int i = savedFrameCount - 1; i >= 0; i--) {
+            CallFrame* frame = &vm.frames[i];
+            ObjFunction* function = frame->closure->function;
+            size_t instruction = frame->ip - function->chunk.code - 1;
+            int line = getLine(&function->chunk, instruction);
+
+            const char* file = function->filename ? function->filename->chars : "unknown";
+            const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+
+            char lineBuffer[256];
+            int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+                    file, line, fnName, (function->name == NULL) ? "" : "()");
+
+            ObjString* lineStr = copyString(lineBuffer, len);
+            push(OBJ_VAL(lineStr));
+            arrayAppend(stackTrace, OBJ_VAL(lineStr));
+            pop();
+        }
 
         ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
         push(OBJ_VAL(errorMsg));
@@ -422,16 +447,24 @@ bool runtimeError(const char* format, ...) {
             ObjClass* errorClass = AS_CLASS(errorClassVal);
             ObjInstance* errorInstance = newInstance(errorClass);
             pop(); // errorMsg
+            pop(); // stackTrace
             push(OBJ_VAL(errorInstance));
-
-            ObjString* messageKey = copyString("message", 7);
-            push(OBJ_VAL(messageKey));
+            push(OBJ_VAL(stackTrace));
             push(OBJ_VAL(errorMsg));
 
+            // set e.message
+            ObjString* messageKey = copyString("message", 7);
+            push(OBJ_VAL(messageKey));
             tableSet(&errorInstance->fields, messageKey, OBJ_VAL(errorMsg));
+            pop(); // messageKey
+            pop(); // errorMsg
 
-            pop();
-            pop();
+            ObjString* traceKey = copyString("stack_trace", 11);
+            push(OBJ_VAL(traceKey));
+            tableSet(&errorInstance->fields, traceKey, OBJ_VAL(stackTrace));
+            pop(); // traceKey
+            pop(); // stackTrace
+
         } else {
             ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
             push(OBJ_VAL(errorMsg));

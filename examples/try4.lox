@@ -1,0 +1,136 @@
+print "=== Starting Advanced Try/Catch/Finally Diagnostics ===";
+
+// -------------------------------------------------------------------
+// Test 5: Call Stack Unwinding Across Multiple CallFrames
+// Tests popping VM call frames when an error originates deep in a call chain.
+// -------------------------------------------------------------------
+fun innerError() {
+  var dummyLocal = "scoped_data";
+  throw "depth_3_error";
+}
+
+fun middleCall() {
+  var m1 = 100;
+  innerError();
+  var m2 = 200; // Should never execute
+}
+
+fun testCrossFrameUnwind() {
+  try {
+    middleCall();
+  } catch (e) {
+    return e;
+  }
+  return "uncaught";
+}
+
+print "[Test 5] Unwinding across multiple CallFrames...";
+if (testCrossFrameUnwind() == "depth_3_error") {
+  print "  -> PASSED: Multi-frame call stack unwound cleanly.";
+} else {
+  print "  -> FAIL: Multi-frame stack unwinding failed.";
+}
+
+// -------------------------------------------------------------------
+// Test 6: Operand Stack & Local Variable Alignment After Catch
+// Verifies vm.stackTop is properly reset so locals in outer scope don't corrupt.
+// -------------------------------------------------------------------
+fun testStackSlotAlignment() {
+  var outer1 = "outer1";
+  var outer2 = "outer2";
+  
+  try {
+    var temp1 = "pushed_to_operand_stack";
+    var temp2 = "another_pushed_item";
+    throw "stack_test";
+  } catch (e) {
+    // If stackTop was not properly restored to try-block height, 
+    // local variables below might read wrong stack slots.
+  }
+
+  var checkVar = outer1 + "_" + outer2;
+  return checkVar;
+}
+
+print "[Test 6] Verifying operand stack slot alignment after catch...";
+if (testStackSlotAlignment() == "outer1_outer2") {
+  print "  -> PASSED: Operand stack restored to correct depth.";
+} else {
+  print "  -> FAIL: Stack depth alignment corrupted outer variables.";
+}
+
+// -------------------------------------------------------------------
+// Test 7: Catching VM Runtime Errors (Undefined Vars / Typos)
+// Verifies if VM-generated errors (like your typo) trigger try-catch unwinding
+// the same way explicit 'throw' statements do.
+// -------------------------------------------------------------------
+fun testVMRuntimeErrorCatch() {
+  try {
+    var x = nonexistentVariableTypo; // Should trigger runtime error
+  } catch (e) {
+    return true;
+  }
+  return false;
+}
+
+print "[Test 7] Intercepting VM runtime errors (undefined variables)...";
+if (testVMRuntimeErrorCatch()) {
+  print "  -> PASSED: VM runtime errors caught by try/catch.";
+} else {
+  print "  -> FAIL: VM runtime error bypassed try/catch or aborted execution.";
+}
+
+// -------------------------------------------------------------------
+// Test 8: Multiple / Typed Catch Block Selection
+// Tests whether the VM correctly matches typed exception handlers or falls back.
+// -------------------------------------------------------------------
+class CustomError {}
+class UnhandledError {}
+
+fun testTypedCatchMatching() {
+  var result = "none";
+  try {
+    throw CustomError();
+  } catch (UnhandledError e) {
+    result = "matched_wrong_type";
+  } catch (CustomError e) {
+    result = "matched_correct_type";
+  } catch (e) {
+    result = "matched_generic";
+  }
+  return result;
+}
+
+print "[Test 8] Testing typed catch dispatch and fallback...";
+var matched = testTypedCatchMatching();
+if (matched == "matched_correct_type") {
+  print "  -> PASSED: Typed catch selected correct handler.";
+} else {
+  print "  -> FAIL: Expected 'matched_correct_type', got: " + matched;
+}
+
+// -------------------------------------------------------------------
+// Test 9: 'break' / 'continue' inside 'try' WITH 'finally' in a loop
+// Verifies that loop jumps execute 'finally' before breaking/continuing.
+// -------------------------------------------------------------------
+var loopFinallyCount = 0;
+
+fun testLoopBreakFinally() {
+  while (true) {
+    try {
+      break;
+    } finally {
+      loopFinallyCount = loopFinallyCount + 1;
+    }
+  }
+}
+
+print "[Test 9] Testing 'break' inside try block with finally...";
+testLoopBreakFinally();
+if (loopFinallyCount == 1) {
+  print "  -> PASSED: 'break' executed finally block and unwound try stack.";
+} else {
+  print "  -> FAIL: 'break' failed to execute finally (count: " + loopFinallyCount + ").";
+}
+
+print "=== Advanced Diagnostics Completed ===";
