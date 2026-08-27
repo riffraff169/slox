@@ -228,6 +228,9 @@ void initBase64Class();
 Value bufferAllocNative(int argCount, Value* args);
 Value bufferSizeNative(int argCount, Value* args);
 Value bufferFillNative(int argCount, Value* args);
+Value bufferWriteUint64Native(int argCount, Value* args);
 void initBufferClass();
+Value errorCallHandler(int argCount, Value* args);
+void initErrorClass();
 
 #endif // NATIVE_H

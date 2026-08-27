@@ -426,17 +426,19 @@ bool runtimeError(const char* format, ...) {
 
     if (vm.tryCount > 0) {
         // 1. capture stack trace before unwinding call frames
-        int savedFrameCount = vm.frameCount;
+        //int savedFrameCount = vm.frameCount;
         
         // 2. unwind frame count and stack top to try block boundary
+        /*
         TryBlock block = vm.tryStack[--vm.tryCount];
         vm.frameCount = block.frameCount;
         vm.stackTop = block.stackTop;
+        */
 
         ObjArray* stackTrace = newArray();
         push(OBJ_VAL(stackTrace));
 
-        for (int i = savedFrameCount - 1; i >= 0; i--) {
+        for (int i = vm.frameCount - 1; i >= 0; i--) {
             CallFrame* frame = &vm.frames[i];
             ObjFunction* function = frame->closure->function;
             size_t instruction = frame->ip - function->chunk.code - 1;
@@ -455,46 +457,55 @@ bool runtimeError(const char* format, ...) {
             pop();
         }
 
+        // 2. format error message
         ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
         push(OBJ_VAL(errorMsg));
 
+        Value exceptionVal;
+
+        // 3. construct error object if class exists globally
         Value errorClassVal;
         ObjString* errorClassName = copyString("Error", 5);
         push(OBJ_VAL(errorClassName));
 
         bool hasErrorClass = tableGet(&vm.globals, errorClassName, &errorClassVal);
-        pop();
+        pop(); // errorClassName
 
         if (hasErrorClass && IS_CLASS(errorClassVal)) {
             ObjClass* errorClass = AS_CLASS(errorClassVal);
             ObjInstance* errorInstance = newInstance(errorClass);
-            pop(); // errorMsg
-            pop(); // stackTrace
             push(OBJ_VAL(errorInstance));
-            push(OBJ_VAL(stackTrace));
-            push(OBJ_VAL(errorMsg));
 
             // set e.message
             ObjString* messageKey = copyString("message", 7);
             push(OBJ_VAL(messageKey));
             tableSet(&errorInstance->fields, messageKey, OBJ_VAL(errorMsg));
             pop(); // messageKey
-            pop(); // errorMsg
 
+            // set e.stack_trace
             ObjString* traceKey = copyString("stack_trace", 11);
             push(OBJ_VAL(traceKey));
             tableSet(&errorInstance->fields, traceKey, OBJ_VAL(stackTrace));
             pop(); // traceKey
-            pop(); // stackTrace
 
+            exceptionVal = OBJ_VAL(errorInstance);
+
+            // pop gc protection roots
+            pop(); // errorInstance
+            pop(); // errorMsg
+            pop(); // stackTrace
         } else {
-            ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
-            push(OBJ_VAL(errorMsg));
+            exceptionVal = OBJ_VAL(errorMsg);
+            pop(); // errorMsg
+            pop(); // stackTrace
         }
 
+        /*
         vm.frames[vm.frameCount -1].ip = block.catchIp;
-
         vm.exceptionThrown = true;
+        */
+        // 4. dispatch exception through handler
+        raiseException(exceptionVal);
 
         return false;
     }
@@ -1372,6 +1383,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initStructClass(); //
     initBase64Class();
     initBufferClass();
+    //initErrorClass();
 
     initValueArray(&vm.atExitHooks);
 
@@ -2838,6 +2850,22 @@ InterpretResult run() {
                     TryBlock* block = &vm.tryStack[--vm.tryCount];
 
                     if (block->isReturning) {
+                        // check if an enclosing try-finally block needs to run before returning
+                        if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                            TryBlock* outerBlock = &vm.tryStack[vm.tryCount - 1];
+                            if (outerBlock->finallyIp != NULL) {
+                                // pass the return state to the outer finally handler
+                                outerBlock->isReturning = true;
+                                outerBlock->returnValue = block->returnValue;
+
+                                uint8_t* finallyTargetIp = outerBlock->finallyIp;
+                                outerBlock->finallyIp = NULL; // mark as executing
+
+                                vm.stackTop = outerBlock->stackTop;
+                                frame->ip = finallyTargetIp;
+                                break;
+                            }
+                        }
                         push(block->returnValue);
 
                         Value result = pop();

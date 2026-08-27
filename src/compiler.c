@@ -2019,9 +2019,11 @@ static void tryStatement() {
 
     int finalDestination = currentChunk()->count;
 
+    /*
     if (catchTarget == 0) {
         catchTarget = hasFinally ? finallyTarget : finalDestination;
     }
+    */
     int successTarget = hasFinally ? finallyTarget : finalDestination;
 
     patchTryOffset(endTryJump, successTarget, 2);

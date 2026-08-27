@@ -1,0 +1,120 @@
+print "=== Starting Try-Finally & Return Execution Tests ===";
+
+// -------------------------------------------------------------------
+// Test 1: Return in try block MUST execute finally before returning
+// -------------------------------------------------------------------
+print "[Test 1] Return inside try block executes finally...";
+
+var test1_finally_ran = false;
+
+fun testTryReturn() {
+  try {
+    return "returned_from_try";
+  } finally {
+    test1_finally_ran = true;
+  }
+  return "returned_from_bottom";
+}
+
+var test1_result = testTryReturn();
+
+if (test1_result == "returned_from_try" and test1_finally_ran) {
+  print "  -> PASSED (Value: '" + test1_result + "', finally executed)";
+} else {
+  print "  FAIL: Expected 'returned_from_try' and finally flag true. Got: '" + test1_result + "', flag: " + test1_finally_ran;
+}
+
+// -------------------------------------------------------------------
+// Test 2: Return in finally block OVERRIDES return in try block
+// -------------------------------------------------------------------
+print "[Test 2] Return inside finally overrides return inside try...";
+
+fun testFinallyOverride() {
+  try {
+    return "from_try";
+  } finally {
+    return "from_finally";
+  }
+}
+
+var test2_result = testFinallyOverride();
+
+if (test2_result == "from_finally") {
+  print "  -> PASSED (Finally return precedence confirmed: '" + test2_result + "')";
+} else {
+  print "  FAIL: Expected 'from_finally', got: '" + test2_result + "'";
+}
+
+// -------------------------------------------------------------------
+// Test 3: Return in finally block SWALLOWS uncaught exceptions in try
+// -------------------------------------------------------------------
+print "[Test 3] Return inside finally swallows pending exception...";
+
+fun testFinallySwallowsError() {
+  try {
+    var error = undefinedVariableTrigger;
+  } finally {
+    return "swallowed_error_successfully";
+  }
+}
+
+var test3_result = testFinallySwallowsError();
+
+if (test3_result == "swallowed_error_successfully") {
+  print "  -> PASSED (Exception suppressed by finally return)";
+} else {
+  print "  FAIL: Expected 'swallowed_error_successfully', got: '" + test3_result + "'";
+}
+
+// -------------------------------------------------------------------
+// Test 4: Exception in try executes finally before propagating to outer catch
+// -------------------------------------------------------------------
+print "[Test 4] Uncaught exception in try executes finally before propagating...";
+
+var test4_finally_ran = false;
+var test4_caught = false;
+
+try {
+  try {
+    var err = forcePropagatedError;
+  } finally {
+    test4_finally_ran = true;
+  }
+} catch (e) {
+  test4_caught = true;
+}
+
+if (test4_finally_ran and test4_caught) {
+  print "  -> PASSED (Finally executed before error reached outer catch)";
+} else {
+  print "  FAIL: finally_ran=" + test4_finally_ran + ", caught=" + test4_caught;
+}
+
+// -------------------------------------------------------------------
+// Test 5: Nested finally execution order (Innermost to Outermost)
+// -------------------------------------------------------------------
+print "[Test 5] Nested try-finally unwind order...";
+
+var unwind_sequence = "";
+
+fun testNestedFinally() {
+  try {
+    try {
+      return "done";
+    } finally {
+      unwind_sequence = unwind_sequence + "inner_finally->";
+    }
+  } finally {
+    unwind_sequence = unwind_sequence + "outer_finally";
+  }
+}
+
+testNestedFinally();
+
+if (unwind_sequence == "inner_finally->outer_finally") {
+  print "  -> PASSED (Unwind sequence: '" + unwind_sequence + "')";
+} else {
+  print "  FAIL: Expected 'inner_finally->outer_finally', got: '" + unwind_sequence + "'";
+}
+
+print "=== Try-Finally & Return Verification Complete ===";

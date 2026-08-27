@@ -5691,3 +5691,44 @@ void initBufferClass() {
 
     pop();
 }
+
+Value errorCallHandler(int argCount, Value* args) {
+    Value errorClassVal;
+    ObjString* className = copyString("Error", 5);
+    push(OBJ_VAL(className));
+
+    if (!tableGet(&vm.globals, className, &errorClassVal) || !IS_CLASS(errorClassVal)) {
+        runtimeError("Could not resolve 'Error' class.");
+        pop(); // className
+        return NIL_VAL;
+    }
+    pop(); // className
+
+    ObjInstance* instance = newInstance(AS_CLASS(errorClassVal));
+    push(OBJ_VAL(instance));
+    ObjString* messageStr = copyString("message", 7);
+    push(OBJ_VAL(messageStr));
+
+    if (argCount > 0 && IS_STRING(args[0])) {
+        tableSet(&instance->fields, messageStr, args[0]);
+    }
+    pop(); // messageStr
+    pop(); // instance
+
+    pop();
+    return OBJ_VAL(instance);
+}
+
+void initErrorClass() {
+    ObjString* className = copyString("Error", 5);
+    push(OBJ_VAL(className));
+    ObjClass* errorClass = newClass(className);
+    errorClass->callHandler = errorCallHandler;
+    push(OBJ_VAL(errorClass));
+
+    tableSet(&vm.globals, className, OBJ_VAL(errorClass));
+
+    pop();
+    pop();
+}
+
