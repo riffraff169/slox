@@ -6,7 +6,7 @@
 %bcond_without notcurses
 
 Name:       slox
-Version: 1.5.10
+Version: 1.5.11
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -250,6 +250,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Thu  Aug 27 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.11-1-1
+- added tail call optimization
+
 * Thu  Aug 27 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.10-1-1
 - fixed nested try/catch/finally
 
