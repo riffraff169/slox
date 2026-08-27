@@ -352,6 +352,10 @@ static void markRoots() {
     markObject((Obj*)vm.isSomeString);
     markArray(&vm.atExitHooks);
     markObject((Obj*)vm.includePaths);
+    for (int i = 0; i < vm.tryCount; i++) {
+        markValue(vm.tryStack[i].returnValue);
+        markValue(vm.tryStack[i].uncaughtException);
+    }
 }
 
 static void traceReferences() {

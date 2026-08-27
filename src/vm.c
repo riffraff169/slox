@@ -74,6 +74,7 @@
 
 VM vm;
 InterpretResult run();
+static void resetStack();
 //void initArrayMethods();
 
 typedef enum {
@@ -162,6 +163,27 @@ void raiseException(Value exceptionValue) {
         fprintf(stderr, "Unhandled Exception: ");
         printValueMain(exceptionValue);
         fprintf(stderr, "\n");
+
+        // print attached e.stack_trace if exception is an instance
+        if (IS_INSTANCE(exceptionValue)) {
+            ObjInstance* instance = AS_INSTANCE(exceptionValue);
+            ObjString* traceKey = copyString("stack_trace", 11);
+            push(OBJ_VAL(traceKey));
+
+            Value traceVal;
+            if (tableGet(&instance->fields, traceKey, &traceVal) && IS_ARRAY(traceVal)) {
+                ObjArray* array = AS_ARRAY(traceVal);
+                for (int i = 0; i < array->count; i++) {
+                    Value lineVal = array->values[i];
+                    if (IS_STRING(lineVal)) {
+                        fprintf(stderr, " %s\n", AS_CSTRING(lineVal));
+                    }
+                }
+            }
+            pop();
+        }
+        resetStack();
+
         exit(70);
     }
 
@@ -2841,9 +2863,14 @@ InterpretResult run() {
                 {
                     Value exception = pop();
 
+                    // 1. if exception is a string, wrap it in an error instance
                     if (IS_STRING(exception)) {
+                        ObjString* strMsg = AS_STRING(exception);
+                        push(OBJ_VAL(strMsg));
+
                         Value errorClassVal;
                         ObjString* errorName = copyString("Error", 5);
+                        push(OBJ_VAL(errorName));
 
                         if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
                             ObjClass* errorClass = AS_CLASS(errorClassVal);
@@ -2858,11 +2885,57 @@ InterpretResult run() {
 
                             pop(); // messageKey
                             pop(); // errorInstance
-                            pop(); // the origin string
+                            pop(); // errorName
+                            pop(); // strMsg
 
                             push(OBJ_VAL(errorInstance));
+                        } else {
+                            pop();
+                            pop();
+                            push(exception);
                         }
+                    } else {
+                        push(exception);
                     }
+
+                    // 2. attach e.stack_trace array if exception is an instance and lacks one
+                    if (IS_INSTANCE(exception)) {
+                        ObjInstance* instance = AS_INSTANCE(exception);
+                        ObjString* traceKey = copyString("stack_trace", 11);
+                        push(OBJ_VAL(traceKey));
+
+                        Value dummy;
+                        if (!tableGet(&instance->fields, traceKey, &dummy)) {
+                            ObjArray* stackTrace = newArray();
+                            push(OBJ_VAL(stackTrace));
+
+                            for (int i = vm.frameCount - 1; i >= 0; i--) {
+                                CallFrame* frame = &vm.frames[i];
+                                ObjFunction* function = frame->closure->function;
+                                size_t instruction = frame->ip - function->chunk.code - 1;
+                                int line = getLine(&function->chunk, instruction);
+
+                                const char* file = function->filename ? function->filename->chars : "unknown";
+                                const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+
+                                char lineBuffer[256];
+                                int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+                                        file, line, fnName, (function->name == NULL) ? "" : "()");
+
+                                ObjString* lineStr = copyString(lineBuffer, len);
+                                push(OBJ_VAL(lineStr));
+                                arrayAppend(stackTrace, OBJ_VAL(lineStr));
+                                pop();
+                            }
+
+                            tableSet(&instance->fields, traceKey, OBJ_VAL(stackTrace));
+                            pop();
+                        }
+                        pop();
+                    }
+
+                    pop();
+
                     raiseException(exception);
 
                     if (vm.frameCount < initialFrameCount) {
