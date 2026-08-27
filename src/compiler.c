@@ -607,6 +607,75 @@ static void and_(bool canAssign) {
     patchJump(endJump);
 }
 
+static bool tryFoldBinary(TokenType operatorType) {
+    Chunk* chunk = currentChunk();
+
+    // must have at least 4 bytes emitted: [OP_CONSTANT] [index1] [OP_CONSTANT] [index2]
+    if (chunk->count < 4) return false;
+
+    uint8_t op1 = chunk->code[chunk->count - 4];
+    uint8_t op2 = chunk->code[chunk->count - 2];
+
+    // verify both operands were emitted as OP_CONSTANT
+    if (op1 != OP_CONSTANT || op2 != OP_CONSTANT) return false;
+
+    uint8_t index1 = chunk->code[chunk->count - 3];
+    uint8_t index2 = chunk->code[chunk->count - 1];
+
+    Value val1 = chunk->constants.values[index1];
+    Value val2 = chunk->constants.values[index2];
+
+    // ensure both constants are numbers
+    if (!IS_NUMBER(val1) || !IS_NUMBER(val2)) return false;
+
+    double a = AS_NUMBER(val1);
+    double b = AS_NUMBER(val2);
+    double result;
+
+    switch (operatorType) {
+        case TOKEN_PLUS: result  = a + b; break;
+        case TOKEN_MINUS: result = a - b; break;
+        case TOKEN_STAR: result = a * b; break;
+        case TOKEN_SLASH:
+                         if (b == 0.0) return false; // leave div by zero for runtime handling
+                         result = a / b;
+                         break;
+        default: return false;
+    }
+
+    // rewind bytecode emitter by 4 bytes (strips both OP_CONSTANT byte pairs)
+    chunk->count -= 4;
+
+    // emit the single folded constant
+    emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(result)));
+    return true;
+}
+
+static bool tryFoldUnary(TokenType operatorType) {
+    Chunk* chunk = currentChunk();
+
+    if (chunk->count < 2) return false;
+
+    uint8_t op = chunk->code[chunk->count - 2];
+    if (op != OP_CONSTANT) return false;
+
+    uint8_t index = chunk->code[chunk->count - 1];
+    Value operand = chunk->constants.values[index];
+
+    if (operatorType == TOKEN_MINUS && IS_NUMBER(operand)) {
+        chunk->count -= 2;
+        emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(-AS_NUMBER(operand))));
+        return true;
+    }
+
+    if (operatorType == TOKEN_BANG && IS_BOOL(operand)) {
+        chunk->count -= 2;
+        emitBytes(OP_CONSTANT, makeConstant(BOOL_VAL(!AS_BOOL(operand))));
+        return true;
+    }
+    return false;
+}
+
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = getRule(operatorType);
@@ -614,6 +683,8 @@ static void binary(bool canAssign) {
         ? rule->precedence
         : (rule->precedence + 1);
     parsePrecedence((Precedence)precedence);
+
+    if (tryFoldBinary(operatorType)) return;
 
     switch (operatorType) {
         case TOKEN_BANG_EQUAL:
@@ -1171,6 +1242,8 @@ static void unary(bool canAssign) {
 
     //compile
     parsePrecedence(PREC_UNARY);
+
+    if (tryFoldUnary(operatorType)) return;
 
     switch (operatorType) {
         case TOKEN_BANG:
