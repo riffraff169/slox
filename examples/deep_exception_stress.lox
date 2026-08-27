@@ -1,0 +1,117 @@
+// tests/exceptions/deep_exception_stress.lox
+
+var FINALLY_COUNT = 0;
+
+fun deepRecursion(depth, maxDepth) {
+  if (depth == maxDepth) {
+    throw Error("Deep stack error at depth " + depth);
+  }
+
+  try {
+    deepRecursion(depth + 1, maxDepth);
+  } finally {
+    FINALLY_COUNT = FINALLY_COUNT + 1;
+  }
+}
+
+print "=== Exception Unwinding & Deep Call Stack Stress Test ===";
+
+// --- Test 1: 63-Frame Recursive Unwind & Finally Execution ---
+FINALLY_COUNT = 0;
+var caughtTest1 = false;
+var caughtMsg = "";
+
+try {
+  deepRecursion(0, 63);
+} catch (e) {
+  caughtTest1 = true;
+  caughtMsg = e.message;
+}
+
+print "[Test 1] Unwinding 63 recursive frames...";
+if (caughtTest1 and FINALLY_COUNT == 63) {
+  print "  -> PASSED: Caught '" + caughtMsg + "' after executing all 63 finally blocks.";
+} else {
+  print "  FAIL: caught=" + caughtTest1 + ", finally_count=" + FINALLY_COUNT + " (expected 63)";
+}
+
+// --- Test 2: Return Chaining Across 50 Stack Frames ---
+fun deepReturn(depth) {
+  if (depth == 0) {
+    return "base_value";
+  }
+  try {
+    return deepReturn(depth - 1);
+  } finally {
+    // Validates that CallFrame pointer adjustment in OP_END_FINALLY holds
+    // across deep call frames without corrupting VM stack offsets
+  }
+}
+
+var retResult = deepReturn(50);
+print "[Test 2] Deep return propagation...";
+if (retResult == "base_value") {
+  print "  -> PASSED: Return value successfully passed up 50 call frames.";
+} else {
+  print "  FAIL: Received '" + retResult + "', expected 'base_value'";
+}
+
+// --- Test 3: Catch and Re-throw Cascade ---
+var rethrowCount = 0;
+
+fun rethrowCascade(depth) {
+  try {
+    if (depth == 0) {
+      throw "Cascade Error";
+    }
+    rethrowCascade(depth - 1);
+  } catch (e) {
+    rethrowCount = rethrowCount + 1;
+    throw e; // Propagate up to next frame
+  }
+}
+
+var caughtCascade = false;
+try {
+  rethrowCascade(25);
+} catch (e) {
+  caughtCascade = true;
+}
+
+print "[Test 3] Re-throw propagation across 25 call frames...";
+if (caughtCascade and rethrowCount == 26) {
+  print "  -> PASSED: Re-thrown 26 times across frame boundaries.";
+} else {
+  print "  FAIL: rethrow_count=" + rethrowCount + " (expected 26)";
+}
+
+// --- Test 4: Runtime Errors inside Deeply Nested Try-Finally ---
+var deepRuntimeFinallyRan = 0;
+
+fun triggerRuntimeErrorInDeepStack(depth) {
+  try {
+    if (depth == 0) {
+      var invalidVal = nonExistentVariable; // Triggers runtimeError()
+    } else {
+      triggerRuntimeErrorInDeepStack(depth - 1);
+    }
+  } finally {
+    deepRuntimeFinallyRan = deepRuntimeFinallyRan + 1;
+  }
+}
+
+var caughtRuntimeErr = false;
+try {
+  triggerRuntimeErrorInDeepStack(15);
+} catch (e) {
+  caughtRuntimeErr = true;
+}
+
+print "[Test 4] Native runtimeError() unwinding through 15 frames...";
+if (caughtRuntimeErr and deepRuntimeFinallyRan == 16) {
+  print "  -> PASSED: System runtimeError correctly unwound stack and ran 16 finally blocks.";
+} else {
+  print "  FAIL: caught=" + caughtRuntimeErr + ", finally_ran=" + deepRuntimeFinallyRan + " (expected 16)";
+}
+
+print "=== Stress Test Complete ===";

@@ -1,0 +1,37 @@
+// test_inherited_init.lox
+
+// === Test 1: Direct subclass inherits parent init ===
+class BaseVehicle {
+  init(brand, year) {
+    this.brand = brand;
+    this.year = year;
+    this.initSource = "BaseVehicle";
+  }
+}
+
+class Car < BaseVehicle {}
+
+var myCar = Car("Toyota", 2021);
+print "Car brand: " + myCar.brand;           // expect: Car brand: Toyota
+print "Car year: " + myCar.year;             // expect: Car year: 2021
+print "Car init source: " + myCar.initSource; // expect: Car init source: BaseVehicle
+
+// === Test 2: Multi-level inheritance (Grandparent -> Parent -> Child) ===
+class ElectricCar < Car {}
+
+var myEv = ElectricCar("Tesla", 2024);
+print "EV brand: " + myEv.brand;             // expect: EV brand: Tesla
+print "EV year: " + myEv.year;               // expect: EV year: 2024
+print "EV init source: " + myEv.initSource;   // expect: EV init source: BaseVehicle
+
+// === Test 3: Subclassing custom Error without local init ===
+class BaseError {
+  init(msg) {
+    this.message = msg;
+  }
+}
+
+class CustomError < BaseError {}
+
+var err = CustomError("Something went wrong");
+print "CustomError message: " + err.message; // expect: CustomError message: Something went wrong
