@@ -607,10 +607,51 @@ static void and_(bool canAssign) {
     patchJump(endJump);
 }
 
+static bool checkConstantPair(Chunk* chunk, int len1, int len2, Value* outVal1, Value* outVal2) {
+    int totalLen = len1 + len2;
+    if (chunk->count < totalLen) return false;
+
+    int op1Start = chunk->count - totalLen;
+    int op2Start = chunk->count - len2;
+
+    uint8_t op1Code = (len1 == 2) ? OP_CONSTANT : OP_CONSTANT_LONG;
+    uint8_t op2Code = (len2 == 2) ? OP_CONSTANT : OP_CONSTANT_LONG;
+
+    if (chunk->code[op1Start] != op1Code || chunk->code[op2Start] != op2Code) {
+        return false;
+    }
+
+    uint32_t index1 = (len1 == 2)
+        ? chunk->code[op1Start + 1]
+        : (chunk->code[op1Start + 1] << 16) | (chunk->code[op1Start + 2] << 8) | chunk->code[op1Start + 3];
+
+    uint32_t index2 = (len2 == 2)
+        ? chunk->code[op2Start + 1]
+        : (chunk->code[op2Start + 1] << 16) | (chunk->code[op2Start + 2] << 8) | chunk->code[op2Start + 3];
+
+    if (index1 >= (uint32_t)chunk->constants.count || index2 >= (uint32_t)chunk->constants.count) {
+        return false;
+    }
+
+    *outVal1 = chunk->constants.values[index1];
+    *outVal2 = chunk->constants.values[index2];
+    return true;
+}
+
 static bool tryFoldBinary(TokenType operatorType) {
     Chunk* chunk = currentChunk();
+    Value val1, val2;
+    int totalLen = 0;
+
+    // evaluate instruction pair variants in order of size
+    if (checkConstantPair(chunk, 4, 4, &val1, &val2)) totalLen = 8;
+    else if (checkConstantPair(chunk, 4, 2, &val1, &val2)) totalLen = 6;
+    else if (checkConstantPair(chunk, 2, 4, &val1, &val2)) totalLen = 6;
+    else if (checkConstantPair(chunk, 2, 2, &val1, &val2)) totalLen = 4;
+    else return false;
 
     // must have at least 4 bytes emitted: [OP_CONSTANT] [index1] [OP_CONSTANT] [index2]
+    /*
     if (chunk->count < 4) return false;
 
     uint8_t op1 = chunk->code[chunk->count - 4];
@@ -624,6 +665,7 @@ static bool tryFoldBinary(TokenType operatorType) {
 
     Value val1 = chunk->constants.values[index1];
     Value val2 = chunk->constants.values[index2];
+    */
 
     // ensure both constants are numbers
     if (!IS_NUMBER(val1) || !IS_NUMBER(val2)) return false;
@@ -644,33 +686,55 @@ static bool tryFoldBinary(TokenType operatorType) {
     }
 
     // rewind bytecode emitter by 4 bytes (strips both OP_CONSTANT byte pairs)
-    chunk->count -= 4;
+    chunk->count -= totalLen;
 
     // emit the single folded constant
-    emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(result)));
+    emitConstant(NUMBER_VAL(result));
+    //emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(result)));
     return true;
 }
 
 static bool tryFoldUnary(TokenType operatorType) {
     Chunk* chunk = currentChunk();
+    Value operand;
+    int len = 0;
+    uint32_t index = 0;
 
-    if (chunk->count < 2) return false;
+    //if (chunk->count < 2) return false;
+    
+    if (chunk->count >= 4 && chunk->code[chunk->count - 4] == OP_CONSTANT_LONG) {
+        len = 4;
+        index = (chunk->code[chunk->count - 3] << 16) |
+            (chunk->code[chunk->count - 2] << 8) |
+            chunk->code[chunk->count - 1];
+    } else if (chunk->count >= 2 && chunk->code[chunk->count - 2] == OP_CONSTANT) {
+        len = 2;
+        index = chunk->code[chunk->count - 1];
+    } else {
+        return false;
+    }
 
+    /*
     uint8_t op = chunk->code[chunk->count - 2];
     if (op != OP_CONSTANT) return false;
 
     uint8_t index = chunk->code[chunk->count - 1];
     Value operand = chunk->constants.values[index];
+    */
+    if (index >= (uint32_t)chunk->constants.count) return false;
+    operand = chunk->constants.values[index];
 
     if (operatorType == TOKEN_MINUS && IS_NUMBER(operand)) {
-        chunk->count -= 2;
-        emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(-AS_NUMBER(operand))));
+        chunk->count -= len;
+        emitConstant(NUMBER_VAL(-AS_NUMBER(operand)));
+        //emitBytes(OP_CONSTANT, makeConstant(NUMBER_VAL(-AS_NUMBER(operand))));
         return true;
     }
 
     if (operatorType == TOKEN_BANG && IS_BOOL(operand)) {
-        chunk->count -= 2;
-        emitBytes(OP_CONSTANT, makeConstant(BOOL_VAL(!AS_BOOL(operand))));
+        chunk->count -= len;
+        emitConstant(BOOL_VAL(!AS_BOOL(operand)));
+        //emitBytes(OP_CONSTANT, makeConstant(BOOL_VAL(!AS_BOOL(operand))));
         return true;
     }
     return false;
