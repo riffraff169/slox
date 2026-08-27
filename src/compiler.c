@@ -75,6 +75,8 @@ typedef struct Compiler {
     int localCount;
     Upvalue upvalues[8192];
     int scopeDepth;
+
+    bool inTailPosition;
 } Compiler;
 
 typedef struct ClassCompiler {
@@ -171,6 +173,13 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte2);
 }
 
+void emitPops(uint8_t count) {
+    if (count == 1) {
+        emitByte(OP_POP);
+    } else if (count > 1) {
+        emitBytes(OP_POPN, count);
+    }
+}
 
 static void emitLoop(int loopStart) {
     emitByte(OP_LOOP);
@@ -339,6 +348,7 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
+    compiler->inTailPosition = false;
 
     if (current != NULL) {
         compiler->function->filename = current->function->filename;
@@ -368,6 +378,49 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     }
 }
 
+/*
+// resolves the ultimate target address if target instruct is an unconditional jump
+static int resolveJumpTarget(Chunk* chunk, int target) {
+    // chain resolution limit prevents infinite loops from self-referential jumps
+    int depth = 0;
+    while (target < chunk->count && depth < 16) {
+        if (chunk->code[target] == OP_JUMP) {
+            uint16_t offset = (chunk->code[target + 1] << 8) | chunk->code[target + 2];
+            target = target + 3 + offset; // follow jump to next location
+            depth++;
+        } else {
+            break;
+        }
+    }
+    return target;
+
+}
+*/
+/*
+void optimizeJumps(Chunk* chunk) {
+    int i = 0;
+    while (i < chunk->count) {
+        uint8_t op = chunk->code[i];
+
+        if (op == OP_JUMP || op == OP_JUMP_IF_FALSE) {
+            int currentTarget = i + 3 + ((chunk->code[i + 1] << 8) | chunk->code[i + 2]);
+            int finalTarget = resolveJumpTarget(chunk, currentTarget);
+            if (finalTarget != currentTarget) {
+                int newOffset = finalTarget - i - 3;
+                if (newOffset <= UINT16_MAX) {
+                    chunk->code[i + 1] = (newOffset >> 8) & 0xff;
+                    chunk->code[i + 2] = newOffset & 0xff;
+                }
+            }
+            i += 3; // advance past OP_JUMP + 2 byte operand
+        } else {
+            // advance offset by instruct length
+            i += getInstructLength(chunk->code, i);
+        }
+    }
+}
+*/
+
 static ObjFunction* endCompiler() {
     emitReturn();
     ObjFunction* function = current->function;
@@ -389,20 +442,29 @@ static void beginScope() {
 
 static void endScope() {
     current->scopeDepth--;
+    uint8_t popCount = 0;
 
     int n = 0;
     while (current->localCount > 0 &&
             current->locals[current->localCount - 1].depth >
             current->scopeDepth) {
         if (current->locals[current->localCount -1].isCaptured) {
+            if (popCount > 0) {
+                popCount = 0;
+            }
             emitByte(OP_CLOSE_UPVALUE);
         } else {
             emitByte(OP_POP);
+            //popCount++;
         }
-        //n++;
         current->localCount--;
     }
     
+    /*
+    if (popCount > 0) {
+        emitPops(popCount);
+    }
+    */
     /*
     if (n > 1) {
         emitBytes(OP_POPN, n);
@@ -563,11 +625,13 @@ static void defineVariable(int global) {
 }
 
 static ArgResult argumentList() {
-    //ArgResult result = {0, -1, false};
     ArgResult result = {0, false};
 
     if (!check(TOKEN_RIGHT_PAREN)) {
         do {
+            bool wasTail = current->inTailPosition;
+            current->inTailPosition = false; // arguments are not in tail position
+
             if (match(TOKEN_STAR)) {
                 result.hasSplat = true;
                 expression();
@@ -577,23 +641,14 @@ static ArgResult argumentList() {
                 result.totalSlots++;
             }
 
+            current->inTailPosition = wasTail;
+
             if (result.totalSlots >= 255) {
                 error("Can't have more than 255 arguments.");
             }
-            //argCount++;
         } while (match(TOKEN_COMMA));
     }
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
-
-    /*
-    if (hasSplat) {
-        emitByte(OP_CALL_SPLAT);
-        emitByte(result.count);
-    } else {
-        emitByte(OP_CALL);
-        emitByte(result.count);
-    }
-    */
 
     return result;
 }
@@ -743,10 +798,16 @@ static bool tryFoldUnary(TokenType operatorType) {
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = getRule(operatorType);
+
+    bool wasTail = current->inTailPosition;
+    current->inTailPosition = false;
+
     int precedence = (operatorType == TOKEN_STAR_STAR)
         ? rule->precedence
         : (rule->precedence + 1);
     parsePrecedence((Precedence)precedence);
+
+    current->inTailPosition = wasTail;
 
     if (tryFoldBinary(operatorType)) return;
 
@@ -807,10 +868,17 @@ static void binary(bool canAssign) {
 }
 
 static void call(bool canAssign) {
+    // check if this call is in tail position before parsing argument expresions
+    bool isTail = current->inTailPosition;
+
     ArgResult args = argumentList();
+
+    isTail = isTail && check(TOKEN_SEMICOLON);
 
     if (args.hasSplat) {
         emitBytes(OP_CALL_SPLAT, (uint8_t)args.totalSlots);
+    } else if (isTail) {
+        emitBytes(OP_TAIL_CALL, (uint8_t)args.totalSlots);
     } else {
         emitBytes(OP_CALL, (uint8_t)args.totalSlots);
     }
@@ -2330,7 +2398,14 @@ static void returnStatement() {
             error("Can't return a value from an initializer.");
         }
 
+        // mark that the upcoming expression tree starts in tail position
+        bool wasTail = current->inTailPosition;
+        current->inTailPosition = true;
+
         expression();
+
+        current->inTailPosition = wasTail;
+
         consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
         emitByte(OP_RETURN);
     }

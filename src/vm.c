@@ -3062,6 +3062,58 @@ InterpretResult run() {
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;
+            case OP_TAIL_CALL:
+                {
+                    uint8_t argCount = READ_BYTE();
+                    Value callee = peek(argCount);
+
+                    if (!IS_CLOSURE(callee)) {
+                        if (!callValue(callee, argCount)) {
+                            RUNTIME_ERROR("Call failed.");
+                            break;
+                        }
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+
+                    ObjClosure* closure = AS_CLOSURE(callee);
+
+                    if (argCount != closure->function->arity) {
+                        runtimeError("Expected %d arguments but got %d.",
+                                closure->function->arity, argCount);
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
+                    // 1. close open upvalues pointing to local variables in the current frame
+                    closeUpvalues(frame->slots);
+
+                    // 2.. clean up any active try-blocks scoped to the current frame
+                    while (vm.tryCount > 0 &&
+                            vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                        vm.tryCount--;
+                    }
+
+                    // 3. shift callee closure + arguments down to overwrite current frame's slots
+                    Value* src = vm.stackTop - argCount - 1;
+                    Value* dst = frame->slots;
+                    int totalSlots = argCount + 1;
+
+                    for (int i = 0; i < totalSlots; i++) {
+                        dst[i] = src[i];
+                    }
+
+                    // 4. adjust stack top to point immediately after moved arguments
+                    vm.stackTop = frame->slots + totalSlots;
+
+                    // 4. recycle current frame in-place (do not increment vm.frameCount)
+                    frame->closure = closure;
+                    frame->ip = closure->function->chunk.code;
+                    frame->isGetter = false;
+                    frame->isSetter = false;
+                }
+                break;
             case OP_INVOKE:
             case OP_INVOKE_LONG:
                 {

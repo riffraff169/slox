@@ -1,0 +1,8 @@
+fun countdown(n) {
+  if (n == 0) return "done";
+  return countdown(n - 1);
+}
+
+print countdown(5); // expect: done
+print countdown(100000);  // expect: done
+// Deep call to verify O(1) stack space

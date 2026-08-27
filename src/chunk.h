@@ -71,6 +71,7 @@ typedef enum {
     OP_JUMP_IF_TRUE,
     OP_LOOP,
     OP_CALL,
+    OP_TAIL_CALL,
     OP_INVOKE,
     OP_INVOKE_LONG,
     OP_SUPER_INVOKE,

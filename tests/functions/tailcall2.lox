@@ -1,0 +1,19 @@
+fun makeClosure() {
+  var secret = "correct_value";
+
+  fun getter() {
+    return secret;
+  }
+
+  // Tail call passes getter to another function while 'secret' 
+  // is still alive as an open upvalue on makeClosure's stack frame.
+  return consume(getter, "OVERWRITE_1", "OVERWRITE_2");
+}
+
+fun consume(fn, arg1, arg2) {
+  // At this point, consume's arguments have overwritten 
+  // makeClosure's previous stack slots.
+  return fn();
+}
+
+print makeClosure(); // expect: correct_value
