@@ -117,6 +117,7 @@ typedef struct {
 
     TryBlock tryStack[TRY_STACK_MAX];
     int tryCount;
+    //int tryCapacity;
     bool exceptionThrown;
 
     bool debugPrintCode;

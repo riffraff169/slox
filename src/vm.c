@@ -1249,6 +1249,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.debugPrintCode = false;
     vm.debugTraceExecution = false;
 
+    vm.tryCount = 0;
+    //vm.tryCapacity = 0;
+
     initTable(&vm.globals);
     initTable(&vm.strings);
     initTable(&vm.globalConstants);
@@ -2795,6 +2798,11 @@ InterpretResult run() {
                 break;
             case OP_TRY:
                 {
+                    if (vm.tryCount >= TRY_STACK_MAX) {
+                        runtimeError("Try stack overflow.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
                     uint16_t catchOffset = READ_SHORT();
                     uint16_t finallyOffset = READ_SHORT();
 
