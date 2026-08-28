@@ -1340,18 +1340,37 @@ static void super_(bool canAssign) {
 
     consume(TOKEN_DOT, "Expect '.' after 'super'.");
     consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
-    int name = identifierConstant(&parser.previous);
+    uint16_t name = identifierConstant(&parser.previous);
 
     namedVariable(syntheticToken("this"), false);
+
     if (match(TOKEN_LEFT_PAREN)) {
+        bool isTail = current->inTailPosition;
+
         ArgResult args = argumentList();
+
+        isTail = isTail && check(TOKEN_SEMICOLON);
+
         namedVariable(syntheticToken("super"), false);
-        if (args.hasSplat) {
-            emitBytes(OP_SUPER_INVOKE_SPLAT, (uint8_t)name);
-            emitByte((uint8_t)args.totalSlots);
+
+        if (name < 256) {
+            if (args.hasSplat) {
+                emitBytes(isTail ? OP_TAIL_SUPER_INVOKE_SPLAT : OP_SUPER_INVOKE_SPLAT, (uint8_t)name);
+                emitByte((uint8_t)args.totalSlots);
+            } else {
+                emitBytes(isTail ? OP_TAIL_SUPER_INVOKE : OP_SUPER_INVOKE, (uint8_t)name);
+                emitByte(args.totalSlots);
+            }
         } else {
-            emitBytes(OP_SUPER_INVOKE, (uint8_t)name);
-            emitByte(args.totalSlots);
+            uint8_t op = args.hasSplat
+                ? (isTail ? OP_TAIL_SUPER_INVOKE_SPLAT_LONG : OP_SUPER_INVOKE_SPLAT_LONG)
+                : (isTail ? OP_TAIL_SUPER_INVOKE_LONG : OP_SUPER_INVOKE_LONG);
+
+            emitByte(op);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+            emitByte((uint8_t)args.totalSlots);
         }
     } else {
         namedVariable(syntheticToken("super"), false);

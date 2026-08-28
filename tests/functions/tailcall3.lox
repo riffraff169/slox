@@ -1,0 +1,36 @@
+class Base {
+  action(a, b) {
+    return a + b;
+  }
+}
+
+class Derived < Base {
+  // 1. OP_SUPER_INVOKE (Standard, non-tail position)
+  testStandardInvoke(a, b) {
+    var result = super.action(a, b); // Non-tail call because of statement following it
+    return result * 2;
+  }
+
+  // 2. OP_TAIL_SUPER_INVOKE (Tail position)
+  testTailInvoke(a, b) {
+    return super.action(a, b); // Tail position directly at return/semicolon
+  }
+
+  // 3. OP_SUPER_INVOKE_SPLAT (Splat, non-tail position)
+  testSplatInvoke(args) {
+    var result = super.action(*args); // Non-tail position with splat
+    return result + 1;
+  }
+
+  // 4. OP_TAIL_SUPER_INVOKE_SPLAT (Splat, tail position)
+  testTailSplatInvoke(args) {
+    return super.action(*args); // Tail position with splat
+  }
+}
+
+var d = Derived();
+
+print d.testStandardInvoke(1, 2);   // expect: 6
+print d.testTailInvoke(3, 4);       // expect: 7
+print d.testSplatInvoke([5, 6]);    // expect: 12
+print d.testTailSplatInvoke([7, 8]); // expect: 15

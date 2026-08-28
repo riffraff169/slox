@@ -2017,6 +2017,20 @@ static bool tailCallClosure(ObjClosure* closure, int argCount) {
     return true;
 }
 
+static bool tailInvokeFromClass(ObjClass* klass, ObjString* name, int argCount) {
+    Value method;
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    if (IS_CLOSURE(method)) {
+        return tailCallClosure(AS_CLOSURE(method), argCount);
+    }
+
+    return callValue(method, argCount);
+}
+
 static bool tailInvoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
@@ -3331,14 +3345,101 @@ InterpretResult run() {
                 }
                 break;
             case OP_SUPER_INVOKE:
+            case OP_SUPER_INVOKE_LONG:
                 {
-                    ObjString* method = READ_STRING();
+                    ObjString* method = (instruction == OP_SUPER_INVOKE)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    //ObjString* method = READ_STRING();
                     int argCount = READ_BYTE();
                     ObjClass* superclass = AS_CLASS(pop());
                     if (!invokeFromClass(superclass, method, argCount)) {
                         RUNTIME_ERROR("Call failed.");
                         break;
                     }
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_SUPER_INVOKE_SPLAT:
+            case OP_SUPER_INVOKE_SPLAT_LONG:
+                {
+                    ObjString* method = (instruction == OP_SUPER_INVOKE_SPLAT)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    int staticCount = READ_BYTE();
+
+                    ObjClass* superclass = AS_CLASS(pop());
+
+                    int dynamicCount = 0;
+                    if (IS_SPLAT_COUNT(peek(0))) {
+                        dynamicCount = AS_SPLAT_COUNT(pop());
+                    } else {
+                        Value sentinel = peek(staticCount);
+                        if (IS_SPLAT_COUNT(sentinel)) {
+                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                            for (int i = staticCount; i > 0; i--) {
+                                vm.stackTop[-i - 1] = vm.stackTop[-i];
+                            }
+                            vm.stackTop--;
+                        }
+                    }
+
+                    int totalArgs = staticCount + dynamicCount;
+
+                    if (!invokeFromClass(superclass, method, totalArgs)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_TAIL_SUPER_INVOKE:
+            case OP_TAIL_SUPER_INVOKE_LONG:
+                {
+                    ObjString* method = (instruction == OP_TAIL_SUPER_INVOKE)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    int argCount = READ_BYTE();
+                    ObjClass* superclass = AS_CLASS(pop());
+
+                    if (!tailInvokeFromClass(superclass, method, argCount)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_TAIL_SUPER_INVOKE_SPLAT:
+            case OP_TAIL_SUPER_INVOKE_SPLAT_LONG:
+                {
+                    ObjString* method = (instruction == OP_TAIL_SUPER_INVOKE_SPLAT)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    int staticCount = READ_BYTE();
+
+                    ObjClass* superclass = AS_CLASS(pop());
+
+                    int dynamicCount = 0;
+                    if (IS_SPLAT_COUNT(peek(0))) {
+                        dynamicCount = AS_SPLAT_COUNT(pop());
+                    } else {
+                        Value sentinel = peek(staticCount);
+                        if (IS_SPLAT_COUNT(sentinel)) {
+                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                            for (int i = staticCount; i > 0; i--) {
+                                vm.stackTop[-i - 1] = vm.stackTop[-i];
+                            }
+                            vm.stackTop--;
+                        }
+                    }
+                    int totalArgs = staticCount + dynamicCount;
+
+                    if (!tailInvokeFromClass(superclass, method, totalArgs)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;

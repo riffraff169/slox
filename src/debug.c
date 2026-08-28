@@ -254,6 +254,20 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return invokeInstruction("OP_TAIL_INVOKE_LONG", chunk, offset, true);
         case OP_SUPER_INVOKE:
             return invokeInstruction("OP_SUPER_INVOKE", chunk, offset, false);
+        case OP_SUPER_INVOKE_LONG:
+            return invokeInstruction("OP_SUPER_INVOKE_LONG", chunk, offset, true);
+        case OP_SUPER_INVOKE_SPLAT:
+            return invokeInstruction("OP_SUPER_INVOKE_SPLAT", chunk, offset, false);
+        case OP_SUPER_INVOKE_SPLAT_LONG:
+            return invokeInstruction("OP_SUPER_INVOKE_SPLAT_LONG", chunk, offset, true);
+        case OP_TAIL_SUPER_INVOKE:
+            return invokeInstruction("OP_TAIL_SUPER_INVOKE", chunk, offset, false);
+        case OP_TAIL_SUPER_INVOKE_SPLAT:
+            return invokeInstruction("OP_TAIL_SUPER_INVOKE_SPLAT", chunk, offset, false);
+        case OP_TAIL_SUPER_INVOKE_LONG:
+            return invokeInstruction("OP_TAIL_SUPER_INVOKE", chunk, offset, true);
+        case OP_TAIL_SUPER_INVOKE_SPLAT_LONG:
+            return invokeInstruction("OP_TAIL_SUPER_INVOKE_SPLAT_LONG", chunk, offset, true);
         case OP_CLOSURE:
             {
                 uint8_t constant = chunk->code[offset + 1];
@@ -342,6 +356,12 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return byteInstruction("OP_CALL_SPLAT", chunk, offset);
         case OP_INVOKE_SPLAT:
             return invokeInstruction("OP_INVOKE_SPLAT", chunk, offset, false);
+        case OP_INVOKE_SPLAT_LONG:
+            return invokeInstruction("OP_INVOKE_SPLAT_LONG", chunk, offset, true);
+        case OP_TAIL_INVOKE_SPLAT:
+            return invokeInstruction("OP_TAIL_INVOKE_SPLAT", chunk, offset, false);
+        case OP_TAIL_INVOKE_SPLAT_LONG:
+            return invokeInstruction("OP_TAIL_INVOKE_SPLAT_LONG", chunk, offset, true);
         case OP_INCLUDE:
             return simpleInstruction("OP_INCLUDE", offset);
         case OP_TRY:
