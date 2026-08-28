@@ -1,0 +1,216 @@
+class MethodDoc {
+  init(name) {
+    this.name = name;
+    this.description = [];
+    this.requiredArgs = [];
+    this.optionalArgs = [];
+    this.returns = [];
+  }
+}
+
+class ClassDoc {
+  init(name) {
+    this.name = name;
+    this.description = [];
+    this.requiredArgs = [];
+    this.optionalArgs = [];
+    this.methods = [];
+    this.returns = [];
+  }
+}
+
+class FunctionDoc {
+  init(name) {
+    this.name = name;
+    this.description = [];
+    this.requiredArgs = [];
+    this.optionalArgs = [];
+    this.returns = [];
+  }
+}
+
+class DocParser {
+  init() {
+    this.classes = [];
+    this.globalFunctions = [];
+
+    this.currentClass = nil;
+    this.currentTarget = nil; // ClassDoc, MethodDoc, or FunctionDoc
+    this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "RETURNS"
+  }
+
+  parseLines(lines) {
+    for (var i = 0; i < lines.length(); i = i + 1) {
+      this.processLine(lines[i]);
+    }
+    this.closeTarget();
+    return this;
+  }
+
+  processLine(line) {
+    // 1. Class Header: //@ ClassName
+    if (line.slice(0, 3) == "//@") {
+      this.closeTarget();
+      var className = line.slice(3).trim();
+      this.currentClass = ClassDoc(className);
+      this.classes.push(this.currentClass);
+      this.currentTarget = this.currentClass;
+      this.section = "DESC";
+      return;
+    }
+
+    // 2. Method Header: //: methodName or //: Class.methodName
+    if (line.slice(0, 3) == "//:") {
+      this.closeTarget();
+      var methodName = line.slice(3).trim();
+
+      // Strip class prefix if written as Class.method
+      if (methodName.contains(".")) {
+        var parts = methodName.split(".");
+        methodName = parts[1];
+      }
+
+      var method = MethodDoc(methodName);
+      if (this.currentClass != nil) {
+        this.currentClass.methods.push(method);
+      }
+      this.currentTarget = method;
+      this.section = "DESC";
+      return;
+    }
+
+    // 3. Global Function Header: //= functionName(args)
+    if (line.slice(0, 3) == "//=") {
+      this.closeTarget();
+      var funcName = line.slice(3).trim();
+      var func = FunctionDoc(funcName);
+      this.globalFunctions.push(func);
+      this.currentTarget = func;
+      this.section = "DESC";
+      return;
+    }
+
+    // 4. Content Line: // Content
+    if (line.slice(0, 2) == "//") {
+      if (this.currentTarget == nil) return;
+
+      var content = line.slice(2).trim();
+
+      // Section transitions
+      if (content == "Required args:" or content == "Required args") {
+        this.section = "REQUIRED";
+        return;
+      }
+
+      if (content == "Optional args:" or content == "Option args:" or content == "Optional args") {
+        this.section = "OPTIONAL";
+        return;
+      }
+
+      // Exact match section header: // Returns:
+      if (content == "Returns:" or content == "Returns") {
+        this.section == "RETURNS";
+        return;
+      }
+
+      // Inline match: // Returns: Type
+      if (content.slice(0, 8) == "Returns:") {
+        this.section = "RETURNS";
+        var retVal = content.slice(8).trim();
+        if (retVal.length() > 0) {
+          this.currentTarget.returns.push(retVal);
+        }
+        return;
+      }
+
+      // Append content to active section
+      if (content.length() > 0) {
+        if (this.section == "DESC") {
+          this.currentTarget.description.push(content);
+        } else if (this.section == "REQUIRED") {
+          this.currentTarget.requiredArgs.push(content);
+        } else if (this.section == "OPTIONAL") {
+          this.currentTarget.optionalArgs.push(content);
+        } else if (this.section == "RETURNS") {
+          this.currentTarget.returns.push(content);
+        }
+      }
+      return;
+    }
+
+    // 5. Code line or blank line -> close current target block
+    this.closeTarget();
+  }
+
+  closeTarget() {
+    this.currentTarget = nil;
+    this.section = "NONE";
+  }
+
+  generateMarkdown() {
+    if (this.classes.length() > 0) {
+      print "# Classes";
+      print "";
+      for (var i = 0; i < this.classes.length(); i = i + 1) {
+        var cls = this.classes[i];
+        print "## Class: " + cls.name;
+        this.printDocBody(cls);
+
+        if (cls.methods.length() > 0) {
+          print "### Methods";
+          print "";
+          for (var j = 0; j < cls.methods.length(); j = j + 1) {
+            var m = cls.methods[j];
+            print "#### `" + cls.name + "." + m.name + "`";
+            this.printDocBody(m);
+          }
+        }
+        print "---";
+      }
+    }
+
+    if (this.globalFunctions.length() > 0) {
+      print "# Global Functions";
+      print "";
+      for (var i = 0; i < this.globalFunctions.length(); i = i + 1) {
+        var fn = this.globalFunctions[i];
+        print "## `" + fn.name + "`";
+        this.printDocBody(fn);
+        print "---";
+      }
+    }
+  }
+
+  printDocBody(target) {
+    if (target.description.length() > 0) {
+      for (var i = 0; i < target.description.length(); i = i + 1) {
+        print target.description[i];
+      }
+      print "";
+    }
+
+    if (target.requiredArgs.length() > 0) {
+      print "**Required Arguments:**";
+      for (var i = 0; i < target.requiredArgs.length(); i = i + 1) {
+        print "  - `" + target.requiredArgs[i] + "`";
+      }
+      print "";
+    }
+
+    if (target.optionalArgs.length() > 0) {
+      print "**Optional Arguments:**";
+      for (var i = 0; i < target.optionalArgs.length(); i = i + 1) {
+        print "  - `" + target.optionalArgs[i] + "`";
+      }
+      print "";
+    }
+
+    if (target.returns.length() > 0) {
+      print "**Returns:**";
+      for (var i = 0; i < target.returns.length(); i += 1) {
+        print "  - `" + target.returns[i] + "`";
+      }
+      print "";
+    }
+  }
+}
