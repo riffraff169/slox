@@ -1847,10 +1847,19 @@ bool invoke(ObjString* name, int argCount) {
         return callMethodMissing(vm.stringClass, name, argCount);
     } else if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
-        bool res;
         Value method;
 
         if (lookupClassMethod(klass, name, &method)) {
+            bool res = callValue(method, argCount);
+
+            if (vm.exceptionThrown) {
+                vm.exceptionThrown = false;
+                return false;
+            }
+            if (!res) return callMethodMissing(klass, name, argCount);
+            return true;
+
+            /*
             if (IS_CLASS(method)) {
                 vm.stackTop[-argCount - 1] = method;
             }
@@ -1860,15 +1869,20 @@ bool invoke(ObjString* name, int argCount) {
             if (vm.exceptionThrown) {
                 return true;
             }
-        } else {
-            res = invokeFromClass(vm.classClass, name, argCount);
-            if (vm.exceptionThrown) {
-                return true;
-            }
+            */
         }
+        bool res = invokeFromClass(vm.classClass, name, argCount);
+        if (vm.exceptionThrown) {
+            vm.exceptionThrown = false;
+            return false;
+        }
+        if (!res) return callMethodMissing(klass, name, argCount);
+        return true;
+        /*
         if (!res) {
             return callMethodMissing(klass, name, argCount);
         }
+        */
         return true;
     } else {
         ObjClass* klass = getClassForValue(receiver);

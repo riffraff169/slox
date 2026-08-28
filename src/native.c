@@ -74,16 +74,30 @@ void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
     pop();
 }
 
+//= clock()
+// Interface to c function clock(3)
 Value clockNative(int argCount, Value* args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
+//= str(val)
+// Converts current value to its string representation
+// Requires:
+//   val: Value
+// Returns:
+//   String
 Value strNative(int argCount, Value* args) {
     if (argCount != 1) return OBJ_VAL(copyString("", 0));
 
     return valueToString(args[0]);
 }
 
+//= typeof(val)
+// Gets class type of val
+// Requires:
+//   val: Value
+// Returns:
+//   String
 Value typeofNative(int argCount, Value* args) {
     if (argCount < 1) return OBJ_VAL(vm.nilClass->name);
     ObjClass* klass = getClassForValue(args[0]);
@@ -95,6 +109,12 @@ Value typeofNative(int argCount, Value* args) {
     return OBJ_VAL(copyString("UNKNOWN", 7));
 }
 
+//= chr(val)
+// Turns a number into a character
+// Requires:
+//   val: Number
+// Returns
+//   String
 Value chrNative(int argCount, Value* args) {
     if (argCount != 1) {
         return NIL_VAL;
@@ -112,6 +132,10 @@ Value chrNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(c_str, 1));
 }
 
+//= eval(str)
+// Evaluates a string as slox code.
+// Requires:
+//   str: String
 Value evalNative(int argCount, Value* args) {
     if (argCount != 1) {
         runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
@@ -154,6 +178,13 @@ Value evalNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//= create_instance(class)
+// Creates a new instance from a class name.
+// Does not run init()
+// Requires:
+//   class: String
+// Returns
+//   Instance
 Value createInstanceNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("create_instance() expects a string argument.");
@@ -173,6 +204,13 @@ Value createInstanceNative(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+//= program(filename)
+// Creates a new class based off the name of the file.
+// Then an instance can be created with class_name().
+// Requires:
+//   filename: String
+// Returns:
+//   Class
 Value programNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("program() expects a string filename argument.");
@@ -227,36 +265,131 @@ static inline Value getCheckTarget(int argCount, Value* args) {
     return args[-1];
 }
 
+//= isnumber(val)
+// Checks if a value is a number.
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isnumber()
+// Checks if a value is a number
+// Returns:
+//   Bool
 Value isNumberNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_NUMBER(target));
 }
 
+//= isstring(val)
+// Checks if a value is a string.
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isstring()
+// Checks if a value is a string
+// Returns:
+//   Bool
 Value isStringNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_STRING(target));
 }
 
+//= isbool(val)
+// Checks if a value is a bool (boolean)
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isbool()
+// Checks if a value is a bool
+// Returns:
+//   Bool
 Value isBoolNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_BOOL(target));
 }
 
+//= isnil(val)
+// Checks if a value is nil
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isnil()
+// Checks if a value is nil
+// Returns:
+//   Bool
 Value isNilNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_NIL(target));
 }
 
+//= isclass(val)
+// Checks if a value is a class
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isclass()
+//  Checks if a value is a class
+// Returns:
+//   Bool
 Value isClassNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_CLASS(target));
 }
 
+//= isinstance(val)
+// Checks if a value is an instance
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+
+//@ Object
+//: isinstance()
+// Checks if a value is an instance
+// Returns:
+//   Bool
 Value isInstanceNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_INSTANCE(target));
 }
 
+//@ Array
+// Array class type for native array type.
+// An array can be created with Array(1, 2, 3)
+// or [1, 2, 3].
+// Arrays can also be filled and with a preset length
+// using [0; 25].
+// Arrays can be accessed with an index like a[5], both
+// get and set. You can only access an index that already exists,
+// otherwise it will cause an out of bounds error.  Arrays can be
+// expanded using .push(), and the last item can be removed/retrieved
+// with .pop().
+// Optional:
+//   Comma separated list of values
+// Returns:
+//   Array
+
+//@ Object
+// Base class for all objects
+
+//: list_fields()
+// Lists all fields of an object
+// Returns:
+//   Array
 Value listFieldsNative(int argCount, Value* args) {
     if (!IS_INSTANCE(args[-1])) {
         return OBJ_VAL(newArray());
@@ -279,6 +412,13 @@ Value listFieldsNative(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+//@ Object
+//: get_field(key)
+// Get the value of a field of an object
+// Requires:
+//   key: String
+// Returns:
+//   Value of field, or nil if wrong type of object or field doesn't exist
 Value getFieldNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("get_field() expects a string argument.");
@@ -305,6 +445,12 @@ Value getFieldNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Object
+//: set_field(key, val)
+// Set a field to a value
+// Requires:
+//   key: String
+//   val: Value
 Value setFieldNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0])) {
         runtimeError("set_field() expects string, value arguments.");
@@ -335,6 +481,11 @@ Value setFieldNative(int argCount, Value* args) {
     return value;
 }
 
+//@ Object
+//: get_methods()
+// Get list of methods available on this object.
+// Returns:
+//   Array
 Value getMethodsNative(int argCount, Value* args) {
     Value receiver = args[-1];
 
@@ -387,6 +538,14 @@ Value getMethodsNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Object
+//: has_method(method)
+// Check whether this object has a method.
+// Alias: responds_to()
+// Requires:
+//   method: String
+// Returns:
+//   Bool
 Value hasMethodNative(int argCount, Value* args) {
     if (argCount != 1) {
         runtimeError("has_method() expects exactly 1 argument.");
@@ -418,6 +577,12 @@ Value hasMethodNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ Object
+//: superclass()
+// Get the superclass of this object.
+// Alias: get_superclass().
+// Returns:
+//   Class
 Value getSuperclassNative(int argCount, Value* args) {
     Value receiver = args[-1];
     ObjClass* klass = getClassForValue(receiver);
@@ -434,12 +599,22 @@ Value getSuperclassNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Object
+//: to_string()
+// Returns a string representation of this object
+// Returns:
+//   String
 Value objectToStringNative(int argCount, Value* args) {
     if (argCount != 0) return NIL_VAL;
 
     return valueToString(args[-1]);
 }
 
+//@ Object
+//: class()
+// Get the class of this object
+// Returns:
+//   Class
 Value objectClassMethod(int argCount, Value* args) {
     if (argCount != 0) {
         runtimeError("Expected 0 arguments but got %d.", argCount);
@@ -456,6 +631,11 @@ Value objectClassMethod(int argCount, Value* args) {
     return OBJ_VAL(klass);
 }
 
+//@ Object
+//: class_name()
+// Get the class of this object as a String. Shortcut for String(x.class());
+// Returns:
+//   String
 Value objectClassNameMethod(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     return OBJ_VAL(instance->obj.klass->name);
@@ -1672,6 +1852,10 @@ Value numberToFixedNative(int argCount, Value* args) {
 }
 
 Value numberToStringNative(int argCount, Value* args) {
+    if (!IS_NUMBER(args[-1])) {
+        runtimeError("Receiver must be a Number.");
+        return NIL_VAL;
+    }
     double val = AS_NUMBER(args[-1]);
 
     int precision = 0;
@@ -2232,6 +2416,11 @@ Value arrayFlattenNative(int argCount, Value* args) {
 }
 
 Value arrayStringNative(int argCount, Value* args) {
+    if (!IS_ARRAY(args[-1])) {
+        runtimeError("Receiver must be an Array instance.");
+        return NIL_VAL;
+    }
+
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
 
@@ -5691,6 +5880,13 @@ void initBufferClass() {
 
     pop();
 }
+
+//@ Error
+// Error class for throwing errors and raising exceptions
+// Required args:
+//   None
+// Optional args:
+//   message: String
 
 Value errorCallHandler(int argCount, Value* args) {
     Value errorClassVal;
