@@ -1979,31 +1979,78 @@ Value multiplyString(ObjString* string, int count) {
 
     return OBJ_VAL(takeString(chars, length));
 }
-/*
-static void concatenate() {
-    ObjString* b = AS_STRING(peek(0));
-    ObjString* a = AS_STRING(peek(1));
 
-    int length = a->length + b->length;
-    char* chars = ALLOCATE(char, length + 1);
-    memcpy(chars, a->chars, a->length);
-    memcpy(chars + a->length, b->chars, b->length);
-    chars[length] = '\0';
+static bool tailCallClosure(ObjClosure* closure, int argCount) {
+    if (argCount != closure->function->arity) {
+        runtimeError("Expected %d arguments but got %d.",
+                closure->function->arity, argCount);
+        return false;
+    }
 
-    ObjString* result = takeString(chars, length);
-    pop();
-    pop();
-    push(OBJ_VAL(result));
+    CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
+    // 1. close upvalues in dying frame
+    closeUpvalues(frame->slots);
+
+    // 2. clear frame scoped try blocks
+    while (vm.tryCount > 0 &&
+            vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+        vm.tryCount--;
+    }
+
+    // 3. shift receiver/closure + arguments down to overwrite frame slots
+    Value* src = vm.stackTop - argCount - 1;
+    Value* dst = frame->slots;
+    int totalSlots = argCount + 1;
+
+    for (int i = 0; i < totalSlots; i++) {
+        dst[i] = src[i];
+    }
+
+    // 4. update stack top and recycle current frame
+    vm.stackTop = frame->slots + totalSlots;
+    frame->closure = closure;
+    frame->ip = closure->function->chunk.code;
+    frame->isGetter = false;
+    frame->isSetter = false;
+
+    return true;
 }
-*/
 
-/*
-Value numberToValue(double num) {
-    char buffer[32];
-    int length = snprintf(buffer, sizeof(buffer), "%g", num);
-    return OBJ_VAL(copyString(buffer, length));
+static bool tailInvoke(ObjString* name, int argCount) {
+    Value receiver = peek(argCount);
+
+    // check for instance field shadowing
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        Value value;
+        if (tableGet(&instance->fields, name, &value)) {
+            vm.stackTop[-argCount - 1] = value;
+            if (IS_CLOSURE(value)) {
+                return tailCallClosure(AS_CLOSURE(value), argCount);
+            }
+            return callValue(value, argCount);
+        }
+    }
+
+    ObjClass* klass = getClassForValue(receiver);
+    if (klass == NULL) {
+        runtimeError("Method calls are not supported on this type.");
+        return false;
+    }
+
+    Value method;
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    if (IS_CLOSURE(method)) {
+        return tailCallClosure(AS_CLOSURE(method), argCount);
+    }
+
+    return callValue(method, argCount);
 }
-*/
 
 static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
@@ -3152,9 +3199,27 @@ InterpretResult run() {
                     break;
                 }
                 break;
-            case OP_INVOKE_SPLAT:
+            case OP_TAIL_INVOKE:
+            case OP_TAIL_INVOKE_LONG:
                 {
-                    ObjString* method = READ_STRING();
+                    ObjString* method = (instruction == OP_TAIL_INVOKE)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    int argCount = READ_BYTE();
+
+                    if (!tailInvoke(method, argCount)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_INVOKE_SPLAT:
+            case OP_INVOKE_SPLAT_LONG:
+                {
+                    ObjString* method = (instruction == OP_INVOKE_SPLAT)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
                     int staticCount = READ_BYTE();
                     int dynamicCount = 0;
 
@@ -3174,7 +3239,7 @@ InterpretResult run() {
 
                     int totalArgs = staticCount + dynamicCount;
 
-                    Value receiver = peek(totalArgs);
+                    //Value receiver = peek(totalArgs);
 
                     /*
                     if (!IS_INSTANCE(receiver)) {
@@ -3193,6 +3258,38 @@ InterpretResult run() {
                         break;
                         //return INTERPRET_RUNTIME_ERROR;
                     }
+                    frame = &vm.frames[vm.frameCount - 1];
+                }
+                break;
+            case OP_TAIL_INVOKE_SPLAT:
+            case OP_TAIL_INVOKE_SPLAT_LONG:
+                {
+                    ObjString* method = (instruction == OP_TAIL_INVOKE_SPLAT)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+                    int staticCount = READ_BYTE();
+                    int dynamicCount = 0;
+
+                    if (IS_SPLAT_COUNT(peek(0)))  {
+                        dynamicCount = AS_SPLAT_COUNT(pop());
+                    } else {
+                        Value sentinel = peek(staticCount);
+                        if (IS_SPLAT_COUNT(sentinel)) {
+                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                            for (int i = staticCount; i > 0; i--) {
+                                vm.stackTop[-1 - 1] = vm.stackTop[-i];
+                            }
+                            vm.stackTop--;
+                        }
+                    }
+
+                    int totalArgs = staticCount + dynamicCount;
+
+                    if (!tailInvoke(method, totalArgs)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
                     frame = &vm.frames[vm.frameCount - 1];
                 }
                 break;

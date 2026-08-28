@@ -1,0 +1,13 @@
+class Accumulator {
+  sum(count, currentSum) {
+    if (count == 0) return currentSum;
+
+    // Package next step into an array and unpack via splat
+    var nextArgs = [count - 1, currentSum + count];
+    return this.sum(*nextArgs); // Tail invocation using splat unpacking
+  }
+}
+
+var acc = Accumulator();
+// 100,000 recursive tail calls using splat unpacking
+print acc.sum(100000, 0); // Expect: 5000050000
