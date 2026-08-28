@@ -65,8 +65,8 @@ class DocParser {
       var methodName = line.slice(3).trim();
 
       // Strip class prefix if written as Class.method
-      if (methodName.contains(".")) {
-        var parts = methodName.split(".");
+      var parts = methodName.split(".");
+      if (parts.length() > 1) {
         methodName = parts[1];
       }
 
@@ -97,19 +97,40 @@ class DocParser {
       var content = line.slice(2).trim();
 
       // Section transitions
-      if (content == "Required args:" or content == "Required args") {
+      if (content == "Required args:" or content == "Required args" or
+          content == "Requires:" or content == "Requires") {
         this.section = "REQUIRED";
         return;
       }
 
-      if (content == "Optional args:" or content == "Option args:" or content == "Optional args") {
+      if (content.slice(0, 9) == "Requires:") {
+        this.section = "REQUIRED";
+        var val = content.slice(9).trim();
+        if (val.length() > 0) {
+          this.currentTarget.requiredArgs.push(val);
+        }
+        return;
+      }
+
+      if (content == "Optional args:" or content == "Option args:" or
+          content == "Optional args" or content == "Optional:" or content == "Optional") {
         this.section = "OPTIONAL";
         return;
       }
 
+      if (content.slice(0, 9) == "Optional:") {
+        this.section = "OPTIONAL";
+        var val = content.slice(9).trim();
+        if (val.length() > 0) {
+          this.currentTarget.optionalArgs.push(val);
+        }
+        return;
+      }
+
       // Exact match section header: // Returns:
-      if (content == "Returns:" or content == "Returns") {
-        this.section == "RETURNS";
+      if (content == "Returns:" or content == "Returns" or content == "Return:" or
+          content == "Return") {
+        this.section = "RETURNS";
         return;
       }
 
@@ -148,69 +169,74 @@ class DocParser {
   }
 
   generateMarkdown() {
+    var lines = [];
+
     if (this.classes.length() > 0) {
-      print "# Classes";
-      print "";
+      lines.push("# Classes");
+      lines.push("");
       for (var i = 0; i < this.classes.length(); i = i + 1) {
         var cls = this.classes[i];
-        print "## Class: " + cls.name;
-        this.printDocBody(cls);
+        lines.push("## Class: " + cls.name);
+        this.appendDocBodyLines(cls, lines);
 
         if (cls.methods.length() > 0) {
-          print "### Methods";
-          print "";
+          lines.push("### Methods");
+          lines.push("");
           for (var j = 0; j < cls.methods.length(); j = j + 1) {
             var m = cls.methods[j];
-            print "#### `" + cls.name + "." + m.name + "`";
-            this.printDocBody(m);
+            lines.push("#### `" + cls.name + "." + m.name + "`");
+            this.appendDocBodyLines(m, lines);
           }
         }
-        print "---";
+        lines.push("---");
+        lines.push("");
       }
     }
 
     if (this.globalFunctions.length() > 0) {
-      print "# Global Functions";
-      print "";
+      lines.push("# Global Functions");
+      lines.push("");
       for (var i = 0; i < this.globalFunctions.length(); i = i + 1) {
         var fn = this.globalFunctions[i];
-        print "## `" + fn.name + "`";
-        this.printDocBody(fn);
-        print "---";
+        lines.push("## `" + fn.name + "`");
+        this.appendDocBodyLines(fn, lines);
+        lines.push("---");
+        lines.push("");
       }
     }
+    return lines.join("\n");
   }
 
-  printDocBody(target) {
+  appendDocBodyLines(target, lines) {
     if (target.description.length() > 0) {
       for (var i = 0; i < target.description.length(); i = i + 1) {
-        print target.description[i];
+        lines.push(target.description[i]);
       }
-      print "";
+      lines.push("");
     }
 
     if (target.requiredArgs.length() > 0) {
-      print "**Required Arguments:**";
+      lines.push("**Required Arguments:**");
       for (var i = 0; i < target.requiredArgs.length(); i = i + 1) {
-        print "  - `" + target.requiredArgs[i] + "`";
+        lines.push("  - `" + target.requiredArgs[i] + "`");
       }
-      print "";
+      lines.push("");
     }
 
     if (target.optionalArgs.length() > 0) {
-      print "**Optional Arguments:**";
+      lines.push("**Optional Arguments:**");
       for (var i = 0; i < target.optionalArgs.length(); i = i + 1) {
-        print "  - `" + target.optionalArgs[i] + "`";
+        lines.push("  - `" + target.optionalArgs[i] + "`");
       }
-      print "";
+      lines.push("");
     }
 
     if (target.returns.length() > 0) {
-      print "**Returns:**";
+      lines.push("**Returns:**");
       for (var i = 0; i < target.returns.length(); i += 1) {
-        print "  - `" + target.returns[i] + "`";
+        lines.push("  - `" + target.returns[i] + "`");
       }
-      print "";
+      lines.push("");
     }
   }
 }
