@@ -240,6 +240,7 @@ void printObject(FILE* stream, Value value);
 uint32_t hashBytes(const uint8_t* key, int length);
 uint32_t hashValue(Value value);
 ObjBuffer* newBuffer(size_t size);
+ObjClass* allocateRawClass(ObjString* name);
 
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;

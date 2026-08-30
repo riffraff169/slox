@@ -767,17 +767,17 @@ Value requireNative(int argCount, Value* args) {
 
 void initCoreLibrary() {
 #define X(name, func) defineNative(name, func);
-    CORE_GLOBAL_LIST(X);
+    CORE_GLOBAL_LIST(X)
 #undef X
 
 #define X(name, func) \
     defineNative(name, func); \
     defineNativeMethod(vm.objectClass, name, func);
-    CORE_DUAL_LIST(X);
+    CORE_DUAL_LIST(X)
 #undef X
 
 #define X(name, func) defineNativeMethod(vm.objectClass, name, func);
-    OBJECT_METHOD_LIST(X);
+    OBJECT_METHOD_LIST(X)
 #undef X
 }
 
@@ -1171,15 +1171,26 @@ Value stringTrNative(int argCount, Value* args) {
     return OBJ_VAL(takeString(resultBuf, self->length));
 }
 
+Value stringInitNative(int argCount, Value* args) {
+    if (argCount < 1) return OBJ_VAL(copyString("", 0));
+
+    ObjString* str = AS_STRING(valueToString(args[0]));
+    return OBJ_VAL(str);
+}
+
 void initStringClass() {
+    /*
     ObjString* empty = copyString("", 0);
     push(OBJ_VAL(empty));
     empty->obj.klass = vm.stringClass;
+    */
+
+    defineNativeMethod(vm.stringClass, "init", stringInitNative);
 
 #define X(name, func) defineNativeMethod(vm.stringClass, name, func);
     STRING_METHOD_LIST(X)
 #undef X
-    pop();
+    //pop();
 }
 
 #define MAP_METHOD_LIST(X) \
@@ -1188,7 +1199,6 @@ void initStringClass() {
     X("has", mapHasNative) \
     X("remove", mapRemoveNative) \
     X("delete", mapRemoveNative) \
-    X("len", mapLenNative) \
     X("len", mapLenNative) \
     X("each", mapEachNative)
 
@@ -1340,19 +1350,21 @@ Value mapEachNative(int argCount, Value* args) {
 }
 
 void initMapClass() {
+    /*
     ObjString* string = NULL;
     string = copyString("Map", 3);
     push(OBJ_VAL(string));
-
     vm.mapClass = newClass(string);
-    vm.mapClass->superclass = vm.objectClass;
+    */
+    //vm.mapClass->superclass = vm.objectClass;
+    vm.mapClass = defineBuiltinClass("Map", vm.objectClass, &vm.mapMetaClass, true);
     vm.mapClass->callHandler = mapNativeConstructor;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
+    //tableSet(&vm.globals, string, OBJ_VAL(vm.mapClass));
 
 #define X(name, func) defineNativeMethod(vm.mapClass, name, func);
     MAP_METHOD_LIST(X)
 #undef X
-    pop();
+    //pop();
 }
 
 Value setNativeConstructor(int argCount, Value* args) {
@@ -1510,14 +1522,16 @@ Value setToMapNative(int argCount, Value* args) {
 }
 
 void initSetClass() {
+    /*
     ObjString* string = NULL;
     string = copyString("Set", 3);
     push(OBJ_VAL(string));
 
     vm.setClass = newClass(string);
-    vm.setClass->superclass = vm.objectClass;
+    */
+    vm.setClass = defineBuiltinClass("Set", vm.objectClass, &vm.setMetaClass, true);
     vm.setClass->callHandler = setNativeConstructor;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.setClass));
+    //tableSet(&vm.globals, string, OBJ_VAL(vm.setClass));
 
     defineNativeMethod(vm.setClass, "add", setAddNative);
     defineNativeMethod(vm.setClass, "keys", setKeysNative);
@@ -1546,7 +1560,7 @@ void initSetClass() {
     X("to_int", numberToIntNative) \
     X("to_fixed", numberToFixedNative)
 
-#define MATH_ONLY_METHOD_LIST(X) \
+#define MATH_STATIC_ONLY_METHOD_LIST(X) \
     X("random", mathRandomNative) \
     X("bit_test", bitTestNative) \
     X("min", mathMinNative) \
@@ -1877,24 +1891,26 @@ Value numberToStringNative(int argCount, Value* args) {
 }
 
 void initMathLibrary() {
+    /*
     ObjString* mathName = copyString("Math", 4);
     push(OBJ_VAL(mathName));
     ObjClass* mathClass = newClass(mathName);
     push(OBJ_VAL(mathClass));
     tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
+    */
+    ObjClass* mathClass = defineBuiltinClass("Math", vm.objectClass, &vm.mathMetaClass, true);
+    ObjClass* mathMeta = mathClass->obj.klass;
 
 #define X(name, func) \
-    defineNativeMethod(mathClass, name, func); \
+    defineNativeMethod(mathMeta, name, func); \
     defineNativeMethod(vm.numberClass, name, func);
     MATH_DUAL_METHOD_LIST(X)
 #undef X
 
-#define X(name, func) defineNativeMethod(mathClass, name, func);
-    MATH_ONLY_METHOD_LIST(X)
+#define X(name, func) defineNativeMethod(mathMeta, name, func);
+    MATH_STATIC_ONLY_METHOD_LIST(X)
 #undef X
 
-    defineNativeMethod(vm.numberClass, "to_int", numberToIntNative);
-    defineNativeMethod(vm.numberClass, "to_fixed", numberToFixedNative);
     defineNativeMethod(vm.numberClass, "to_string", numberToStringNative);
 
     // or if want single source:
@@ -1909,8 +1925,10 @@ void initMathLibrary() {
     defineNativeClassConstant(mathClass, "PI", NUMBER_VAL(3.1415926535897932));
     defineNativeClassConstant(mathClass, "E",  NUMBER_VAL(2.7182818284590452));
 
+    /*
     pop();
     pop();
+    */
     srand((unsigned int)time(NULL));
 }
 
@@ -2523,6 +2541,7 @@ Value arrayNativeConstructor(int argCount, Value* args) {
 }
 
 void initArrayClass() {
+    /*
     ObjString* string = copyString("Array", 5);
     push(OBJ_VAL(string));
     vm.arrayClass = newClass(string);
@@ -2530,14 +2549,17 @@ void initArrayClass() {
     vm.arrayClass->callHandler = arrayNativeConstructor;
     tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
     push(OBJ_VAL(vm.arrayClass));
+    */
+    vm.arrayClass = defineBuiltinClass("Array", vm.objectClass, &vm.arrayMetaClass, true);
 
 #define X(name, func) defineNativeMethod(vm.arrayClass, name, func);
     ARRAY_METHOD_LIST(X)
 #undef X
 
+    /*
     pop();
     pop();
-#undef METHOD
+    */
 }
 
 Value resultNativeConstructor(int argCount, Value* args) {
@@ -2672,29 +2694,35 @@ void initResultAndOptionClass() {
     vm.errString = copyString("err", 3);
     vm.isSomeString = copyString("is_some", 7);
 
+    /*
     ObjString* resultName = copyString("Result", 6);
     push(OBJ_VAL(resultName));
     vm.resultClass = newClass(resultName);
+    push(OBJ_VAL(vm.resultClass));
+    */
+    vm.resultClass = defineBuiltinClass("Result", vm.objectClass, &vm.resultMetaClass, true);
     vm.resultClass->superclass = vm.objectClass;
     vm.resultClass->callHandler = resultNativeConstructor;
-    push(OBJ_VAL(vm.resultClass));
 
-    tableSet(&vm.globals, resultName, OBJ_VAL(vm.resultClass));
+    //tableSet(&vm.globals, resultName, OBJ_VAL(vm.resultClass));
     defineNativeMethod(vm.resultClass, "unwrap", resultUnwrapNative);
     defineNativeMethod(vm.resultClass, "unwrap_or", resultUnwrapOrNative);
 
+    /*
     ObjString* optionName = copyString("Option", 6);
     push(OBJ_VAL(optionName));
     vm.optionClass = newClass(optionName);
+    push(OBJ_VAL(vm.optionClass));
+    */
+    vm.optionClass = defineBuiltinClass("Option", vm.objectClass, &vm.optionMetaClass, true);
     vm.optionClass->superclass = vm.objectClass;
     vm.optionClass->callHandler = optionNativeConstructor;
-    push(OBJ_VAL(vm.optionClass));
 
-    tableSet(&vm.globals, optionName, OBJ_VAL(vm.optionClass));
+    //tableSet(&vm.globals, optionName, OBJ_VAL(vm.optionClass));
     defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
     defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
 
-    popn(4);
+    //popn(4);
 }
 
 Value regexNativeConstructor(int argCount, Value* args) {
@@ -2826,19 +2854,23 @@ void regexDestructor(ObjInstance* inst) {
 }
 
 void initRegexClass() {
+    /*
     ObjString* string = copyString("Regex", 5);
     push(OBJ_VAL(string));
     vm.regexClass = newClass(string);
     vm.regexClass->superclass = vm.objectClass;
+    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
+    */
+    vm.regexClass = defineBuiltinClass("Regex", vm.objectClass, &vm.regexMetaClass, true);
+
     vm.regexClass->callHandler = regexNativeConstructor;
     vm.regexClass->destructor = regexDestructor;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
 
     defineNativeMethod(vm.regexClass, "test", regexTestNative);
     defineNativeMethod(vm.regexClass, "match", regexMatchNative);
     defineNativeMethod(vm.regexClass, "get_pattern", regexGetPatternNative);
 
-    pop();
+    //pop();
 }
 
 int closeFileInternal(ObjInstance* inst) {
@@ -3375,37 +3407,44 @@ Value fileRenameNative(int argCount, Value* args) {
 }
 
 void initFileLibrary(){
+    /*
     ObjString* fileName = copyString("File", 4);
     push(OBJ_VAL(fileName));
     ObjClass* fileClass = newClass(fileName);
     push(OBJ_VAL(fileClass));
     fileClass->destructor = fileDestructor;
+    */
+    ObjClass* fileClass = defineBuiltinClass("File", vm.objectClass, NULL, true);
+    ObjClass* fileMeta = fileClass->obj.klass;
 
-    defineNativeMethod(fileClass, "load", fileLoadNative);
-    defineNativeMethod(fileClass, "save", fileSaveNative);
-    defineNativeMethod(fileClass, "exists", fileExistsNative);
-    defineNativeMethod(fileClass, "open", fileOpenNative);
+    fileClass->destructor = fileDestructor;
+
+    defineNativeMethod(fileMeta, "open", fileOpenNative);
+    defineNativeMethod(fileMeta, "exists", fileExistsNative);
+    defineNativeMethod(fileMeta, "load", fileLoadNative);
+    defineNativeMethod(fileMeta, "save", fileSaveNative);
+    defineNativeMethod(fileMeta, "copy", fileCopyNative);
+    defineNativeMethod(fileMeta, "chmod", fileChmodNative);
+    defineNativeMethod(fileMeta, "chown", fileChownNative);
+    defineNativeMethod(fileMeta, "unlink", fileUnlinkNative);
+    defineNativeMethod(fileMeta, "rename", fileRenameNative);
+
     defineNativeMethod(fileClass, "read", fileReadNative);
     defineNativeMethod(fileClass, "readline", fileReadlineNative);
     defineNativeMethod(fileClass, "write", fileWriteNative);
     defineNativeMethod(fileClass, "close", fileCloseNative);
     defineNativeMethod(fileClass, "seek", fileSeekNative);
     defineNativeMethod(fileClass, "tell", fileTellNative);
-    defineNativeMethod(fileClass, "stderr", fileStderrNative);
     defineNativeMethod(fileClass, "flush", fileFlushNative);
-    defineNativeMethod(fileClass, "copy", fileCopyNative);
-    defineNativeMethod(fileClass, "chmod", fileChmodNative);
-    defineNativeMethod(fileClass, "chown", fileChownNative);
-    defineNativeMethod(fileClass, "unlink", fileUnlinkNative);
-    defineNativeMethod(fileClass, "rename", fileRenameNative);
+    defineNativeMethod(fileClass, "stderr", fileStderrNative);
 
-    tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
+    //tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
     defineClassConstant(fileClass, "SEEK_SET", NUMBER_VAL(SEEK_SET));
     defineClassConstant(fileClass, "SEEK_CUR", NUMBER_VAL(SEEK_CUR));
     defineClassConstant(fileClass, "SEEK_END", NUMBER_VAL(SEEK_END));
 
-    popn(2);
+    //popn(2);
 
 }
 
@@ -3740,30 +3779,36 @@ Value dirIsemptyNative(int argCount, Value* args) {
 }
 
 void initDirLibrary(){
+    /*
     ObjString* dirName = copyString("Dir", 3);
     push(OBJ_VAL(dirName));
     ObjClass* dirClass = newClass(dirName);
     push(OBJ_VAL(dirClass));
     //dirClass->destructor = dirDestructor;
+    */
+    ObjClass* dirClass = defineBuiltinClass("Dir", vm.objectClass, NULL, true);
+    ObjClass* dirMeta = dirClass->obj.klass;
 
-    defineNativeMethod(dirClass, "list", dirListNative);
-    defineNativeMethod(dirClass, "mkdir", dirMkdirNative);
-    defineNativeMethod(dirClass, "chdir", dirChdirNative);
-    defineNativeMethod(dirClass, "getcwd", dirGetcwdNative);
-    defineNativeMethod(dirClass, "pwd", dirGetcwdNative);
-    defineNativeMethod(dirClass, "rmdir", dirRmdirNative);
-    defineNativeMethod(dirClass, "exists", dirExistsNative);
-    defineNativeMethod(dirClass, "home", dirHomeNative);
-    defineNativeMethod(dirClass, "tempdir", dirTmpdirNative);
-    defineNativeMethod(dirClass, "tmpdir", dirTmpdirNative);
-    defineNativeMethod(dirClass, "mktemp", dirMkdtempNative);
-    defineNativeMethod(dirClass, "each", dirEachNative);
-    defineNativeMethod(dirClass, "glob", dirGlobNative);
-    defineNativeMethod(dirClass, "isempty", dirIsemptyNative);
+    defineNativeMethod(dirMeta, "list", dirListNative);
+    defineNativeMethod(dirMeta, "mkdir", dirMkdirNative);
+    defineNativeMethod(dirMeta, "chdir", dirChdirNative);
+    defineNativeMethod(dirMeta, "getcwd", dirGetcwdNative);
+    defineNativeMethod(dirMeta, "pwd", dirGetcwdNative);
+    defineNativeMethod(dirMeta, "rmdir", dirRmdirNative);
+    defineNativeMethod(dirMeta, "exists", dirExistsNative);
+    defineNativeMethod(dirMeta, "home", dirHomeNative);
+    defineNativeMethod(dirMeta, "tempdir", dirTmpdirNative);
+    defineNativeMethod(dirMeta, "tmpdir", dirTmpdirNative);
+    defineNativeMethod(dirMeta, "mktemp", dirMkdtempNative);
+    defineNativeMethod(dirMeta, "each", dirEachNative);
+    defineNativeMethod(dirMeta, "glob", dirGlobNative);
+    defineNativeMethod(dirMeta, "isempty", dirIsemptyNative);
 
+    /*
     tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
 
     popn(2);
+    */
 }
 
 Value processRunStatic(int argCount, Value* args) {
@@ -4088,28 +4133,34 @@ Value processPopenStatic(int argCount, Value* args) {
 }
 
 void initProcessClass() {
+    /*
     ObjString* processName = copyString("Process", 7);
     push(OBJ_VAL(processName));
     ObjClass* processClass = newClass(processName);
     push(OBJ_VAL(processClass));
     tableSet(&vm.globals, processName, OBJ_VAL(processClass));
+    */
+    ObjClass* processClass = defineBuiltinClass("Process", vm.objectClass, NULL, true);
+    ObjClass* processMeta = processClass->obj.klass;
 
-    defineNativeMethod(processClass, "run", processRunStatic);
-    defineNativeMethod(processClass, "capture", processCaptureStatic);
-    defineNativeMethod(processClass, "fork", processForkStatic);
-    defineNativeMethod(processClass, "exec", processExecStatic);
-    defineNativeMethod(processClass, "pid", processPidStatic);
-    defineNativeMethod(processClass, "wait", processWaitStatic);
-    defineNativeMethod(processClass, "pipe", processPipeStatic);
-    defineNativeMethod(processClass, "read", processReadStatic);
-    defineNativeMethod(processClass, "write", processWriteStatic);
-    defineNativeMethod(processClass, "close", processCloseStatic);
-    defineNativeMethod(processClass, "popen", processPopenStatic);
+    defineNativeMethod(processMeta, "run", processRunStatic);
+    defineNativeMethod(processMeta, "capture", processCaptureStatic);
+    defineNativeMethod(processMeta, "fork", processForkStatic);
+    defineNativeMethod(processMeta, "exec", processExecStatic);
+    defineNativeMethod(processMeta, "pid", processPidStatic);
+    defineNativeMethod(processMeta, "wait", processWaitStatic);
+    defineNativeMethod(processMeta, "pipe", processPipeStatic);
+    defineNativeMethod(processMeta, "read", processReadStatic);
+    defineNativeMethod(processMeta, "write", processWriteStatic);
+    defineNativeMethod(processMeta, "close", processCloseStatic);
+    defineNativeMethod(processMeta, "popen", processPopenStatic);
 
     processClass->isFrozen = true;
 
+    /*
     pop();
     pop();
+    */
 }
 
 Value structPackNative(int argCount, Value* args) {
@@ -4479,6 +4530,7 @@ Value structUnpackNative(int argCount, Value* args) {
 }
 
 void initStructClass() {
+    /*
     ObjString* string = NULL;
 
     string = copyString("Struct", 6);
@@ -4487,12 +4539,17 @@ void initStructClass() {
     push(OBJ_VAL(structClass));
     structClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(structClass));
+    */
+    ObjClass* structClass = defineBuiltinClass("Struct", vm.objectClass, NULL, true);
+    ObjClass* structMeta = structClass->obj.klass;
 
-    defineNativeMethod(structClass, "pack", structPackNative);
-    defineNativeMethod(structClass, "unpack", structUnpackNative);
+    defineNativeMethod(structMeta, "pack", structPackNative);
+    defineNativeMethod(structMeta, "unpack", structUnpackNative);
 
+    /*
     pop();
     pop();
+    */
 }
 
 Value hgfGCNative(int argCount, Value* args) {
@@ -4658,26 +4715,30 @@ Value gcStatsNative(int argCount, Value* args) {
 }
 
 void initGCLibrary() {
+    ObjClass* gcClass = defineBuiltinClass("GC", vm.objectClass, NULL, true);
+    ObjClass* gcMeta = gcClass->obj.klass;
+    /*
     ObjString* gcName = copyString("GC", 2);
     push(OBJ_VAL(gcName));
     ObjClass* gcClass = newClass(gcName);
     push(OBJ_VAL(gcClass));
+    */
 
-    defineNativeMethod(gcClass, "heap_growth_factor", hgfGCNative);
-    defineNativeMethod(gcClass, "get_growth_factor", get_hgfGCNative);
-    defineNativeMethod(gcClass, "init_threshold", thresholdGCNative);
-    defineNativeMethod(gcClass, "get_threshold", get_thresholdGCNative);
-    defineNativeMethod(gcClass, "bump_size", bumpsizeGCNative);
-    defineNativeMethod(gcClass, "get_bumpsize", get_bumpsizeGCNative);
-    defineNativeMethod(gcClass, "stress_mode", stressmodeGCNative);
-    defineNativeMethod(gcClass, "get_stress_mode", get_stressmodeGCNative);
-    defineNativeMethod(gcClass, "type", typeGCNative);
-    defineNativeMethod(gcClass, "get_gctype", get_typeGCNative);
+    defineNativeMethod(gcMeta, "heap_growth_factor", hgfGCNative);
+    defineNativeMethod(gcMeta, "get_growth_factor", get_hgfGCNative);
+    defineNativeMethod(gcMeta, "init_threshold", thresholdGCNative);
+    defineNativeMethod(gcMeta, "get_threshold", get_thresholdGCNative);
+    defineNativeMethod(gcMeta, "bump_size", bumpsizeGCNative);
+    defineNativeMethod(gcMeta, "get_bumpsize", get_bumpsizeGCNative);
+    defineNativeMethod(gcMeta, "stress_mode", stressmodeGCNative);
+    defineNativeMethod(gcMeta, "get_stress_mode", get_stressmodeGCNative);
+    defineNativeMethod(gcMeta, "type", typeGCNative);
+    defineNativeMethod(gcMeta, "get_gctype", get_typeGCNative);
     // same as System.gc()
-    defineNativeMethod(gcClass, "gc", systemGCNative);
-    defineNativeMethod(gcClass, "stats", gcStatsNative);
+    defineNativeMethod(gcMeta, "gc", systemGCNative);
+    defineNativeMethod(gcMeta, "stats", gcStatsNative);
 
-    tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
+    //tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
 
     defineClassConstant(gcClass, "NormalMode", NUMBER_VAL(0));
     defineClassConstant(gcClass, "StressMode", NUMBER_VAL(1));
@@ -4686,8 +4747,10 @@ void initGCLibrary() {
     defineClassConstant(gcClass, "TypeLinear", NUMBER_VAL(0));
     defineClassConstant(gcClass, "TypeMult", NUMBER_VAL(1));
 
+    /*
     pop();
     pop();
+    */
 }
 
 void ioDestructor(ObjInstance* inst) {
@@ -5242,49 +5305,75 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
 
 void initIOClass() {
 
+    ObjClass* ioClass = defineBuiltinClass("IO", vm.objectClass, NULL, true);
+    /*
     ObjString* ioName = copyString("IO", 2);
     push(OBJ_VAL(ioName));
 
     ObjClass* ioClass = newClass(ioName);
     push(OBJ_VAL(ioClass));
+    */
 
-    ioClass->superclass = vm.objectClass;
+    //ioClass->superclass = vm.objectClass;
     ioClass->callHandler = ioCallHandler;
     ioClass->destructor = ioDestructor;
 
-    tableSet(&vm.globals, ioName, OBJ_VAL(ioClass));
+    //tableSet(&vm.globals, ioName, OBJ_VAL(ioClass));
 
+    /*
     ObjString* tcpName = copyString("tcp", 3);
     push(OBJ_VAL(tcpName));
 
     ObjClass* tcpClass = newClass(tcpName);
     push(OBJ_VAL(tcpClass));
+    */
+    ObjClass* tcpClass = defineBuiltinClass("tcp", ioClass, NULL, false);
 
-    tcpClass->superclass = ioClass;
+    //tcpClass->superclass = ioClass;
     tcpClass->callHandler = ioCallHandler;
     tcpClass->destructor = ioDestructor;
-    tableSet(&ioClass->methods, tcpName, OBJ_VAL(tcpClass));
+
+    push(OBJ_VAL(tcpClass));
+    ObjString* tcpName = copyString("tcp", 3);
+    push(OBJ_VAL(tcpName));
+    tableSet(&ioClass->fields, tcpName, OBJ_VAL(tcpClass));
+
+    pop();
+    pop();
 
     //defineClassConstant(ioClass, "tcp", OBJ_VAL(tcpClass));
 
+    /*
     pop(); // tcpClass
     pop(); // tcpName
+    */
 
+    /*
     ObjString* udpName = copyString("udp", 3);
     push(OBJ_VAL(udpName));
 
     ObjClass* udpClass = newClass(udpName);
     push(OBJ_VAL(udpClass));
+    */
+    ObjClass* udpClass = defineBuiltinClass("udp", ioClass, NULL, false);
 
-    udpClass->superclass = ioClass;
+    //udpClass->superclass = ioClass;
     udpClass->callHandler = ioCallHandler;
     udpClass->destructor = ioDestructor;
 
-    tableSet(&ioClass->methods, udpName, OBJ_VAL(udpClass));
+    push(OBJ_VAL(udpClass));
+    ObjString* udpName = copyString("udp", 3);
+    push(OBJ_VAL(tcpName));
+    tableSet(&ioClass->fields, udpName, OBJ_VAL(udpClass));
+
+    pop();
+    pop();
     //defineClassConstant(ioClass, "udp", OBJ_VAL(udpClass));
 
+    /*
     pop(); // udpClass
     pop(); // udpName
+    */
 
     defineNativeMethod(ioClass, "inspect", ioInspectNative);
     defineNativeMethod(ioClass, "connect", ioConnectNative);
@@ -5303,8 +5392,8 @@ void initIOClass() {
     defineClassConstant(ioClass, "PollErr", NUMBER_VAL(POLLERR));
     defineClassConstant(ioClass, "PollHup", NUMBER_VAL(POLLHUP));
 
-    pop(); // ioClass
-    pop(); // ioName
+    //pop(); // ioClass
+    //pop(); // ioName
 }
 
 Value systemTimeNative(int argCount, Value* args) {
@@ -5549,27 +5638,31 @@ Value systemRemoveIncludeNative(int argCount, Value* args) {
 }
 
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
+    /*
     ObjString* systemName = copyString("System", 6);
     push(OBJ_VAL(systemName));
     ObjClass* systemClass = newClass(systemName);
     push(OBJ_VAL(systemClass));
+    */
+    ObjClass* systemClass = defineBuiltinClass("System", vm.objectClass, NULL, true);
+    ObjClass* systemMeta = systemClass->obj.klass;
 
-    defineNativeMethod(systemClass, "time", systemTimeNative);
-    defineNativeMethod(systemClass, "exit", systemExitNative);
-    defineNativeMethod(systemClass, "gc", systemGCNative);
-    defineNativeMethod(systemClass, "mem", systemMemNative);
-    defineNativeMethod(systemClass, "reset_stack", systemResetStackNative);
-    defineNativeMethod(systemClass, "show_stack", systemShowStackNative);
-    defineNativeMethod(systemClass, "set_notation", systemSetNotationNative);
-    defineNativeMethod(systemClass, "set_precision", systemSetPrecisionNative);
-    defineNativeMethod(systemClass, "debug_print", systemDebugPrintNative);
-    defineNativeMethod(systemClass, "trace", systemTraceNative);
-    defineNativeMethod(systemClass, "strict", systemStrictNative);
-    defineNativeMethod(systemClass, "warn", systemWarnNative);
-    defineNativeMethod(systemClass, "sleep", systemSleepNative);
-    defineNativeMethod(systemClass, "get_includes", systemGetIncludesNative);
-    defineNativeMethod(systemClass, "add_include", systemAddIncludeNative);
-    defineNativeMethod(systemClass, "remove_include", systemRemoveIncludeNative);
+    defineNativeMethod(systemMeta, "time", systemTimeNative);
+    defineNativeMethod(systemMeta, "exit", systemExitNative);
+    defineNativeMethod(systemMeta, "gc", systemGCNative);
+    defineNativeMethod(systemMeta, "mem", systemMemNative);
+    defineNativeMethod(systemMeta, "reset_stack", systemResetStackNative);
+    defineNativeMethod(systemMeta, "show_stack", systemShowStackNative);
+    defineNativeMethod(systemMeta, "set_notation", systemSetNotationNative);
+    defineNativeMethod(systemMeta, "set_precision", systemSetPrecisionNative);
+    defineNativeMethod(systemMeta, "debug_print", systemDebugPrintNative);
+    defineNativeMethod(systemMeta, "trace", systemTraceNative);
+    defineNativeMethod(systemMeta, "strict", systemStrictNative);
+    defineNativeMethod(systemMeta, "warn", systemWarnNative);
+    defineNativeMethod(systemMeta, "sleep", systemSleepNative);
+    defineNativeMethod(systemMeta, "get_includes", systemGetIncludesNative);
+    defineNativeMethod(systemMeta, "add_include", systemAddIncludeNative);
+    defineNativeMethod(systemMeta, "remove_include", systemRemoveIncludeNative);
 
     vm.scriptName = NULL;
 
@@ -5672,9 +5765,10 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineClassConstant(systemClass, "Fixed", NUMBER_VAL(2));
     defineClassConstant(systemClass, "Default", NUMBER_VAL(0));
 
-    tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
+    //tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
-    popn(4);
+    pop();
+    pop();
 
 }
 
@@ -5817,24 +5911,42 @@ Value base64DecodeNative(int argCount, Value* args) {
 }
 
 void initBase64Class() {
+    ObjClass* base64Class = defineBuiltinClass("Base64", vm.objectClass, NULL, true);
+
+    /*
     ObjString* base64Name = copyString("Base64", 6);
     push(OBJ_VAL(base64Name));
     ObjClass* base64Class = newClass(base64Name);
     push(OBJ_VAL(base64Class));
+    */
 
-    defineNativeMethod(base64Class, "encode", base64EncodeNative);
-    defineNativeMethod(base64Class, "decode", base64DecodeNative);
+    defineNativeMethod(base64Class->obj.klass, "encode", base64EncodeNative);
+    defineNativeMethod(base64Class->obj.klass, "decode", base64DecodeNative);
 
-    tableSet(&vm.globals, base64Name, OBJ_VAL(base64Class));
+    //tableSet(&vm.globals, base64Name, OBJ_VAL(base64Class));
 }
 
 Value bufferAllocNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_NUMBER(args[0])) {
+        runtimeError("Buffer.alloc() expects a numeric size argument.");
         return NIL_VAL;
     }
 
-    size_t size = (size_t)AS_NUMBER(args[0]);
+    double sizeNum = AS_NUMBER(args[0]);
+
+    if (sizeNum < 0) {
+        runtimeError("Buffer size cannot be negative.");
+        return NIL_VAL;
+    }
+
+    size_t size = (size_t)sizeNum;
     ObjBuffer* buffer = newBuffer(size);
+    if (IS_CLASS(args[-1])) {
+        buffer->obj.klass = AS_CLASS(args[-1]);
+    } else {
+        buffer->obj.klass = vm.bufferClass;
+    }
+
     return OBJ_VAL(buffer);
 }
 
@@ -5868,17 +5980,20 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
 }
 
 void initBufferClass() {
+    vm.bufferClass = defineBuiltinClass("Buffer", vm.objectClass, &vm.bufferMetaClass, true);
+
+    defineNativeMethod(vm.bufferMetaClass, "alloc", bufferAllocNative);
+
+    /*
     ObjString* bufferStr = copyString("Buffer", 6);
     push(OBJ_VAL(bufferStr));
     vm.bufferClass = newClass(bufferStr);
     tableSet(&vm.globals, bufferStr, OBJ_VAL(vm.bufferClass));
+    */
 
-    defineNativeMethod(vm.bufferClass, "alloc", bufferAllocNative);
     defineNativeMethod(vm.bufferClass, "size", bufferSizeNative);
     defineNativeMethod(vm.bufferClass, "fill", bufferFillNative);
     defineNativeMethod(vm.bufferClass, "write_uint64", bufferWriteUint64Native);
-
-    pop();
 }
 
 //@ Error
@@ -5916,6 +6031,19 @@ Value errorCallHandler(int argCount, Value* args) {
 }
 
 void initErrorClass() {
+    // 1. creates class + metaclass, handles superclass wiring, gc protection
+    ObjClass* errorClass = defineBuiltinClass("Error", NULL, NULL, true);
+
+    // 2. configure class specific handlers
+    errorClass->callHandler = errorCallHandler;
+
+    // examples
+    // instance methods
+    //defineNativeMethod(vm.errorClass, "to_string", errorToStringNative);
+
+    // static method: target the metaclass directly via errorClass->obj.klass
+    // defineNativeMethod(errorClass->obj.klass, "format", errorFormatStaticNative);
+    /*
     ObjString* className = copyString("Error", 5);
     push(OBJ_VAL(className));
     ObjClass* errorClass = newClass(className);
@@ -5926,5 +6054,84 @@ void initErrorClass() {
 
     pop();
     pop();
+    */
 }
 
+/*
+void initCoreClasses(void) {
+    // phase 1 allocate raw structures
+    ObjString* objectName = copyString("Object", 6);
+    push(OBJ_VAL(objectName));
+    ObjString* className = copyString("Class", 5);
+    push(OBJ_VAL(className));
+    ObjString* objectMetaName = copyString("ObjectMeta", 15);
+    push(OBJ_VAL(objectMetaName));
+    ObjString* classMetaName = copyString("classMeta", 14);
+    push(OBJ_VAL(classMetaName));
+
+    vm.objectClass = allocateRawClass(objectName);
+    vm.classClass = allocateRawClass(className);
+    vm.objectMetaClass = allocateRawClass(objectMetaName);
+    vm.classMetaClass = allocateRawClass(classMetaName);
+
+    // phase 2 wire up the instantiation chain (obj.klass)
+    vm.objectClass->obj.klass = vm.objectMetaClass;
+    vm.classClass->obj.klass = vm.classMetaClass;
+    vm.objectMetaClass->obj.klass = vm.classMetaClass;
+    vm.classMetaClass->obj.klass = vm.classMetaClass;
+
+    // phase 3 wire up the inheritance chane (superclass)
+    vm.objectClass->superclass = NULL;
+    vm.classClass->superclass = vm.objectClass;
+    vm.objectMetaClass->superclass = vm.classClass;
+    vm.classMetaClass->superclass = vm.objectMetaClass;
+
+    // phase 4 register root methods
+    // methods on object (inherited by all instances & metaclasses)
+    defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
+    defineNativeMethod(vm.objectClass, "class_name", objectClassNameNative);
+
+    // methods on class (inherited by all metaclasses)
+    defineNativeMethod(vm.classClass, "name", classNameNative);
+    defineNativeMethod(vm.classClass, "superclass", classSuperclassNative);
+    //defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
+
+    popn(4);
+}
+*/
+
+ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal) {
+    ObjClass* realSuper = (superclass != NULL) ? superclass : vm.objectClass;
+    ObjClass* metaSuper = (superclass != NULL) ? superclass->obj.klass : vm.classClass;
+
+    // 1. create string names -> stack slot 0
+    ObjString* className = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(className));
+
+    // 2. allocate metaclass -> stack slot 1
+    char metaBuf[128];
+    snprintf(metaBuf, sizeof(metaBuf), "%sMeta", name);
+    ObjString* metaName = copyString(metaBuf, (int)strlen(metaBuf));
+    push(OBJ_VAL(metaName));
+
+    // 3. allocate metaclass -> stack slot 2
+    ObjClass* meta = allocateRawClass(metaName);
+    push(OBJ_VAL(meta));
+    meta->obj.klass = vm.classMetaClass;
+    meta->superclass = metaSuper;
+
+    // 3. allocate class -> stack slot 3
+    ObjClass* klass = allocateRawClass(className);
+    push(OBJ_VAL(klass));
+    klass->obj.klass = meta;
+    klass->superclass = realSuper;
+
+    if (isGlobal) {
+        tableSet(&vm.globals, className, OBJ_VAL(klass));
+    }
+
+    popn(4);
+
+    if (metaOut != NULL) *metaOut = meta;
+    return klass;
+}
