@@ -234,5 +234,6 @@ void initBufferClass();
 Value errorCallHandler(int argCount, Value* args);
 void initErrorClass();
 void initCoreClasses(void);
+ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal);
 
 #endif // NATIVE_H
