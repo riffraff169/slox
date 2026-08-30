@@ -6,6 +6,7 @@
 #include "object.h"
 //#include "table.h"
 //#include "vm.h"
+ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal);
 
 // Automatically extracted signatures
 void defineNativeClassConstant(ObjClass* klass, const char* name, Value value);
@@ -234,6 +235,9 @@ void initBufferClass();
 Value errorCallHandler(int argCount, Value* args);
 void initErrorClass();
 void initCoreClasses(void);
-ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal);
+Value arrayClassCallHandler(int argCount, Value* args);
+Value nilClassCallHandler(int argCount, Value* args);
+Value boolClassCallHandler(int argCount, Value* args);
+Value numberClassCallHandler(int argCount, Value* args);
 
 #endif // NATIVE_H
