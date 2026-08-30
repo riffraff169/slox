@@ -39,6 +39,15 @@ class DocParser {
     this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "RETURNS"
   }
 
+  findClass(name) {
+    for (var i = 0; i < this.classes.length(); i += 1) {
+      if (this.classes[i].name == name) {
+        return this.classes[i];
+      }
+    }
+    return nil;
+  }
+
   parseLines(lines) {
     for (var i = 0; i < lines.length(); i = i + 1) {
       this.processLine(lines[i]);
@@ -52,8 +61,15 @@ class DocParser {
     if (line.slice(0, 3) == "//@") {
       this.closeTarget();
       var className = line.slice(3).trim();
-      this.currentClass = ClassDoc(className);
-      this.classes.push(this.currentClass);
+
+      var existing = this.findClass(className);
+      if (existing) {
+        this.currentClass = existing;
+      } else {
+        this.currentClass = ClassDoc(className);
+        this.classes.push(this.currentClass);
+      }
+
       this.currentTarget = this.currentClass;
       this.section = "DESC";
       return;
