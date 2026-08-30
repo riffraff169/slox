@@ -236,6 +236,40 @@ static uint32_t valueToUint32(Value value) {
     return (uint32_t)(long long)num;
 }
 
+void includeMixin(ObjClass* target, ObjClass* mixin) {
+    // 1. create instance proxy node
+    ObjClass* proxy = newClass(mixin->name);
+    push(OBJ_VAL(proxy));
+    proxy->mixinsource = mixin;
+
+    // splice instance superclass chain: target -> proxy -> target.superclass
+    proxy->superclass = target->superclass;
+    target->superclass = proxy;
+
+    // 2. splice metaclass superclass chain: targetmeta -> proxymeta -> targetmeta.superclass
+    if (target->obj.klass && mixin->obj.klass) {
+        ObjClass* targetMeta = target->obj.klass;
+        ObjClass* mixinMeta = mixin->obj.klass;
+        ObjClass* proxyMeta = proxy->obj.klass;
+
+        proxyMeta->mixinsource = mixinMeta;
+
+        proxyMeta->superclass = targetMeta->superclass;
+        targetMeta->superclass = proxyMeta;
+    }
+
+    pop();
+}
+
+ObjClass* getOrCreateClass(ObjString* name) {
+    Value existing;
+    if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
+        return AS_CLASS(existing);
+    }
+    return newClass(name);
+}
+
+/*
 void includeMethods(ObjClass* target, ObjClass* mixin) {
     for (int i = 0; i < mixin->methods.capacity; i++) {
         Entry* entry = &mixin->methods.entries[i];
@@ -252,9 +286,43 @@ void includeMethods(ObjClass* target, ObjClass* mixin) {
         }
     }
 }
+*/
+
+static inline ObjClass* getEffectiveClass(ObjClass* klass) {
+    return (klass->mixinsource !=  NULL) ? klass->mixinsource : klass;
+}
+
+static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
+    ObjClass* current = klass;
+    while (current != NULL) {
+        if (tableGet(&current->methods, name, method)) {
+            return true;
+        }
+
+        if (current->mixinsource != NULL && tableGet(&current->mixinsource->methods, name, method)) {
+            return true;
+        }
+        current = current->superclass;
+    }
+    /*
+    for (ObjClass* curr = klass; curr != NULL; curr = curr->superclass) {
+        ObjClass* source = getEffectiveClass(curr);
+        if (tableGet(&source->methods, name, method)) {
+            return true;
+        }
+    }
+    */
+    return false;
+}
+
 
 static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argCount) {
     Value method;
+    if (!findMethod(klass, vm.methodMissingString, &method)) {
+        runtimeError("Undefined method '%s'.", originalName->chars);
+        return false;
+    }
+    /*
     ObjClass* currentClass = klass;
     bool found = false;
 
@@ -265,15 +333,18 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
         }
         currentClass = currentClass->superclass;
     }
+    */
 
     /*
     printf("DEBUG: Looking for method '%s' on Class '%s' (Type Enum: %d)\n",
             originalName->chars, klass->name->chars, 0);
             */
+    /*
     if (!found) {
         runtimeError("Undefined method '%s'.", originalName->chars);
         return false;
     }
+    */
 
     Value* argsStart = vm.stackTop - argCount;
     ObjArray* argsArray = newArray();
@@ -288,6 +359,7 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
     push(OBJ_VAL(originalName));
     push(OBJ_VAL(argsArray));
 
+    /*
     if (IS_NATIVE(method)) {
         NativeFn native = AS_NATIVE(method);
         Value result = native(2, vm.stackTop - 2);
@@ -303,6 +375,8 @@ static bool callMethodMissing(ObjClass* klass, ObjString* originalName, int argC
     }
     vm.stackTop -= 3;
     return res;
+    */
+    return callValue(method, 2);
 }
 
 void* locateAndLoadModule(const char* name) {
@@ -385,34 +459,6 @@ static void resetStack() {
     vm.stackTop = vm.stack;
     vm.frameCount = 0;
     vm.openUpvalues = NULL;
-}
-
-ObjClass* getClassForValue(Value value) {
-    // 1. Handle primitive immediate values
-    if (IS_NUMBER(value)) return vm.numberClass;
-    if (IS_BOOL(value)) return vm.boolClass;
-    if (IS_NIL(value)) return vm.nilClass;
-    if (IS_STRING(value)) return vm.stringClass;
-    if (IS_VEC3(value)) return vm.vec3Class;
-
-    // 2. Handle heap-allocated objects
-    if (IS_OBJ(value)) {
-        switch (OBJ_TYPE(value)) {
-            case OBJ_STRING: return vm.stringClass;
-            case OBJ_ARRAY: return vm.arrayClass;
-            case OBJ_MAP: return vm.mapClass;
-            case OBJ_SET: return vm.setClass;
-            case OBJ_CLASS: return vm.classClass;
-            case OBJ_BOUND_METHOD:
-            case OBJ_CLOSURE:
-            case OBJ_NATIVE: return vm.functionClass;
-            case OBJ_INSTANCE: return AS_INSTANCE(value)->obj.klass;
-            case OBJ_BUFFER: return vm.bufferClass;
-            default: return AS_OBJ(value)->klass;
-        }
-    }
-   
-    return NULL;
 }
 
 bool runtimeError(const char* format, ...) {
@@ -775,24 +821,26 @@ Value vec3GetterNative(Value receiver, ObjString* name) {
 }
 
 void initVec3Library() {
+    /*
     ObjString* name = copyString("Vec3", 4);
     push(OBJ_VAL(name));
-
     vm.vec3Class = newClass(name);
     vm.vec3Class->superclass = vm.objectClass;
+    */
+    vm.vec3Class = defineBuiltinClass("Vec3", vm.objectClass, &vm.vec3MetaClass, true);
     vm.vec3Class->callHandler = vec3CallHandler;
     vm.vec3Class->getter = vec3GetterNative;
-    tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
+    //tableSet(&vm.globals, name, OBJ_VAL(vm.vec3Class));
     
     defineNativeMethod(vm.vec3Class, "dot", vec3DotNative);
     defineNativeMethod(vm.vec3Class, "cross", vec3CrossNative);
     defineNativeMethod(vm.vec3Class, "unit", vec3UnitNative);
     defineNativeMethod(vm.vec3Class, "length", vec3LengthNative);
     defineNativeMethod(vm.vec3Class, "length_squared", vec3LengthSquaredNative);
-    pop();
+    //pop();
 }
 
-static Value classSuperclassMethod(int argCount, Value* args) {
+Value classSuperclassMethod(int argCount, Value* args) {
     if (argCount != 0) {
         runtimeError("Expected 0 arguments but got %d.", argCount);
         return NIL_VAL;
@@ -808,7 +856,7 @@ static Value classSuperclassMethod(int argCount, Value* args) {
     return OBJ_VAL(klass->superclass);
 }
 
-static Value objectClassNameNative(int argCount, Value* args) {
+Value objectClassNameNative(int argCount, Value* args) {
     Value receiver = args[-1];
     ObjClass* klass = NULL;
 
@@ -824,45 +872,58 @@ static Value boolCallHandler(int argCount, Value* args) {
     return BOOL_VAL(isTruthy(args[0]));
 }
 
-static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
-    ObjClass* current = klass;
-
-    while (current != NULL) {
-        Table* methods = (current->mixinsource != NULL)
-            ? &current->mixinsource->methods
-            : &current->methods;
-
-        if (tableGet(methods, name, method)) {
-            return true;
-        }
-        current = current->superclass;
-    }
-    return false;
-}
-
 bool isResultInstance(Value value) {
     if (!IS_INSTANCE(value)) return false;
     ObjInstance* instance = AS_INSTANCE(value);
     return instance->obj.klass == vm.resultClass;
 }
 
+ObjClass* getClassForValue(Value value) {
+    // 1. Handle primitive immediate values
+    if (IS_NUMBER(value)) return vm.numberClass;
+    if (IS_BOOL(value)) return vm.boolClass;
+    if (IS_NIL(value)) return vm.nilClass;
+    if (IS_STRING(value)) return vm.stringClass;
+    if (IS_VEC3(value)) return vm.vec3Class;
+
+    // 2. Handle heap-allocated objects
+    if (IS_OBJ(value)) {
+        switch (OBJ_TYPE(value)) {
+            case OBJ_STRING: return vm.stringClass;
+            case OBJ_ARRAY: return vm.arrayClass;
+            case OBJ_MAP: return vm.mapClass;
+            case OBJ_SET: return vm.setClass;
+            case OBJ_CLASS: return vm.classClass;
+            case OBJ_BOUND_METHOD:
+            case OBJ_CLOSURE:
+            case OBJ_NATIVE: return vm.functionClass;
+            case OBJ_INSTANCE: return AS_INSTANCE(value)->obj.klass;
+            case OBJ_BUFFER: return vm.bufferClass;
+            default: return AS_OBJ(value)->klass;
+        }
+    }
+   
+    return NULL;
+}
+
 PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     // 1. dynamic local fields (exclusive to heap instances; no class check needed)
+    // direct field access, instance fields or static class fields
     if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-        if (tableGet(&instance->fields, name, result)) {
+        if (tableGet(&AS_INSTANCE(receiver)->fields, name, result)) {
             return PROP_FOUND;
         }
     } else if (IS_CLASS(receiver)) {
-        ObjClass* klass = AS_CLASS(receiver);
-        if (tableGet(&klass->fields, name, result)) {
+        if (tableGet(&AS_CLASS(receiver)->fields, name, result)) {
             return PROP_FOUND;
         }
     }
 
-
-    // 1b. class constants pipeline
-    ObjClass* constClass = NULL;
+    // 2. class constants pipeline
+    ObjClass* constClass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver) 
+        : (IS_INSTANCE(receiver) ? AS_INSTANCE(receiver)->obj.klass : getClassForValue(receiver));
+    /*
     if (IS_INSTANCE(receiver)) {
         constClass = AS_INSTANCE(receiver)->obj.klass;
     } else if (IS_CLASS(receiver)) {
@@ -870,7 +931,16 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     } else {
         constClass = getClassForValue(receiver);
     }
+    */
 
+    for (ObjClass* curr = constClass; curr != NULL; curr = curr->superclass) {
+        ObjClass* source = getEffectiveClass(curr);
+        if (tableGet(&source->constants, name, result)) {
+            return PROP_FOUND;
+        }
+    }
+
+    /*
     if (constClass != NULL) {
         ObjClass* currentClass = constClass;
         while (currentClass != NULL) {
@@ -884,8 +954,104 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
             currentClass = currentClass->superclass;
         }
     }
+    */
 
-    // 2. unified metadata pipeline (primitives, vectors, classes)
+    // 3 methods, gettes, and virtual dispatch class
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+
+        // 3a. direct method table (native functions on primitive classes)
+        if (findMethod(klass, name, result)) {
+            return PROP_FOUND;
+        }
+
+        // 3b. metaclass hierarchy for static user methods (klass->obj.klass)
+        if (klass->obj.klass != NULL && findMethod(klass->obj.klass, name, result)) {
+            return PROP_FOUND;
+        }
+
+        // 3c. class object fallback behaviors
+        if (vm.classClass != NULL && findMethod(vm.classClass, name, result)) {
+            return PROP_FOUND;
+        }
+        return PROP_NOT_FOUND;
+    }
+
+    ObjClass* methodClass = getClassForValue(receiver);
+    if (methodClass == NULL) {
+        return PROP_NOT_FOUND;
+    }
+
+    // step 3a. explicit property getters
+    Value propertyGetter = NIL_VAL;
+    for (ObjClass* curr = methodClass; curr != NULL; curr = curr->superclass) {
+        ObjClass* source = getEffectiveClass(curr);
+        if (tableGet(&source->getters, name, &propertyGetter)) {
+            break;
+        }
+    }
+
+    if (!IS_NIL(propertyGetter))  {
+        push(receiver);
+        if (callValue(propertyGetter, 0)) {
+            vm.frames[vm.frameCount - 1].isGetter = true;
+            return PROP_ASYNC;
+        }
+        *result = peek(0);
+        pop();
+        return PROP_FOUND;
+    }
+
+    // 3. dynamic catch-all getter (vgetter)
+    Value getterValue = NIL_VAL;
+    for (ObjClass* curr = methodClass; curr != NULL; curr = curr->superclass) {
+        ObjClass* source = getEffectiveClass(curr);
+        if (!IS_NIL(source->vGetter)) {
+            getterValue = source->vGetter;
+            break;
+        }
+    }
+
+    if (!IS_NIL(getterValue)) {
+        push(getterValue);
+        push(receiver);
+        push(OBJ_VAL(name));
+
+        if (callValue(getterValue, 2)) {
+            vm.frames[vm.frameCount - 1].isGetter = true;
+            return PROP_ASYNC;
+        }
+
+        Value getterReturnVal = peek(0);
+        if (isResultInstance(getterReturnVal)) {
+            if (isResultOk(getterReturnVal)) {
+                Value fakeStack[2] = { getterReturnVal, NIL_VAL };
+                *result = resultUnwrapOrNative(1, &fakeStack[1]);
+                pop();
+                return PROP_FOUND;
+            } else {
+                pop();
+                push(receiver);
+            }
+        } else {
+            *result = getterReturnVal;
+            pop();
+            return PROP_FOUND;
+        }
+    }
+
+    // step 3c: first-class bound methods (method tear-offs)
+    if (findMethod(methodClass, name, result)) {
+        *result = OBJ_VAL(newBoundMethod(receiver, *result));
+        return PROP_FOUND;
+    }
+
+    // step 3d: legacy native c pointer getter
+    if (methodClass->getter != NULL) {
+        *result = methodClass->getter(receiver, name);
+        return PROP_FOUND;
+    }
+    /*
     ObjClass* klass = IS_CLASS(receiver) ? AS_CLASS(receiver) : getClassForValue(receiver);
     if (klass != NULL) {
         // step a: search up the inheritance chain for a polymorphic Value getter
@@ -976,6 +1142,7 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
             return PROP_FOUND;
         }
     }
+*/
     return PROP_NOT_FOUND;
 }
 
@@ -1003,59 +1170,59 @@ Value getPropertySync(Value receiver, ObjString* name) {
     return NIL_VAL;
 }
 
+/*
+void getPropertyOp(ObjString* name) {
+    Value receiver = pop();
+    Value resolvedValue;
+
+    PropertyResult res = getProperty(receiver, name, &resolvedValue);
+
+    if (res == PROP_FOUND) {
+        push(resolvedValue);
+        return;
+    }
+
+    if (res == PROP_ASYNC) {
+        frame = &vm.frames[vm.frameCount - 1];
+        return;
+    }
+    RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
+}
+*/
+
 PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
-    ObjClass* constClass = NULL;
+    // 1. frozen state check
+    if ((IS_CLASS(receiver) && AS_CLASS(receiver)->isFrozen) ||
+            (IS_INSTANCE(receiver) && AS_INSTANCE(receiver)->isFrozen)) {
+        return PROP_FROZEN;
+    }
 
-    if (IS_CLASS(receiver)) {
-        ObjClass* klass = AS_CLASS(receiver);
-        if (klass->isFrozen) {
-            return PROP_FROZEN;
+    // 2. class constants immutability check
+    ObjClass* constClass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)
+        : (IS_INSTANCE(receiver) ? AS_INSTANCE(receiver)->obj.klass : getClassForValue(receiver));
+
+
+    for (ObjClass* curr = constClass; curr != NULL; curr = curr->superclass) {
+        ObjClass* source = getEffectiveClass(curr);
+        Value dummy;
+        if (tableGet(&source->constants, name, &dummy)) {
+            return PROP_IMMUTABLE;
         }
     }
 
-    if (IS_INSTANCE(receiver)) {
-        if (AS_INSTANCE(receiver)->isFrozen) return PROP_FROZEN;
-    }
+    // 3. setters and dynamic dispatch class
+    ObjClass* methodClass = getClassForValue(receiver);
 
-    if (IS_INSTANCE(receiver)) {
-        constClass = AS_INSTANCE(receiver)->obj.klass;
-    } else if (IS_CLASS(receiver)) {
-        constClass = AS_CLASS(receiver);
-    } else {
-        constClass = getClassForValue(receiver);
-    }
-
-    if (constClass != NULL) {
-        ObjClass* currentClass = constClass;
-        while (currentClass != NULL) {
-            Value dummy;
-
-            Table* constants = (currentClass->mixinsource != NULL)
-                ? &currentClass->mixinsource->constants
-                : &currentClass->constants;
-
-            if (tableGet(constants, name, &dummy)) {
-                return PROP_IMMUTABLE;
-            }
-            currentClass = currentClass->superclass;
-        }
-    }
-
-    ObjClass* klass = getClassForValue(receiver);
-
-    if (klass != NULL) {
-        ObjClass* currentClass = klass;
+    if (methodClass != NULL) {
+        // step 3a: explicit property setters
         Value propertySetter = NIL_VAL;
 
-        while (currentClass != NULL) {
-            Table* setters = (currentClass->mixinsource != NULL)
-                ? &currentClass->mixinsource->setters
-                : &currentClass->setters;
-
-            if (tableGet(setters, name, &propertySetter)) {
+        for (ObjClass* curr = methodClass; curr != NULL; curr = curr->superclass) {
+            ObjClass* source = getEffectiveClass(curr);
+            if (tableGet(&source->setters, name, &propertySetter)) {
                 break;
             }
-            currentClass = currentClass->superclass;
         }
 
         if (!IS_NIL(propertySetter)) {
@@ -1072,25 +1239,17 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
             return PROP_FOUND;
         }
 
-        currentClass = klass;
         Value setterVal = NIL_VAL;
 
-        while (currentClass != NULL) {
-            Value currentVSetter = (currentClass->mixinsource != NULL)
-                ? currentClass->mixinsource->vSetter
-                : currentClass->vSetter;
-
-            if (!IS_NIL(currentVSetter)) {
-                setterVal = currentVSetter;
+        for (ObjClass* curr = methodClass; curr != NULL; curr = curr->superclass) {
+            ObjClass* source = getEffectiveClass(curr);
+            if (!IS_NIL(source->vSetter)) {
+                setterVal = source->vSetter;
                 break;
             }
-            currentClass = currentClass->superclass;
         }
 
         if (!IS_NIL(setterVal)) {
-            pop();
-            pop();
-
             push(setterVal);
             push(receiver);
             push(OBJ_VAL(name));
@@ -1105,16 +1264,17 @@ PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* 
             return PROP_FOUND;
         }
 
-        if (klass->setter != NULL) {
-            klass->setter(receiver, name, value);
+        // step 3c: legacy native c pointer setter
+        if (methodClass->setter != NULL) {
+            methodClass->setter(receiver, name, value);
             *result = value;
             return PROP_FOUND;
         }
     }
 
+    // 4. direct field assignment
     if (IS_INSTANCE(receiver)) {
-        ObjInstance* instance = AS_INSTANCE(receiver);
-        tableSet(&instance->fields, name, value);
+        tableSet(&AS_INSTANCE(receiver)->fields, name, value);
         *result = value;
         return PROP_FOUND;
     }
@@ -1145,7 +1305,7 @@ Value setPropertySync(Value receiver, ObjString* name, Value value) {
     return NIL_VAL;
 }
 
-static Value classAddMethodNative(int argCount, Value* args) {
+Value classAddMethodNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("add_method() expects 2 arguments (name, function).");
         return NIL_VAL;
@@ -1175,7 +1335,7 @@ static Value classAddMethodNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
-static Value classNameNative(int argCount, Value* args) {
+Value classNameNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
         return OBJ_VAL(copyString("Object", 6));
     }
@@ -1257,9 +1417,68 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.globalConstants);
     initTable(&vm.requires);
 
+    // phase 1. allocate class & metaclass name strings
+    ObjString* objectName = copyString("Object", 6);
+    push(OBJ_VAL(objectName));
+    ObjString* className = copyString("Class", 5);
+    push(OBJ_VAL(className));
     ObjString* stringName = copyString("String", 6);
     push(OBJ_VAL(stringName));
 
+    ObjString* objectMetaName = copyString("ObjectMeta", 10);
+    push(OBJ_VAL(objectMetaName));
+    ObjString* classMetaName = copyString("ClassMeta", 9);
+    push(OBJ_VAL(classMetaName));
+    ObjString* stringMetaName = copyString("StringMeta", 10);
+    push(OBJ_VAL(stringMetaName));
+
+    // phase 2: allocate core class and metaclass objects
+    vm.objectClass = allocateRawClass(objectName);
+    vm.classClass = allocateRawClass(className);
+    vm.stringClass = allocateRawClass(stringName);
+
+    vm.objectMetaClass = allocateRawClass(objectMetaName);
+    vm.classMetaClass = allocateRawClass(classMetaName);
+    vm.stringMetaClass = allocateRawClass(stringMetaName);
+
+    // phase 3: backfill string obj.klass headers
+    // now that vm.stringClass exists, wire up all strings created so far
+    objectName->obj.klass = vm.stringClass;
+    className->obj.klass = vm.stringClass;
+    stringName->obj.klass = vm.stringClass;
+    objectMetaName->obj.klass = vm.stringClass;
+    classMetaName->obj.klass = vm.stringClass;
+    stringMetaName->obj.klass = vm.stringClass;
+
+    // phase 4: wire instantiation chains (obj.klass)
+    vm.objectClass->obj.klass = vm.objectMetaClass;
+    vm.classClass->obj.klass = vm.classMetaClass;
+    vm.stringClass->obj.klass = vm.stringMetaClass;
+
+    vm.objectMetaClass->obj.klass = vm.classMetaClass;
+    vm.classMetaClass->obj.klass = vm.classMetaClass; // metaclass cycle closed
+    vm.stringMetaClass->obj.klass = vm.classMetaClass;
+
+    // phase 5: wire inheritance chains (superclass)
+    // instance-level superclasses
+    vm.objectClass->superclass = NULL;
+    vm.classClass->superclass = vm.objectClass;
+    vm.stringClass->superclass = vm.objectClass;
+
+    // metaclass-level superclasses
+    vm.objectMetaClass->superclass = vm.classClass;
+    vm.classMetaClass->superclass = vm.objectMetaClass;
+    vm.stringMetaClass->superclass = vm.objectMetaClass; // string class inherits
+
+    // phase 6: anchor classes in globals & pop stack roots
+    tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
+    tableSet(&vm.globals, vm.classClass->name, OBJ_VAL(vm.classClass));
+    tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
+
+    // pop the 6 string names from phase 1
+    popn(6);
+
+    /*
     vm.stringClass = newClass(stringName);
     vm.stringClass->callHandler = strNative;
     vm.stringClass->superclass = NULL;
@@ -1280,18 +1499,23 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
     tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
+    */
     initStringClass(); // done
 
+    /*
     string = copyString("Class", 5);
     push(OBJ_VAL(string));
     vm.classClass = newClass(string);
     vm.classClass->superclass = vm.objectClass;
     pop();
+    */
 
+    // initClassClass();
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
-    defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
+    //defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
     defineNativeMethod(vm.classClass, "name", classNameNative);
-    defineNativeMethod(vm.objectClass, "className", objectClassNameNative);
+    // initObjectClass();
+    defineNativeMethod(vm.objectClass, "class_name", objectClassNameNative);
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
@@ -1325,20 +1549,28 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.methodMissingString = NULL;
     vm.methodMissingString = copyString("method_missing", 14);
 
-    string = copyString("Function", 8);
+    /*
+    ObjString* string = copyString("Function", 8);
     push(OBJ_VAL(string));
     vm.functionClass = newClass(string);
     vm.functionClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.functionClass));
     pop();
+    */
+    vm.functionClass = defineBuiltinClass("Function", vm.objectClass, &vm.functionMetaClass, true);
 
+    /*
     string = copyString("Native", 6);
     push(OBJ_VAL(string));
     vm.nativeFunctionClass = newClass(string);
     vm.nativeFunctionClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nativeFunctionClass));
     pop();
+    */
 
+    vm.nativeFunctionClass = defineBuiltinClass("Native", vm.objectClass, &vm.nativeFunctionMetaClass, true);
+
+    /*
     string = copyString("Number", 6);
     push(OBJ_VAL(string));
     vm.numberClass = newClass(string);
@@ -1346,7 +1578,11 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.numberClass->callHandler = toNumberNative;
     tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
     pop();
+    */
 
+    vm.numberClass = defineBuiltinClass("Number", vm.objectClass, &vm.numberMetaClass, true);
+
+    /*
     string = copyString("Bool", 4);
     push(OBJ_VAL(string));
     vm.boolClass = newClass(string);
@@ -1354,19 +1590,30 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.boolClass->callHandler = boolCallHandler;
     tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
     pop();
+    */
 
+    vm.boolClass = defineBuiltinClass("Bool", vm.objectClass, &vm.boolMetaClass, true);
+
+    /*
     string = copyString("Nil", 3);
     push(OBJ_VAL(string));
     vm.nilClass = newClass(string);
     vm.nilClass->superclass = vm.objectClass;
     tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
     pop();
+    */
 
+    vm.nilClass = defineBuiltinClass("Nil", vm.objectClass, &vm.nilMetaClass, true);
+
+    /*
     string = copyString("Module", 6);
     push(OBJ_VAL(string));
     vm.moduleClass = newClass(string);
     vm.moduleClass->superclass = vm.objectClass;
     pop();
+    */
+
+    vm.moduleClass = defineBuiltinClass("Module", vm.objectClass, &vm.moduleMetaClass, true);
 
     initCoreLibrary(); // done
 
@@ -1526,6 +1773,7 @@ bool callValue(Value callee, int argCount) {
                 {
                     ObjClass* klass = AS_CLASS(callee);
 
+                    // 1. primitive constructors / factory classes with a custom call handler
                     if (klass->callHandler != NULL) {
                         Value result = klass->callHandler(argCount, vm.stackTop - argCount);
                         if (vm.exceptionThrown) {
@@ -1541,11 +1789,42 @@ bool callValue(Value callee, int argCount) {
                         return true;
                     }
 
+                    // 2. standard instance creation
                     vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
                     Value initializer;
+                    /*
                     bool foundInit = false;
                     ObjClass* currentClass = klass;
+                    */
 
+                    // use findMethod to properly search inheritance chain & mixin proxy nodes
+                    if (findMethod(klass, vm.initString, &initializer)) {
+                        if (IS_NATIVE(initializer)) {
+                            NativeFn native = AS_NATIVE(initializer);
+                            Value result = native(argCount, vm.stackTop - argCount);
+                            if (vm.exceptionThrown) {
+                                vm.exceptionThrown = false;
+                                return false;
+                            }
+                            if (vm.frameCount == 0) return false;
+
+                            vm.stackTop -= argCount + 1;
+                            push(result);
+                            return true;
+                        } else {
+                            int res = vmCall(AS_CLOSURE(initializer), argCount);
+                            if (vm.exceptionThrown) {
+                                vm.exceptionThrown = false;
+                                return false;
+                            }
+                            return res;
+                        }
+                    } else if (argCount != 0) {
+                        runtimeError("Expect 0 arguments but got %d.", argCount);
+                        return false;
+                    }
+                    
+                    /*
                     while (currentClass != NULL) {
                         if (tableGet(&currentClass->methods, vm.initString, &initializer)) {
                             foundInit = true;
@@ -1579,6 +1858,7 @@ bool callValue(Value callee, int argCount) {
                         runtimeError("Expect 0 arguments but got %d.", argCount);
                         return false;
                     }
+                    */
                     return true;
                 }
             case OBJ_CLOSURE:
@@ -1650,6 +1930,35 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
     ObjClass* current = klass;
     Value method;
 
+    // 1. walk inheritance hierarcy (including mixin proxy nodes) to find method
+    if (!findMethod(klass, name, &method)) {
+        // 2. fall back to dynamic methodMissing dispatch if method does not exist
+        return callMethodMissing(klass, name, argCount);
+    }
+
+    // 3. adapt stack for freestanding functions used as methods
+    if (IS_CLOSURE(method)) {
+        ObjClosure* closure = AS_CLOSURE(method);
+        if (closure->function->isfree) {
+            int expectedArgs = closure->function->arity - 1;
+            if (argCount != expectedArgs) {
+                runtimeError("Expected %d arguments but got %d.", expectedArgs, argCount);
+                return false;
+            }
+
+            Value* start = vm.stackTop - argCount - 1;
+            for (Value* p = vm.stackTop; p > start; p--) {
+                *p = *(p - 1);
+            }
+
+            *start = method;
+            vm.stackTop++;
+            argCount++;
+        }
+    }
+
+    return callValue(method, argCount);
+    /*
     while (current != NULL) {
         Table* methods = (current->mixinsource != NULL)
             ? &current->mixinsource->methods
@@ -1719,9 +2028,30 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
 
     runtimeError("Undefined property '%s'.", name->chars);
     return false;
+    */
 }
 
-bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* methodOut) {
+bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* result) {
+    if (findMethod(klass, name, result)) {
+        return true;
+    }
+
+    // 1. search metaclass hierarchy (klass->obj.klass) for static user methods
+    if (klass->obj.klass != NULL && findMethod(klass->obj.klass, name, result)) {
+        return true;
+    }
+
+    // 2. search class's own methods table directly
+    if (findMethod(klass, name, result)) {
+        return true;
+    }
+
+    // 3. search class / object hierarchy fallback
+    if (vm.classClass != NULL && findMethod(vm.classClass, name, result)) {
+        return true;
+    }
+    return false;
+    /*
     ObjClass* current = klass;
     while (current != NULL) {
         Table *methods = (current->mixinsource != NULL)
@@ -1734,12 +2064,61 @@ bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* methodOut) {
         current = current->superclass;
     }
     return false;
+    */
 }
 
 bool invoke(ObjString* name, int argCount) {
     Value receiver = peek(argCount);
 
+    // 1. instance field invocation (closure/function stored directly in an instance field)
+    if (IS_INSTANCE(receiver)) {
+        ObjInstance* instance = AS_INSTANCE(receiver);
+        Value field;
+
+        if (tableGet(&instance->fields, name, &field)) {
+            vm.stackTop[-argCount - 1] = field;
+            return callValue(field, argCount);
+        }
+    }
+
+    // 2. class / metaclass static method resolution
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        Value method;
+
+        if (lookupClassMethod(klass, name, &method)) {
+            if (IS_CLOSURE(method)) {
+                ObjClosure* closure = AS_CLOSURE(method);
+                if (closure->function->isfree) {
+                    int expectedArgs = closure->function->arity - 1;
+                    if (argCount != expectedArgs) {
+                        runtimeError("Expected %d arguments, but got %d.", expectedArgs, argCount);
+                        return false;
+                    }
+
+                    Value* start = vm.stackTop - argCount - 1;
+                    for (Value* p = vm.stackTop; p > start; p--) {
+                        *p = *(p - 1);
+                    }
+                    *start = method;
+                    vm.stackTop++;
+                    argCount++;
+                }
+            }
+            return callValue(method, argCount);
+        }
+    }
+
+    // 3. unified method lookup via class hierarchy
     ObjClass* klass = getClassForValue(receiver);
+    if (klass != NULL) {
+        return invokeFromClass(klass, name, argCount);
+    }
+
+    runtimeError("Only instances and primitives have methods.");
+    return false;
+
+    //ObjClass* klass = getClassForValue(receiver);
     
 
     /*
@@ -1748,6 +2127,7 @@ bool invoke(ObjString* name, int argCount) {
     printf("Number class: %d\n", vm.numberClass);
     */
 
+    /*
     // 1. Standard lox instances
     if (IS_INSTANCE(receiver)) {
         ObjInstance* instance = AS_INSTANCE(receiver);
@@ -1859,6 +2239,7 @@ bool invoke(ObjString* name, int argCount) {
             if (!res) return callMethodMissing(klass, name, argCount);
             return true;
 
+            */
             /*
             if (IS_CLASS(method)) {
                 vm.stackTop[-argCount - 1] = method;
@@ -1870,6 +2251,7 @@ bool invoke(ObjString* name, int argCount) {
                 return true;
             }
             */
+                /*
         }
         bool res = invokeFromClass(vm.classClass, name, argCount);
         if (vm.exceptionThrown) {
@@ -1878,11 +2260,13 @@ bool invoke(ObjString* name, int argCount) {
         }
         if (!res) return callMethodMissing(klass, name, argCount);
         return true;
+        */
         /*
         if (!res) {
             return callMethodMissing(klass, name, argCount);
         }
         */
+                /*
         return true;
     } else {
         ObjClass* klass = getClassForValue(receiver);
@@ -1900,6 +2284,7 @@ bool invoke(ObjString* name, int argCount) {
     }
     runtimeError("Only instances and primitives have methods.");
     return false;
+    */
 }
 
 void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn) {
@@ -1917,6 +2302,17 @@ static bool bindMethod(ObjClass* klass, ObjString* name) {
     Value method;
     ObjClass* current = klass;
 
+    if (!findMethod(klass, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    ObjBoundMethod* bound = newBoundMethod(peek(0), method);
+    pop();
+    push(OBJ_VAL(bound));
+    return true;
+
+    /*
     while (current != NULL) {
         Table* methods = (current->mixinsource != NULL)
             ? &current->mixinsource->methods
@@ -1935,6 +2331,7 @@ static bool bindMethod(ObjClass* klass, ObjString* name) {
 
     runtimeError("Undefined property '%s'.", name->chars);
     return false;
+    */
 }
 
 static ObjUpvalue* captureUpvalue(Value* local) {
@@ -2359,16 +2756,14 @@ InterpretResult run() {
                         ? READ_STRING()
                         : READ_STRING_LONG();
 
-                    Value value = peek(0);
-                    Value receiver = peek(1);
-                    Value final;
+                    Value value = pop();
+                    Value receiver = pop();
+                    Value result;
 
-                    PropertyResult res = setProperty(receiver, name, value, &final);
+                    PropertyResult res = setProperty(receiver, name, value, &result);
 
                     if (res == PROP_FOUND) {
-                        pop();
-                        pop();
-                        push(final);
+                        push(result);
                         break;
                     }
 
@@ -3582,11 +3977,13 @@ InterpretResult run() {
                         break;
                     }
 
+                    includeMixin(AS_CLASS(targetVal), AS_CLASS(mixinVal));
+
+                    /*
                     ObjClass* mixin = AS_CLASS(mixinVal);
                     ObjClass* target = AS_CLASS(targetVal);
 
                     ObjClass* proxy = newClass(mixin->name);
-
                     push(OBJ_VAL(proxy));
 
                     proxy->mixinsource = mixin;
@@ -3594,7 +3991,23 @@ InterpretResult run() {
                     proxy->superclass = target->superclass;
                     target->superclass = proxy;
 
+                    // insert proxys metaclass into targets metaclass intheritance chain
+                    if (proxy->obj.klass && target->obj.klass) {
+                        ObjClass* proxyMeta = proxy->obj.klass;
+                        ObjClass* targetMeta = target->obj.klass;
+
+                        if (mixin->obj.klass) {
+                            proxyMeta->mixinsource = mixin->obj.klass;
+                        }
+
+                        if (proxy->superclass && proxy->superclass->obj.klass) {
+                            proxyMeta->superclass = proxy->superclass->obj.klass;
+                        }
+
+                        targetMeta->superclass = proxyMeta;
+                    }
                     pop();
+                    */
                     //tableMergeGuard(&mixin->methods, &target->methods);
                     pop();
                 }
@@ -3666,12 +4079,15 @@ InterpretResult run() {
                     ObjString* name = READ_STRING();
                     Value existing;
 
+                    push(OBJ_VAL(getOrCreateClass(name)));
+                    /*
                     if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
                         push(existing);
                     } else {
                         ObjClass* klass = newClass(name);
                         push(OBJ_VAL(klass));
                     }
+                    */
                 }
                 break;
             case OP_CLASS_LONG:
@@ -3679,24 +4095,34 @@ InterpretResult run() {
                     ObjString* name = READ_STRING_LONG();
                     Value existing;
 
+                    push(OBJ_VAL(getOrCreateClass(name)));
+                    /*
                     if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
                         push(existing);
                     } else {
                         ObjClass* klass = newClass(name);
                         push(OBJ_VAL(klass));
                     }
+                    */
                 }
                 break;
             case OP_INHERIT:
                 {
-                    Value superclass = peek(1);
-                    if (!IS_CLASS(superclass)) {
+                    Value superclassVal = peek(1);
+                    if (!IS_CLASS(superclassVal)) {
                         RUNTIME_ERROR("Superclass must be a class.");
                         break;
                     }
 
+                    ObjClass* superclass = AS_CLASS(superclassVal);
                     ObjClass* subclass = AS_CLASS(peek(0));
-                    subclass->superclass = AS_CLASS(superclass);
+
+                    subclass->superclass = superclass;
+
+                    if (subclass->obj.klass != NULL && superclass->obj.klass != NULL) {
+                        subclass->obj.klass->superclass = superclass->obj.klass;
+                    }
+
                     pop();
                 }
                 break;
@@ -3761,20 +4187,27 @@ InterpretResult run() {
                         break;
                     }
 
-                    int count = (int)AS_NUMBER(sizeVal);
+                    double rawSize = AS_NUMBER(sizeVal);
+                    if (rawSize < 0) {
+                        RUNTIME_ERROR("Array size cannot be negative.");
+                        break;
+                    }
+
+                    int count = (int)rawSize;
                     ObjArray* array = newArray();
                     push(OBJ_VAL(array));
+
                     if (count > 0) {
-                        Value* entries = ALLOCATE(Value, count);
-                        array->values = entries;
+                        array->values = ALLOCATE(Value, count);
                         array->capacity = count;
                         array->count = count;
+
                         for (int i = 0; i < count; i++) {
                             array->values[i] = element;
                         }
                     }
-                    popn(3);
-                    push(OBJ_VAL(array));
+                    vm.stackTop[-3] = OBJ_VAL(array);
+                    popn(2);
                 }
                 break;
             case OP_GET_INDEX:

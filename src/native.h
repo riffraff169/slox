@@ -47,6 +47,7 @@ Value stringToarrayNative(int argCount, Value* args);
 Value stringTokensNative(int argCount, Value* args);
 Value stringFormatNative(int argCount, Value* args);
 Value stringTrNative(int argCount, Value* args);
+Value stringInitNative(int argCount, Value* args);
 void initStringClass();
 Value mapNativeConstructor(int argCount, Value* args);
 Value mapKeysNative(int argCount, Value* args);
@@ -232,5 +233,6 @@ Value bufferWriteUint64Native(int argCount, Value* args);
 void initBufferClass();
 Value errorCallHandler(int argCount, Value* args);
 void initErrorClass();
+void initCoreClasses(void);
 
 #endif // NATIVE_H

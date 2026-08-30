@@ -77,19 +77,45 @@ typedef struct {
     Obj** grayStack;
 
     ObjClass* objectClass;
-    ObjClass* numberClass;
-    ObjClass* boolClass;
-    ObjClass* nilClass;
-    ObjClass* arrayClass;
-    ObjClass* mapClass;
-    ObjClass* setClass;
-    ObjClass* stringClass;
-    ObjClass* mathClass;
-    ObjClass* regexClass;
-    ObjClass* moduleClass;
-    ObjClass* gcClass;
+    ObjClass* objectMetaClass;
     ObjClass* classClass;
+    ObjClass* classMetaClass;
+    ObjClass* stringClass;
+    ObjClass* stringMetaClass;
+
+    ObjClass* numberClass;
+    ObjClass* numberMetaClass;
+    ObjClass* boolClass;
+    ObjClass* boolMetaClass;
+    ObjClass* nilClass;
+    ObjClass* nilMetaClass;
+    ObjClass* arrayClass;
+    ObjClass* arrayMetaClass;
+    ObjClass* mapClass;
+    ObjClass* mapMetaClass;
+    ObjClass* setClass;
+    ObjClass* setMetaClass;
+    ObjClass* mathClass;
+    ObjClass* mathMetaClass;
+    ObjClass* regexClass;
+    ObjClass* regexMetaClass;
+    ObjClass* moduleClass;
+    ObjClass* moduleMetaClass;
+    ObjClass* gcClass;
+    ObjClass* gcMetaClass;
     ObjClass* bufferClass;
+    ObjClass* bufferMetaClass;
+    ObjClass* resultClass;
+    ObjClass* resultMetaClass;
+    ObjClass* optionClass;
+    ObjClass* optionMetaClass;
+    ObjClass* functionClass;
+    ObjClass* functionMetaClass;
+    ObjClass* nativeFunctionClass;
+    ObjClass* nativeFunctionMetaClass;
+    ObjClass* vec3Class;
+    ObjClass* vec3MetaClass;
+
     int nativeExitDepth;
     bool noStdLib;
 
@@ -102,22 +128,15 @@ typedef struct {
     ObjString* errnoString;
     ObjString* errstrString;
 
-    ObjClass* resultClass;
     ObjString* okString;
     ObjString* valString;
     ObjString* errString;
     ObjString* classString;
-    ObjClass* optionClass;
     ObjString* isSomeString;
     ObjString* methodMissingString;
 
-    ObjClass* functionClass;
-    ObjClass* nativeFunctionClass;
-    ObjClass* vec3Class;
-
     TryBlock tryStack[TRY_STACK_MAX];
     int tryCount;
-    //int tryCapacity;
     bool exceptionThrown;
 
     bool debugPrintCode;
@@ -162,5 +181,9 @@ void defineClassConstant(ObjClass* klass, const char* name, Value value);
 bool isCallable(Value value);
 void runAtExitHooks();
 void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn);
+Value objectClassNameNative(int argCount, Value* args);
+Value classNameNative(int argCount, Value* args);
+Value classSuperclassNative(int argCount, Value* args);
+
 
 #endif
