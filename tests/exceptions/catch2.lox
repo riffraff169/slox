@@ -9,5 +9,5 @@ try {
 }
 // expect: == CAUGHT ENGINE ERROR ==
 // expect: Error instance
-// expect: Undefined property 'this_method_does_not_exist'.
+// expect: Undefined method 'this_method_does_not_exist'.
 // expect: =========================

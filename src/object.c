@@ -34,8 +34,52 @@ ObjBoundMethod* newBoundMethod(Value receiver, Value method) {
     return bound;
 }
 
-ObjClass* newClass(ObjString* name) {
+ObjClass* allocateRawClass(ObjString* name) {
     ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+    klass->name = name;
+    klass->superclass = NULL;
+    klass->mixinsource = NULL;
+
+    initTable(&klass->methods);
+    initTable(&klass->fields);
+    initTable(&klass->constants);
+    initTable(&klass->getters);
+    initTable(&klass->setters);
+
+    klass->foreignData = NULL;
+    klass->callHandler = NULL;
+    klass->getter = NULL;
+    klass->setter = NULL;
+    klass->destructor = NULL;
+    klass->vGetter = NIL_VAL;
+    klass->vSetter = NIL_VAL;
+    klass->isFrozen = false;
+
+    return klass;
+}
+
+ObjClass* newClass(ObjString* name) {
+    // A. generate metaclase name string ("MyClassMeta")
+    char metaBuf[128];
+    snprintf(metaBuf, sizeof(metaBuf), "%sMeta", name->chars);
+    ObjString* metaName = copyString(metaBuf, (int)strlen(metaBuf));
+    push(OBJ_VAL(metaName));
+
+    // b. allocate metaclass
+    ObjClass* meta = allocateRawClass(metaName);
+    push(OBJ_VAL(meta));
+
+    // wire metaclass defaults
+    meta->obj.klass = vm.classMetaClass;
+    meta->superclass = vm.classClass;
+
+    // c. allocate class
+    ObjClass* klass = allocateRawClass(name);
+    push(OBJ_VAL(klass));
+
+    klass->obj.klass = meta;
+    klass->superclass = vm.objectClass;
+    /*
     klass->name = name;
     klass->superclass = vm.objectClass;
     klass->mixinsource = NULL;
@@ -53,6 +97,10 @@ ObjClass* newClass(ObjString* name) {
     klass->vGetter = NIL_VAL;
     klass->vSetter = NIL_VAL;
     klass->isFrozen = false;
+    */
+    pop();
+    pop();
+    pop();
 
     return klass;
 }
@@ -202,9 +250,11 @@ ObjUpvalue* newUpvalue(Value* slot) {
 
 ObjMap* newMap() {
     ObjMap* map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
-    ((Obj*)map)->klass = vm.mapClass;
+    map->obj.klass = vm.mapClass;
+    push(OBJ_VAL(map));
 
     initTable2(&map->items);
+    pop();
 
     return map;
 }
@@ -254,12 +304,11 @@ ObjVec3* newVec3(Value x, Value y, Value z) {
 
 ObjArray* newArray() {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
-    ((Obj*)array)->klass = vm.arrayClass;
+    array->obj.klass = vm.arrayClass;
 
     array->count = 0;
     array->capacity = 0;
     array->values = NULL;
-    array->obj.klass = vm.arrayClass;
 
     // init deferred until later for gc reasons
     return array;
