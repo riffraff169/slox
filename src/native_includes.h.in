@@ -2,3 +2,4 @@
 #include "object.h"
 //#include "table.h"
 //#include "vm.h"
+ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal);
