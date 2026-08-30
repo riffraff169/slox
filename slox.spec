@@ -6,7 +6,7 @@
 %bcond_without notcurses
 
 Name:       slox
-Version: 1.5.13
+Version: 1.5.14
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -250,6 +250,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sun  Aug 30 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.14-1-1
+- fixed native header
+
 * Sun  Aug 30 2026 Lance Dillon <riffraff169@yahoo.com> - 1.5.13-1-1
 - refactored meta classes
 
