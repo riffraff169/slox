@@ -1,0 +1,16 @@
+class BaseWorker {
+  loop(count) {
+    if (count == 0) return "Base completed";
+    return this.loop(count - 1);
+  }
+}
+
+class DerivedWorker < BaseWorker {
+  loop(count) {
+    // Tail-call into superclass method
+    return super.loop(count);
+  }
+}
+
+var worker = DerivedWorker();
+print worker.loop(100000); // Expect: "Base completed" (runs in O(1) frames)
