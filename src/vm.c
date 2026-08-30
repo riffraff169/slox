@@ -1581,6 +1581,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.numberClass = defineBuiltinClass("Number", vm.objectClass, &vm.numberMetaClass, true);
+    vm.numberClass->callHandler = numberClassCallHandler;
 
     /*
     string = copyString("Bool", 4);
@@ -1593,6 +1594,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.boolClass = defineBuiltinClass("Bool", vm.objectClass, &vm.boolMetaClass, true);
+    vm.boolClass->callHandler = boolClassCallHandler;
 
     /*
     string = copyString("Nil", 3);
@@ -1604,6 +1606,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.nilClass = defineBuiltinClass("Nil", vm.objectClass, &vm.nilMetaClass, true);
+    vm.nilClass->callHandler = nilClassCallHandler;
 
     /*
     string = copyString("Module", 6);

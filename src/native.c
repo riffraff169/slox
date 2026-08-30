@@ -2540,6 +2540,28 @@ Value arrayNativeConstructor(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+Value arrayClassCallHandler(int argCount, Value* args) {
+    if (argCount == 0) {
+        return OBJ_VAL(newArray());
+    }
+
+    if (argCount == 1 && IS_ARRAY(args[0])) {
+        return OBJ_VAL(duplicateArray(AS_ARRAY(args[0])));
+    }
+
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    Value* entries = ALLOCATE(Value, argCount);
+    array->values = entries;
+    array->capacity = argCount;
+    array->count = argCount;
+
+    memcpy(array->values, args, sizeof(Value) * argCount);
+
+    return pop();
+}
+
 void initArrayClass() {
     /*
     ObjString* string = copyString("Array", 5);
@@ -2551,6 +2573,7 @@ void initArrayClass() {
     push(OBJ_VAL(vm.arrayClass));
     */
     vm.arrayClass = defineBuiltinClass("Array", vm.objectClass, &vm.arrayMetaClass, true);
+    vm.arrayClass->callHandler = arrayClassCallHandler;
 
 #define X(name, func) defineNativeMethod(vm.arrayClass, name, func);
     ARRAY_METHOD_LIST(X)
@@ -6099,6 +6122,33 @@ void initCoreClasses(void) {
     popn(4);
 }
 */
+Value nilClassCallHandler(int argCount, Value* args) {
+    (void)argCount;
+    (void)args;
+    return NIL_VAL;
+}
+
+Value boolClassCallHandler(int argCount, Value* args) {
+    if (argCount < 1) return BOOL_VAL(false);
+    return BOOL_VAL(isTruthy(args[0]));
+}
+
+Value numberClassCallHandler(int argCount, Value* args) {
+    if (argCount < 1) return NUMBER_VAL(0);
+
+    Value arg = args[0];
+    
+    if (IS_NUMBER(arg)) {
+        char* end;
+        double val = strtod(AS_CSTRING(arg), &end);
+        return NUMBER_VAL(val);
+    }
+    if (IS_BOOL(arg)) {
+        return NUMBER_VAL(AS_BOOL(arg) ? 1.0 : 0.0);
+    }
+
+    return NUMBER_VAL(0);
+}
 
 ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal) {
     ObjClass* realSuper = (superclass != NULL) ? superclass : vm.objectClass;
