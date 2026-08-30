@@ -6139,10 +6139,15 @@ Value numberClassCallHandler(int argCount, Value* args) {
     Value arg = args[0];
     
     if (IS_NUMBER(arg)) {
+        return arg;
+    }
+
+    if (IS_STRING(arg)) {
         char* end;
         double val = strtod(AS_CSTRING(arg), &end);
         return NUMBER_VAL(val);
     }
+
     if (IS_BOOL(arg)) {
         return NUMBER_VAL(AS_BOOL(arg) ? 1.0 : 0.0);
     }
