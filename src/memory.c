@@ -132,6 +132,8 @@ static void blackenObject(Obj* object) {
                     markObject((Obj*)klass->mixinsource);
                 }
 
+                if (klass->obj.klass != NULL)
+                    markObject((Obj*)klass->obj.klass);
                 if (&klass->vGetter)
                     markValue(klass->vGetter);
                 if (&klass->vSetter)

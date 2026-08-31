@@ -641,6 +641,11 @@ Value objectClassNameMethod(int argCount, Value* args) {
     return OBJ_VAL(instance->obj.klass->name);
 }
 
+//@ Object
+//: freeze()
+// Freeze an object so it can't be modified
+// Returns:
+//   Instance
 Value objectFreezeNative(int argCount, Value* args) {
     Value receiver = args[-1];
 
@@ -656,6 +661,11 @@ Value objectFreezeNative(int argCount, Value* args) {
     return receiver;
 }
 
+//@ Object
+//: is_frozen()
+// Check if an object is frozen
+// Returns:
+//   Bool
 Value objectIsfrozenNative(int argCount, Value* args) {
     Value receiver = args[-1];
 
@@ -668,6 +678,14 @@ Value objectIsfrozenNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//= require()
+// Load/require lox code from a file
+// Requires:
+//   String: filename
+// Optional:
+//   Bool: true if overwrite cache
+// Return:
+//   Bool: true if successful
 Value requireNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("require() expects a file path string.");

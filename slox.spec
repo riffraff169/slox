@@ -1,4 +1,5 @@
-%define debug_package %{nil}
+%debug_package
+
 %bcond_without gtk
 %bcond_without sqlite
 %bcond_without postgres
@@ -104,12 +105,12 @@ for slox (.lox) source files
 
 %prep
 %autosetup
-
 #%setup -q
 
 %build
 # Compile both the binary target and the sub-modules via your root Makeifle
 #make %{?_smp_mflags}
+%set_build_flags
 %make_build
 
 %install
