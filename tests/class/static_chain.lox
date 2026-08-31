@@ -1,0 +1,12 @@
+// test_static_chain.lox
+class Calc {
+  static add(a, b) {
+    return a + b;
+  }
+
+  static doubleAdd(a, b) {
+    return this.add(a, b) * 2;
+  }
+}
+
+print Calc.doubleAdd(3, 4); // expect: 14

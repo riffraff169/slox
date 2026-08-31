@@ -1,0 +1,15 @@
+// test_static_vs_instance.lox
+class Widget {
+  static name() {
+    print "Static Widget Class";
+  }
+
+  name() {
+    print "Widget Instance";
+  }
+}
+
+Widget.name(); // expect: Static Widget Class
+
+var w = Widget();
+w.name();      // expect: Widget Instance

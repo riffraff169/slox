@@ -60,6 +60,7 @@ typedef enum {
     TYPE_FUNCTION,
     TYPE_INITIALIZER,
     TYPE_METHOD,
+    TYPE_STATIC_METHOD,
     TYPE_GETTER,
     TYPE_SETTER,
     TYPE_SCRIPT,
@@ -1602,7 +1603,7 @@ static void function(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
-    if (type == TYPE_METHOD || type == TYPE_INITIALIZER) {
+    if (type == TYPE_METHOD || type == TYPE_INITIALIZER || type == TYPE_STATIC_METHOD) {
         function->isfree = false;
     }
 
@@ -1694,6 +1695,8 @@ static void lambda(bool canAssign) {
 }
 
 static void method() {
+    bool isStatic = match(TOKEN_STATIC);
+
     consume(TOKEN_IDENTIFIER, "Expect method name.");
     Token nameToken = parser.previous;
     int constant = identifierConstant(&nameToken);
@@ -1703,17 +1706,28 @@ static void method() {
     OpCode longOp = OP_METHOD_LONG;
 
     if (check(TOKEN_LEFT_BRACE)) {
+        if (isStatic) {
+            error("Cannot declare static getters.");
+        }
         // getter: property { ... }
         type = TYPE_GETTER;
         shortOp = OP_GETTER;
         longOp = OP_GETTER_LONG;
     } else if (match(TOKEN_EQUAL)) {
+        if (isStatic) {
+            error("Cannot declare static setters.");
+            return;
+        }
         // setter: property=(val) { ... }
         type = TYPE_SETTER;
         shortOp = OP_SETTER;
         longOp = OP_SETTER_LONG;
     } else {
-        if (nameToken.length == 4 &&
+        if (isStatic) {
+            type = TYPE_STATIC_METHOD;
+            shortOp = OP_STATIC_METHOD;
+            longOp = OP_STATIC_METHOD_LONG;
+        } else if (nameToken.length == 4 &&
                 memcmp(nameToken.start, "init", 4) == 0) {
             type = TYPE_INITIALIZER;
         }
@@ -2588,7 +2602,7 @@ static void compileModuleMethod(ObjClass* klass) {
 
     ObjFunction* methodFunc = endCompiler();
 
-    if (type == TYPE_METHOD || type == TYPE_INITIALIZER) {
+    if (type == TYPE_METHOD || type == TYPE_INITIALIZER || type == TYPE_STATIC_METHOD) {
         methodFunc->isfree = false;
     }
 

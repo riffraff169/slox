@@ -211,6 +211,7 @@ static TokenType identifierType() {
         case 's':
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
+                          case 't': return checkKeyword(2, 4, "atic", TOKEN_STATIC);
                           case 'u': return checkKeyword(2, 3, "per", TOKEN_SUPER);
                           case 'w': return checkKeyword(2, 4, "itch", TOKEN_SWITCH);
                       }
