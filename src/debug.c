@@ -328,6 +328,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return constantInstruction("OP_METHOD", chunk, offset);
         case OP_METHOD_LONG:
             return constantLongInstruction("OP_METHOD_LONG", chunk, offset);
+        case OP_STATIC_METHOD:
+            return constantInstruction("OP_STATIC_METHOD", chunk, offset);
+        case OP_STATIC_METHOD_LONG:
+            return constantLongInstruction("OP_STATIC_METHOD_LONG", chunk, offset);
         case OP_GETTER:
             return constantInstruction("OP_GETTER", chunk, offset);
         case OP_GETTER_LONG:

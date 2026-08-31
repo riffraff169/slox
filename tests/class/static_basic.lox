@@ -1,0 +1,13 @@
+// test_static_basic.lox
+class Math {
+  static square(n) {
+    return n * n;
+  }
+
+  static printSelf() {
+    print this;
+  }
+}
+
+print Math.square(5); // expect: 25
+Math.printSelf();     // expect: Math

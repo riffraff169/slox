@@ -89,6 +89,8 @@ typedef enum {
     OP_INHERIT,
     OP_METHOD,
     OP_METHOD_LONG,
+    OP_STATIC_METHOD,
+    OP_STATIC_METHOD_LONG,
     OP_GETTER,
     OP_GETTER_LONG,
     OP_SETTER,

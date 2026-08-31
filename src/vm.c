@@ -956,7 +956,7 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     }
     */
 
-    // 3 methods, gettes, and virtual dispatch class
+    // 3 methods, getters, and virtual dispatch class
     if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
 
@@ -1928,14 +1928,40 @@ bool isTruthy(Value value) {
     return !isFalsey(value);
 }
 
+bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* result) {
+    // 1. search metaclass hierarchy (klass->obj.klass) for static user methods
+    if (klass->obj.klass != NULL && findMethod(klass->obj.klass, name, result)) {
+        return true;
+    }
+
+    // 2. search class's own methods table directly
+    if (findMethod(klass, name, result)) {
+        return true;
+    }
+
+    // 3. search class / object hierarchy fallback
+    if (vm.classClass != NULL && findMethod(vm.classClass, name, result)) {
+        return true;
+    }
+    return false;
+}
+
 bool invokeFromClass(ObjClass* klass, ObjString* name,
         int argCount) {
-    ObjClass* current = klass;
+    Value receiver = peek(argCount);
+    //ObjClass* current = klass;
     Value method;
+    bool found = false;
 
-    // 1. walk inheritance hierarcy (including mixin proxy nodes) to find method
-    if (!findMethod(klass, name, &method)) {
-        // 2. fall back to dynamic methodMissing dispatch if method does not exist
+    // 1. differentiate static class receiver from instance receiver
+    if (IS_CLASS(receiver)) {
+        found = lookupClassMethod(klass, name, &method);
+    } else {
+        found = findMethod(klass, name, &method);
+    }
+
+    // 2. fall back to dynamic methodMissing dispatch if method does not exist
+    if (!found) {
         return callMethodMissing(klass, name, argCount);
     }
 
@@ -1961,113 +1987,6 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
     }
 
     return callValue(method, argCount);
-    /*
-    while (current != NULL) {
-        Table* methods = (current->mixinsource != NULL)
-            ? &current->mixinsource->methods
-            : &current->methods;
-
-        if (tableGet(methods, name, &method)) {
-            if (IS_NATIVE(method)) {
-                NativeFn native = AS_NATIVE(method);
-
-                Value result = native(argCount, vm.stackTop - argCount);
-
-                if (vm.exceptionThrown || vm.frameCount == 0) {
-                    //vm.exceptionThrown = false;
-                    //return false;
-                    return true;
-                }
-                vm.stackTop -= (argCount + 1);
-                push(result);
-                return true;
-            }
-            if (IS_CLOSURE(method)) {
-                ObjClosure* closure = AS_CLOSURE(method);
-
-                // if its freestanding function being used as a method,
-                // adapt the stack to match a standard function layout
-                if (closure->function->isfree) {
-                    int expectedArgs = closure->function->arity - 1;
-
-                    if (argCount != expectedArgs) {
-                        runtimeError("Expedted %d arguments but got %d.",
-                                expectedArgs, argCount);
-                        return false;
-                    }
-
-                    // 1. slide the instance receiver and arguments up by one slot
-                    Value* start = vm.stackTop - argCount - 1;
-                    for (Value* p = vm.stackTop; p > start; p--) {
-                        *p = *(p - 1);
-                    }
-
-                    // 2. drop the closure into slot 0 of this frame area
-                    *start = method;
-
-                    // 3. account for the newly added slot and the explicit self parameter
-                    vm.stackTop++;
-                    argCount++;
-                }
-
-                // now vmCall receives an argCount that includes 'self', matching the arity
-                int res = vmCall(closure, argCount);
-                if (vm.exceptionThrown) {
-                    vm.exceptionThrown = false;
-                    return false;
-                }
-                return res;
-            }
-
-            int res = callValue(method, argCount);
-            if (vm.exceptionThrown) {
-                vm.exceptionThrown = false;
-                return false;
-            }
-            return res;
-        }
-        current = current->superclass;
-    }
-
-    runtimeError("Undefined property '%s'.", name->chars);
-    return false;
-    */
-}
-
-bool lookupClassMethod(ObjClass* klass, ObjString* name, Value* result) {
-    if (findMethod(klass, name, result)) {
-        return true;
-    }
-
-    // 1. search metaclass hierarchy (klass->obj.klass) for static user methods
-    if (klass->obj.klass != NULL && findMethod(klass->obj.klass, name, result)) {
-        return true;
-    }
-
-    // 2. search class's own methods table directly
-    if (findMethod(klass, name, result)) {
-        return true;
-    }
-
-    // 3. search class / object hierarchy fallback
-    if (vm.classClass != NULL && findMethod(vm.classClass, name, result)) {
-        return true;
-    }
-    return false;
-    /*
-    ObjClass* current = klass;
-    while (current != NULL) {
-        Table *methods = (current->mixinsource != NULL)
-             ? &current->mixinsource->methods
-             : &current->methods;
-
-        if (tableGet(methods, name, methodOut)) {
-            return true;
-        }
-        current = current->superclass;
-    }
-    return false;
-    */
 }
 
 bool invoke(ObjString* name, int argCount) {
@@ -2092,6 +2011,7 @@ bool invoke(ObjString* name, int argCount) {
         if (lookupClassMethod(klass, name, &method)) {
             if (IS_CLOSURE(method)) {
                 ObjClosure* closure = AS_CLOSURE(method);
+
                 if (closure->function->isfree) {
                     int expectedArgs = closure->function->arity - 1;
                     if (argCount != expectedArgs) {
@@ -2106,6 +2026,11 @@ bool invoke(ObjString* name, int argCount) {
                     *start = method;
                     vm.stackTop++;
                     argCount++;
+                } else {
+                    if (argCount != closure->function->arity) {
+                        runtimeError("Expected %d arguments, but got %s.", closure->function->arity, argCount);
+                        return false;
+                    }
                 }
             }
             return callValue(method, argCount);
@@ -4134,6 +4059,23 @@ InterpretResult run() {
                 break;
             case OP_METHOD_LONG:
                 defineMethod(READ_STRING_LONG());
+                break;
+            case OP_STATIC_METHOD:
+            case OP_STATIC_METHOD_LONG:
+                {
+                    ObjString* name = (instruction == OP_STATIC_METHOD)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
+
+                    Value method = peek(0);
+                    ObjClass* klass = AS_CLASS(peek(1));
+
+                    if (klass->obj.klass != NULL) {
+                        tableSet(&klass->obj.klass->methods, name, method);
+                    }
+
+                    pop();
+                }
                 break;
             case OP_MAP:
                 {

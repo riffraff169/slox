@@ -1,0 +1,23 @@
+// test_static_inherit.lox
+class Base {
+  static greet() {
+    print "Hello from Base";
+  }
+
+  static info() {
+    print "Base class";
+  }
+}
+
+class Sub < Base {
+  static info() {
+    print "Sub class";
+  }
+}
+
+// Inherited from Base metaclass chain
+Sub.greet(); // expect: Hello from Base
+
+// Subclass override
+Sub.info();  // expect: Sub class
+Base.info(); // expect: Base class
