@@ -1,4 +1,6 @@
-%debug_package
+%global _debuginfo_subpackages 1
+%undefine _debugsource_packages
+%global _strict_gdb_index_check 0
 
 %bcond_without gtk
 %bcond_without sqlite
@@ -109,9 +111,9 @@ for slox (.lox) source files
 
 %build
 # Compile both the binary target and the sub-modules via your root Makeifle
-#make %{?_smp_mflags}
-%set_build_flags
-%make_build
+export CFLAGS="%{optflags} -g"
+make %{?_smp_mflags}
+#%make_build
 
 %install
 rm -rf %{buildroot}
@@ -123,23 +125,23 @@ mkdir -p %{buildroot}%{_libdir}/slox/tests
 mkdir -p %{buildroot}%{_libdir}/slox/scripts
 mkdir -p %{buildroot}%{_docdir}/slox/
 
-install -m 0755 bin/slox %{buildroot}%{_bindir}/slox
-install -m 0755 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules
-install -m 0755 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules
+install -m 0775 bin/slox %{buildroot}%{_bindir}/slox
+install -m 0775 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules
+install -m 0775 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules
 
 if [ -f modules/liblox_ssl.so ]; then
-    install -m 0755 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
 fi
 
 %if %{with gtk}
 if [ -f modules/liblox_gi.so ]; then
-    install -m 0755 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
 fi
 %endif
 
 %if %{with sqlite}
 if [ -f modules/liblox_sqlite.so ]; then
-    install -m 0755 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
     #if [ -f modules/sqlite_ext.lox ]; then
     #    install -m 00644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
     #fi
@@ -149,7 +151,7 @@ fi
 
 %if %{with postgres}
 if [ -f modules/liblox_pg.so ]; then
-    install -m 0755 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
     #if [ -f modules/pg_ext.lox ]; then
     #    install -m 00644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
     #fi
@@ -157,34 +159,34 @@ fi
 %endif
 
 %if %{with yaml}
-[ -f modules/liblox_yaml.so ] && install -m 0755 modules/liblox_yaml.so  %{buildroot}%{_libdir}/slox/modules/
+[ -f modules/liblox_yaml.so ] && install -m 0775 modules/liblox_yaml.so  %{buildroot}%{_libdir}/slox/modules/
 %endif
 
 %if %{with notcurses}
 if [ -f modules/liblox_notcurses.so ]; then
-    install -m 0755 modules/liblox_notcurses.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_notcurses.so %{buildroot}%{_libdir}/slox/modules/
 fi
 %endif
 
 cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
 
 # Core modules (always built)
-install -m 0755 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
-install -m 0755 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
-install -m 0755 modules/liblox_ffi.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0775 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0775 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0775 modules/liblox_ffi.so %{buildroot}%{_libdir}/slox/modules/
 
-[ -f modules/liblox_ssl.so ] && install -m 0755 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
-[ -f modules/liblox_gi.so ] && install -m 0755 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
+[ -f modules/liblox_ssl.so ] && install -m 0775 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
+[ -f modules/liblox_gi.so ] && install -m 0775 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
 
 # Database modules and Lox helpers
 if [ -f modules/liblox_sqlite.so ]; then
-    install -m 0755 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
     [ -f modules/sqlite_ext.lox ] && install -m 0644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
 fi
 
 
 if [ -f modules/liblox_pg.so ]; then
-    install -m 0755 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
+    install -m 0775 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
     [ -f modules/pg_ext.lox ] && install -m 0644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
 fi
 #cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
