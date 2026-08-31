@@ -30,7 +30,7 @@ class Vector {
 
 var vec = Vector(3, 4);
 print "--- Test 1: Plain Value Getter ---";
-print vec.magnitude; // EXPECTED: 5.0
+print vec.magnitude; // expect: 5
 print "";
 
 
@@ -54,7 +54,7 @@ class Database {
 
 var db = Database();
 print "--- Test 2: Result-Wrapped Ok Getter ---";
-print db.data; // EXPECTED: Confidential Records
+print db.data.unwrap(); // EXPECTED: Confidential Records
 //print db.data._value; // EXPECTED: Confidential Records
 //print db.data._value; // EXPECTED: Confidential Records
 print "";

@@ -5,12 +5,12 @@ class A {
     this._y = y;
   }
 
-  x { print "in x getter..."; return this._x; }
+  x { return this._x; }
   x=(val) { this._x = val * 10; return this._x; }
 
 }
 
 var a = A(1,2);
-print a.x;
+print a.x; // expect: 1
 a.x = 5;
-print a.x;
+print a.x; // expect: 50

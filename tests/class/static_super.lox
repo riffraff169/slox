@@ -1,0 +1,36 @@
+// test_static_super.lox
+
+class BaseMath {
+  static calc(a, b) {
+    return a + b;
+  }
+}
+
+class AdvancedMath < BaseMath {
+  static calc(a, b) {
+    return super.calc(a, b) * 2;
+  }
+}
+
+class Parent {
+  static name() {
+    return "Parent";
+  }
+
+  static describe() {
+    return "I am " + this.name();
+  }
+}
+
+class Child < Parent {
+  static name() {
+    return "Child";
+  }
+
+  static describe() {
+    return super.describe() + " (extended)";
+  }
+}
+
+print AdvancedMath.calc(3, 4); // expect: 14
+print Child.describe();        // expect: I am Child (extended)
