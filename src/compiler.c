@@ -2560,8 +2560,20 @@ static void declaration() {
     if (match(TOKEN_CLASS)) {
         classDeclaration();
     } else if (match(TOKEN_FUN)) {
-        funDeclaration();
-    } else if (match(TOKEN_VAR) | match(TOKEN_CONST)) {
+        if (check(TOKEN_IDENTIFIER)) {
+            funDeclaration();
+        } else {
+            parseFunction(TYPE_FUNCTION);
+            //parsePrecedence(PREC_CALL);
+
+            while (match(TOKEN_LEFT_PAREN)) {
+                call(false);
+            }
+
+            consume(TOKEN_SEMICOLON, "Expect ';' after expression.");
+            emitByte(OP_POP);
+        }
+    } else if (match(TOKEN_VAR) || match(TOKEN_CONST)) {
         varDeclaration();
     } else {
         statement();

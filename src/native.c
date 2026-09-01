@@ -30,6 +30,7 @@
 #include "debug.h"
 #include "object.h"
 #include "memory.h"
+#include "signals.h"
 #include "vm.h"
 
 // 1. Setup phase: Capture the original depth and current stack pointer
@@ -2689,13 +2690,24 @@ void initArrayClass() {
 }
 
 Value resultNativeConstructor(int argCount, Value* args) {
-    /*
-    if (argCount < 1 || argCount > 2) {
-        runtimeError("Result() rexpects 1 or 2 arguments, got %d.", argCount);
+    if (argCount < 1 || argCount > 3) {
+        runtimeError("Result() rexpects 1 to 3 arguments, got %d.", argCount);
         return NIL_VAL;
     }
-    */
 
+    bool isOk = IS_BOOL(args[0]) ? AS_BOOL(args[0]) : !IS_NIL(args[0]);
+    Value val = (argCount > 1) ? args[1] : NIL_VAL;
+    Value err = NIL_VAL;
+
+    if (argCount == 3) {
+        err = args[2];
+    } else if (!isOk && argCount == 2) {
+        err = val;
+        val = NIL_VAL;
+    }
+
+    return createResult(val, err, isOk);
+    /*
     ObjInstance* instance = newInstance(vm.resultClass);
     push(OBJ_VAL(instance));
 
@@ -2709,6 +2721,7 @@ Value resultNativeConstructor(int argCount, Value* args) {
 
     pop();
     return OBJ_VAL(instance);
+    */
 }
 
 Value resultUnwrapNative(int argCount, Value* args) {
@@ -2815,11 +2828,6 @@ Value optionUnwrapOrNative(int argCount, Value* args) {
 }
 
 void initResultAndOptionClass() {
-    vm.okString = copyString("ok", 2);
-    vm.valString = copyString("val", 3);
-    vm.errString = copyString("err", 3);
-    vm.isSomeString = copyString("is_some", 7);
-
     /*
     ObjString* resultName = copyString("Result", 6);
     push(OBJ_VAL(resultName));
@@ -5489,7 +5497,7 @@ void initIOClass() {
 
     push(OBJ_VAL(udpClass));
     ObjString* udpName = copyString("udp", 3);
-    push(OBJ_VAL(tcpName));
+    push(OBJ_VAL(udpName));
     tableSet(&ioClass->fields, udpName, OBJ_VAL(udpClass));
 
     pop();
@@ -5896,6 +5904,12 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     pop();
     pop();
 
+
+    // signal
+    ObjClass* signalClass = defineBuiltinClass("Signal", vm.objectClass, NULL, true);
+    ObjClass* signalMeta = signalClass->obj.klass;
+
+    defineNativeMethod(signalMeta, "trap", lox_signal_trap);
 }
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -184,6 +184,6 @@ void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn);
 Value objectClassNameNative(int argCount, Value* args);
 Value classNameNative(int argCount, Value* args);
 Value classSuperclassNative(int argCount, Value* args);
-
+Value createResult(Value value, Value errval, bool isok);
 
 #endif
