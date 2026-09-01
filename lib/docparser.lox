@@ -4,6 +4,7 @@ class MethodDoc {
     this.description = [];
     this.requiredArgs = [];
     this.optionalArgs = [];
+    this.aliases = [];
     this.returns = [];
   }
 }
@@ -14,6 +15,7 @@ class ClassDoc {
     this.description = [];
     this.requiredArgs = [];
     this.optionalArgs = [];
+    this.aliases = [];
     this.methods = [];
     this.returns = [];
   }
@@ -25,6 +27,7 @@ class FunctionDoc {
     this.description = [];
     this.requiredArgs = [];
     this.optionalArgs = [];
+    this.aliases = [];
     this.returns = [];
   }
 }
@@ -36,7 +39,48 @@ class DocParser {
 
     this.currentClass = nil;
     this.currentTarget = nil; // ClassDoc, MethodDoc, or FunctionDoc
-    this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "RETURNS"
+    this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "ALIASES", "RETURNS"
+  }
+
+  addAliases(rawStr) {
+    var parts = rawStr.split(",");
+    for (var i = 0; i < parts.length(); i += 1) {
+      var item = parts[i].trim();
+      if (item.length() > 0){
+        this.currentTarget.aliases.push(item);
+      }
+    }
+  }
+
+  extractArgName(raw) {
+    var str = raw.trim();
+    // if formatted as "Type: argName" or "Type: argName - description"
+    if (str.split(":").length() > 1) {
+      str = str.split(":")[1].trim();
+    }
+    // take the first word before space or dash
+    if (str.split(" ").length() > 1) {
+      str = str.split(" ")[0].trim();
+    }
+    return str;
+  }
+
+  buildSignature(className, target) {
+    var argList = [];
+
+    for (var i = 0; i < target.requiredArgs.length(); i += 1) {
+      argList.push(this.extractArgName(target.requiredArgs[i]));
+    }
+
+    for (var j = 0; j < target.optionalArgs.length(); j += 1) {
+      argList.push("[" + this.extractArgName(target.optionalArgs[j]) + "]");
+    }
+
+    var argsJoined = argList.join(", ");
+    if (className != nil) {
+      return className + "." + target.name + "(" + argsJoined + ")";
+    }
+    return target.name + "(" + argsJoined + ")";
   }
 
   findClass(name) {
@@ -99,6 +143,10 @@ class DocParser {
     if (line.slice(0, 3) == "//=") {
       this.closeTarget();
       var funcName = line.slice(3).trim();
+      // Strip optional paretheses if included in line header
+      if (funcName.split("(").length() > 1) {
+        funcName = funcName.split("(")[0].trim();
+      }
       var func = FunctionDoc(funcName);
       this.globalFunctions.push(func);
       this.currentTarget = func;
@@ -143,6 +191,31 @@ class DocParser {
         return;
       }
 
+      // aliases
+      if (content == "Aliases:" or content == "Aliases" or
+          content == "Alias:" or content == "Alias") {
+        this.section = "ALIASES";
+        return;
+      }
+
+      if (content.slice(0, 8) == "Aliases:") {
+        this.section = "ALIASES";
+        var val = content.slice(8).trim();
+        if (val.length() > 0) {
+          this.addAliases(val);
+        }
+        return;
+      }
+
+      if (content.slice(0, 6) == "Alias:") {
+        this.section = "ALIASES";
+        var val = content.slice(6).trim();
+        if (val.length() > 0) {
+          this.addAliases(val);
+        }
+        return;
+      }
+
       // Exact match section header: // Returns:
       if (content == "Returns:" or content == "Returns" or content == "Return:" or
           content == "Return") {
@@ -168,6 +241,8 @@ class DocParser {
           this.currentTarget.requiredArgs.push(content);
         } else if (this.section == "OPTIONAL") {
           this.currentTarget.optionalArgs.push(content);
+        } else if (this.section == "ALIASES") {
+          this.addAliases(content);
         } else if (this.section == "RETURNS") {
           this.currentTarget.returns.push(content);
         }
@@ -200,7 +275,8 @@ class DocParser {
           lines.push("");
           for (var j = 0; j < cls.methods.length(); j = j + 1) {
             var m = cls.methods[j];
-            lines.push("#### `" + cls.name + "." + m.name + "`");
+            //lines.push("#### `" + cls.name + "." + m.name + "`");
+            lines.push("#### `" + this.buildSignature(cls.name, m) + "`");
             this.appendDocBodyLines(m, lines);
           }
         }
@@ -214,7 +290,8 @@ class DocParser {
       lines.push("");
       for (var i = 0; i < this.globalFunctions.length(); i = i + 1) {
         var fn = this.globalFunctions[i];
-        lines.push("## `" + fn.name + "`");
+        //lines.push("## `" + fn.name + "`");
+        lines.push("## `" + this.buildSignature(nil, fn) + "`");
         this.appendDocBodyLines(fn, lines);
         lines.push("---");
         lines.push("");
@@ -228,6 +305,15 @@ class DocParser {
       for (var i = 0; i < target.description.length(); i = i + 1) {
         lines.push(target.description[i]);
       }
+      lines.push("");
+    }
+
+    if (target.aliases.length() > 0) {
+      var formatted = [];
+      for (var i = 0; i < target.aliases.length(); i += 1) {
+        formatted.push("`" + target.aliases[i] + "`");
+      }
+      lines.push("**Aliases:** " + formatted.join(", "));
       lines.push("");
     }
 
