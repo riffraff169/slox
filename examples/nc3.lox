@@ -1,4 +1,5 @@
-import "notcurses";
+import "ffi";
+require("notcurses.lox");
 
 require("menu.lox");
 
@@ -6,7 +7,7 @@ var nc = Notcurses();
 var stdplane = nc.get_stdplane();
 
 // Draw background grid or status bar
-stdplane.set_fgrgb(100, 116, 139);
+stdplane.set_fg(100, 116, 139);
 stdplane.put_str(0, 0, "slox TUI Framework - Nav: [j/k or Up/Down], Select: [Enter], Quit: [q]");
 
 // Instantiate the Lox Menu widget
@@ -34,8 +35,8 @@ while (running) {
     menu.destroy();
     
     var alert = stdplane.create_child(8, 12, 5, 36);
-    alert.set_bgrgb(30, 41, 59);
-    alert.set_fgrgb(250, 204, 21); // Yellow
+    alert.set_bg(30, 41, 59);
+    alert.set_fg(250, 204, 21); // Yellow
     alert.box();
     alert.put_str_aligned(2, "center", "Selected: " + choice);
     
