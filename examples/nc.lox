@@ -1,15 +1,16 @@
-import "notcurses";
+import "ffi";
+require("notcurses.lox");
 
 var nc = Notcurses();
 var stdplane = nc.get_stdplane();
 
 // Create a child floating plane at y: 5, x: 10, height: 8, width: 35
 var box = stdplane.create_child(5, 10, 8, 35);
-box.set_bgrgb(20, 20, 35);
-box.set_fgrgb(0, 255, 180);
+box.set_bg(20, 20, 35);
+box.set_fg(0, 255, 180);
 
 box.put_str(1, 2, "--- SLOX NOTCURSES TUI ---");
-box.set_fgrgb(255, 255, 255);
+box.set_fg(255, 255, 255);
 box.put_str(3, 2, "Press 'q' to exit.");
 
 nc.render();

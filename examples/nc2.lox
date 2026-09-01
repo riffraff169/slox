@@ -1,23 +1,24 @@
-import "notcurses";
+import "ffi";
+require("notcurses.lox");
 
 var nc = Notcurses();
 var stdplane = nc.get_stdplane();
 
 // Create a centered dialog box
 var win = stdplane.create_child(4, 15, 10, 50);
-win.set_bgrgb(15, 23, 42);
-win.set_fgrgb(56, 189, 248);
+win.set_bg(15, 23, 42);
+win.set_fg(56, 189, 248);
 
 // Draw outer border around the full box
 win.box(6, 35, true);
 
 // Write centered header and right-aligned status text
 win.put_str_aligned(1, "center", "SYSTEM STATUS");
-win.set_fgrgb(255, 255, 255);
+win.set_fg(255, 255, 255);
 win.put_str_aligned(3, "left", "  VM Runtime: slox");
 win.put_str_aligned(4, "left", "  GC Status: Active");
 
-win.set_fgrgb(148, 163, 184);
+win.set_fg(148, 163, 184);
 win.put_str_aligned(8, "center", "Press 'q' to quit");
 
 nc.render();

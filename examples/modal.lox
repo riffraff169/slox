@@ -20,17 +20,17 @@ class Modal {
     this.plane.erase();
 
     // High-contrast warning/dialog styling (Slate background, Gold border)
-    this.plane.set_bgrgb(30, 41, 59);
-    this.plane.set_fgrgb(251, 191, 36);
+    this.plane.set_bg(30, 41, 59);
+    this.plane.set_fg(251, 191, 36);
     this.plane.box();
 
     // Render Title & Message text
     this.plane.put_str_aligned(1, "center", this.title);
-    this.plane.set_fgrgb(241, 245, 249);
+    this.plane.set_fg(241, 245, 249);
     this.plane.put_str_aligned(3, "center", this.message);
 
     // Render interactive action buttons on row 5
-    this.plane.set_fgrgb(56, 189, 248);
+    this.plane.set_fg(56, 189, 248);
     var buttonRow = "";
     for (var i = 0; i < this.options.length(); i = i + 1) {
       if (i == this.selected) {

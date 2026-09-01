@@ -247,7 +247,7 @@ fun runXXD(opts) {
 
 var parser = ArgParser("xxd.lox", "xxd in slox");
 parser.addOption("output", "o", "STDOUT", "Output file (default: stdout)");
-parser.addOption("groupsize", "g", nil, "Bytes per group");
+parser.addOption("groupsize", "g", 4, "Bytes per group");
 parser.addFlag("little-endian", "e", "Little-endian dump");
 parser.addFlag("bits", "b", "Bit/Binary dump");
 parser.addFlag("include", "i", "C include style output");

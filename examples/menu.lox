@@ -20,8 +20,8 @@ class Menu {
     this.plane.erase();
 
     // Box frame & header styling (Dark slate background, Cyan border)
-    this.plane.set_bgrgb(15, 23, 42);
-    this.plane.set_fgrgb(56, 189, 248);
+    this.plane.set_bg(15, 23, 42);
+    this.plane.set_fg(56, 189, 248);
     this.plane.box();
 
     // Render centered title
@@ -33,13 +33,13 @@ class Menu {
 
       if (i == this.selected) {
         // Highlight active item (Inverted Cyan badge)
-        this.plane.set_bgrgb(56, 189, 248);
-        this.plane.set_fgrgb(15, 23, 42);
+        this.plane.set_bg(56, 189, 248);
+        this.plane.set_fg(15, 23, 42);
         this.plane.put_str_aligned(row, "center", " > " + this.items[i] + " < ");
       } else {
         // Unselected item
-        this.plane.set_bgrgb(15, 23, 42);
-        this.plane.set_fgrgb(226, 232, 240);
+        this.plane.set_bg(15, 23, 42);
+        this.plane.set_fg(226, 232, 240);
         this.plane.put_str_aligned(row, "center", "   " + this.items[i] + "   ");
       }
     }
