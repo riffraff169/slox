@@ -5,7 +5,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "vm.h"
-//#include "slox_ffi.h"
+#include "signals.h"
 
 #ifdef DEBUG_LOG_GC
 #include <stdio.h>
@@ -387,6 +387,10 @@ static void markRoots() {
     for (int i = 0; i < vm.tryCount; i++) {
         markValue(vm.tryStack[i].returnValue);
         markValue(vm.tryStack[i].uncaughtException);
+    }
+
+    for (int i = 0; i < MAX_SIGNALS; i++) {
+        markValue(signal_callbacks[i]);
     }
 }
 
