@@ -33,6 +33,7 @@
 #include "memory.h"
 #include "vm.h"
 #include "native.h"
+#include "signals.h"
 
 #define MAX32 4294967296.0
 
@@ -1658,6 +1659,9 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     initValueArray(&vm.atExitHooks);
 
+    for (int i = 0; i < MAX_SIGNALS; i++) {
+        signal_callbacks[i] = NIL_VAL;
+    }
     defineNative("at_exit", atExitNative);
 }
 
@@ -2530,7 +2534,8 @@ InterpretResult run() {
     } while (false)
 
     for (;;) {
-        // processPendingTimers();
+        //processPendingTimers();
+        process_pending_signals();
 
         if (vm.frameCount < initialFrameCount) {
             return INTERPRET_OK;
@@ -2963,27 +2968,6 @@ InterpretResult run() {
                         if (!invoke(vm.str_sub, 1)) {
                             return INTERPRET_RUNTIME_ERROR;
                         }
-                        /*
-                    } else if (IS_INSTANCE(peek(1))) {
-                        ObjInstance* instance = AS_INSTANCE(peek(1));
-                        Value method;
-                        Value result;
-
-                        Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->obj.klass->methods, vm.str_sub, &method)) {
-                            if (callValue(method, 1)) {
-                                vm.nativeExitDepth = vm.frameCount - 1;
-                                run();
-                                result = pop();
-                            }
-                        }
-                        vm.stackTop = stackStart;
-                        popn(2);
-                        push(result);
-                    } else {
-                        RUNTIME_ERROR("Invalid operands.");
-                        break;
-                        */
                     }
                 }
                 break;
@@ -3016,28 +3000,6 @@ InterpretResult run() {
                         pop();
                         pop();
                         push(result);
-                        /*
-                    } else if (IS_INSTANCE(peek(1))) {
-                        ObjInstance* instance = AS_INSTANCE(peek(1));
-                        Value method;
-                        Value result;
-
-                        Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->obj.klass->methods, vm.str_mul, &method)) {
-                            if (callValue(method, 1)) {
-                                vm.nativeExitDepth = vm.frameCount - 1;
-                                run();
-                                result = pop();
-                            }
-                        }
-                        vm.stackTop = stackStart;
-                        popn(2);
-                        push(result);
-                    } else {
-                        RUNTIME_ERROR("Invalid operands.");
-                        break;
-                    }
-                    */
                     } else {
                         if (!invoke(vm.str_mul, 1)) {
                             return INTERPRET_RUNTIME_ERROR;
@@ -3056,28 +3018,6 @@ InterpretResult run() {
                         Vec3 a = AS_VEC3(pop());
                         Vec3 res = {a.x / d, a.y / d, a.z / d};
                         push(VEC3_VAL(res));
-                        /*
-                    } else if (IS_INSTANCE(peek(1))) {
-                        ObjInstance* instance = AS_INSTANCE(peek(1));
-                        Value method;
-                        Value result;
-
-                        Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->obj.klass->methods, vm.str_div, &method)) {
-                            if (callValue(method, 1)) {
-                                vm.nativeExitDepth = vm.frameCount - 1;
-                                run();
-                                result = pop();
-                            }
-                        }
-                        vm.stackTop = stackStart;
-                        popn(2);
-                        push(result);
-                    } else {
-                        RUNTIME_ERROR("Invalid operands.");
-                        break;
-                    }
-                    */
                     } else {
                         if (!invoke(vm.str_div, 1)) {
                             return INTERPRET_RUNTIME_ERROR;
@@ -3163,27 +3103,6 @@ InterpretResult run() {
                         Vec3 a = AS_VEC3(pop());
                         Vec3 res = {-a.x, -a.y, -a.z};
                         push(VEC3_VAL(res));
-                        /*
-                    } else if (IS_INSTANCE(peek(0))) {
-                        ObjInstance* instance = AS_INSTANCE(peek(0));
-                        Value method;
-                        Value result;
-
-                        Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->obj.klass->methods, vm.str_neg, &method)) {
-                            if (!callValue(method, 0)) {
-                                return INTERPRET_RUNTIME_ERROR;
-                            }
-                            frame = &vm.frames[vm.frameCount - 1];
-                        } else {
-                            runtimeError("Undefined property '__neg__'.");
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                    } else {
-                        RUNTIME_ERROR("Operand must be a number.");
-                        break;
-                    }
-                    */
                     } else {
                         if (!invoke(vm.str_neg, 0)) {
                             return INTERPRET_RUNTIME_ERROR;
