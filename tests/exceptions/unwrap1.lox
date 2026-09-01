@@ -11,6 +11,6 @@ try {
   print "foo";
 } catch (e) {
   print e; // expect: Error instance
-  print "Error: ", e.message; // expect: Error: Tried to unwrap an error Result.
+  print "Error: ", e.message; // expect: Error: Tried to unwrap an error Result: dont
   print r2.unwrap_or(25); // expect: 25
 }
