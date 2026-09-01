@@ -273,7 +273,7 @@ static inline Value getCheckTarget(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isnumber()
+//: isnumber
 // Checks if a value is a number
 // Returns:
 //   Bool
@@ -290,7 +290,7 @@ Value isNumberNative(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isstring()
+//: isstring
 // Checks if a value is a string
 // Returns:
 //   Bool
@@ -307,7 +307,7 @@ Value isStringNative(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isbool()
+//: isbool
 // Checks if a value is a bool
 // Returns:
 //   Bool
@@ -324,7 +324,7 @@ Value isBoolNative(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isnil()
+//: isnil
 // Checks if a value is nil
 // Returns:
 //   Bool
@@ -341,7 +341,7 @@ Value isNilNative(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isclass()
+//: isclass
 //  Checks if a value is a class
 // Returns:
 //   Bool
@@ -358,7 +358,7 @@ Value isClassNative(int argCount, Value* args) {
 //   Bool
 
 //@ Object
-//: isinstance()
+//: isinstance
 // Checks if a value is an instance
 // Returns:
 //   Bool
@@ -386,7 +386,7 @@ Value isInstanceNative(int argCount, Value* args) {
 //@ Object
 // Base class for all objects
 
-//: list_fields()
+//: list_fields
 // Lists all fields of an object
 // Returns:
 //   Array
@@ -413,12 +413,12 @@ Value listFieldsNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: get_field(key)
+//: get_field
 // Get the value of a field of an object
 // Requires:
-//   key: String
+//   String: key
 // Returns:
-//   Value of field, or nil if wrong type of object or field doesn't exist
+//   Value: Value of field, or nil if wrong type of object or field doesn't exist
 Value getFieldNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("get_field() expects a string argument.");
@@ -446,11 +446,11 @@ Value getFieldNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: set_field(key, val)
+//: set_field
 // Set a field to a value
 // Requires:
-//   key: String
-//   val: Value
+//   String: key
+//   Value: val
 Value setFieldNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0])) {
         runtimeError("set_field() expects string, value arguments.");
@@ -482,7 +482,7 @@ Value setFieldNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: get_methods()
+//: get_methods
 // Get list of methods available on this object.
 // Returns:
 //   Array
@@ -539,11 +539,11 @@ Value getMethodsNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: has_method(method)
+//: has_method
 // Check whether this object has a method.
 // Alias: responds_to()
 // Requires:
-//   method: String
+//   String: method
 // Returns:
 //   Bool
 Value hasMethodNative(int argCount, Value* args) {
@@ -578,7 +578,7 @@ Value hasMethodNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: superclass()
+//: superclass
 // Get the superclass of this object.
 // Alias: get_superclass().
 // Returns:
@@ -600,7 +600,7 @@ Value getSuperclassNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: to_string()
+//: to_string
 // Returns a string representation of this object
 // Returns:
 //   String
@@ -611,7 +611,7 @@ Value objectToStringNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: class()
+//: class
 // Get the class of this object
 // Returns:
 //   Class
@@ -632,7 +632,7 @@ Value objectClassMethod(int argCount, Value* args) {
 }
 
 //@ Object
-//: class_name()
+//: class_name
 // Get the class of this object as a String. Shortcut for String(x.class());
 // Returns:
 //   String
@@ -642,7 +642,7 @@ Value objectClassNameMethod(int argCount, Value* args) {
 }
 
 //@ Object
-//: freeze()
+//: freeze
 // Freeze an object so it can't be modified
 // Returns:
 //   Instance
@@ -662,7 +662,7 @@ Value objectFreezeNative(int argCount, Value* args) {
 }
 
 //@ Object
-//: is_frozen()
+//: is_frozen
 // Check if an object is frozen
 // Returns:
 //   Bool
@@ -816,6 +816,11 @@ void initCoreLibrary() {
     X("format", stringFormatNative) \
     X("tr", stringTrNative)
 
+//@ String
+//: trim
+// Trims whitespace from beginning and end of string
+// Returns:
+//   String: new string
 Value stringTrimNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
     char* start = str->chars;
@@ -831,6 +836,12 @@ Value stringTrimNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(start, newLength));
 }
 
+//@ String
+//: contains
+// Checks if a string contains another string.
+// If actual position is needed, use find().
+// Returns:
+//   Bool: true if it does
 Value stringContainsNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
@@ -842,6 +853,11 @@ Value stringContainsNative(int argCount, Value* args) {
     return BOOL_VAL(strstr(haystack->chars, needle->chars) != NULL);
 }
 
+//@ String
+//: find
+// Checks if a string contains another string.
+// Returns:
+//   Number: index of first position of string
 Value stringFindNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return NIL_VAL;
@@ -857,6 +873,11 @@ Value stringFindNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ String
+//: to_upper
+// Convert string to upper case.
+// Returns:
+//   String: new string converted to upper case
 Value stringToUpperNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
 
@@ -874,6 +895,11 @@ Value stringToUpperNative(int argCount, Value* args) {
     return OBJ_VAL(takeString(buffer, str->length));
 }
 
+//@ String
+//: to_lower
+// Convert string to lower case.
+// Returns:
+//   String: new string converted to lower case
 Value stringToLowerNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
 
@@ -891,11 +917,24 @@ Value stringToLowerNative(int argCount, Value* args) {
     return OBJ_VAL(takeString(buffer, str->length));
 }
 
+//@ String
+//: length
+// Get length of string.
+// Aliases: len
+// Returns:
+//   Number: length of string
 Value stringLenNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
     return NUMBER_VAL((double)str->length);
 }
 
+//@ String
+//: split
+// Split a string by another string
+// Requires:
+//   String: sep
+// Returns:
+//   Array
 Value stringSplitNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("split() expects 1 argument.");
@@ -971,6 +1010,18 @@ Value stringSplitNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ String
+//: slice
+// Get a slice (or substring) of a string. First parameter is start index,
+// second optional parameter is end index, or end of string.
+// Can use negative numbers to start from end of string, so str.slice(-4, -2) would be
+// slice from 4 characters from end of string to 2 characters from end of string.
+// Requires:
+//   Value: start
+// Optional:
+//   Value: end
+// Returns:
+//   String - section of string
 Value stringSliceNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_NUMBER(args[0])) {
         runtimeError("slice() expects at least a start index.");
@@ -998,6 +1049,11 @@ Value stringSliceNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(dom->chars + start, end - start));
 }
 
+//@ String
+//: to_array
+// Convert string to array of integerrs, ascii values of characters.
+// Returns:
+//   Array
 Value stringToarrayNative(int argCount, Value* args) {
     ObjString* string = AS_STRING(args[-1]);
     ObjArray* array = newArray();
@@ -1011,6 +1067,11 @@ Value stringToarrayNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ String
+//: tokens
+// Splits a string on whitespace. 
+// Returns:
+//   Array
 Value stringTokensNative(int argCount, Value* args) {
     if (argCount > 0) {
         runtimeError("tokens() expects 0 arguments.");
@@ -1048,6 +1109,12 @@ Value stringTokensNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ String
+//: format
+// Get a string format similar to printf(). Format string recognizes s, d, f, b, for string, int/float, and bool.
+// Requires:
+//   String: format
+//   Args: args
 Value stringFormatNative(int argCount, Value* args) {
     ObjString* formatStr = AS_STRING(args[-1]);
 
@@ -1150,6 +1217,12 @@ int expandSet(const char* set, int len, uint8_t* out) {
     return outLen;
 }
 
+//@ String
+//: tr
+// Similar to the tr tool, converts characters from one set of characters to another.
+// Requires:
+//   String: set1
+//   String: set2
 Value stringTrNative(int argCount, Value* args) {
     if (argCount != 2 | !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         runtimeError("tr() expects two string arguments.");
@@ -1196,6 +1269,12 @@ Value stringInitNative(int argCount, Value* args) {
     return OBJ_VAL(str);
 }
 
+//@ String
+// String class. Will convert argment to string.
+// Optional:
+//   Value: val
+// Returns:
+//   String
 void initStringClass() {
     /*
     ObjString* empty = copyString("", 0);
@@ -1220,6 +1299,12 @@ void initStringClass() {
     X("len", mapLenNative) \
     X("each", mapEachNative)
 
+//@ Map
+// Map/Hash table/Dictionary type.  Keys can be any type other than nil. Values can be any type.
+// Constructor can take a list of values that are converted to key/value pairs. Must be an
+// even number.
+// Optional:
+//   List: vals
 Value mapNativeConstructor(int argCount, Value* args) {
     if (argCount % 2 != 0) {
         runtimeError("Map constructor requires an even number of key-value arguments.");
