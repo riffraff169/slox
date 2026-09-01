@@ -110,7 +110,7 @@ void clearLastError() {
     setLastError(0, "%s", "Success");
 }
 
-static Value createResult(Value value, Value errval, bool isok) {
+Value createResult(Value value, Value errval, bool isok) {
     push(value);
     push(errval);
 
@@ -1545,6 +1545,14 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.zString = copyString("z", 1);
     vm.classString = NULL;
     vm.classString = copyString("class", 5);
+    vm.okString = NULL;
+    vm.okString = copyString("ok", 2);
+    vm.valString = NULL;
+    vm.valString = copyString("val", 3);
+    vm.errString = NULL;
+    vm.errString = copyString("err", 3);
+    vm.isSomeString = NULL;
+    vm.isSomeString = copyString("is_some", 7);
 
     vm.methodMissingString = NULL;
     vm.methodMissingString = copyString("method_missing", 14);
@@ -2006,8 +2014,16 @@ bool invoke(ObjString* name, int argCount) {
     // 2. class / metaclass static method resolution
     if (IS_CLASS(receiver)) {
         ObjClass* klass = AS_CLASS(receiver);
-        Value method;
+        Value fieldVal;
 
+        // a. check class fields (nexted classes like IO.tcp, static constants, stored callables)
+        if (tableGet(&klass->fields, name, &fieldVal)) {
+            vm.stackTop[-argCount - 1] = fieldVal;
+            return callValue(fieldVal, argCount);
+        }
+
+        // b. static method resolution
+        Value method;
         if (lookupClassMethod(klass, name, &method)) {
             if (IS_CLOSURE(method)) {
                 ObjClosure* closure = AS_CLOSURE(method);
@@ -2348,6 +2364,23 @@ static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
 }
 
+/*
+void processPendingTimers(void) {
+    for (int i = 0; i < MAX_TIMERS; i++) {
+        if (timer_pool[i].active && timer_pool[i].fired > 0) {
+            timer_pool[i].fired--;
+
+            if (!timer_pool[i].periodic) {
+                timer_delete(timer_pool[i].timerid);
+                timer_pool[i].active = false;
+            }
+
+            callValue(timer_pool[i].callback, 0);
+        }
+    }
+}
+*/
+
 InterpretResult run() {
     int initialFrameCount = vm.frameCount;
 
@@ -2385,6 +2418,8 @@ InterpretResult run() {
     } while (false)
 
     for (;;) {
+        // processPendingTimers();
+
         if (vm.frameCount < initialFrameCount) {
             return INTERPRET_OK;
         }
@@ -3042,6 +3077,15 @@ InterpretResult run() {
 
                         Value* stackStart = vm.stackTop;
                         if (tableGet(&instance->obj.klass->methods, vm.str_neg, &method)) {
+                            if (!callValue(method, 0)) {
+                                return INTERPRET_RUNTIME_ERROR;
+                            }
+                            frame = &vm.frames[vm.frameCount - 1];
+                        } else {
+                            runtimeError("Undefined property '__neg__'.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                            /*
                             ObjBoundMethod* bound = newBoundMethod(peek(0), method);
                             pop();
                             push(OBJ_VAL(bound));
@@ -3056,6 +3100,7 @@ InterpretResult run() {
                         }
                         vm.stackTop = stackStart;
                         push(result);
+                        */
                     } else {
                         RUNTIME_ERROR("Operand must be a number.");
                         break;

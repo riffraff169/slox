@@ -2,12 +2,14 @@
 // Setup: Mocking the Result architecture in Lox space 
 // (Ensure your VM's vm.resultClass points to this Result class for the tests)
 // ============================================================================
-//class Result {
-//    init(isOk, value) {
-//        this._isOk = isOk;
-//        this._value = value;
-//    }
-//}
+/*
+class Result {
+  init(isOk, value) {
+    this._isOk = isOk;
+    this._value = value;
+  }
+}
+*/
 
 fun Ok(value)  { return Result(true, value); }
 fun Err(value) { return Result(false, value); }
@@ -48,13 +50,17 @@ class Database {
         if (this._connected) {
             return Ok(this._data); // Explicit Ok wrapper
         }
+        print "error";
         return Err("Not connected");
     }
 }
 
 var db = Database();
 print "--- Test 2: Result-Wrapped Ok Getter ---";
-print db.data.unwrap(); // EXPECTED: Confidential Records
+var d1 = db.data;
+if (d1) {
+  print db.data.unwrap(); // expect: Confidential Records
+}
 //print db.data._value; // EXPECTED: Confidential Records
 //print db.data._value; // EXPECTED: Confidential Records
 print "";
@@ -91,9 +97,9 @@ print "--- Test 3: Setter Assignment Chaining ---";
 // and 'finalResult' must capture 150, NOT "ignored string" or nil.
 var finalResult = acc1.balance = acc2.balance = 150;
 
-print acc1.balance;  // EXPECTED: 150
-print acc2.balance;  // EXPECTED: 150
-print finalResult;   // EXPECTED: 150
+print acc1.balance;  // expect: 150
+print acc2.balance;  // expect: 150
+print finalResult;   // expect: 150
 print "";
 
 
@@ -111,4 +117,4 @@ var standardResult = standardFunction();
 
 // Since this was a standard function call, 'isGetterFrame' was false.
 // The engine should NOT unwrap it; it should print the instance.
-print standardResult; // EXPECTED: <Instance of Result>
+print standardResult; // expect: Result instance
