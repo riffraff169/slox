@@ -1,0 +1,55 @@
+class Vec {
+    init(x, y, z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    __sub__(other) {
+        return Vec(this.x - other.x, this.y - other.y, this.z - other.z);
+    }
+
+    __mul__(other) {
+        return Vec(this.x * other.x, this.y * other.y, this.z * other.z);
+    }
+
+    __div__(other) {
+        return Vec(this.x / other.x, this.y / other.y, this.z / other.z);
+    }
+
+    __neg__() {
+        return Vec(-this.x, -this.y, -this.z);
+    }
+}
+
+var v1 = Vec(10, 20, 30);
+var v2 = Vec(2, 4, 5);
+
+// Test __sub__
+var sub = v1 - v2;
+print sub.x; // expect: 8
+print sub.y; // expect: 16
+print sub.z; // expect: 25
+
+// Test __mul__
+var mul = v1 * v2;
+print mul.x; // expect: 20
+print mul.y; // expect: 80
+print mul.z; // expect: 150
+
+// Test __div__
+var div = v1 / v2;
+print div.x; // expect: 5
+print div.y; // expect: 5
+print div.z; // expect: 6
+
+// Test __neg__
+var neg = -v1;
+print neg.x; // expect: -10
+print neg.y; // expect: -20
+print neg.z; // expect: -30
+
+var result = -v1 - v2 * Vec(1, 1, 1);
+print result.x; // expect: -12
+print result.y; // expect: -24
+print result.z; // expect: -35

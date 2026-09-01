@@ -51,6 +51,11 @@ typedef struct {
     ObjString* str_mul;
     ObjString* str_div;
     ObjString* str_neg;
+    ObjString* str_lt;
+    ObjString* str_gt;
+    ObjString* str_le;
+    ObjString* str_ge;
+    ObjString* str_eq;
     ObjString* xString;
     ObjString* yString;
     ObjString* zString;

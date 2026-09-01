@@ -1,0 +1,31 @@
+class BaseVal {
+    init(val) {
+        this.val = val;
+    }
+
+    __sub__(other) {
+        return BaseVal(this.val - other.val);
+    }
+
+    __mul__(other) {
+        return BaseVal(this.val * other.val);
+    }
+
+    __div__(other) {
+        return BaseVal(this.val / other.val);
+    }
+
+    __neg__() {
+        return BaseVal(-this.val);
+    }
+}
+
+class ChildVal < BaseVal {}
+
+var a = ChildVal(100);
+var b = ChildVal(20);
+
+print (a - b).val; // expect: 80
+print (a * b).val; // expect: 2000
+print (a / b).val; // expect: 5
+print (-a).val;    // expect: -100
