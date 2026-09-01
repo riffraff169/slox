@@ -4,13 +4,12 @@
 
 #include "signals.h"
 
-#define MAX_SIGNALS 32
-
-static volatile sig_atomic_t pending_signals[MAX_SIGNALS] = {0};
-static Value signal_callbacks[MAX_SIGNALS];
+volatile sig_atomic_t pending_signals[MAX_SIGNALS] = {0};
+Value signal_callbacks[MAX_SIGNALS];
 
 #ifdef USE_SIGNALFD
 #include <sys/signalfd.h>
+
 
 int setup_signal_fd() {
     sigset_t mask;
@@ -59,14 +58,24 @@ Value lox_signal_trap(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+bool has_pending_signals(void) {
+    for (int i = 1; i < MAX_SIGNALS; i++) {
+        if (pending_signals[i]) return true;
+    }
+    return false;
+}
+
 void process_pending_signals() {
     for (int sig = 1; sig < MAX_SIGNALS; sig++) {
         if (pending_signals[sig]) {
             pending_signals[sig] = 0;
 
-            push(NUMBER_VAL(sig));
             Value cb = signal_callbacks[sig];
-            callValue(cb, 1);
+            if (!IS_NIL(cb)) {
+                push(cb);
+                push(NUMBER_VAL(sig));
+                callValue(cb, 1);
+            }
         }
     }
 }

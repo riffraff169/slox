@@ -2058,6 +2058,10 @@ void initMathLibrary() {
     X("to_string", arrayStringNative) \
     X("first", arrayFirstNative) \
     X("rest", arrayRestNative) \
+    X("index_of", arrayIndexOfNative) \
+    X("find_index", arrayFindIndexNative) \
+    X("delete_at", arrayDeleteAtNative) \
+    X("swap_delete_at", arraySwapDeleteNative) \
     X("split", arraySplitNative)
 
 Value arrayPushNative(int argCount, Value* args) {
@@ -2319,6 +2323,115 @@ Value arrayEachNative(int argCount, Value* args) {
 
     VM_CALLBACK_EXIT(oldExitDepth);
     return pop();
+}
+
+//@ Array
+//: swap_delete_at
+// Delete item at index by swapping with last item. Does not maintain order.
+// Requires:
+//   Number: index
+// Returns:
+//   Value: deleted item
+Value arraySwapDeleteNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("Expected an index number to delete.");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    int index = AS_NUMBER(args[0]);
+
+    if (index < 0 || index >= array->count) return NIL_VAL;
+
+    Value removed = array->values[index];
+
+    // move last element into the deleted slot
+    array->values[index] = array->values[array->count - 1];
+    array->count--;
+
+    return removed;
+}
+
+Value arrayDeleteAtNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("Expected an index number to delete.");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    int index = AS_NUMBER(args[0]);
+
+    if (index < 0 || index >= array->count) {
+        return NIL_VAL;
+    }
+
+    Value removed = array->values[index];
+
+    int numToMove = array->count - index - 1;
+    if (numToMove > 0) {
+        memmove(&array->values[index],
+                &array->values[index + 1],
+                sizeof(Value) * numToMove);
+    }
+
+    array->count--;
+    return removed;
+}
+
+Value arrayIndexOfNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("Expected a value to search for.");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    Value target = args[0];
+
+    for (int i = 0; i < array->count; i++) {
+        if (valuesEqual(array->values[i], target)) {
+            return NUMBER_VAL(i);
+        }
+    }
+
+    return NUMBER_VAL(-1);
+}
+
+Value arrayFindIndexNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_CLOSURE(args[0])) {
+        runtimeError("Expected a closure callback argument for find_index().");
+        return NIL_VAL;
+    }
+
+    ObjArray* array = AS_ARRAY(args[-1]);
+    ObjClosure* callback = AS_CLOSURE(args[0]);
+
+    VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+
+    for (int i = 0; i < array->count; i++) {
+        push(OBJ_VAL(callback));
+        push(array->values[i]);
+
+        VM_CALLBACK_ENTER(priorFrameCount);
+
+        if (vmCall(callback, 1)) {
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult state = run();
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+            }
+
+            Value result = pop();
+
+            if (isTruthy(result)) {
+                VM_CALLBACK_RESET_STACK(callbackStackStart);
+                VM_CALLBACK_EXIT(oldExitDepth);
+                return NUMBER_VAL(i);
+            }
+        }
+        VM_CALLBACK_RESET_STACK(callbackStackStart);
+    }
+
+    VM_CALLBACK_EXIT(oldExitDepth);
+    return NUMBER_VAL(-1);
 }
 
 Value arrayFindNative(int argCount, Value* args) {

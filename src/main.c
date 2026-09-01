@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -9,6 +10,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "vm.h"
+#include "signals.h"
 
 static void repl() {
     char* line = NULL;
@@ -16,9 +18,27 @@ static void repl() {
     using_history();
     read_history(history_file);
 
+    rl_catch_signals = 0;
+
     for (;;) {
-        if (!(line = readline("> ")))
+        errno = 0;
+
+        line = readline("> ");
+
+        if (!line) {
+            if (has_pending_signals()) {
+                printf("\n");
+                process_pending_signals();
+
+                if (vm.frameCount > 0) {
+                    run();
+                }
+                continue;
+            }
+
+            printf("\n");
             break;
+        }
 
         HISTORY_STATE* myhist = history_get_history_state();
         HIST_ENTRY **mylist = history_list();
