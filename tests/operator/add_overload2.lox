@@ -1,0 +1,18 @@
+class Vector {
+    init(val) {
+        this.val = val;
+    }
+
+    __add__(other) {
+        return Vector(this.val + other.val);
+    }
+}
+
+class VecSub < Vector {}
+
+var a = VecSub(10);
+var b = VecSub(20);
+
+// Should find __add__ on Vector superclass
+var c = a + b;
+print c.val; // expect: 30

@@ -368,6 +368,11 @@ static void markRoots() {
     markObject((Obj*)vm.str_mul);
     markObject((Obj*)vm.str_div);
     markObject((Obj*)vm.str_neg);
+    markObject((Obj*)vm.str_lt);
+    markObject((Obj*)vm.str_gt);
+    markObject((Obj*)vm.str_le);
+    markObject((Obj*)vm.str_ge);
+    markObject((Obj*)vm.str_eq);
     markObject((Obj*)vm.xString);
     markObject((Obj*)vm.yString);
     markObject((Obj*)vm.zString);

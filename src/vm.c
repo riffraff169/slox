@@ -1537,6 +1537,16 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.str_div = copyString("__div__", 7);
     vm.str_neg = NULL;
     vm.str_neg = copyString("__neg__", 7);
+    vm.str_lt = NULL;
+    vm.str_lt = copyString("__lt__", 6);
+    vm.str_gt = NULL;
+    vm.str_gt = copyString("__gt__", 6);
+    vm.str_le = NULL;
+    vm.str_le = copyString("__le__", 6);
+    vm.str_ge = NULL;
+    vm.str_ge = copyString("__ge__", 6);
+    vm.str_eq = NULL;
+    vm.str_eq = copyString("__eq__", 6);
     vm.xString = NULL;
     vm.xString = copyString("x", 1);
     vm.yString = NULL;
@@ -2862,8 +2872,13 @@ InterpretResult run() {
                 break;
             case OP_ADD:
                 {
-
-                    if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
+                    // 1. fast path: number + number
+                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                        double b = AS_NUMBER(pop());
+                        double a = AS_NUMBER(pop());
+                        push(NUMBER_VAL(a + b));
+                    } else if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
+                        // 2. fast path: string coercion & concatenation
                         Value rawB = peek(0);
                         Value rawA = peek(1);
 
@@ -2886,50 +2901,21 @@ InterpretResult run() {
                         popn(4);
 
                         push(OBJ_VAL(result));
-                    } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
-                        push(NUMBER_VAL(a + b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 b;
-                        b.x = a.x + d;
-                        b.y = a.y + d;
-                        b.z = a.z + d;
-                        push(VEC3_VAL(b));
+                        Vec3 res = {a.x + d, a.y + d, a.z + d};
+                        push(VEC3_VAL(res));
                     } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
                         double d = AS_NUMBER(pop());
-                        Vec3 a;
-                        a.x = b.x + d;
-                        a.y = b.y + d;
-                        a.z = b.z + d;
-                        push(VEC3_VAL(a));
+                        Vec3 res = {b.x + d, b.y + d, b.z + d};
+                        push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 c;
-                        c.x = a.x + b.x;
-                        c.y = a.y + b.y;
-                        c.z = a.z + b.z;
-                        push(VEC3_VAL(c));
-                    } else if (IS_INSTANCE(peek(1))) {
-                        ObjInstance* instance = AS_INSTANCE(peek(1));
-                        Value method;
-                        Value result;
-
-                        Value* stackStart = vm.stackTop;
-                        if (tableGet(&instance->obj.klass->methods, vm.str_add, &method)) {
-                            if (callValue(method, 1)) {
-                                vm.nativeExitDepth = vm.frameCount - 1;
-                                run();
-                                result = pop();
-                            }
-                        }
-                        vm.stackTop = stackStart;
-                        popn(2);
-                        push(result);
+                        Vec3 res = {a.x + b.x, a.y + b.y, a.z + b.z};
+                        push(VEC3_VAL(res));
                     } else if (IS_ARRAY(peek(0)) && IS_ARRAY(peek(1))) {
                         ObjArray* b = AS_ARRAY(peek(0));
                         ObjArray* a = AS_ARRAY(peek(1));
@@ -2947,33 +2933,37 @@ InterpretResult run() {
                         vm.stackTop[-3] = vm.stackTop[-1];
                         popn(2);
                     } else {
-                        RUNTIME_ERROR("Invalid operands.");
-                        break;
+                        if (!invoke(vm.str_add, 1)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                     }
                 }
                 break;
             case OP_SUBTRACT:
                 {
+                    // 1. fast path: number - number
                     if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                         double b = AS_NUMBER(pop());
                         double a = AS_NUMBER(pop());
                         push(NUMBER_VAL(a - b));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
+                        // 2. fast path: vec3 - number
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 b;
-                        b.x = a.x - d;
-                        b.y = a.y - d;
-                        b.z = a.z - d;
-                        push(VEC3_VAL(b));
+                        Vec3 res = {a.x - d, a.y - d, a.z - d};
+                        push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
+                        // 3. fast path: vec3 - vec3
                         Vec3 b = AS_VEC3(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 c;
-                        c.x = a.x - b.x;
-                        c.y = a.y - b.y;
-                        c.z = a.z - b.z;
-                        push(VEC3_VAL(c));
+                        Vec3 res = {a.x - b.x, a.y - b.y, a.z - b.z};
+                        push(VEC3_VAL(res));
+                    } else {
+                        // 5. fallback: method dispatch (__sub__)
+                        if (!invoke(vm.str_sub, 1)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        /*
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -2993,11 +2983,13 @@ InterpretResult run() {
                     } else {
                         RUNTIME_ERROR("Invalid operands.");
                         break;
+                        */
                     }
                 }
                 break;
             case OP_MULTIPLY:
                 {
+                    // 1. fast path: number + number
                     if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                         double b = AS_NUMBER(pop());
                         double a = AS_NUMBER(pop());
@@ -3005,27 +2997,18 @@ InterpretResult run() {
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 b;
-                        b.x = a.x * d;
-                        b.y = a.y * d;
-                        b.z = a.z * d;
-                        push(VEC3_VAL(b));
+                        Vec3 res = {a.x * d, a.y * d, a.z * d};
+                        push(VEC3_VAL(res));
                     } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
                         double d = AS_NUMBER(pop());
-                        Vec3 a;
-                        a.x = b.x * d;
-                        a.y = b.y * d;
-                        a.z = b.z * d;
-                        push(VEC3_VAL(a));
+                        Vec3 res = {b.x * d, b.y * d, b.z * d};
+                        push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 c;
-                        c.x = a.x * b.x;
-                        c.y = a.y * b.y;
-                        c.z = a.z * b.z;
-                        push(VEC3_VAL(c));
+                        Vec3 res = {a.x * b.x, a.y * b.y, a.z * b.z};
+                        push(VEC3_VAL(res));
                     } else if (IS_STRING(peek(1)) && IS_NUMBER(peek(0))) {
                         ObjString* str = AS_STRING(peek(1));
                         int count = (int)AS_NUMBER(peek(0));
@@ -3033,6 +3016,7 @@ InterpretResult run() {
                         pop();
                         pop();
                         push(result);
+                        /*
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -3053,6 +3037,12 @@ InterpretResult run() {
                         RUNTIME_ERROR("Invalid operands.");
                         break;
                     }
+                    */
+                    } else {
+                        if (!invoke(vm.str_mul, 1)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                    }
                 }
                 break;
             case OP_DIVIDE:
@@ -3064,11 +3054,9 @@ InterpretResult run() {
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 b;
-                        b.x = a.x / d;
-                        b.y = a.y / d;
-                        b.z = a.z / d;
-                        push(VEC3_VAL(b));
+                        Vec3 res = {a.x / d, a.y / d, a.z / d};
+                        push(VEC3_VAL(res));
+                        /*
                     } else if (IS_INSTANCE(peek(1))) {
                         ObjInstance* instance = AS_INSTANCE(peek(1));
                         Value method;
@@ -3088,6 +3076,12 @@ InterpretResult run() {
                     } else {
                         RUNTIME_ERROR("Invalid operands.");
                         break;
+                    }
+                    */
+                    } else {
+                        if (!invoke(vm.str_div, 1)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                     }
                 }
                 break;
@@ -3167,11 +3161,9 @@ InterpretResult run() {
                         push(NUMBER_VAL(-AS_NUMBER(pop())));
                     } else if (IS_VEC3(peek(0))) {
                         Vec3 a = AS_VEC3(pop());
-                        Vec3 b;
-                        b.x = -a.x;
-                        b.y = -a.y;
-                        b.z = -a.z;
-                        push(VEC3_VAL(b));
+                        Vec3 res = {-a.x, -a.y, -a.z};
+                        push(VEC3_VAL(res));
+                        /*
                     } else if (IS_INSTANCE(peek(0))) {
                         ObjInstance* instance = AS_INSTANCE(peek(0));
                         Value method;
@@ -3187,25 +3179,15 @@ InterpretResult run() {
                             runtimeError("Undefined property '__neg__'.");
                             return INTERPRET_RUNTIME_ERROR;
                         }
-                            /*
-                            ObjBoundMethod* bound = newBoundMethod(peek(0), method);
-                            pop();
-                            push(OBJ_VAL(bound));
-
-                            if (callValue(peek(0), 0)) {
-                                int priorDepth = vm.nativeExitDepth;
-                                vm.nativeExitDepth = vm.frameCount - 1;
-                                run();
-                                vm.nativeExitDepth = priorDepth;
-                                //result = pop();
-                            }
-                        }
-                        vm.stackTop = stackStart;
-                        push(result);
-                        */
                     } else {
                         RUNTIME_ERROR("Operand must be a number.");
                         break;
+                    }
+                    */
+                    } else {
+                        if (!invoke(vm.str_neg, 0)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                     }
                 }
                 break;

@@ -1,2 +1,11 @@
-print 123 + 456; // expect: 579
-print "str" + "ing"; // expect: string
+// Primitive numbers
+print 10 + 20;            // expect: 30
+
+// String coercion fast path
+print "Value: " + 42;     // expect: Value: 42
+print 100 + " ms";        // expect: 100 ms
+
+// Native arrays
+var arr1 = [1, 2];
+var arr2 = [3, 4];
+print arr1 + arr2;        // expect: [1, 2, 3, 4]
