@@ -1,4 +1,5 @@
-import "notcurses";
+import "ffi";
+require("notcurses.lox");
 
 require("menu.lox");
 require("modal.lox");
@@ -7,7 +8,7 @@ var nc = Notcurses();
 var stdplane = nc.get_stdplane();
 
 // Draw main app screen content
-stdplane.set_fgrgb(148, 163, 184);
+stdplane.set_fg(148, 163, 184);
 stdplane.put_str(2, 4, "=== SERVER DASHBOARD ===");
 stdplane.put_str(4, 4, "Press [x] to execute system restart.");
 stdplane.put_str(5, 4, "Press [q] to exit application.");

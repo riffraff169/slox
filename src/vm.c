@@ -2392,13 +2392,54 @@ static bool tailInvoke(ObjString* name, int argCount) {
     // check for instance field shadowing
     if (IS_INSTANCE(receiver)) {
         ObjInstance* instance = AS_INSTANCE(receiver);
+
         Value value;
         if (tableGet(&instance->fields, name, &value)) {
             vm.stackTop[-argCount - 1] = value;
+            /*
             if (IS_CLOSURE(value)) {
                 return tailCallClosure(AS_CLOSURE(value), argCount);
             }
+            */
             return callValue(value, argCount);
+        }
+        //return invokeFromClass(instance->obj.klass, name, argCount);
+    } 
+
+    if (IS_CLASS(receiver)) {
+        ObjClass* klass = AS_CLASS(receiver);
+        Value fieldVal;
+
+        // 1. check class fields (nested classes like IO.tcp, static constants)
+        if (tableGet(&klass->fields, name, &fieldVal)) {
+            vm.stackTop[-argCount - 1] = fieldVal;
+            return callValue(fieldVal, argCount);
+        }
+
+        // 2. check static class methods
+        Value method;
+        if (lookupClassMethod(klass, name, &method)) {
+            if (IS_CLOSURE(method)) {
+                ObjClosure* closure = AS_CLOSURE(method);
+
+                if (closure->function->isfree) {
+                    int expectedArgs = closure->function->arity - 1;
+                    if (argCount != expectedArgs) {
+                        runtimeError("Expected %d arguments, but got %d.", expectedArgs, argCount);
+                        return false;
+                    }
+
+                    Value* start = vm.stackTop - argCount - 1;
+                    for (Value* p = vm.stackTop; p > start; p--) {
+                        *p = *(p - 1);
+                    }
+                    *start = method;
+                    vm.stackTop++;
+                    argCount++;
+                }
+                return tailCallClosure(closure, argCount);
+            }
+            return callValue(method, argCount);
         }
     }
 
