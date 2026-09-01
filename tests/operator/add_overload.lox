@@ -1,0 +1,24 @@
+class Point {
+    init(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __add__(other) {
+        return Point(this.x + other.x, this.y + other.y);
+    }
+}
+
+var p1 = Point(1, 2);
+var p2 = Point(3, 4);
+var p3 = Point(5, 6);
+
+// Test single binary addition
+var p4 = p1 + p2;
+print p4.x; // expect: 4
+print p4.y; // expect: 6
+
+// Test chained addition (tests CallFrame cleanup between iterations)
+var p5 = p1 + p2 + p3;
+print p5.x; // expect: 9
+print p5.y; // expect: 12
