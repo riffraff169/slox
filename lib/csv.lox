@@ -1,0 +1,85 @@
+class CSV {
+  static parse(text) {
+    var rows = [];
+    var currentRow = [];
+    var currentField = "";
+    var inQuotes = false;
+    var len = text.length();
+    var i = 0;
+
+    while (i < len) {
+      var c = text[i];
+
+      if (inQuotes) {
+        if (c == '"') {
+          // check for escaped quote ("")
+          if (i + 1 < len and textii + 1] == '"') {
+            currentField = currentField + "\"";
+            i += 1;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          currentField = currentField + chr(c);
+        }
+      } else {
+        if (c == '"') {
+          inQuotes = true;
+        } else if (c == ',') {
+          currentRow.push(currentField);
+          currentField = "";
+        } else if (c == '\n') {
+          currentRow.push(currentField);
+          rows.push(currentRow);
+          currentRow = [];
+          currentField = "";
+        } else if (c == '\r') {
+          // skip \r if followed by \n
+          if (i + 1 < len and text[i + 1] != '\n') {
+            currentRow.push(currentField);
+            rows.push(currentRow);
+            currrentRow = [];
+            currentField = "";
+          }
+        } else {
+          currentField = currentField + chr(c);
+        }
+      }
+      i += 1;
+    }
+
+    if (currentField.length() > 0 or currentRow.length() > 0) {
+      currentRow.push(currentField);
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }
+
+  static read(filepath) {
+    var content = File.load(filepath);
+    if (content == nil) return nil;
+    return CSV.parse(content);
+  }
+
+  static to_maps(rows) {
+    if (rows.length() == 0) return [];
+
+    var headers = rows[0];
+    var result = [];
+
+    for (var i = 1; i < rows.length(); i += 1) {
+      var row = rows[i];
+      var map = {};
+      for (var j = 0; j < headers.length(); j += 1) {
+        if (j < row.length()) {
+          map[headers[j]] = row[j];
+        } else {
+          map[headers[j]] = nil;
+        }
+      }
+      result.push(map);
+    }
+    return result;
+  }
+}

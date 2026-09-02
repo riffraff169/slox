@@ -814,6 +814,9 @@ void initCoreLibrary() {
     X("to_array", stringToarrayNative) \
     X("to_number", toNumberNative) \
     X("tokens", stringTokensNative) \
+    X("pad_center", stringPadCenterNative) \
+    X("pad_right", stringPadRightNative) \
+    X("pad_left", stringPadLeftNative) \
     X("format", stringFormatNative) \
     X("tr", stringTrNative)
 
@@ -1111,6 +1114,88 @@ Value stringTokensNative(int argCount, Value* args) {
 }
 
 //@ String
+//: pad_center
+// Pad a string to a specific size with a pad character, default space
+// Requires:
+//   Value: width
+//   String: fillchar
+Value stringPadCenterNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+        return NIL_VAL;
+    }
+    ObjString* str = AS_STRING(args[-1]);
+    int width = AS_NUMBER(args[0]);
+    char fill = AS_CSTRING(args[1])[0];
+
+    if (str->length >= width) return args[0];
+
+    int totalPad = width - str->length;
+    int leftPad = totalPad / 2;
+    int rightPad = totalPad - leftPad;
+
+    char* buffer = ALLOCATE(char, width + 1);
+    memset(buffer, fill, leftPad);
+    memcpy(buffer + leftPad, str->chars, str->length);
+    memset(buffer + leftPad + str->length, fill, rightPad);
+    buffer[width] = '\0';
+
+    return OBJ_VAL(takeString(buffer, width));
+}
+
+//@ String
+//: pad_right
+// Pad a string to a specific size with a pad character, default space
+// Requires:
+//   Value: width
+//   String: fillchar
+Value stringPadRightNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+        return NIL_VAL;
+    }
+    ObjString* str = AS_STRING(args[-1]);
+    int width = AS_NUMBER(args[0]);
+    char fill = AS_CSTRING(args[1])[0];
+
+    if (str->length >= width) return args[0];
+
+    int padLen = width - str->length;
+    char* buffer = ALLOCATE(char, width + 1);
+    memcpy(buffer, str->chars, str->length);
+    memset(buffer + str->length, fill, padLen);
+    buffer[width] = '\0';
+
+    return OBJ_VAL(takeString(buffer, width));
+}
+
+//@ String
+//: pad_left
+// Pad a string to a specific size with a pad character, default space
+// Requires:
+//   Value: width
+//   String: fillchar
+Value stringPadLeftNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+        return NIL_VAL;
+    }
+    ObjString* str = AS_STRING(args[-1]);
+    int width = AS_NUMBER(args[0]);
+    char fill = AS_CSTRING(args[1])[0];
+
+    if (str->length >= width) return args[0];
+
+    int padLen = width - str->length;
+    char* buffer = ALLOCATE(char, width + 1);
+    memset(buffer, fill, padLen);
+    memcpy(buffer + padLen, str->chars, str->length);
+    buffer[width] = '\0';
+
+    return OBJ_VAL(takeString(buffer, width));
+}
+
+//@ String
 //: format
 // Get a string format similar to printf(). Format string recognizes s, d, f, b, for string, int/float, and bool.
 // Requires:
@@ -1122,7 +1207,6 @@ Value stringFormatNative(int argCount, Value* args) {
     int capacity = formatStr->length + 64;
     char* buffer = malloc(capacity);
     int length = 0;
-
     int currentArg = 0;
 
     for (int i = 0; i < formatStr->length; i++) {
@@ -1132,60 +1216,131 @@ Value stringFormatNative(int argCount, Value* args) {
         }
 
         if (formatStr->chars[i] == '%' && i + 1 < formatStr->length) {
-            char specifier = formatStr->chars[i + 1];
+            int specStart = i;
             i++;
 
-            if (specifier == '%') {
+            if (formatStr->chars[i] == '%') {
                 buffer[length++] = '%';
                 continue;
             }
 
+            // 1. parse optional flags: '-' '+' '0' ' '
+            while (i < formatStr->length &&
+                (formatStr->chars[i] == '-' || formatStr->chars[i] == '+' ||
+                 formatStr->chars[i] == '0' || formatStr->chars[i] == ' ')) {
+                i++;
+            }
+
+            // 2. parse optional width (eg 20 in %20s)
+            while (i < formatStr->length && isdigit((unsigned char)formatStr->chars[i])) {
+                i++;
+            }
+
+            // 3. parse optional precision (eg .2 in %.2f)
+            if (i < formatStr->length && formatStr->chars[i] == '.') {
+                i++;
+                while (i < formatStr->length && isdigit((unsigned char)formatStr->chars[i])) {
+                    i++;
+                }
+            }
+
+            // incomplete specifier at end of string: output remaining characters
+            if (i >= formatStr->length) {
+                for (int k = specStart; k < formatStr->length; k++) {
+                    buffer[length++] = formatStr->chars[k];
+                }
+                break;
+            }
+
+            char specifier = formatStr->chars[i];
+
+            // extract the full specifier string (eg "%-20s", "%10.2f")
+            int specLen = i - specStart + 1;
+            char specBuf[32];
+            if (specLen >= 32) specLen = 31;
+            memcpy(specBuf, formatStr->chars + specStart, specLen);
+            specBuf[specLen] = '\0';
+
+            // missing arguments: write the specifier literally
             if (currentArg >= argCount) {
-                length += sprintf(buffer + length, "%%c", specifier);
+                for (int k = 0; i < specLen; k++) {
+                    buffer[length++] = specBuf[k];
+                }
                 continue;
             }
 
             Value val = args[currentArg++];
 
+            // string specifier variant for fallback types (eg convert %-10d to %-10s for nan)
+            char stringSpecBuf[32];
+            memcpy(stringSpecBuf, specBuf, specLen + 1);
+            stringSpecBuf[specLen - 1] = 's';
+
+            char tempBuf[512];
+            int formattedLen = 0;
+
             switch (specifier) {
                 case 's':
                     {
+                        const char* strVal = "<object>";
                         if (IS_STRING(val)) {
-                            ObjString* s = AS_STRING(val);
-                            while (length + s->length >= capacity) {
-                                capacity += s->length + 64;
-                                buffer = realloc(buffer, capacity);
-                            }
-                            memcpy(buffer + length, s->chars, s->length);
-                            length += s->length;
+                            strVal = AS_STRING(val)->chars;
                         } else if (IS_NIL(val)) {
-                            length += sprintf(buffer + length, "nil");
-                        } else {
-                            length += sprintf(buffer + length, "<object>");
+                            strVal = "nil";
                         }
+                        formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, strVal);
                     }
                     break;
                 case 'd':
+                case 'i':
+                    {
+                        if (IS_NUMBER(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (int)AS_NUMBER(val));
+                        } else {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
+                        }
+                    }
+                    break;
                 case 'f':
-                    if (IS_NUMBER(val)) {
-                        double num = AS_NUMBER(val);
-                        length += sprintf(buffer + length, specifier == 'd' ? "%.0f" : "%f", num);
-                    } else {
-                        length += sprintf(buffer + length, "NaN");
+                    {
+                        if (IS_NUMBER(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_NUMBER(val));
+                        } else {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
+                        }
                     }
                     break;
                 case 'b':
-                    if (IS_BOOL(val)) {
-                        length += sprintf(buffer + length, AS_BOOL(val) ? "true" : "false");
-                    } else {
-                        length += sprintf(buffer + length, "false");
+                    {
+                        const char* boolVal = "false";
+                        if (IS_BOOL(val)) {
+                            boolVal = AS_BOOL(val) ? "true" : "false";
+                        }
+                        formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, boolVal);
+                    }
+                    break;
+                case 'x':
+                case 'X':
+                    {
+                        if (IS_NUMBER(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (unsigned int)AS_NUMBER(val));
+                        } else {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
+                        }
                     }
                     break;
                 default:
-                    buffer[length++] = '%';
-                    buffer[length++] = specifier;
+                    formattedLen = snprintf(tempBuf, sizeof(tempBuf), "%s", specBuf);
                     break;
             }
+
+            while (length + formattedLen + 1 >= capacity) {
+                capacity *= 2;
+                buffer = realloc(buffer, capacity);
+            }
+
+            memcpy(buffer + length, tempBuf, formattedLen);
+            length += formattedLen;
         } else {
             buffer[length++] = formatStr->chars[i];
         }
