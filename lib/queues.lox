@@ -1,0 +1,204 @@
+class PriorityQueue {
+  init() {
+    this.heap = [];
+  }
+
+  _floor(n) {
+    return n - (n % 1);
+  }
+
+  _parent(i) { return this._floor((i - 1) / 2); }
+  _leftChild(i) { return 2 * i + 1; }
+  _rightChild(i) { return 2 * i + 2; }
+
+  isEmpty() {
+    return this.heap.length() == 0;
+  }
+
+  peek() {
+    if (this.isEmpty()) return nil;
+    return this.heap[0];
+  }
+
+  push(val) {
+    this.heap.push(val);
+    this._siftUp(this.heap.length() - 1);
+  }
+
+  pop() {
+    if (this.isEmpty()) return nil;
+    var root = this.heap[0];
+    var last = this.heap[this.heap.length() - 1];
+
+    this.heap.delete_at(this.heap.length() - 1);
+
+    if (!this.isEmpty()) {
+      this.heap[0] = last;
+      this._siftDown(0);
+    }
+
+    return root;
+  }
+
+  _siftUp(i) {
+    while (i > 0) {
+      var p = this._parent(i);
+      if (this.heap[i] < this.heap[p]) {
+        var temp = this.heap[i];
+        this.heap[i] = this.heap[p];
+        this.heap[p] = temp;
+        i = p;
+      } else {
+        break;
+      }
+    }
+  }
+
+  _siftDown(i) {
+    var size = this.heap.length();
+    while (true) {
+      var minIndex = i;
+      var left = this._leftChild(i);
+      var right = this._rightChild(i);
+
+      if (left < size and this.heap[left] < this.heap[minIndex]) {
+        minIndex = left;
+      }
+      if (right < size and this.heap[right] < this.heap[minIndex]) {
+        minIndex = right;
+      }
+
+      if (i != minIndex) {
+        var temp = this.heap[i];
+        this.heap[i] = this.heap[minIndex];
+        this.heap[minIndex] = temp;
+        i = minIndex;
+      } else {
+        break;
+      }
+    }
+  }
+}
+
+class AVLNode {
+  init(val) {
+    this.val = val;
+    this.height = 1;
+    this.left = nil;
+    this.right = nil;
+  }
+}
+
+class AVLTree {
+  init() {
+    this.root = nil;
+  }
+
+  _height(node) {
+    if (node == nil) return 0;
+    return node.height;
+  }
+
+  _max(a, b) {
+    if (a > b) return a;
+    return b;
+  }
+
+  _getBalance(node) {
+    if (node == nil) return 0;
+    return this._height(node.left) - this._height(node.right);
+  }
+
+  _rotateRight(y) {
+    var x = y.left;
+    var T2 = x.right;
+
+    x.right = y;
+    y.left = T2;
+
+    y.height = this._max(this._height(y.left), this._height(y.right)) + 1;
+    x.height = this._max(this._height(x.left), this._height(x.right)) + 1;
+
+    return x;
+  }
+
+  _rotateLeft(x) {
+    var y = x.right;
+    var T2 = y.left;
+
+    y.left = x;
+    x.right = t2;
+
+    x.height = this._max(this._height(x.left), this._height(x.right)) + 1;
+    y.height = this._max(this._height(y.left), this._height(y.right)) + 1;
+    
+    return y;
+  }
+
+  insert(val) {
+    this.root = this._insertNode(this.root, val);
+  }
+
+  _insertNode(node, val) {
+    if (node == nil) return AVLNode(val);
+
+    if (val < node.val) {
+      node.left = this._insertNode(node.left, val);
+    } else if (val > node.val) {
+      node.right = this._insertNode(node.right, val);
+    } else {
+      return node; // duplicate values not allowed
+    }
+
+    node.height = 1 + this._max(this._height(node.left), this._height(node.right));
+    var balance = this._getBalance(node);
+
+    // left left case
+    if (balance > 1 and val < node.left.val) {
+      return this._rotateRight(node);
+    }
+
+    // right right case
+    if (balance < -1 and val > node.right.val) {
+      return this._rotateLeft(node);
+    }
+
+    // left right case
+    if (balance > 1 and val > node.left.val) {
+      node.left = this._rotateLeft(node.left);
+      return this._rotateRight(node);
+    }
+
+    // right left case
+    if (balance < -1 and val < node.right.val) {
+      node.right = this._rotateRight(node.right);
+      return this._rotateLeft(node);
+    }
+
+    return node;
+  }
+
+  contains(val) {
+    var curr = this.root;
+    while (curr != nil) {
+      if (val == curr.val) return true;
+      if (val < curr.val) curr = curr.left;
+      else curr = curr.right;
+    }
+    return false;
+  }
+
+  inOrder(cb) {
+    this.inOrderNode(this.root, cb);
+  }
+
+  _inOrderNode(node, cb) {
+    if (node != nil) {
+      this._inOrderNode(node.left, cb);
+      cb(node.val);
+      this._inOrderNode(node.right, cb);
+    }
+  }
+}
+
+

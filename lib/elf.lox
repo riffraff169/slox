@@ -1,0 +1,330 @@
+System.set_precision(12);
+
+class ELFParser {
+  init(bytes) {
+    this.bytes = bytes;
+    this.printable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+  }
+
+  // read 16 bit unsigned integer (little endian)
+  readU16LE(offset) {
+    return this.bytes[offset] + (this.bytes[offset + 1] * 256);
+  }
+
+  // read 32 bit unsigned integer le
+  readU32LE(offset) {
+    return this.bytes[offset] +
+      (this.bytes[offset + 1] * 256) +
+      (this.bytes[offset + 2] * 65536) +
+      (this.bytes[offset + 3] * 16777216);
+  }
+
+  readU64LE(offset) {
+    return [this.readU32LE(offset), this.readU32LE(offset + 4)];
+  }
+
+  readHex64LE(offset) {
+    var hex = "0x";
+    for (var i = 7; i >= 0; i -= 1) {
+      hex = hex + Math.hex(this.bytes[offset + i], 2, false);
+    }
+    return hex;
+  }
+
+  // convert raw byte offset to zero-terminated ascii string
+  readString(offset) {
+    var buf = [];
+    while (offset < this.bytes.length() and this.bytes[offset] != 0) {
+      buf.push(this.bytes[offset]);
+      offset += 1;
+    }
+    return buf.to_string();
+  }
+
+  // helper to format [lo, hi] 64-bit values for display
+  formatU64(val64) {
+    if (val64[1] == 0) {
+      return "" + val64[0];
+    }
+    return "0x" + Math.hex(val64[1], 8, false) + Math.hex(val64[0], 8, false);
+  }
+
+  toOffset32(val64) {
+    return val64[0];
+  }
+
+  parse() {
+    if (this.bytes.length() < 64) {
+      print "Error: File too small for elf header.";
+      return false;
+    }
+
+    // validate magic bytes: 0x7f 'E' 'L' 'F' (127, 69, 76, 70)
+    if (this.bytes[0] != 127 or this.bytes[1] != 69 or
+        this.bytes[2] != 76 or this.bytes[3] != 70) {
+      print "Error: Not a valid ELF executable (magic mismatch).";
+      return false;
+    }
+
+    var width = 80;
+    var line = "=" * width;
+    var fmt = "%-20s %s";
+
+    print line;
+    print "ELF HEADER ANALYSIS".pad_center(44, " ");
+    print line;
+
+    print fmt.format("Magic:", "7F 45 4C 46 (Valid)");
+
+    // EI_CLASS (offset 4)
+    var eiClass = this.bytes[4];
+    var className = "Unknown (" + eiClass + ")";
+    if (eiClass == 1) className = "ELF32";
+    else if (eiClass == 2) className = "ELF64";
+    print fmt.format("Class:", className);
+
+    // EI_DATA (offset 5)
+    var eiData = this.bytes[5];
+    var dataName = "Unknown (" + eiData + ")";
+    if (eiData == 1) dataName = "Little Endian";
+    else if (eiData == 2) dataName = "Big Endian";
+    print fmt.format("Data:", dataName);
+    
+    // EI_OSABI (offset 7)
+    print fmt.format("OS/ABI:", this.getOSABI(this.bytes[7]));
+
+    // e_type (offset 16)
+    print fmt.format("Type", this.getType(this.readU16LE(16)));
+
+    // e_machine (offset 18)
+    print fmt.format("Machine:", this.getMachine(this.readU16LE(18)));
+
+    var phoff = [0, 0];
+    var shoff = [0, 0];
+    var phentsize = this.readU16LE(54);
+    var phnum = this.readU16LE(56);
+    var shentsize = this.readU16LE(58);
+    var shnum = this.readU16LE(60);
+    var shstrndx = this.readU16LE(62);
+
+    // e_entry (offset 24)
+    if (eiClass == 2) {
+      phoff = this.readU64LE(32);
+      shoff = this.readU64LE(40);
+
+      print fmt.format("Entry Point Addr:  ", this.readHex64LE(24));
+      print fmt.format("Start of Program:", "0x" + Math.hex(phoff[0], 8, false) + " (" + this.formatU64(phoff) + " bytes)");
+      print fmt.format("Start of Sections:", "0x" + Math.hex(shoff[0], 8, false) + " (" + this.formatU64(shoff) + " bytes)");
+    }
+
+    // header dimentions
+    print fmt.format("Header Size:", this.readU16LE(52) + " bytes");
+    print fmt.format("Program Headers:", phnum + " entries (entry size: " + phentsize + " bytes)");
+    print fmt.format("Section Headers:", shnum + " entries (entry size: " + shentsize + " bytes)");
+
+    // 1. parse program headers
+    if (phnum > 0 and (phoff[0] > 0 or phoff[1] > 0)) {
+      this.parseProgramHeaders(phoff, phnum, phentsize, width);
+    }
+
+    // 2. parse section headers
+    if (shnum > 0 and (shoff[0] > 0 or shoff[1] > 0)) {
+      this.parseSectionHeaders(shoff, shnum, shentsize, shstrndx, width);
+    }
+
+    print line;
+
+    return true;
+  }
+
+  parseProgramHeaders(phoff, phnum, phentsize, width) {
+    print "\n" + ("=" * width);
+    print "PROGRAM HEADERS (SEGMENTS)".pad_center(width, " ");
+    print "=" * width;
+
+    var headerFmt = "%-4s %-14s %-10s %-18s %-10s %-10s %-6s";
+    print headerFmt.format("[Nr]", "Type", "Offset", "VirtAddr", "FileSiz", "MemSiz", "Flags");
+    print "-" * width;
+
+    var baseOff = this.toOffset32(phoff);
+    var rowFmt = "[%2d] %-14s %-10s %-18s %-10s %-10s %-6s";
+    
+    for (var i = 0; i < phnum; i += 1) {
+      var offset = baseOff + (i * phentsize);
+
+      var p_type = this.readU32LE(offset);
+      var p_flags = this.readU32LE(offset + 4);
+      var p_offset = this.readU64LE(offset + 8);
+      var p_vaddr = this.readHex64LE(offset + 16);
+      var p_filesz = this.readU64LE(offset + 32);
+      var p_memsz = this.readU64LE(offset + 40);
+
+      var typeStr = this.getSegmentType(p_type);
+      var flagsStr = this.getSegmentFlags(p_flags);
+      var offStr = "0x" + Math.hex(p_offset[0], 6, false);
+
+      print rowFmt.format(i, typeStr, offStr, p_vaddr, this.formatU64(p_filesz), this.formatU64(p_memsz), flagsStr);
+    }
+  }
+
+  parseSectionHeaders(shoff, shnum, shentsize, shstrndx, width) {
+    print "\n" + ("=" * width);
+    print "SECTION HEADERS".pad_center(width, " ");
+    print "=" * width;
+
+    var baseOff = this.toOffset32(shoff);
+
+    var shstrtabOffset = [0, 0];
+    if (shstrndx < shnum) {
+      var strHeaderOff = baseOff + (shstrndx * shentsize);
+      shstrtabOffset = this.readU64LE(strHeaderOff + 24);
+    }
+
+    var strTabOff32 = this.toOffset32(shstrtabOffset);
+
+    var headerFmt = "%-4s %-20s %-12s %-18s %-10s %-8s %-5s";
+    print headerFmt.format("[Nr]", "Name", "Type", "Address", "Offset", "Size", "Flags");
+    print "-" * width;
+
+    var rowFmt = "[%2d] %-20s %-12s %-18s %-10s %-8s %-5s";
+
+    for (var i = 0; i < shnum; i += 1) {
+      var offset = baseOff + (i * shentsize);
+
+      var sh_name = this.readU32LE(offset);
+      var sh_type = this.readU32LE(offset + 4);
+      var sh_flags = this.readU64LE(offset + 8);
+      var sh_addr = this.readHex64LE(offset + 16);
+      var sh_offset = this.readU64LE(offset + 24);
+      var sh_size = this.readU64LE(offset + 32);
+
+      var nameStr = "";
+      if (strTabOff32 > 0 or shstrtabOffset[1] > 0) {
+        nameStr = this.readString(strTabOff32 + sh_name);
+      }
+      if (nameStr.length() == 0) nameStr = "<null>";
+
+      var typeStr = this.getSectionType(sh_type);
+      var flagsStr = this.getSectionFlags(sh_flags);
+      var offStr = "0x" + Math.hex(sh_offset[0], 6, false);
+
+      print rowFmt.format(i, nameStr, typeStr, sh_addr, offStr, this.formatU64(sh_size), flagsStr);
+    }
+  }
+
+  getSegmentType(type) {
+    switch (type) {
+      case 0:
+        return "NULL";
+      case 1:
+        return "LOAD";
+      case 2:
+        return "DYNAMIC";
+      case 3:
+        return "INTERP";
+      case 4:
+        return "NOTE";
+      case 5:
+        return "SHLIB";
+      case 6:
+        return "PHDR";
+      case 7:
+        return "TLS";
+      case 1685382480:
+        return "GNU_EH_FRAME";
+      case 1685382481:
+        return "GNU_STACK";
+      case 1685382482:
+        return "GNU_RELRO";
+      case 1685382483:
+        return "GNU_PROPERTY";
+    }
+    return "0x" + Math.hex(type, 8, false);
+  }
+
+  getSegmentFlags(flags) {
+    var res = "";
+    if ((flags & 4) != 0) res = res + "R"; else res = res + " ";
+    if ((flags & 2) != 0) res = res + "W"; else res = res + " ";
+    if ((flags & 1) != 0) res = res + "E"; else res = res + " ";
+    return res;
+  }
+
+  getSectionType(type) {
+    switch (type) {
+      case 0:
+        return "NULL";
+      case 1:
+        return "PROGBITS";
+      case 2:
+        return "SYMTAB";
+      case 3:
+        return "STRTAB";
+      case 4:
+        return "RELA";
+      case 5:
+        return "HASH";
+      case 6:
+        return "DYNAMIC";
+      case 7:
+        return "NOTE";
+      case 8:
+        return "NOBITS";
+      case 9:
+        return "REL";
+      case 11:
+        return "DYNSYM";
+      case 1879048182:
+        return "GNU_HASH";
+      case 1879048190:
+        return "GNU_VERNEED";
+      case 1879048191:
+        return "GNU_VERSYM";
+    }
+    return "0x" + Math.hex(type, 8, false);
+  }
+
+  getSectionFlags(flags64) {
+    var flags = flags64[0];
+    var res = "";
+    if ((flags & 1) != 0) res = res + "W";
+    if ((flags & 2) != 0) res = res + "A";
+    if ((flags & 4) != 0) res = res + "X";
+    return res;
+  }
+
+  getOSABI(abi) {
+    if (abi == 0) return "UNIX - System V";
+    if (abi == 3) return "UNIX - Linux";
+    if (abi == 6) return "UNIX - Solaris";
+    return "Other (" + abi + ")";
+  }
+
+  getType(typeVal) {
+    if (typeVal == 1) return "REL (Relocatable file)";
+    if (typeVal == 2) return "EXEC (Executable file)";
+    if (typeVal == 3) return "DYN (Shared object / PIE executable)";
+    if (typeVal == 4) return "CORE (Core file)";
+    return "Unknown (" + typeVal + ")";
+  }
+
+  getMachine(mach) {
+    if (mach == 3) return "Intel 80386 (x86)";
+    if (mach == 62) return "AMD x86-64";
+    if (mach == 183) return "ARM AArch64";
+    if (mach == 243) return "RISC-V";
+    return "Other (" + mach + ")";
+  }
+}
+
+/*
+var binaryData = File.load("bin/slox");
+print binaryData.length();
+
+if (binaryData != nil) {
+  var elf = ELFParser(binaryData);
+  elf.parse();
+} else {
+  print "Failed to open target binary.";
+}
+*/
