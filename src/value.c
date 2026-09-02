@@ -66,6 +66,10 @@ Value valueToString(Value value) {
                     return resultVal;
                 }
 
+                if (valuesEqual(resultVal, value)) {
+                    return resultVal;
+                }
+
                 if (!valuesEqual(resultVal, value)) {
                     return valueToString(resultVal);
                 }

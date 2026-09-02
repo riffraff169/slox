@@ -606,9 +606,14 @@ Value getSuperclassNative(int argCount, Value* args) {
 // Returns:
 //   String
 Value objectToStringNative(int argCount, Value* args) {
-    if (argCount != 0) return NIL_VAL;
+    //if (argCount != 0) return NIL_VAL;
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
 
-    return valueToString(args[-1]);
+    char buffer[256];
+    int length = snprintf(buffer, sizeof(buffer), "<%s instance>",
+            instance->obj.klass->name->chars);
+
+    return OBJ_VAL(copyString(buffer, length));
 }
 
 //@ Object
