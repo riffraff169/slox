@@ -1,0 +1,29 @@
+class Class {
+  inspect() {
+    print "--- Class Metadata ---"; // expect: --- Class Metadata ---
+    print "Name: " + this.name(); // expect: Name: Dog
+    print "Superclass: " + String(this.superclass()); // expect: Superclass: Object
+  }
+
+  createInstance() {
+    return this();
+  }
+}
+
+class Animal {
+  init() {
+    this.type = "Generic Animal";
+  }
+}
+
+class Dog < Animal {
+  init() {
+    super.init();
+    this.breed = "Canine";
+  }
+}
+
+Dog.inspect();
+
+var d = Dog.createInstance();
+print "Created instance of: " + d.type; // expect: Created instance of: Generic Animal
