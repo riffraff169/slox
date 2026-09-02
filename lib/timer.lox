@@ -1,0 +1,21 @@
+class Timer {
+  init(delayMs, intervalMs, callback) {
+    this.handle = Timer._start(delayMs, intervalMs, callback);
+    this.active = (this.handle >= 0);
+  }
+
+  cancel() {
+    if (this.active) {
+      Timer._stop(this.handle);
+      this.active = false;
+    }
+  }
+
+  static setTimeout(delayMs, callback) {
+    return Timer(delayMs, 0, callback);
+  }
+
+  static setInterval(intervalMs, callback) {
+    return Timer(intervalMs, intervalMs, callback);
+  }
+}

@@ -1,0 +1,19 @@
+require("elf.lox");
+require("argparser.lox");
+
+var parser = ArgParser("elf_parser.lox", "ELF Header Info");
+var opts = parser.parse(System.ARGS);
+
+if (opts.args.length() < 1) {
+  print "Usage: elf_info.lox [options] <input_file>";
+  System.exit(1);
+}
+
+var binaryData = File.load(opts.args[0]);
+
+if (binaryData != nil) {
+  var elf = ELFParser(binaryData);
+  elf.parse();
+} else {
+  print "Failed to open target binary.";
+}
