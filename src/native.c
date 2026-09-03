@@ -3101,12 +3101,6 @@ Value optionUnwrapOrNative(int argCount, Value* args) {
 }
 
 void initResultAndOptionClass() {
-    /*
-    ObjString* resultName = copyString("Result", 6);
-    push(OBJ_VAL(resultName));
-    vm.resultClass = newClass(resultName);
-    push(OBJ_VAL(vm.resultClass));
-    */
     vm.resultClass = defineBuiltinClass("Result", vm.objectClass, &vm.resultMetaClass, true);
     vm.resultClass->superclass = vm.objectClass;
     vm.resultClass->callHandler = resultNativeConstructor;
@@ -3115,12 +3109,6 @@ void initResultAndOptionClass() {
     defineNativeMethod(vm.resultClass, "unwrap", resultUnwrapNative);
     defineNativeMethod(vm.resultClass, "unwrap_or", resultUnwrapOrNative);
 
-    /*
-    ObjString* optionName = copyString("Option", 6);
-    push(OBJ_VAL(optionName));
-    vm.optionClass = newClass(optionName);
-    push(OBJ_VAL(vm.optionClass));
-    */
     vm.optionClass = defineBuiltinClass("Option", vm.objectClass, &vm.optionMetaClass, true);
     vm.optionClass->superclass = vm.objectClass;
     vm.optionClass->callHandler = optionNativeConstructor;
@@ -3128,8 +3116,6 @@ void initResultAndOptionClass() {
     //tableSet(&vm.globals, optionName, OBJ_VAL(vm.optionClass));
     defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
     defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
-
-    //popn(4);
 }
 
 Value regexNativeConstructor(int argCount, Value* args) {
@@ -6439,7 +6425,6 @@ Value errorCallHandler(int argCount, Value* args) {
     pop(); // messageStr
     pop(); // instance
 
-    pop();
     return OBJ_VAL(instance);
 }
 
@@ -6449,69 +6434,8 @@ void initErrorClass() {
 
     // 2. configure class specific handlers
     errorClass->callHandler = errorCallHandler;
-
-    // examples
-    // instance methods
-    //defineNativeMethod(vm.errorClass, "to_string", errorToStringNative);
-
-    // static method: target the metaclass directly via errorClass->obj.klass
-    // defineNativeMethod(errorClass->obj.klass, "format", errorFormatStaticNative);
-    /*
-    ObjString* className = copyString("Error", 5);
-    push(OBJ_VAL(className));
-    ObjClass* errorClass = newClass(className);
-    errorClass->callHandler = errorCallHandler;
-    push(OBJ_VAL(errorClass));
-
-    tableSet(&vm.globals, className, OBJ_VAL(errorClass));
-
-    pop();
-    pop();
-    */
 }
 
-/*
-void initCoreClasses(void) {
-    // phase 1 allocate raw structures
-    ObjString* objectName = copyString("Object", 6);
-    push(OBJ_VAL(objectName));
-    ObjString* className = copyString("Class", 5);
-    push(OBJ_VAL(className));
-    ObjString* objectMetaName = copyString("ObjectMeta", 15);
-    push(OBJ_VAL(objectMetaName));
-    ObjString* classMetaName = copyString("classMeta", 14);
-    push(OBJ_VAL(classMetaName));
-
-    vm.objectClass = allocateRawClass(objectName);
-    vm.classClass = allocateRawClass(className);
-    vm.objectMetaClass = allocateRawClass(objectMetaName);
-    vm.classMetaClass = allocateRawClass(classMetaName);
-
-    // phase 2 wire up the instantiation chain (obj.klass)
-    vm.objectClass->obj.klass = vm.objectMetaClass;
-    vm.classClass->obj.klass = vm.classMetaClass;
-    vm.objectMetaClass->obj.klass = vm.classMetaClass;
-    vm.classMetaClass->obj.klass = vm.classMetaClass;
-
-    // phase 3 wire up the inheritance chane (superclass)
-    vm.objectClass->superclass = NULL;
-    vm.classClass->superclass = vm.objectClass;
-    vm.objectMetaClass->superclass = vm.classClass;
-    vm.classMetaClass->superclass = vm.objectMetaClass;
-
-    // phase 4 register root methods
-    // methods on object (inherited by all instances & metaclasses)
-    defineNativeMethod(vm.objectClass, "to_string", objectToStringNative);
-    defineNativeMethod(vm.objectClass, "class_name", objectClassNameNative);
-
-    // methods on class (inherited by all metaclasses)
-    defineNativeMethod(vm.classClass, "name", classNameNative);
-    defineNativeMethod(vm.classClass, "superclass", classSuperclassNative);
-    //defineNativeMethod(vm.classClass, "add_method", classAddMethodNative);
-
-    popn(4);
-}
-*/
 Value nilClassCallHandler(int argCount, Value* args) {
     (void)argCount;
     (void)args;
@@ -6576,6 +6500,9 @@ ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** 
     }
 
     popn(4);
+
+    vmAnchor(klass);
+    vmAnchor(meta);
 
     if (metaOut != NULL) *metaOut = meta;
     return klass;

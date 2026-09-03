@@ -1379,6 +1379,15 @@ void runAtExitHooks() {
     }
 }
 
+int vmAddRoot(Value value) {
+    if (!IS_OBJ(value)) return -1;
+
+    writeValueArray(&vm.globalRoots, value);
+}
+
+void vmRemoveRoot(int handle) {
+}
+
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -1396,6 +1405,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.strictMode = false;
     vm.warnMode = true;
     vm.exceptionThrown = false;
+    vm.instructionCount = 0;
 
     vm.grayCount = 0;
     vm.grayCapacity = 0;
@@ -1417,6 +1427,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initTable(&vm.strings);
     initTable(&vm.globalConstants);
     initTable(&vm.requires);
+
+    initValueArray(&vm.globalRoots);
 
     // phase 1. allocate class & metaclass name strings
     ObjString* objectName = copyString("Object", 6);
@@ -1441,6 +1453,11 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.objectMetaClass = allocateRawClass(objectMetaName);
     vm.classMetaClass = allocateRawClass(classMetaName);
     vm.stringMetaClass = allocateRawClass(stringMetaName);
+
+    // 2a. anchor
+    vmAnchor(vm.objectClass);
+    vmAnchor(vm.classClass);
+    vmAnchor(vm.stringClass);
 
     // phase 3: backfill string obj.klass headers
     // now that vm.stringClass exists, wire up all strings created so far
@@ -1520,53 +1537,77 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
+    vmAnchor(vm.errnoString);
+
     vm.errstrString = NULL;
     vm.errstrString = copyString("errstr", 6);
+    vmAnchor(vm.errstrString);
     clearLastError();
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
+    vmAnchor(vm.initString);
     vm.toString = NULL;
     vm.toString = copyString("to_string", 9);
+    vmAnchor(vm.toString);
     vm.str_add = NULL;
     vm.str_add = copyString("__add__", 7);
+    vmAnchor(vm.str_add);
     vm.str_sub = NULL;
     vm.str_sub = copyString("__sub__", 7);
+    vmAnchor(vm.str_sub);
     vm.str_mul = NULL;
     vm.str_mul = copyString("__mul__", 7);
+    vmAnchor(vm.str_mul);
     vm.str_div = NULL;
     vm.str_div = copyString("__div__", 7);
+    vmAnchor(vm.str_div);
     vm.str_neg = NULL;
     vm.str_neg = copyString("__neg__", 7);
+    vmAnchor(vm.str_neg);
     vm.str_lt = NULL;
     vm.str_lt = copyString("__lt__", 6);
+    vmAnchor(vm.str_lt);
     vm.str_gt = NULL;
     vm.str_gt = copyString("__gt__", 6);
+    vmAnchor(vm.str_gt);
     vm.str_le = NULL;
     vm.str_le = copyString("__le__", 6);
+    vmAnchor(vm.str_le);
     vm.str_ge = NULL;
     vm.str_ge = copyString("__ge__", 6);
+    vmAnchor(vm.str_ge);
     vm.str_eq = NULL;
     vm.str_eq = copyString("__eq__", 6);
+    vmAnchor(vm.str_eq);
     vm.xString = NULL;
     vm.xString = copyString("x", 1);
+    vmAnchor(vm.xString);
     vm.yString = NULL;
     vm.yString = copyString("y", 1);
+    vmAnchor(vm.yString);
     vm.zString = NULL;
     vm.zString = copyString("z", 1);
+    vmAnchor(vm.zString);
     vm.classString = NULL;
     vm.classString = copyString("class", 5);
+    vmAnchor(vm.classString);
     vm.okString = NULL;
     vm.okString = copyString("ok", 2);
+    vmAnchor(vm.okString);
     vm.valString = NULL;
     vm.valString = copyString("val", 3);
+    vmAnchor(vm.valString);
     vm.errString = NULL;
     vm.errString = copyString("err", 3);
+    vmAnchor(vm.errString);
     vm.isSomeString = NULL;
     vm.isSomeString = copyString("is_some", 7);
+    vmAnchor(vm.isSomeString);
 
     vm.methodMissingString = NULL;
     vm.methodMissingString = copyString("method_missing", 14);
+    vmAnchor(vm.methodMissingString);
 
     /*
     ObjString* string = copyString("Function", 8);
@@ -1577,6 +1618,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     pop();
     */
     vm.functionClass = defineBuiltinClass("Function", vm.objectClass, &vm.functionMetaClass, true);
+    vmAnchor(vm.functionClass);
 
     /*
     string = copyString("Native", 6);
@@ -1588,6 +1630,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.nativeFunctionClass = defineBuiltinClass("Native", vm.objectClass, &vm.nativeFunctionMetaClass, true);
+    vmAnchor(vm.nativeFunctionClass);
 
     /*
     string = copyString("Number", 6);
@@ -1601,6 +1644,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.numberClass = defineBuiltinClass("Number", vm.objectClass, &vm.numberMetaClass, true);
     vm.numberClass->callHandler = numberClassCallHandler;
+    vmAnchor(vm.numberClass);
 
     /*
     string = copyString("Bool", 4);
@@ -1614,6 +1658,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.boolClass = defineBuiltinClass("Bool", vm.objectClass, &vm.boolMetaClass, true);
     vm.boolClass->callHandler = boolClassCallHandler;
+    vmAnchor(vm.boolClass);
 
     /*
     string = copyString("Nil", 3);
@@ -1626,6 +1671,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     vm.nilClass = defineBuiltinClass("Nil", vm.objectClass, &vm.nilMetaClass, true);
     vm.nilClass->callHandler = nilClassCallHandler;
+    vmAnchor(vm.nilClass);
 
     /*
     string = copyString("Module", 6);
@@ -1636,6 +1682,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     */
 
     vm.moduleClass = defineBuiltinClass("Module", vm.objectClass, &vm.moduleMetaClass, true);
+    vmAnchor(vm.moduleClass);
 
     initCoreLibrary(); // done
 
@@ -1655,7 +1702,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     initStructClass(); //
     initBase64Class();
     initBufferClass();
-    //initErrorClass();
+    initErrorClass();
+    initTimerClass();
 
     initValueArray(&vm.atExitHooks);
 
@@ -1687,6 +1735,7 @@ void freeVM() {
     }
     FREE_ARRAY(void*, vm.moduleHandles, vm.moduleCapacity);
     freeValueArray(&vm.atExitHooks);
+    freeValueArray(&vm.globalRoots);
 }
 
 void push(Value value) {
@@ -1771,6 +1820,7 @@ bool vmCall(ObjClosure* closure, int argCount) {
     CallFrame* frame = &vm.frames[vm.frameCount++];
     frame->closure = closure;
     frame->ip = closure->function->chunk.code;
+    frame->isTimer = false;
 
     frame->slots = vm.stackTop - argCount - 1;
     return true;
@@ -2535,7 +2585,10 @@ InterpretResult run() {
 
     for (;;) {
         //processPendingTimers();
-        process_pending_signals();
+        if ((++vm.instructionCount & 0x3ff) == 0) {
+            processTimers();
+            process_pending_signals();
+        }
 
         if (vm.frameCount < initialFrameCount) {
             return INTERPRET_OK;
@@ -4018,13 +4071,13 @@ InterpretResult run() {
                         break;
                     }
 
-                    //Value result = pop();
                     closeUpvalues(frame->slots);
 
                     bool isGetterFrame = frame->isGetter;
                     bool isSetterFrame = frame->isSetter;
-                    vm.frameCount--;
+                    bool isTimerFrame = frame->isTimer;
 
+                    vm.frameCount--;
                     if (vm.frameCount == 0) {
                         pop();
                         return INTERPRET_OK;
@@ -4032,6 +4085,10 @@ InterpretResult run() {
 
                     Value* slots = frame->slots;
                     vm.stackTop = slots;
+
+                    if (isTimerFrame) {
+                        return INTERPRET_OK;
+                    }
 
                     if (isGetterFrame) {
                         if (isResultInstance(result)) {
@@ -4401,6 +4458,12 @@ InterpretResult interpret(const char* source, const char* filename) {
     if (result == INTERPRET_RUNTIME_ERROR) {
         resetStack();
     }
+
+    /*
+    if (result == INTERPRET_OK) {
+        awaitTimers();
+    }
+    */
 
     return result;
 }
