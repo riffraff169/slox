@@ -4471,6 +4471,24 @@ Value processCloseStatic(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value processSignalStatic(int argCount, Value* args) {
+    int offset = IS_NUMBER(args[0]) ? 0 : 1;
+
+    if (argCount < offset + 2 || !IS_NUMBER(args[offset]) || !IS_NUMBER(args[offset + 1])) {
+        runtimeError("Process.signal() expects (pid, signal).");
+        return NIL_VAL;
+    }
+
+    pid_t pid = (pid_t)AS_NUMBER(args[offset]);
+    int sig = (int)AS_NUMBER(args[offset + 1]);
+
+    if (kill(pid, sig) == 0) {
+        return BOOL_VAL(true);
+    }
+
+    return BOOL_VAL(false);
+}
+
 Value processWriteStatic(int argCount, Value* args) {
     if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
         runtimeError("Process.write() requires a numeric descriptor and a string message.");
@@ -4547,6 +4565,7 @@ void initProcessClass() {
     defineNativeMethod(processMeta, "write", processWriteStatic);
     defineNativeMethod(processMeta, "close", processCloseStatic);
     defineNativeMethod(processMeta, "popen", processPopenStatic);
+    defineNativeMethod(processMeta, "signal", processSignalStatic);
 
     processClass->isFrozen = true;
 
@@ -6030,6 +6049,48 @@ Value systemRemoveIncludeNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+void defineSignalConstants(ObjClass* sg) {
+#define DEFINE_SIG(name) \
+    defineClassConstant(sg, #name, NUMBER_VAL(SIG##name))
+
+#ifdef SIGHUP
+    DEFINE_SIG(HUP);
+#endif
+#ifdef SIGINT
+    DEFINE_SIG(INT);
+#endif
+#ifdef SIGQUIT
+    DEFINE_SIG(QUIT);
+#endif
+#ifdef SIGILL
+    DEFINE_SIG(ILL);
+#endif
+#ifdef SIGTRAP
+    DEFINE_SIG(TRAP);
+#endif
+#ifdef SIGABRT
+    DEFINE_SIG(ABRT);
+#endif
+#ifdef SIGKILL
+    DEFINE_SIG(KILL);
+#endif
+#ifdef SIGUSR1
+    DEFINE_SIG(USR1);
+#endif
+#ifdef SIGUSR2
+    DEFINE_SIG(USR2);
+#endif
+#ifdef SIGTERM
+    DEFINE_SIG(TERM);
+#endif
+#ifdef SIGCHLD
+    DEFINE_SIG(CHLD);
+#endif
+#ifdef SIGSTOP
+    DEFINE_SIG(STOP);
+#endif
+}
+
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     /*
     ObjString* systemName = copyString("System", 6);
@@ -6163,12 +6224,12 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     pop();
     pop();
 
-
     // signal
     ObjClass* signalClass = defineBuiltinClass("Signal", vm.objectClass, NULL, true);
     ObjClass* signalMeta = signalClass->obj.klass;
 
     defineNativeMethod(signalMeta, "trap", lox_signal_trap);
+    defineSignalConstants(signalClass);
 }
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
