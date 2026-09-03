@@ -26,16 +26,6 @@ static void repl() {
         line = readline("> ");
 
         if (!line) {
-            if (has_pending_signals()) {
-                printf("\n");
-                process_pending_signals();
-
-                if (vm.frameCount > 0) {
-                    run();
-                }
-                continue;
-            }
-
             printf("\n");
             break;
         }
@@ -48,6 +38,16 @@ static void repl() {
         }
 
         interpret(line, "repl");
+        if (has_pending_signals()) {
+            printf("\n");
+
+            if (vm.frameCount > 0) {
+                run();
+            }
+
+            process_pending_signals();
+        }
+        processTimers();
         free(line);
         free(myhist);
     }
@@ -153,6 +153,7 @@ static void runFile(const char* path) {
     if (source == NULL) return;
 
     InterpretResult result = interpret(source, path);
+    awaitTimers();
     free(source);
 
     if (result == INTERPRET_COMPILE_ERROR) exit(65);

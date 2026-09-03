@@ -322,67 +322,10 @@ static void markRoots() {
     markTable(&vm.globalConstants);
     markTable(&vm.requires);
     markCompilerRoots();
+    markTimerRoots();
 
-    markObject((Obj*)vm.objectClass);
-    markObject((Obj*)vm.objectMetaClass);
-    markObject((Obj*)vm.classClass);
-    markObject((Obj*)vm.classMetaClass);
-    markObject((Obj*)vm.stringClass);
-    markObject((Obj*)vm.stringMetaClass);
-    markObject((Obj*)vm.numberMetaClass);
-    markObject((Obj*)vm.boolClass);
-    markObject((Obj*)vm.boolMetaClass);
-    markObject((Obj*)vm.nilClass);
-    markObject((Obj*)vm.nilMetaClass);
-    markObject((Obj*)vm.arrayClass);
-    markObject((Obj*)vm.arrayMetaClass);
-    markObject((Obj*)vm.mapClass);
-    markObject((Obj*)vm.mapMetaClass);
-    markObject((Obj*)vm.setClass);
-    markObject((Obj*)vm.setMetaClass);
-    markObject((Obj*)vm.mathClass);
-    markObject((Obj*)vm.mathMetaClass);
-    markObject((Obj*)vm.regexClass);
-    markObject((Obj*)vm.regexMetaClass);
-    markObject((Obj*)vm.moduleClass);
-    markObject((Obj*)vm.moduleMetaClass);
-    markObject((Obj*)vm.gcClass);
-    markObject((Obj*)vm.gcMetaClass);
-    markObject((Obj*)vm.bufferClass);
-    markObject((Obj*)vm.bufferMetaClass);
-    markObject((Obj*)vm.resultClass);
-    markObject((Obj*)vm.resultMetaClass);
-    markObject((Obj*)vm.optionClass);
-    markObject((Obj*)vm.optionMetaClass);
-    markObject((Obj*)vm.functionClass);
-    markObject((Obj*)vm.functionMetaClass);
-    markObject((Obj*)vm.nativeFunctionClass);
-    markObject((Obj*)vm.nativeFunctionMetaClass);
-    markObject((Obj*)vm.vec3Class);
-    markObject((Obj*)vm.vec3MetaClass);
-
-    markObject((Obj*)vm.initString);
-    markObject((Obj*)vm.toString);
-    markObject((Obj*)vm.str_add);
-    markObject((Obj*)vm.str_sub);
-    markObject((Obj*)vm.str_mul);
-    markObject((Obj*)vm.str_div);
-    markObject((Obj*)vm.str_neg);
-    markObject((Obj*)vm.str_lt);
-    markObject((Obj*)vm.str_gt);
-    markObject((Obj*)vm.str_le);
-    markObject((Obj*)vm.str_ge);
-    markObject((Obj*)vm.str_eq);
-    markObject((Obj*)vm.xString);
-    markObject((Obj*)vm.yString);
-    markObject((Obj*)vm.zString);
-    markObject((Obj*)vm.errnoString);
-    markObject((Obj*)vm.errstrString);
-    markObject((Obj*)vm.okString);
-    markObject((Obj*)vm.valString);
-    markObject((Obj*)vm.errString);
-    markObject((Obj*)vm.isSomeString);
     markArray(&vm.atExitHooks);
+    markArray(&vm.globalRoots);
     markObject((Obj*)vm.includePaths);
     for (int i = 0; i < vm.tryCount; i++) {
         markValue(vm.tryStack[i].returnValue);
@@ -479,3 +422,14 @@ void freeObjects() {
 
     free(vm.grayStack);
 }
+
+void vmAnchorRoot(Value value) {
+    if (!IS_OBJ(value)) return;
+    writeValueArray(&vm.globalRoots, value);
+}
+
+void vmAnchorObj(Obj* obj) {
+    if (obj == NULL) return;
+    vmAnchorRoot(OBJ_VAL(obj));
+}
+

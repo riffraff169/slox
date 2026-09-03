@@ -24,5 +24,9 @@ void markObject(Obj* object);
 void markValue(Value value);
 void collectGarbage();
 void freeObjects();
+void vmAnchorRoot(Value value);
+void vmAnchorObj(Obj* obj);
+
+#define vmAnchor(obj) vmAnchorRoot(OBJ_VAL(obj))
 
 #endif

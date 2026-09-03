@@ -18,4 +18,8 @@ class Timer {
   static setInterval(intervalMs, callback) {
     return Timer(intervalMs, intervalMs, callback);
   }
+
+  static cancelAll() {
+    Timer._stop_all();
+  }
 }
