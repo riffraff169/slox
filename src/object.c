@@ -79,25 +79,10 @@ ObjClass* newClass(ObjString* name) {
 
     klass->obj.klass = meta;
     klass->superclass = vm.objectClass;
-    /*
-    klass->name = name;
-    klass->superclass = vm.objectClass;
-    klass->mixinsource = NULL;
-    initTable(&klass->methods);
-    initTable(&klass->fields);
-    initTable(&klass->constants);
-    initTable(&klass->getters);
-    initTable(&klass->setters);
 
-    klass->foreignData = NULL;
-    klass->callHandler = NULL;
-    klass->getter = NULL;
-    klass->setter = NULL;
-    klass->destructor = NULL;
-    klass->vGetter = NIL_VAL;
-    klass->vSetter = NIL_VAL;
-    klass->isFrozen = false;
-    */
+    vmAnchor(klass);
+    vmAnchor(meta);
+
     pop();
     pop();
     pop();

@@ -16,6 +16,7 @@ typedef struct {
     Value* slots;
     bool isGetter;
     bool isSetter;
+    bool isTimer;
 } CallFrame;
 
 typedef struct {
@@ -35,6 +36,8 @@ typedef struct {
 typedef struct {
     CallFrame frames[FRAMES_MAX];
     int frameCount;
+
+    uint32_t instructionCount;
 
     Value stack[STACK_MAX];
     Value* stackTop;
@@ -150,6 +153,7 @@ typedef struct {
     const char* scriptName;
 
     ValueArray atExitHooks;
+    ValueArray globalRoots;
 } VM;
 
 typedef enum {
@@ -190,5 +194,7 @@ Value objectClassNameNative(int argCount, Value* args);
 Value classNameNative(int argCount, Value* args);
 Value classSuperclassNative(int argCount, Value* args);
 Value createResult(Value value, Value errval, bool isok);
+int vmAddRoot(Value value);
+void vmRemoveRoot(int handle);
 
 #endif
