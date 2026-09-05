@@ -392,6 +392,8 @@ Value isInstanceNative(int argCount, Value* args) {
 // Returns:
 //   Array
 Value listFieldsNative(int argCount, Value* args) {
+    GC_SCOPE;
+
     if (!IS_INSTANCE(args[-1])) {
         return OBJ_VAL(newArray());
     }
@@ -399,7 +401,7 @@ Value listFieldsNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     ObjArray* array = newArray();
-    push(OBJ_VAL(array));
+    pushTemp(OBJ_VAL(array));
 
     for (int i = 0; i < instance->fields.capacity; i++) {
         Entry* entry = &instance->fields.entries[i];
@@ -407,8 +409,6 @@ Value listFieldsNative(int argCount, Value* args) {
             arrayAppend(array, OBJ_VAL(entry->key));
         }
     }
-
-    pop();
 
     return OBJ_VAL(array);
 }
@@ -5104,25 +5104,34 @@ Value systemGCNative(int argCount, Value* args) {
 }
 
 Value gcStatsNative(int argCount, Value* args) {
+    GC_SCOPE;
+    //int gcscope = saveTempScope();
+
     ObjMap* stats = newMap();
-    push(OBJ_VAL(stats));
+    pushTemp(OBJ_VAL(stats));
 
-    ObjString* keyStr = copyString("allocated", 9);
-    push(OBJ_VAL(keyStr));
+    ObjString* keyStr = copyString("bytesAllocated", 14);
+    pushTemp(OBJ_VAL(keyStr));
     mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.bytesAllocated));
-    pop();
 
-    keyStr = copyString("threshold", 9);
-    push(OBJ_VAL(keyStr));
+    keyStr = copyString("nextGC", 6);
+    pushTemp(OBJ_VAL(keyStr));
     mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.nextGC));
-    pop();
 
     keyStr = copyString("collections", 11);
-    push(OBJ_VAL(keyStr));
+    pushTemp(OBJ_VAL(keyStr));
     mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.gcCount));
-    pop();
 
-    pop();
+    keyStr = copyString("tempStackDepth", 14);
+    pushTemp(OBJ_VAL(keyStr));
+    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.tempCount));
+
+    keyStr = copyString("globalRootsCount", 16);
+    pushTemp(OBJ_VAL(keyStr));
+    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.globalRoots.count));
+
+    //restoreTempScope(gcscope);
+
     return OBJ_VAL(stats);
 }
 
