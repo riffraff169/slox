@@ -308,6 +308,10 @@ static void markRoots() {
         markValue(*slot);
     }
 
+    for (int i = 0; i < vm.tempCount; i++) {
+        markValue(vm.tempStack[i]);
+    }
+
     for (int i = 0; i < vm.frameCount; i++) {
         markObject((Obj*)vm.frames[i].closure);
     }
@@ -335,6 +339,7 @@ static void markRoots() {
     for (int i = 0; i < MAX_SIGNALS; i++) {
         markValue(signal_callbacks[i]);
     }
+
 }
 
 static void traceReferences() {

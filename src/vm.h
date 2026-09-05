@@ -8,7 +8,7 @@
 #define FRAMES_MAX 256
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 #define MAX_INCLUDE_PATHS 64
-
+#define TEMP_STACK_MAX 256
 
 typedef struct {
     ObjClosure* closure;
@@ -38,6 +38,9 @@ typedef struct {
     int frameCount;
 
     uint32_t instructionCount;
+
+    Value tempStack[TEMP_STACK_MAX];
+    int tempCount;
 
     Value stack[STACK_MAX];
     Value* stackTop;
@@ -196,5 +199,17 @@ Value classSuperclassNative(int argCount, Value* args);
 Value createResult(Value value, Value errval, bool isok);
 int vmAddRoot(Value value);
 void vmRemoveRoot(int handle);
+void pushTemp(Value value);
+Value popTemp();
+int saveTempScope();
+void restoreTempScope(int scopeMarker);
+
+static inline void _autoRestoreGcScope(const int* scopeMarker) {
+    restoreTempScope(*scopeMarker);
+}
+
+// automatically restores vm.tempCount to its previous state upon block/function exit
+#define GC_SCOPE \
+    int _gc_scope_var __attribute__((cleanup(_autoRestoreGcScope))) __attribute__((unused)) = saveTempScope()
 
 #endif

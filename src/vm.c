@@ -88,6 +88,30 @@ typedef enum {
     PROP_SETTER
 } PropertyResult;
 
+void pushTemp(Value value) {
+    if (vm.tempCount >= TEMP_STACK_MAX) {
+        runtimeError("Auxiliary GC stack overflow.");
+        return;
+    }
+    vm.tempStack[vm.tempCount++] = value;
+}
+
+Value popTemp() {
+    if (vm.tempCount <= 0) {
+        runtimeError("Auxiliary GC stack underflow.");
+        return NIL_VAL;
+    }
+    return vm.tempStack[--vm.tempCount];
+}
+
+int saveTempScope() {
+    return vm.tempCount;
+}
+
+void restoreTempScope(int scopeMarker) {
+    vm.tempCount = scopeMarker;
+}
+
 void setLastError(int errorNum, const char* format, ...) {
     char buffer[1024];
     va_list args;
