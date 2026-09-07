@@ -11,6 +11,8 @@ fun processCalculation(x, y) {
     try {
         var result = divide(x, y);
         print "Result: " + result;
+    } catch (Error e) {
+        print "Caught error: " + e.message;
     } catch (err) {
         print "Caught error: " + err;
     } finally {

@@ -26,10 +26,15 @@ try {
 try {
   try {
     throw "Inner Error";
+  } catch (Error e) {
+    print "Caught inner: " + e.message; // expect: Caught inner: Inner Error
+    throw e;
   } catch (e) {
-    print "Caught inner: " + e; // expect: Caught inner: Inner Error
+    print "Caught inner: " + e;
     throw e;
   }
+} catch (Error e) {
+  print "Caught outer: " + e.message; // expect: Caught outer: Inner Error
 } catch (e) {
-  print "Caught outer: " + e; // expect: Caught outer: Inner Error
+  print "Caught outer: " + e;
 }

@@ -71,6 +71,8 @@
             return INTERPRET_RUNTIME_ERROR; \
         } \
         frame = &vm.frames[vm.frameCount - 1]; \
+        ip = frame->ip; \
+        DISPATCH(); \
     } while (false)
 
 VM vm;
@@ -2571,44 +2573,93 @@ void processPendingTimers(void) {
 }
 */
 
+#if defined(__GNUC__) || defined(__clang__)
+#define USE_COMPUTED_GOTO 1
+#endif
+
+#ifdef USE_COMPUTED_GOTO
+// label targets and directjump to the next instruction
+#define TARGET(op) L_##op
+#define DISPATCH() \
+    do { \
+        if ((++vm.instructionCount & 0x3ff) == 0) { \
+            processTimers(); \
+            process_pending_signals(); \
+        } \
+        if (vm.debugTraceExecution) goto trace_execution; \
+        goto *dispatchTable[*ip++]; \
+    } while (0)
+
+#else
+#define TARGET(op) case op
+#define DISPATCH() break
+#endif
+
 InterpretResult run() {
     int initialFrameCount = vm.frameCount;
 
-    //CallFrame* frame = &vm.frames[vm.frameCount - 1];
+    CallFrame* frame = &vm.frames[vm.frameCount - 1];
+    register uint8_t* ip = frame->ip;
+
+    ObjString* name;
+    Value value;
+    uint8_t slot;
+    uint16_t offset;
+    ObjClass* klass;
     //printf("STACK DEPTH: %ld | FRAME: %d | OP: %d\n",
      //       (long)(vm.stackTop - vm.stack), vm.frameCount, *frame->ip);
 
-#define READ_BYTE() (*frame->ip++)
+#define READ_BYTE() (*ip++)
 #define READ_SHORT() \
-    (frame->ip += 2, \
-     (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+    (ip += 2, \
+     (uint16_t)((ip[-2] << 8) | ip[-1]))
 #define READ_24BIT() \
-    (frame->ip +=3, (uint32_t)((frame->ip[-3] <<16) | (frame->ip[-2] << 8) | frame->ip[-1]))
+    (ip +=3, (uint32_t)((ip[-3] <<16) | (ip[-2] << 8) | ip[-1]))
 
 #define READ_CONSTANT() \
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
 #define READ_CONSTANT_LONG() \
-    (frame->ip += 3, \
-     frame->closure->function->chunk.constants.values[read24(frame->ip - 3)])
+    (ip += 3, \
+     frame->closure->function->chunk.constants.values[read24(ip - 3)])
 
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 #define READ_STRING_LONG() \
     AS_STRING(READ_CONSTANT_LONG())
+
+#define STORE_FRAME() (frame->ip = ip)
+#define LOAD_FRAME() do { \
+    frame = &vm.frames[vm.frameCount - 1]; \
+    ip = frame->ip; \
+} while (0)
+
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
-            if (runtimeError("Operands must be numbers.")) { \
-                return INTERPRET_RUNTIME_ERROR; \
-            } \
-            break; \
+            runtimeError("Operands must be numbers."); \
+            return INTERPRET_RUNTIME_ERROR; \
         } \
         double b = AS_NUMBER(pop()); \
         double a = AS_NUMBER(pop()); \
         push(valueType(a op b)); \
     } while (false)
 
+#ifdef USE_COMPUTED_GOTO
+#define LABEL_ELEMENT(op) &&L_##op,
+    static void* dispatchTable[] = {
+        OPCODE_LIST(LABEL_ELEMENT)
+    };
+#undef LABEL_ELEMENT
+
+
+#endif
+
+//#define SYNC_FRAME(frame) frame = &vm.frames[vm.frameCount - 1]
+
+#ifdef USE_COMPUTED_GOTO
+    DISPATCH();
+#else
+
     for (;;) {
-        //processPendingTimers();
         if ((++vm.instructionCount & 0x3ff) == 0) {
             processTimers();
             process_pending_signals();
@@ -2622,7 +2673,8 @@ InterpretResult run() {
             vm.exceptionThrown = false;
         }
 
-        CallFrame* frame = &vm.frames[vm.frameCount - 1];
+        frame = &vm.frames[vm.frameCount - 1];
+        ip = frame->ip;
 
         if (vm.debugTraceExecution) {
             printf("        ");
@@ -2633,960 +2685,1038 @@ InterpretResult run() {
             }
             printf("\n");
             disassembleInstruction(&frame->closure->function->chunk,
-                    (int)(frame->ip - frame->closure->function->chunk.code));
+                    (int)(ip - frame->closure->function->chunk.code));
         }
 
-        uint8_t instruction;
-        switch (instruction = READ_BYTE()) {
-            case OP_CONSTANT:
-                {
-                    Value constant = READ_CONSTANT();
-                    push(constant);
-                }
-                break;
-            case OP_CONSTANT_LONG:
-                {
-                    Value constant = READ_CONSTANT_LONG();
-                    push(constant);
-                }
-                break;
-            case OP_STR:
-                {
-                    Value value = peek(0);
-                    if (IS_STRING(value)) break;
+        uint8_t instruction = READ_BYTE();
+        switch (instruction) {
+#endif
+            TARGET(OP_CONSTANT): {
+                value = READ_CONSTANT();
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_CONSTANT_LONG): {
+                value = READ_CONSTANT_LONG();
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_STR): {
+                value = peek(0);
+                if (IS_STRING(value)) DISPATCH();
 
-                    char buffer[32];
-                    int length = 0;
+                char buffer[32];
+                int length = 0;
 
-                    if (IS_NUMBER(value)) {
-                        length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
-                    } else if (IS_BOOL(value)) {
-                        length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
-                    } else if (IS_NIL(value)) {
-                        length = snprintf(buffer, sizeof(buffer), "nil");
-                    } else {
-                        RUNTIME_ERROR("Cannot convert value to string.");
-                        break;
-                    }
-
-                    pop();
-                    push(OBJ_VAL(copyString(buffer, length)));
+                if (IS_NUMBER(value)) {
+                    length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
+                } else if (IS_BOOL(value)) {
+                    length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
+                } else if (IS_NIL(value)) {
+                    length = snprintf(buffer, sizeof(buffer), "nil");
+                } else {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Cannot convert value to string.");
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_NIL:
-                push(NIL_VAL);
-                break;
-            case OP_TRUE:
-                push(BOOL_VAL(true));
-                break;
-            case OP_FALSE:
-                push(BOOL_VAL(false));
-                break;
-            case OP_POP:
+
+                STORE_FRAME();
                 pop();
-                break;
-            case OP_POPN:
-                {
-                    int n = READ_BYTE();
-                    popn(n);
+                push(OBJ_VAL(copyString(buffer, length)));
+                DISPATCH();
+            }
+            TARGET(OP_NIL): {
+                push(NIL_VAL);
+                DISPATCH();
+            }
+            TARGET(OP_TRUE): {
+                push(BOOL_VAL(true));
+                DISPATCH();
+            }
+            TARGET(OP_FALSE): {
+                push(BOOL_VAL(false));
+                DISPATCH();
+            }
+            TARGET(OP_POP): {
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_POPN): {
+                int n = READ_BYTE();
+                popn(n);
+                DISPATCH();
+            }
+            TARGET(OP_GET_LOCAL): {
+                slot = READ_BYTE();
+                value = frame->slots[slot];
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_GET_LOCAL_LONG): {
+                int slot = READ_24BIT();
+                value = frame->slots[slot];
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_SET_LOCAL): {
+                slot = READ_BYTE();
+                frame->slots[slot] = peek(0);
+                DISPATCH();
+            }
+            TARGET(OP_SET_LOCAL_LONG): {
+                int slot = READ_24BIT();
+                frame->slots[slot] = peek(0);
+                DISPATCH();
+            }
+            TARGET(OP_GET_GLOBAL): {
+                name = READ_STRING();
+                if (!tableGet(&vm.globals, name, &value)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_GET_LOCAL:
-                {
-                    uint8_t slot = READ_BYTE();
-                    Value val = frame->slots[slot];
-                    push(val);
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_GET_GLOBAL_LONG): {
+                name = READ_STRING_LONG();
+                if (!tableGet(&vm.globals, name, &value)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_GET_LOCAL_LONG:
-                {
-                    int slot = READ_24BIT();
-                    Value val = frame->slots[slot];
-                    push(val);
-                }
-                break;
-            case OP_SET_LOCAL:
-                {
-                    uint8_t slot = READ_BYTE();
-                    frame->slots[slot] = peek(0);
-                }
-                break;
-            case OP_SET_LOCAL_LONG:
-                {
-                    int slot = READ_24BIT();
-                    frame->slots[slot] = peek(0);
-                }
-                break;
-            case OP_GET_GLOBAL:
-                {
-                    ObjString* name = READ_STRING();
-                    Value value;
-                    if (!tableGet(&vm.globals, name, &value)) {
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
-                        break;
-                    }
-                    push(value);
-                }
-                break;
-            case OP_GET_GLOBAL_LONG:
-                {
-                    ObjString* name = READ_STRING_LONG();
-                    Value value;
-                    if (!tableGet(&vm.globals, name, &value)) {
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
-                        break;
-                    }
-                    push(value);
-                }
-                break;
-            case OP_DEFINE_CLASS_CONST:
-            case OP_DEFINE_CLASS_CONST_LONG:
-                {
-                    ObjString* name = (instruction == OP_DEFINE_CLASS_CONST)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
+                push(value);
+                DISPATCH();
+            }
+            TARGET(OP_DEFINE_CLASS_CONST): {
+                name = READ_STRING();
+                goto define_class_shared;
+            }
+            TARGET(OP_DEFINE_CLASS_CONST_LONG): {
+                name = READ_STRING_LONG();
+                goto define_class_shared;
+            }
+            define_class_shared: {
+                Value constantValue = peek(0);
+                Value classVal = peek(1);
 
-                    Value constantValue = peek(0);
-                    Value classVal = peek(1);
+                if (!IS_CLASS(classVal)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Can only define constants inside a class scope.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                    if (!IS_CLASS(classVal)) {
-                        RUNTIME_ERROR("Can only define constants inside a class scope.");
-                        break;
-                    }
+                klass = AS_CLASS(classVal);
+                STORE_FRAME();
+                tableSet(&klass->constants, name, constantValue);
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_DEFINE_GLOBAL): {
+                name = READ_STRING();
+                STORE_FRAME();
+                tableSet(&vm.globals, name, peek(0));
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_DEFINE_GLOBAL_CONST): {
+                name = READ_STRING();
+                STORE_FRAME();
+                tableSet(&vm.globals, name, peek(0));
+                tableSet(&vm.globalConstants, name, BOOL_VAL(true));
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_DEFINE_GLOBAL_LONG): {
+                name = READ_STRING_LONG();
+                STORE_FRAME();
+                tableSet(&vm.globals, name, peek(0));
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_DEFINE_GLOBAL_CONST_LONG): {
+                name = READ_STRING_LONG();
+                STORE_FRAME();
+                tableSet(&vm.globals, name, peek(0));
+                tableSet(&vm.globalConstants, name, BOOL_VAL(true));
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_SET_GLOBAL): {
+                name = READ_STRING();
 
-                    ObjClass* klass = AS_CLASS(classVal);
-                    tableSet(&klass->constants, name, constantValue);
+                if (tableGet(&vm.globalConstants, name, &value)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Canot reassign global constant '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                STORE_FRAME();
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                DISPATCH();
+            }
+            TARGET(OP_SET_GLOBAL_LONG): {
+                name = READ_STRING_LONG();
+
+                if (tableGet(&vm.globalConstants, name, &value)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                STORE_FRAME();
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                DISPATCH();
+            }
+            TARGET(OP_GET_PROPERTY): {
+                name = READ_STRING();
+                goto get_property_shared;
+            }
+            TARGET(OP_GET_PROPERTY_LONG): {
+                name = READ_STRING_LONG();
+                goto get_property_shared;
+            }
+            get_property_shared: {
+                Value receiver = peek(0);
+                Value resolvedValue;
+
+                STORE_FRAME();
+                PropertyResult res = getProperty(receiver, name, &resolvedValue);
+                LOAD_FRAME();
+
+                if (res == PROP_FOUND) {
                     pop();
+                    push(resolvedValue);
+                    DISPATCH();
+                } else if (res == PROP_ASYNC) {
+                    //frame = &vm.frames[vm.frameCount - 1];
+                    //pop();
+                    DISPATCH();
                 }
-                break;
-            case OP_DEFINE_GLOBAL:
-                {
-                    ObjString* name = READ_STRING();
-                    tableSet(&vm.globals, name, peek(0));
-                    pop();
-                }
-                break;
-            case OP_DEFINE_GLOBAL_CONST:
-                {
-                    ObjString* name = READ_STRING();
-                    tableSet(&vm.globals, name, peek(0));
-                    tableSet(&vm.globalConstants, name, BOOL_VAL(true));
-                    pop();
-                }
-                break;
-            case OP_DEFINE_GLOBAL_LONG:
-                {
-                    ObjString* name = READ_STRING_LONG();
-                    tableSet(&vm.globals, name, peek(0));
-                    pop();
-                }
-                break;
-            case OP_DEFINE_GLOBAL_CONST_LONG:
-                {
-                    ObjString* name = READ_STRING_LONG();
-                    tableSet(&vm.globals, name, peek(0));
-                    tableSet(&vm.globalConstants, name, BOOL_VAL(true));
-                    pop();
-                }
-                break;
-            case OP_SET_GLOBAL:
-                {
-                    ObjString* name = READ_STRING();
-                    Value dummy;
+                pop();
 
-                    if (tableGet(&vm.globalConstants, name, &dummy)) {
-                        RUNTIME_ERROR("Canot reassign global constant '%s'.", name->chars);
-                        break;
+                STORE_FRAME();
+                RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            TARGET(OP_SET_PROPERTY): {
+                name = READ_STRING();
+                goto set_property_shared;
+            }
+            TARGET(OP_SET_PROPERTY_LONG): {
+                name = READ_STRING_LONG();
+                goto set_property_shared;
+            }
+            set_property_shared: {
+                GC_SCOPE;
+                Value value = pop();
+                Value receiver = pop();
+
+                int tempFrame = vm.tempCount;
+                pushTemp(value);
+                pushTemp(receiver);
+
+                Value result;
+
+                STORE_FRAME();
+                PropertyResult res = setProperty(receiver, name, value, &result);
+                LOAD_FRAME();
+
+                vm.tempCount = tempFrame;
+
+                if (res == PROP_FOUND) {
+                    push(result);
+                    DISPATCH();
+                }
+
+                if (res == PROP_ASYNC) {
+                    DISPATCH();
+                }
+
+                if (res == PROP_IMMUTABLE) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Cannot reassign or shadow constant property '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (res == PROP_FROZEN) {
+                    STORE_FRAME();
+                    if (IS_CLASS(receiver)) {
+                        RUNTIME_ERROR("Cannot modify properties or methods on frozen class '%s'.",
+                                AS_CLASS(receiver)->name->chars);
+                    } else {
+                        ObjClass* instanceClass = getClassForValue(receiver);
+                        RUNTIME_ERROR("Cannot modify properties on frozen instance of class '%s'.",
+                                instanceClass != NULL ? instanceClass->name->chars : "Object");
                     }
-
-                    if (tableSet(&vm.globals, name, peek(0))) {
-                        tableDelete(&vm.globals, name);
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
-                        break;
-                    }
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_SET_GLOBAL_LONG:
-                {
-                    ObjString* name = READ_STRING_LONG();
-                    Value dummy;
-                    if (tableGet(&vm.globalConstants, name, &dummy)) {
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
-                        break;
-                    }
+                        
+                STORE_FRAME();
+                RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            TARGET(OP_GETTER): {
+                name = READ_STRING();
+                goto getter_shared;
+            }
+            TARGET(OP_GETTER_LONG): {
+                name = READ_STRING_LONG();
+                goto getter_shared;
+            }
+            getter_shared: {
+                Value closure = peek(0);
+                ObjClass* klass = AS_CLASS(peek(1));
 
-                    if (tableSet(&vm.globals, name, peek(0))) {
-                        tableDelete(&vm.globals, name);
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
-                        break;
-                    }
+                STORE_FRAME();
+                tableSet(&klass->getters, name, closure);
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_SETTER): {
+                name = READ_STRING();
+                goto setter_shared;
+            }
+            TARGET(OP_SETTER_LONG): {
+                name = READ_STRING_LONG();
+                goto setter_shared;
+            }
+            setter_shared: {
+                Value closure = peek(0);
+                ObjClass* klass = AS_CLASS(peek(1));
+
+                STORE_FRAME();
+                tableSet(&klass->setters, name, closure);
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_GET_SUPER): {
+                GC_SCOPE;
+
+                name = READ_STRING();
+                Value superclassVal = pop();
+                ObjClass* superclass = AS_CLASS(superclassVal);
+
+                pushTemp(superclassVal);
+                STORE_FRAME();
+
+                bool bound = bindMethod(superclass, name);
+
+                if (!bound) {
+                    RUNTIME_ERROR("Can't bind method.");
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_GET_PROPERTY:
-            case OP_GET_PROPERTY_LONG:
-                {
-                    ObjString* name = (instruction == OP_GET_PROPERTY)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    
-                    Value receiver = pop();
-                    Value resolvedValue;
-
-                    PropertyResult res = getProperty(receiver, name, &resolvedValue);
-
-                    if (res == PROP_FOUND) {
-                        push(resolvedValue);
-                        break;
-                    } else if (res == PROP_ASYNC) {
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    }
-
-                    RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
-                }
-                break;
-            case OP_SET_PROPERTY:
-            case OP_SET_PROPERTY_LONG:
-                {
-                    ObjString* name = (instruction == OP_SET_PROPERTY)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-
-                    Value value = pop();
-                    Value receiver = pop();
-                    Value result;
-
-                    PropertyResult res = setProperty(receiver, name, value, &result);
-
-                    if (res == PROP_FOUND) {
-                        push(result);
-                        break;
-                    }
-
-                    if (res == PROP_ASYNC) {
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    }
-
-                    if (res == PROP_IMMUTABLE) {
-                        RUNTIME_ERROR("Cannot reassign or shadow constant property '%s'.", name->chars);
-                        break;
-                    }
-
-                    if (res == PROP_FROZEN) {
-                        if (IS_CLASS(receiver)) {
-                            RUNTIME_ERROR("Cannot modify properties or methods on frozen class '%s'.",
-                                    AS_CLASS(receiver)->name->chars);
-                        } else {
-                            ObjClass* instanceClass = getClassForValue(receiver);
-                            RUNTIME_ERROR("Cannot modify properties on frozen instance of class '%s'.",
-                                    instanceClass != NULL ? instanceClass->name->chars : "Object");
-                        }
-                        break;
-                    }
-                            
-                    RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
-                    break;
-                }
-            case OP_GETTER:
-            case OP_GETTER_LONG:
-                {
-                    ObjString* name = (instruction == OP_GETTER)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    Value closure = peek(0);
-                    ObjClass* klass = AS_CLASS(peek(1));
-
-                    tableSet(&klass->getters, name, closure);
-                    pop();
-                }
-                break;
-            case OP_SETTER:
-            case OP_SETTER_LONG:
-                {
-                    ObjString* name = (instruction == OP_SETTER)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    Value closure = peek(0);
-                    ObjClass* klass = AS_CLASS(peek(1));
-
-                    tableSet(&klass->setters, name, closure);
-                    pop();
-                }
-                break;
-            case OP_GET_SUPER:
-                {
-                    ObjString* name = READ_STRING();
-                    ObjClass* superclass = AS_CLASS(pop());
-
-                    if (!bindMethod(superclass, name)) {
-                        RUNTIME_ERROR("Can't bind method.");
-                        break;
-                    }
-                }
-                break;
-            case OP_EQUAL:
-                {
-                    Value b = pop();
-                    Value a = pop();
-                    push(BOOL_VAL(valuesEqual(a, b)));
-                }
-                break;
-            case OP_GET_UPVALUE:
-                {
-                    uint16_t slot = (READ_BYTE() << 8);
-                    slot |= READ_BYTE();
-                    push(*frame->closure->upvalues[slot]->location);
-                }
-                break;
-            case OP_SET_UPVALUE:
-                {
-                    uint16_t slot = (READ_BYTE() << 8);
-                    slot |= READ_BYTE();
-                    *frame->closure->upvalues[slot]->location = peek(0);
-                }
-                break;
-            case OP_GREATER:
+                DISPATCH();
+            }
+            TARGET(OP_EQUAL): {
+                Value b = pop();
+                Value a = pop();
+                push(BOOL_VAL(valuesEqual(a, b)));
+                DISPATCH();
+            }
+            TARGET(OP_GET_UPVALUE): {
+                uint16_t slot = (READ_BYTE() << 8);
+                slot |= READ_BYTE();
+                push(*frame->closure->upvalues[slot]->location);
+                DISPATCH();
+            }
+            TARGET(OP_SET_UPVALUE): {
+                uint16_t slot = (READ_BYTE() << 8);
+                slot |= READ_BYTE();
+                *frame->closure->upvalues[slot]->location = peek(0);
+                DISPATCH();
+            }
+            TARGET(OP_GREATER): {
                 BINARY_OP(BOOL_VAL, >);
-                break;
-            case OP_LESS:
+                DISPATCH();
+            }
+            TARGET(OP_LESS): {
                 BINARY_OP(BOOL_VAL, <);
-                break;
-            case OP_ADD:
-                {
-                    // 1. fast path: number + number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
-                        push(NUMBER_VAL(a + b));
-                    } else if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
-                        // 2. fast path: string coercion & concatenation
-                        Value rawB = peek(0);
-                        Value rawA = peek(1);
-
-                        Value bVal = valueToString(rawB);
-                        push(bVal);
-
-                        Value aVal = valueToString(rawA);
-                        push(aVal);
-
-                        ObjString* aStr = AS_STRING(aVal);
-                        ObjString* bStr = AS_STRING(bVal);
-
-                        int length = aStr->length + bStr->length;
-                        char* chars = ALLOCATE(char, length + 1);
-                        memcpy(chars, aStr->chars, aStr->length);
-                        memcpy(chars + aStr->length, bStr->chars, bStr->length);
-                        chars[length] = '\0';
-
-                        ObjString* result = takeString(chars, length);
-                        popn(4);
-
-                        push(OBJ_VAL(result));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
-                        double d = AS_NUMBER(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x + d, a.y + d, a.z + d};
-                        push(VEC3_VAL(res));
-                    } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
-                        Vec3 b = AS_VEC3(pop());
-                        double d = AS_NUMBER(pop());
-                        Vec3 res = {b.x + d, b.y + d, b.z + d};
-                        push(VEC3_VAL(res));
-                    } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        Vec3 b = AS_VEC3(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x + b.x, a.y + b.y, a.z + b.z};
-                        push(VEC3_VAL(res));
-                    } else if (IS_ARRAY(peek(0)) && IS_ARRAY(peek(1))) {
-                        ObjArray* b = AS_ARRAY(peek(0));
-                        ObjArray* a = AS_ARRAY(peek(1));
-
-                        ObjArray *result = newArray();
-                        push(OBJ_VAL(result));
-
-                        for (int i = 0; i < a->count; i++) {
-                            arrayAppend(result, a->values[i]);
-                        }
-
-                        for (int i = 0; i < b->count; i++) {
-                            arrayAppend(result, b->values[i]);
-                        }
-                        vm.stackTop[-3] = vm.stackTop[-1];
-                        popn(2);
-                    } else {
-                        if (!invoke(vm.str_add, 1)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                    }
-                }
-                break;
-            case OP_SUBTRACT:
-                {
-                    // 1. fast path: number - number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
-                        push(NUMBER_VAL(a - b));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
-                        // 2. fast path: vec3 - number
-                        double d = AS_NUMBER(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x - d, a.y - d, a.z - d};
-                        push(VEC3_VAL(res));
-                    } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        // 3. fast path: vec3 - vec3
-                        Vec3 b = AS_VEC3(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x - b.x, a.y - b.y, a.z - b.z};
-                        push(VEC3_VAL(res));
-                    } else {
-                        // 5. fallback: method dispatch (__sub__)
-                        if (!invoke(vm.str_sub, 1)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                    }
-                }
-                break;
-            case OP_MULTIPLY:
-                {
-                    // 1. fast path: number + number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
-                        push(NUMBER_VAL(a * b));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
-                        double d = AS_NUMBER(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x * d, a.y * d, a.z * d};
-                        push(VEC3_VAL(res));
-                    } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
-                        Vec3 b = AS_VEC3(pop());
-                        double d = AS_NUMBER(pop());
-                        Vec3 res = {b.x * d, b.y * d, b.z * d};
-                        push(VEC3_VAL(res));
-                    } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
-                        Vec3 b = AS_VEC3(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x * b.x, a.y * b.y, a.z * b.z};
-                        push(VEC3_VAL(res));
-                    } else if (IS_STRING(peek(1)) && IS_NUMBER(peek(0))) {
-                        ObjString* str = AS_STRING(peek(1));
-                        int count = (int)AS_NUMBER(peek(0));
-                        Value result = multiplyString(str, count);
-                        pop();
-                        pop();
-                        push(result);
-                    } else {
-                        if (!invoke(vm.str_mul, 1)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                    }
-                }
-                break;
-            case OP_DIVIDE:
-                {
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
-                        push(NUMBER_VAL(a / b));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
-                        double d = AS_NUMBER(pop());
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {a.x / d, a.y / d, a.z / d};
-                        push(VEC3_VAL(res));
-                    } else {
-                        if (!invoke(vm.str_div, 1)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
-                    }
-                }
-                break;
-            case OP_NOT:
-                push(BOOL_VAL(isFalsey(pop())));
-                break;
-            case OP_POW:
-                {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers.");
-                        break;
-                    }
-                    Value b = pop();
-                    Value a = pop();
-                    push(NUMBER_VAL(pow(AS_NUMBER(a), AS_NUMBER(b))));
-                }
-                break;
-            case OP_XOR:
-                {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers.");
-                        break;
-                    }
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
-
-                    uint32_t result = a ^ b;
-                    push(NUMBER_VAL((double)result));
-                }
-                break;
-            case OP_MOD:
-                {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers.");
-                        break;
-                    }
+                DISPATCH();
+            }
+            TARGET(OP_ADD): {
+                GC_SCOPE;
+                // 1. fast path: number + number
+                if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                     double b = AS_NUMBER(pop());
                     double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(a + b));
+                } else if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
+                    // 2. fast path: string coercion & concatenation
+                    Value rawB = peek(0);
+                    Value rawA = peek(1);
 
-                    if (b == 0) {
-                        RUNTIME_ERROR("Division by zero.");
-                        break;
+                    STORE_FRAME();
+
+                    Value aVal = valueToString(rawA);
+                    pushTemp(aVal);
+
+                    Value bVal = valueToString(rawB);
+                    pushTemp(bVal);
+
+                    ObjString* aStr = AS_STRING(aVal);
+                    ObjString* bStr = AS_STRING(bVal);
+
+                    int length = aStr->length + bStr->length;
+                    char* chars = ALLOCATE(char, length + 1);
+                    memcpy(chars, aStr->chars, aStr->length);
+                    memcpy(chars + aStr->length, bStr->chars, bStr->length);
+                    chars[length] = '\0';
+
+                    ObjString* result = takeString(chars, length);
+                    popn(2);
+
+                    push(OBJ_VAL(result));
+                } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
+                    double d = AS_NUMBER(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x + d, a.y + d, a.z + d};
+                    push(VEC3_VAL(res));
+                } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
+                    Vec3 b = AS_VEC3(pop());
+                    double d = AS_NUMBER(pop());
+                    Vec3 res = {b.x + d, b.y + d, b.z + d};
+                    push(VEC3_VAL(res));
+                } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
+                    Vec3 b = AS_VEC3(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x + b.x, a.y + b.y, a.z + b.z};
+                    push(VEC3_VAL(res));
+                } else if (IS_ARRAY(peek(0)) && IS_ARRAY(peek(1))) {
+                    ObjArray* b = AS_ARRAY(peek(0));
+                    ObjArray* a = AS_ARRAY(peek(1));
+
+                    STORE_FRAME();
+
+                    ObjArray *result = newArray();
+                    pushTemp(OBJ_VAL(result));
+
+                    for (int i = 0; i < a->count; i++) {
+                        arrayAppend(result, a->values[i]);
                     }
 
-                    push(NUMBER_VAL(fmod(a, b)));
-                }
-                break;
-            case OP_BITWISE_NOT:
-                {
-                    uint32_t a = valueToUint32(pop());
-                    push(NUMBER_VAL((double)~a));
-                }
-                break;
-            case OP_SHL:
-                {
-                    uint32_t amount = valueToUint32(pop());
-                    uint32_t value = valueToUint32(pop());
-
-                    // masking the amount by 31 is a common cpu behavior to prevent
-                    // undefined behavior with shifts >= bit width.
-                    push(NUMBER_VAL((double)(value << (amount & 31))));
-                }
-                break;
-            case OP_SHR:
-                {
-                    uint32_t amount = valueToUint32(pop());
-                    uint32_t value = valueToUint32(pop());
-
-                    // using uint32_t ensures a LOGICAL shift (fills with 0)
-                    // rather than an ARITHMETIC shift (fills with sign bit)
-                    push(NUMBER_VAL((double)(value >> (amount & 31))));
-                }
-                break;
-            case OP_NEGATE:
-                {
-                    if (IS_NUMBER(peek(0))) {
-                        push(NUMBER_VAL(-AS_NUMBER(pop())));
-                    } else if (IS_VEC3(peek(0))) {
-                        Vec3 a = AS_VEC3(pop());
-                        Vec3 res = {-a.x, -a.y, -a.z};
-                        push(VEC3_VAL(res));
-                    } else {
-                        if (!invoke(vm.str_neg, 0)) {
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
+                    for (int i = 0; i < b->count; i++) {
+                        arrayAppend(result, b->values[i]);
                     }
-                }
-                break;
-            case OP_BITWISE_AND:
-                {
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
-
-                    uint32_t result = a & b;
-                    push(NUMBER_VAL((double)result));
-                }
-                break;
-            case OP_BITWISE_OR:
-                {
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
-
-                    uint32_t result = a | b;
-                    push(NUMBER_VAL((double)result));
-                }
-                break;
-            case OP_PRINT:
-                {
-                    int argCount = READ_BYTE();
-
-                    for (int i = argCount - 1; i >= 0; i--) {
-                        Value value = peek(i);
-                        if (IS_INSTANCE(value)) {
-                            ObjInstance* instance = AS_INSTANCE(value);
-                            Value method;
-
-                            Value* stackStart = vm.stackTop;
-                            if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
-                                // 1. setup
-                                int oldExitDepth = vm.nativeExitDepth;
-                                Value* callbackStackStart = vm.stackTop;
-                                int framesBefore = vm.frameCount;
-
-                                push(value);
-                                if (callValue(method, 0)) {
-                                    if (vm.frameCount > framesBefore) {
-                                        vm.nativeExitDepth = framesBefore;
-                                        InterpretResult result = run();
-
-                                        if (result == INTERPRET_RUNTIME_ERROR) {
-                                            vm.stackTop = callbackStackStart;
-                                            vm.nativeExitDepth = oldExitDepth;
-                                            return INTERPRET_RUNTIME_ERROR;
-                                        }
-                                    }
-
-                                    //vm.nativeExitDepth = vm.frameCount - 1;
-                                    //run();
-                                    Value result = pop();
-
-                                    if (!IS_NIL(result)) {
-                                        printValueMain(result);
-                                    }
-                                }
-                                vm.nativeExitDepth = oldExitDepth;
-                            } else {
-                                printValueMain(value);
-                            }
-                            //vm.stackTop = stackStart;
-                            //pop();
-                        } else {
-                            printValueMain(value);
-                            //if (i > 0) printf(" ");
-                        }
-                    }
-                    popn(argCount);
-                    printf("\n");
-                }
-                break;
-            case OP_TRY:
-                {
-                    if (vm.tryCount >= TRY_STACK_MAX) {
-                        runtimeError("Try stack overflow.");
+                    popn(2);
+                    push(OBJ_VAL(result));
+                } else {
+                    STORE_FRAME();
+                    if (!invoke(vm.str_add, 1)) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
-
-                    uint16_t catchOffset = READ_SHORT();
-                    uint16_t finallyOffset = READ_SHORT();
-
-                    /*
-                    if (vm.tryCount >= TRY_STACK_MAX) {
-                        fprintf(stderr, "\n=================== TRY STACK OVERFLOW ===================\n");
-                        fprintf(stderr, "Current tryCount: %d (MAX: %d)\n", vm.tryCount, TRY_STACK_MAX);
-                        fprintf(stderr, "Lox Call Stack (most recent call first):\n");
-
-                        for (int i = vm.frameCount - 1; i >= 0; i--) {
-                            CallFrame* f = &vm.frames[i];
-                            ObjFunction* fn = f->closure->function;
-                            size_t instruction = f->ip - fn->chunk.code - 1;
-                            int line = getLine(&fn->chunk, instruction);
-
-                            const char* file = fn->filename ? fn->filename->chars : "unknown";
-                            fprintf(stderr, "[%2d] %s() in %s:%d\n",
-                                    i,
-                                    file,
-                                    "unknown",
-                                    line);
-                        }
-                        fprintf(stderr, "=========================================================\n");
-                        RUNTIME_ERROR("Stack overflow: too many nested try blocks.");
-                        break;
-                    }
-                    */
-
-                    TryBlock* block = &vm.tryStack[vm.tryCount++];
-                    block->frameCount = vm.frameCount;
-                    block->stackTop = vm.stackTop;
-                    block->catchIp = catchOffset == 0 ? NULL : frame->ip + catchOffset;
-                    block->finallyIp = finallyOffset == 0 ? NULL : frame->ip + finallyOffset;
-
-                    block->isReturning = false;
-                    block->hasUncaughtException = false;
-                    vm.exceptionThrown = false;
+                    LOAD_FRAME();
                 }
-                break;
-            case OP_END_TRY:
-                {
-                    TryBlock* block = &vm.tryStack[vm.tryCount - 1];
-                    if (block->finallyIp == NULL) {
-                        vm.tryCount--;
+                DISPATCH();
+            }
+            TARGET(OP_SUBTRACT): {
+                // 1. fast path: number - number
+                if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(a - b));
+                } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
+                    // 2. fast path: vec3 - number
+                    double d = AS_NUMBER(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x - d, a.y - d, a.z - d};
+                    push(VEC3_VAL(res));
+                } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
+                    // 3. fast path: vec3 - vec3
+                    Vec3 b = AS_VEC3(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x - b.x, a.y - b.y, a.z - b.z};
+                    push(VEC3_VAL(res));
+                } else {
+                    // 5. fallback: method dispatch (__sub__)
+                    STORE_FRAME();
+                    if (!invoke(vm.str_sub, 1)) {
+                        return INTERPRET_RUNTIME_ERROR;
                     }
-                    uint16_t catchOffset = READ_SHORT();
-
-                    frame->ip += catchOffset;
+                    LOAD_FRAME();
                 }
-                break;
-            case OP_END_FINALLY:
-                {
-                    TryBlock* block = &vm.tryStack[--vm.tryCount];
+                DISPATCH();
+            }
+            TARGET(OP_MULTIPLY): {
+                // 1. fast path: number + number
+                if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(a * b));
+                } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
+                    double d = AS_NUMBER(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x * d, a.y * d, a.z * d};
+                    push(VEC3_VAL(res));
+                } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
+                    Vec3 b = AS_VEC3(pop());
+                    double d = AS_NUMBER(pop());
+                    Vec3 res = {b.x * d, b.y * d, b.z * d};
+                    push(VEC3_VAL(res));
+                } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
+                    Vec3 b = AS_VEC3(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x * b.x, a.y * b.y, a.z * b.z};
+                    push(VEC3_VAL(res));
+                } else if (IS_STRING(peek(1)) && IS_NUMBER(peek(0))) {
+                    ObjString* str = AS_STRING(peek(1));
+                    int count = (int)AS_NUMBER(peek(0));
 
-                    if (block->isReturning) {
-                        // check if an enclosing try-finally block needs to run before returning
-                        if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
-                            TryBlock* outerBlock = &vm.tryStack[vm.tryCount - 1];
-                            if (outerBlock->finallyIp != NULL) {
-                                // pass the return state to the outer finally handler
-                                outerBlock->isReturning = true;
-                                outerBlock->returnValue = block->returnValue;
+                    STORE_FRAME();
+                    Value result = multiplyString(str, count);
+                    popn(2);
+                    push(result);
+                } else {
+                    STORE_FRAME();
+                    if (!invoke(vm.str_mul, 1)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    LOAD_FRAME();
+                }
+                DISPATCH();
+            }
+            TARGET(OP_DIVIDE): {
+                if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(a / b));
+                } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
+                    double d = AS_NUMBER(pop());
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {a.x / d, a.y / d, a.z / d};
+                    push(VEC3_VAL(res));
+                } else {
+                    STORE_FRAME();
+                    if (!invoke(vm.str_div, 1)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    LOAD_FRAME();
+                }
+                DISPATCH();
+            }
+            TARGET(OP_NOT): {
+                push(BOOL_VAL(isFalsey(pop())));
+                DISPATCH();
+            }
+            TARGET(OP_POW): {
+                if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Operands must be numbers.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                Value b = pop();
+                Value a = pop();
+                push(NUMBER_VAL(pow(AS_NUMBER(a), AS_NUMBER(b))));
+                DISPATCH();
+            }
+            TARGET(OP_XOR): {
+                if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Operands must be numbers.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                uint32_t b = valueToUint32(pop());
+                uint32_t a = valueToUint32(pop());
 
-                                uint8_t* finallyTargetIp = outerBlock->finallyIp;
-                                outerBlock->finallyIp = NULL; // mark as executing
+                uint32_t result = a ^ b;
+                push(NUMBER_VAL((double)result));
+                DISPATCH();
+            }
+            TARGET(OP_MOD): {
+                if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Operands must be numbers.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                double b = AS_NUMBER(pop());
+                double a = AS_NUMBER(pop());
 
-                                vm.stackTop = outerBlock->stackTop;
-                                frame->ip = finallyTargetIp;
-                                break;
+                if (b == 0) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Division by zero.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                push(NUMBER_VAL(fmod(a, b)));
+                DISPATCH();
+            }
+            TARGET(OP_BITWISE_NOT): {
+                uint32_t a = valueToUint32(pop());
+                push(NUMBER_VAL((double)~a));
+                DISPATCH();
+            }
+            TARGET(OP_SHL): {
+                uint32_t amount = valueToUint32(pop());
+                uint32_t value = valueToUint32(pop());
+
+                // masking the amount by 31 is a common cpu behavior to prevent
+                // undefined behavior with shifts >= bit width.
+                push(NUMBER_VAL((double)(value << (amount & 31))));
+                DISPATCH();
+            }
+            TARGET(OP_SHR): {
+                uint32_t amount = valueToUint32(pop());
+                uint32_t value = valueToUint32(pop());
+
+                // using uint32_t ensures a LOGICAL shift (fills with 0)
+                // rather than an ARITHMETIC shift (fills with sign bit)
+                push(NUMBER_VAL((double)(value >> (amount & 31))));
+                DISPATCH();
+            }
+            TARGET(OP_NEGATE): {
+                if (IS_NUMBER(peek(0))) {
+                    push(NUMBER_VAL(-AS_NUMBER(pop())));
+                } else if (IS_VEC3(peek(0))) {
+                    Vec3 a = AS_VEC3(pop());
+                    Vec3 res = {-a.x, -a.y, -a.z};
+                    push(VEC3_VAL(res));
+                } else {
+                    STORE_FRAME();
+                    if (!invoke(vm.str_neg, 0)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    LOAD_FRAME();
+                }
+                DISPATCH();
+            }
+            TARGET(OP_BITWISE_AND): {
+                uint32_t b = valueToUint32(pop());
+                uint32_t a = valueToUint32(pop());
+
+                uint32_t result = a & b;
+                push(NUMBER_VAL((double)result));
+                DISPATCH();
+            }
+            TARGET(OP_BITWISE_OR): {
+                uint32_t b = valueToUint32(pop());
+                uint32_t a = valueToUint32(pop());
+
+                uint32_t result = a | b;
+                push(NUMBER_VAL((double)result));
+                DISPATCH();
+            }
+            TARGET(OP_PRINT): {
+                int argCount = READ_BYTE();
+
+                for (int i = argCount - 1; i >= 0; i--) {
+                    Value value = peek(i);
+
+                    if (IS_INSTANCE(value)) {
+                        ObjInstance* instance = AS_INSTANCE(value);
+                        Value method;
+
+                        //Value* stackStart = vm.stackTop;
+                        if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
+                            // 1. setup
+                            int oldExitDepth = vm.nativeExitDepth;
+                            Value* callbackStackStart = vm.stackTop;
+                            int callbackStackOffset = (int)(vm.stackTop - vm.stack);
+                            int framesBefore = vm.frameCount;
+
+                            STORE_FRAME();
+                            push(value);
+
+                            if (callValue(method, 0)) {
+                                if (vm.frameCount > framesBefore) {
+                                    vm.nativeExitDepth = framesBefore;
+                                    InterpretResult result = run();
+
+                                    LOAD_FRAME();
+
+                                    if (result == INTERPRET_RUNTIME_ERROR) {
+                                        //vm.stackTop = callbackStackStart;
+                                        vm.stackTop = vm.stack + callbackStackOffset;
+                                        vm.nativeExitDepth = oldExitDepth;
+                                        return INTERPRET_RUNTIME_ERROR;
+                                    }
+                                }
+
+                                //vm.nativeExitDepth = vm.frameCount - 1;
+                                //run();
+                                Value result = pop();
+
+                                if (!IS_NIL(result)) {
+                                    printValueMain(result);
+                                }
                             }
-                        }
-                        push(block->returnValue);
-
-                        Value result = pop();
-                        vm.frameCount--;
-                        if (vm.frameCount == 0) {
-                            pop();
-                            return INTERPRET_OK;
-                        }
-                        vm.stackTop = frame->slots;
-                        push(result);
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    }
-
-                    if (block->hasUncaughtException) {
-                        raiseException(block->uncaughtException);
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    }
-                }
-                break;
-            case OP_THROW:
-                {
-                    Value exception = pop();
-
-                    // 1. if exception is a string, wrap it in an error instance
-                    if (IS_STRING(exception)) {
-                        ObjString* strMsg = AS_STRING(exception);
-                        push(OBJ_VAL(strMsg));
-
-                        Value errorClassVal;
-                        ObjString* errorName = copyString("Error", 5);
-                        push(OBJ_VAL(errorName));
-
-                        if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
-                            ObjClass* errorClass = AS_CLASS(errorClassVal);
-                            ObjInstance* errorInstance = newInstance(errorClass);
-                            push(OBJ_VAL(errorInstance));
-
-                            ObjString* messageKey = copyString("message", 7);
-                            push(OBJ_VAL(messageKey));
-
-                            Value stringMsg = peek(2);
-                            tableSet(&errorInstance->fields, messageKey, stringMsg);
-
-                            pop(); // messageKey
-                            pop(); // errorInstance
-                            pop(); // errorName
-                            pop(); // strMsg
-
-                            push(OBJ_VAL(errorInstance));
+                            vm.nativeExitDepth = oldExitDepth;
                         } else {
-                            pop();
-                            pop();
-                            push(exception);
+                            printValueMain(value);
                         }
+                        //vm.stackTop = stackStart;
+                        //pop();
                     } else {
-                        push(exception);
+                        printValueMain(value);
+                        //if (i > 0) printf(" ");
                     }
+                }
+                popn(argCount);
+                printf("\n");
 
-                    // 2. attach e.stack_trace array if exception is an instance and lacks one
-                    if (IS_INSTANCE(exception)) {
-                        ObjInstance* instance = AS_INSTANCE(exception);
-                        ObjString* traceKey = copyString("stack_trace", 11);
-                        push(OBJ_VAL(traceKey));
+                //frame = &vm.frames[vm.frameCount - 1];
+                DISPATCH();
+            }
+            TARGET(OP_TRY): {
+                if (vm.tryCount >= TRY_STACK_MAX) {
+                    STORE_FRAME();
+                    runtimeError("Try stack overflow.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                        Value dummy;
-                        if (!tableGet(&instance->fields, traceKey, &dummy)) {
-                            ObjArray* stackTrace = newArray();
-                            push(OBJ_VAL(stackTrace));
+                uint16_t catchOffset = READ_SHORT();
+                uint16_t finallyOffset = READ_SHORT();
+                frame->ip = ip;
 
-                            for (int i = vm.frameCount - 1; i >= 0; i--) {
-                                CallFrame* frame = &vm.frames[i];
-                                ObjFunction* function = frame->closure->function;
-                                size_t instruction = frame->ip - function->chunk.code - 1;
-                                int line = getLine(&function->chunk, instruction);
+                /*
+                if (vm.tryCount >= TRY_STACK_MAX) {
+                    fprintf(stderr, "\n=================== TRY STACK OVERFLOW ===================\n");
+                    fprintf(stderr, "Current tryCount: %d (MAX: %d)\n", vm.tryCount, TRY_STACK_MAX);
+                    fprintf(stderr, "Lox Call Stack (most recent call first):\n");
 
-                                const char* file = function->filename ? function->filename->chars : "unknown";
-                                const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+                    for (int i = vm.frameCount - 1; i >= 0; i--) {
+                        CallFrame* f = &vm.frames[i];
+                        ObjFunction* fn = f->closure->function;
+                        size_t instruction = f->ip - fn->chunk.code - 1;
+                        int line = getLine(&fn->chunk, instruction);
 
-                                char lineBuffer[256];
-                                int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
-                                        file, line, fnName, (function->name == NULL) ? "" : "()");
+                        const char* file = fn->filename ? fn->filename->chars : "unknown";
+                        fprintf(stderr, "[%2d] %s() in %s:%d\n",
+                                i,
+                                file,
+                                "unknown",
+                                line);
+                    }
+                    fprintf(stderr, "=========================================================\n");
+                    RUNTIME_ERROR("Stack overflow: too many nested try blocks.");
+                    break;
+                }
+                */
 
-                                ObjString* lineStr = copyString(lineBuffer, len);
-                                push(OBJ_VAL(lineStr));
-                                arrayAppend(stackTrace, OBJ_VAL(lineStr));
-                                pop();
-                            }
+                TryBlock* block = &vm.tryStack[vm.tryCount++];
+                block->frameCount = vm.frameCount;
+                block->stackTop = vm.stackTop;
+                block->catchIp = catchOffset == 0 ? NULL : ip + catchOffset;
+                block->finallyIp = finallyOffset == 0 ? NULL : ip + finallyOffset;
 
-                            tableSet(&instance->fields, traceKey, OBJ_VAL(stackTrace));
-                            pop();
+                frame->ip = ip;
+
+                block->isReturning = false;
+                block->hasUncaughtException = false;
+                vm.exceptionThrown = false;
+
+                //LOAD_FRAME();
+                frame->ip = ip;
+                DISPATCH();
+            }
+            TARGET(OP_END_TRY): {
+                if (vm.tryCount == 0) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("OP_END_TRY executed without an active try block.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                TryBlock* block = &vm.tryStack[vm.tryCount - 1];
+                uint16_t catchOffset = READ_SHORT();
+
+                if (block->finallyIp == NULL) {
+                    vm.tryCount--;
+                } else {
+                    block->catchIp = NULL;
+                    block->finallyIp = NULL;
+                }
+
+                ip += catchOffset;
+                frame->ip = ip;
+
+                //SYNC_FRAME(frame);
+                DISPATCH();
+            }
+            TARGET(OP_END_FINALLY): {
+                if  (vm.tryCount == 0) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("OP_END_FINALLY executed without an active try block.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                TryBlock* block = &vm.tryStack[--vm.tryCount];
+
+                if (block->isReturning) {
+                    // check if an enclosing try-finally block needs to run before returning
+                    if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                        TryBlock* outerBlock = &vm.tryStack[vm.tryCount - 1];
+                        if (outerBlock->finallyIp != NULL) {
+                            // pass the return state to the outer finally handler
+                            outerBlock->isReturning = true;
+                            outerBlock->returnValue = block->returnValue;
+
+                            uint8_t* finallyTargetIp = outerBlock->finallyIp;
+                            outerBlock->finallyIp = NULL; // mark as executing
+
+                            vm.stackTop = outerBlock->stackTop;
+                            frame->ip = finallyTargetIp;
+                            ip = frame->ip;
+
+                            //SYNC_FRAME(frame);
+                            DISPATCH();
                         }
-                        pop();
                     }
+                    Value result = block->returnValue;
 
-                    pop();
+                    vm.frameCount--;
+                    if (vm.frameCount == 0) {
+                        pop();
+                        return INTERPRET_OK;
+                    }
+                    frame = &vm.frames[vm.frameCount - 1];
+                    vm.stackTop = frame->slots;
+                    push(result);
+                    ip = frame->ip;
 
-                    raiseException(exception);
+                    //SYNC_FRAME(frame);
+                    DISPATCH();
+                }
+
+                if (block->hasUncaughtException) {
+                    raiseException(block->uncaughtException);
 
                     if (vm.frameCount < initialFrameCount) {
                         return INTERPRET_OK;
                     }
 
-                    frame = &vm.frames[vm.frameCount - 1];
+                    LOAD_FRAME();
+                    DISPATCH();
                 }
-                break;
-            case OP_JUMP:
-                {
-                    uint16_t offset = READ_SHORT();
-                    frame->ip += offset;
+
+                //LOAD_FRAME();
+                frame->ip = ip;
+                DISPATCH();
+            }
+            TARGET(OP_THROW): {
+                frame->ip = ip;
+
+                Value exception = peek(0);
+
+                // 1. if exception is a string, wrap it in an error instance
+                if (IS_STRING(exception)) {
+                    ObjString* errorName = copyString("Error", 5);
+                    push(OBJ_VAL(errorName));
+
+                    Value errorClassVal;
+
+                    if (tableGet(&vm.globals, errorName, &errorClassVal) && IS_CLASS(errorClassVal)) {
+                        ObjClass* errorClass = AS_CLASS(errorClassVal);
+                        ObjInstance* errorInstance = newInstance(errorClass);
+
+                        //vm.stackTop[-1] = OBJ_VAL(errorInstance);
+
+                        push(OBJ_VAL(errorInstance));
+
+                        ObjString* messageKey = copyString("message", 7);
+                        push(OBJ_VAL(messageKey));
+
+                        //Value stringMsg = peek(2);
+                        tableSet(&errorInstance->fields, messageKey, exception);
+
+                        pop(); // messageKey
+                        pop(); // errorInstance
+                        pop(); // errorName
+                        //pop(); // strMsg
+
+                        exception = OBJ_VAL(errorInstance);
+                        push(exception);
+                    } else {
+                        pop();
+                    }
                 }
-                break;
-            case OP_JUMP_IF_NIL:
-                {
-                    uint16_t offset = READ_SHORT();
-                    if (IS_NIL(peek(0))) frame->ip += offset;
+
+                // 2. attach e.stack_trace array if exception is an instance and lacks one
+                if (IS_INSTANCE(exception)) {
+                    ObjInstance* instance = AS_INSTANCE(exception);
+                    ObjString* traceKey = copyString("stack_trace", 11);
+                    push(OBJ_VAL(traceKey));
+
+                    Value dummy;
+                    if (!tableGet(&instance->fields, traceKey, &dummy)) {
+                        ObjArray* stackTrace = newArray();
+                        push(OBJ_VAL(stackTrace));
+
+                        for (int i = vm.frameCount - 1; i >= 0; i--) {
+                            CallFrame* f = &vm.frames[i];
+                            ObjFunction* function = f->closure->function;
+                            size_t instruction = (size_t)(f->ip - function->chunk.code - 1);
+                            int line = getLine(&function->chunk, instruction);
+
+                            const char* file = function->filename ? function->filename->chars : "unknown";
+                            const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+
+                            char lineBuffer[256];
+                            int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+                                    file, line, fnName, (function->name == NULL) ? "" : "()");
+
+                            ObjString* lineStr = copyString(lineBuffer, len);
+                            push(OBJ_VAL(lineStr));
+                            arrayAppend(stackTrace, OBJ_VAL(lineStr));
+                            pop();
+                        }
+
+                        tableSet(&instance->fields, traceKey, OBJ_VAL(stackTrace));
+                        pop();
+                    }
+                    pop();
                 }
-                break;
-            case OP_JUMP_IF_FALSE:
-                {
-                    uint16_t offset = READ_SHORT();
-                    if (isFalsey(peek(0))) frame->ip += offset;
+
+                pop();
+
+                raiseException(exception);
+
+                if (vm.frameCount < initialFrameCount) {
+                    return INTERPRET_OK;
                 }
-                break;
-            case OP_JUMP_IF_TRUE:
-                {
-                    uint16_t offset = READ_SHORT();
-                    if (!isFalsey(peek(0))) frame->ip += offset;
+
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_JUMP): {
+                uint16_t offset = READ_SHORT();
+                ip += offset;
+                frame->ip = ip;
+                DISPATCH();
+            }
+            TARGET(OP_JUMP_IF_NIL): {
+                uint16_t offset = READ_SHORT();
+                if (IS_NIL(peek(0))) {
+                    ip += offset;
+                    frame->ip = ip;
                 }
-                break;
-            case OP_LOOP:
-                {
-                    uint16_t offset = READ_SHORT();
-                    frame->ip -= offset;
+                DISPATCH();
+            }
+            TARGET(OP_JUMP_IF_FALSE): {
+                uint16_t offset = READ_SHORT();
+                if (isFalsey(peek(0))) {
+                    ip += offset;
+                    frame->ip = ip;
                 }
-                break;
-            case OP_DUP:
+                DISPATCH();
+            }
+            TARGET(OP_JUMP_IF_TRUE): {
+                uint16_t offset = READ_SHORT();
+                if (!isFalsey(peek(0))) {
+                    ip += offset;
+                    frame->ip = ip;
+                }
+                DISPATCH();
+            }
+            TARGET(OP_LOOP): {
+                uint16_t offset = READ_SHORT();
+                ip -= offset;
+                frame->ip = ip;
+                DISPATCH();
+            }
+            TARGET(OP_DUP): {
                 push(peek(0));
-                break;
-            case OP_SWAP:
-                {
-                    Value a = pop();
-                    Value b = pop();
-                    push(a);
-                    push(b);
-                }
-                break;
-            case OP_INSTANCEOF:
-                {
-                    Value klassVal = pop();
-                    Value instanceVal = pop();
+                DISPATCH();
+            }
+            TARGET(OP_SWAP): {
+                Value a = pop();
+                Value b = pop();
+                push(a);
+                push(b);
+                DISPATCH();
+            }
+            TARGET(OP_INSTANCEOF): {
+                Value klassVal = peek(0);
 
-                    if (!IS_CLASS(klassVal)) {
-                        RUNTIME_ERROR("Right-hand side of type check must be a class.");
+                if (!IS_CLASS(klassVal)) {
+                    RUNTIME_ERROR("Right-hand side of type check must be a class.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                Value instanceVal = peek(1);
+                ObjClass* klass = AS_CLASS(klassVal);
+                bool result = false;
+
+                ObjClass* iclass = IS_INSTANCE(instanceVal)
+                    ? AS_INSTANCE(instanceVal)->obj.klass
+                    : getClassForValue(instanceVal);
+
+                while (iclass != NULL) {
+                    if (iclass == klass) {
+                        result = true;
                         break;
-                    }
-                    ObjClass* klass = AS_CLASS(klassVal);
-                    bool result = false;
-                    ObjClass* iclass = IS_INSTANCE(instanceVal)
-                        ? AS_INSTANCE(instanceVal)->obj.klass
-                        : getClassForValue(instanceVal);
-
-                    while (iclass != NULL) {
-                        if (iclass == klass) {
-                            result = true;
-                            break;
-                        }
-                        iclass = iclass->superclass;
-                    }
-                    push(BOOL_VAL(result));
                 }
-                break;
-            case OP_CALL:
-                {
-                    int argCount = READ_BYTE();
-                    if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
-                        RUNTIME_ERROR("Call failed.");
-                        break;
-                    }
-
-                    if (vm.frameCount == 0) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-
-                    frame = &vm.frames[vm.frameCount - 1];
+                    iclass = iclass->superclass;
                 }
-                break;
-            case OP_TAIL_CALL:
-                {
-                    uint8_t argCount = READ_BYTE();
-                    Value callee = peek(argCount);
-                    CallFrame* frame = &vm.frames[vm.frameCount - 1];
+                pop();
+                vm.stackTop[-1] = BOOL_VAL(result);
+                DISPATCH();
+            }
+            TARGET(OP_CALL): {
+                int argCount = READ_BYTE();
+                STORE_FRAME();
 
-                    // 1. unwrap bound methods to target closure and receiver
-                    if (IS_BOUND_METHOD(callee)) {
-                        ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
-                        vm.stackTop[-argCount - 1] = bound->receiver;
-                        callee = bound->method;
-                    }
+                if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
+                    //STORE_FRAME();
+                    RUNTIME_ERROR("Call failed.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                    // 2. handle class instantiation in tail position
-                    if (IS_CLASS(callee)) {
-                        ObjClass* klass = AS_CLASS(callee);
+                /*
+                LOAD_FRAME();
+                if (vm.frameCount == 0) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                */
 
-                        // path a: native class with a custom callhandler
-                        if (klass->callHandler != NULL) {
-                            Value result = klass->callHandler(argCount, vm.stackTop - argCount);
-                            closeUpvalues(frame->slots);
-                            while (vm.tryCount > 0 &&
-                                    vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
-                                vm.tryCount--;
-                            }
-                            vm.frameCount--;
-                            *frame->slots = result;
-                            vm.stackTop = frame->slots + 1;
-                            if (vm.frameCount == 0) return INTERPRET_OK;
-                            frame = &vm.frames[vm.frameCount - 1];
-                            break;
-                        }
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_TAIL_CALL): {
+                uint8_t argCount = READ_BYTE();
+                Value callee = peek(argCount);
+                CallFrame* frame = &vm.frames[vm.frameCount - 1];
 
-                        // path b: standard lox class with init() method
-                        ObjInstance* instance = newInstance(klass);
-                        vm.stackTop[-argCount - 1] = OBJ_VAL(instance);
+#define TAIL_RETURN(val) \
+                do { \
+                    Value res = (val); \
+                    closeUpvalues(frame->slots); \
+                    while (vm.tryCount > 0 && \
+                            vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) { \
+                        vm.tryCount--; \
+                    } \
+                    Value* slots = frame->slots; \
+                    vm.frameCount--; \
+                    if (vm.frameCount == 0) return INTERPRET_OK; \
+                    vm.stackTop = slots; \
+                    push(res); \
+                    LOAD_FRAME(); \
+                    DISPATCH(); \
+                } while (false)
 
-                        Value initializer;
-                        if (tableGet(&klass->methods, vm.initString, &initializer)) {
-                            callee = initializer;
-                        } else if (argCount != 0) {
-                            runtimeError("Expected 0 arguments but got %d.", argCount);
-                            return INTERPRET_RUNTIME_ERROR;
-                        } else {
-                            // no init() method, pop frame and return instance
-                            closeUpvalues(frame->slots);
-                            while (vm.tryCount > 0 &&
-                                    vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
-                                vm.tryCount--;
-                            }
-                            vm.frameCount--;
-                            *frame->slots = OBJ_VAL(instance);
-                            vm.stackTop = frame->slots + 1;
-                            if (vm.frameCount == 0) return INTERPRET_OK;
-                            frame = &vm.frames[vm.frameCount - 1];
-                            break;
-                        }
-                    }
 
-                    // 3. handle native functions in tail position
-                    if (IS_NATIVE(callee)) {
-                        NativeFn native = AS_NATIVE(callee);
-                        Value result = native(argCount, vm.stackTop - argCount);
+                // 1. unwrap bound methods to target closure and receiver
+                if (IS_BOUND_METHOD(callee)) {
+                    ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                    vm.stackTop[-argCount - 1] = bound->receiver;
+                    callee = bound->method;
+                }
+
+                // 2. handle class instantiation in tail position
+                if (IS_CLASS(callee)) {
+                    ObjClass* klass = AS_CLASS(callee);
+
+                    // path a: native class with a custom callhandler
+                    if (klass->callHandler != NULL) {
+                        Value result = klass->callHandler(argCount, vm.stackTop - argCount);
+                        TAIL_RETURN(result);
+                        /*
                         closeUpvalues(frame->slots);
                         while (vm.tryCount > 0 &&
                                 vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
@@ -3598,842 +3728,934 @@ InterpretResult run() {
                         if (vm.frameCount == 0) return INTERPRET_OK;
                         frame = &vm.frames[vm.frameCount - 1];
                         break;
+                        */
                     }
 
-                    if (!IS_CLOSURE(callee)) {
-                        if (!callValue(callee, argCount)) {
-                            RUNTIME_ERROR("Call failed.");
-                            break;
+                    // path b: standard lox class with init() method
+                    ObjInstance* instance = newInstance(klass);
+                    vm.stackTop[-argCount - 1] = OBJ_VAL(instance);
+
+                    Value initializer;
+                    if (tableGet(&klass->methods, vm.initString, &initializer)) {
+                        callee = initializer;
+                    } else if (argCount != 0) {
+                        STORE_FRAME();
+                        runtimeError("Expected 0 arguments but got %d.", argCount);
+                        return INTERPRET_RUNTIME_ERROR;
+                    } else {
+                        // no init() method, pop frame and return instance
+                        /*
+                        closeUpvalues(frame->slots);
+                        while (vm.tryCount > 0 &&
+                                vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                            vm.tryCount--;
                         }
+                        vm.frameCount--;
+                        *frame->slots = OBJ_VAL(instance);
+                        vm.stackTop = frame->slots + 1;
+                        if (vm.frameCount == 0) return INTERPRET_OK;
                         frame = &vm.frames[vm.frameCount - 1];
                         break;
+                        */
+                        TAIL_RETURN(OBJ_VAL(instance));
                     }
+                }
 
-                    ObjClosure* closure = AS_CLOSURE(callee);
-
-                    if (argCount != closure->function->arity) {
-                        runtimeError("Expected %d arguments but got %d.",
-                                closure->function->arity, argCount);
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-
-                    // 1. close open upvalues pointing to local variables in the current frame
+                // 3. handle native functions in tail position
+                if (IS_NATIVE(callee)) {
+                    NativeFn native = AS_NATIVE(callee);
+                    Value result = native(argCount, vm.stackTop - argCount);
+                    /*
                     closeUpvalues(frame->slots);
-
-                    // 2.. clean up any active try-blocks scoped to the current frame
                     while (vm.tryCount > 0 &&
                             vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
                         vm.tryCount--;
                     }
-
-                    // 3. shift callee closure + arguments down to overwrite current frame's slots
-                    Value* src = vm.stackTop - argCount - 1;
-                    Value* dst = frame->slots;
-                    int totalSlots = argCount + 1;
-
-                    for (int i = 0; i < totalSlots; i++) {
-                        dst[i] = src[i];
-                    }
-
-                    // 4. adjust stack top to point immediately after moved arguments
-                    vm.stackTop = frame->slots + totalSlots;
-
-                    // 4. recycle current frame in-place (do not increment vm.frameCount)
-                    frame->closure = closure;
-                    frame->ip = closure->function->chunk.code;
-                    frame->isGetter = false;
-                    frame->isSetter = false;
-                }
-                break;
-            case OP_INVOKE:
-            case OP_INVOKE_LONG:
-                {
-                    
-                    /*
-                    printf("[DEBUG STACK]: ");
-                    for (int i = 0; i < (vm.stackTop - vm.stack); i++) {
-                        printValueMain(vm.stack[i]);
-                        printf(" | ");
-                    }
-                    printf("\n");
-                    */
-                    
-
-                    ObjString* method = (instruction == OP_INVOKE)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int argCount = READ_BYTE();
-
-                    Value receiver = peek(argCount);
-                    ObjClass* klass = getClassForValue(receiver);
-
-                    if (klass == NULL) {
-                        RUNTIME_ERROR("Method calls are not supported on this type.");
-                        break;
-                    }
-
-                    if (!invoke(method, argCount)) {
-                        //RUNTIME_ERROR("Undefined method '%s'.", method->chars);
-                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                        frame = &vm.frames[vm.frameCount - 1];
-                        break;
-                    }
-                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                    vm.frameCount--;
+                    *frame->slots = result;
+                    vm.stackTop = frame->slots + 1;
+                    if (vm.frameCount == 0) return INTERPRET_OK;
                     frame = &vm.frames[vm.frameCount - 1];
                     break;
-                }
-                break;
-            case OP_TAIL_INVOKE:
-            case OP_TAIL_INVOKE_LONG:
-                {
-                    ObjString* method = (instruction == OP_TAIL_INVOKE)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int argCount = READ_BYTE();
-
-                    if (!tailInvoke(method, argCount)) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                    frame = &vm.frames[vm.frameCount - 1];
-                }
-                break;
-            case OP_INVOKE_SPLAT:
-            case OP_INVOKE_SPLAT_LONG:
-                {
-                    ObjString* method = (instruction == OP_INVOKE_SPLAT)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int staticCount = READ_BYTE();
-                    int dynamicCount = 0;
-
-                    if (IS_SPLAT_COUNT(peek(0))) {
-                        dynamicCount = AS_SPLAT_COUNT(pop());
-                    } else {
-                        Value sentinel = peek(staticCount);
-                        if (IS_SPLAT_COUNT(sentinel)) {
-                            dynamicCount = AS_SPLAT_COUNT(sentinel);
-
-                            for (int i = staticCount; i > 0; i--) {
-                                vm.stackTop[-i - 1] = vm.stackTop[-i];
-                            }
-                            vm.stackTop--;
-                        }
-                    }
-
-                    int totalArgs = staticCount + dynamicCount;
-
-                    //Value receiver = peek(totalArgs);
-
-                    /*
-                    if (!IS_INSTANCE(receiver)) {
-                        RUNTIME_ERROR("Only instances have methods.");
-                        break;
-                    }
-
-                    ObjInstance* instance = AS_INSTANCE(receiver);
-                    if (!invokeFromClass(instance->obj.klass, method, totalArgs)) {
-                        RUNTIME_ERROR("Call failed.");
-                        break;
-                    }
                     */
-                    if (!invoke(method, totalArgs)) {
+                    TAIL_RETURN(result);
+                }
+
+                if (!IS_CLOSURE(callee)) {
+                    STORE_FRAME();
+                    if (!callValue(callee, argCount)) {
                         RUNTIME_ERROR("Call failed.");
-                        break;
-                        //return INTERPRET_RUNTIME_ERROR;
-                    }
-                    frame = &vm.frames[vm.frameCount - 1];
-                }
-                break;
-            case OP_TAIL_INVOKE_SPLAT:
-            case OP_TAIL_INVOKE_SPLAT_LONG:
-                {
-                    ObjString* method = (instruction == OP_TAIL_INVOKE_SPLAT)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int staticCount = READ_BYTE();
-                    int dynamicCount = 0;
-
-                    if (IS_SPLAT_COUNT(peek(0)))  {
-                        dynamicCount = AS_SPLAT_COUNT(pop());
-                    } else {
-                        Value sentinel = peek(staticCount);
-                        if (IS_SPLAT_COUNT(sentinel)) {
-                            dynamicCount = AS_SPLAT_COUNT(sentinel);
-
-                            for (int i = staticCount; i > 0; i--) {
-                                vm.stackTop[-1 - 1] = vm.stackTop[-i];
-                            }
-                            vm.stackTop--;
-                        }
-                    }
-
-                    int totalArgs = staticCount + dynamicCount;
-
-                    if (!tailInvoke(method, totalArgs)) {
                         return INTERPRET_RUNTIME_ERROR;
                     }
-                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                    frame = &vm.frames[vm.frameCount - 1];
+                    LOAD_FRAME();
+                    DISPATCH();
                 }
-                break;
-            case OP_UNPACK:
-                {
-                    uint8_t expectedCount = READ_BYTE();
-                    Value value = pop();
 
-                    if (!IS_ARRAY(value)) {
-                        RUNTIME_ERROR("Can only destructure arrays.");
-                        break;
-                    }
+                ObjClosure* closure = AS_CLOSURE(callee);
 
-                    ObjArray* array = AS_ARRAY(value);
-                    int actualCount = array->count;
+                if (argCount != closure->function->arity) {
+                    STORE_FRAME();
+                    runtimeError("Expected %d arguments but got %d.",
+                            closure->function->arity, argCount);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                    // case 1: not enough elements to satisfy variables
-                    if (actualCount < expectedCount) {
-                        RUNTIME_ERROR("Destructuring mismatch: Expected %d elements, but array only has %d.",
-                                expectedCount, actualCount);
-                        break;
-                    }
+                // 1. close open upvalues pointing to local variables in the current frame
+                closeUpvalues(frame->slots);
 
-                    // case 2: too many elements (the strict/warn zone)
-                    if (actualCount > expectedCount) {
-                        if (vm.strictMode) {
-                            RUNTIME_ERROR("Destructuring error: Unassigned %d trailing elements.", expectedCount - actualCount);
-                            break;
-                        } else if (vm.warnMode) {
-                            printf("Warning: Destructuring assigment ignored %d trailing array elements.\n",
-                                    actualCount - expectedCount);
+                // 2.. clean up any active try-blocks scoped to the current frame
+                while (vm.tryCount > 0 &&
+                        vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                    vm.tryCount--;
+                }
+
+                // 3. shift callee closure + arguments down to overwrite current frame's slots
+                Value* src = vm.stackTop - argCount - 1;
+                Value* dst = frame->slots;
+                int totalSlots = argCount + 1;
+
+                /*
+                for (int i = 0; i < totalSlots; i++) {
+                    dst[i] = src[i];
+                }
+                */
+                memmove(dst, src, sizeof(Value) * totalSlots);
+
+                // 4. adjust stack top to point immediately after moved arguments
+                vm.stackTop = frame->slots + totalSlots;
+
+                // 4. recycle current frame in-place (do not increment vm.frameCount)
+                frame->closure = closure;
+                frame->ip = closure->function->chunk.code;
+                frame->isGetter = false;
+                frame->isSetter = false;
+
+                LOAD_FRAME();
+                DISPATCH();
+
+            }
+#undef TAIL_RETURN
+            TARGET(OP_INVOKE): {
+                //Value constantVal = READ_CONSTANT();
+                //ObjString* method = AS_STRING(constantVal);
+                ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+
+                Value receiver = peek(argCount);
+                ObjClass* klass = getClassForValue(receiver);
+
+                if (klass == NULL) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Method calls are not supported on this type.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                STORE_FRAME();
+                if (!invoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_INVOKE_LONG): {
+                ObjString* method = READ_STRING_LONG();
+                int argCount = READ_BYTE();
+
+                Value receiver = peek(argCount);
+                ObjClass* klass = getClassForValue(receiver);
+
+                if (klass == NULL) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Method calls are not supported on this type.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                STORE_FRAME();
+                if (!invoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_TAIL_INVOKE): {
+                name = READ_STRING();
+                goto tail_invoke_shared;
+            }
+            TARGET(OP_TAIL_INVOKE_LONG): {
+                name = READ_STRING_LONG();
+                goto tail_invoke_shared;
+            }
+            tail_invoke_shared: {
+                ObjString* method = name;
+                int argCount = READ_BYTE();
+
+                STORE_FRAME();
+                if (!tailInvoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                //frame = &vm.frames[vm.frameCount - 1];
+                //SYNC_FRAME(frame);
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_INVOKE_SPLAT): {
+                name = READ_STRING();
+                goto invoke_splat_shared;
+            }
+            TARGET(OP_INVOKE_SPLAT_LONG): {
+                name = READ_STRING_LONG();
+                goto invoke_splat_shared;
+            }
+            invoke_splat_shared: {
+                ObjString* method = name;
+                int staticCount = READ_BYTE();
+                int dynamicCount = 0;
+
+                if (IS_SPLAT_COUNT(peek(0))) {
+                    dynamicCount = AS_SPLAT_COUNT(pop());
+                } else {
+                    Value sentinel = peek(staticCount);
+                    if (IS_SPLAT_COUNT(sentinel)) {
+                        dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                        for (int i = staticCount; i > 0; i--) {
+                            vm.stackTop[-i - 1] = vm.stackTop[-i];
                         }
-                    }
-
-                    // case 3: clean extraction (unpack in reverse order)
-                    for (int i = expectedCount - 1; i >= 0; i--) {
-                        push(array->values[i]);
+                        vm.stackTop--;
                     }
                 }
-                break;
-            case OP_SUPER_INVOKE:
-            case OP_SUPER_INVOKE_LONG:
-                {
-                    ObjString* method = (instruction == OP_SUPER_INVOKE)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    //ObjString* method = READ_STRING();
-                    int argCount = READ_BYTE();
-                    ObjClass* superclass = AS_CLASS(pop());
-                    if (!invokeFromClass(superclass, method, argCount)) {
-                        RUNTIME_ERROR("Call failed.");
-                        break;
-                    }
-                    frame = &vm.frames[vm.frameCount - 1];
+
+                int totalArgs = staticCount + dynamicCount;
+
+                //Value receiver = peek(totalArgs);
+
+                /*
+                if (!IS_INSTANCE(receiver)) {
+                    RUNTIME_ERROR("Only instances have methods.");
+                    break;
                 }
-                break;
-            case OP_SUPER_INVOKE_SPLAT:
-            case OP_SUPER_INVOKE_SPLAT_LONG:
-                {
-                    ObjString* method = (instruction == OP_SUPER_INVOKE_SPLAT)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int staticCount = READ_BYTE();
 
-                    ObjClass* superclass = AS_CLASS(pop());
+                ObjInstance* instance = AS_INSTANCE(receiver);
+                if (!invokeFromClass(instance->obj.klass, method, totalArgs)) {
+                    RUNTIME_ERROR("Call failed.");
+                    break;
+                }
+                */
+                STORE_FRAME();
+                if (!invoke(method, totalArgs)) {
+                    RUNTIME_ERROR("Call failed.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_TAIL_INVOKE_SPLAT): {
+                name = READ_STRING();
+                goto tail_invoke_splat_shared;
+            }
+            TARGET(OP_TAIL_INVOKE_SPLAT_LONG): {
+                name = READ_STRING_LONG();
+                goto tail_invoke_splat_shared;
+            }
+            tail_invoke_splat_shared: {
+                ObjString* method = name;
+                int staticCount = READ_BYTE();
+                int dynamicCount = 0;
 
-                    int dynamicCount = 0;
-                    if (IS_SPLAT_COUNT(peek(0))) {
-                        dynamicCount = AS_SPLAT_COUNT(pop());
-                    } else {
-                        Value sentinel = peek(staticCount);
-                        if (IS_SPLAT_COUNT(sentinel)) {
-                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+                if (IS_SPLAT_COUNT(peek(0)))  {
+                    dynamicCount = AS_SPLAT_COUNT(pop());
+                } else {
+                    Value sentinel = peek(staticCount);
+                    if (IS_SPLAT_COUNT(sentinel)) {
+                        dynamicCount = AS_SPLAT_COUNT(sentinel);
 
-                            for (int i = staticCount; i > 0; i--) {
-                                vm.stackTop[-i - 1] = vm.stackTop[-i];
-                            }
-                            vm.stackTop--;
+                        for (int i = staticCount; i > 0; i--) {
+                            vm.stackTop[-1 - 1] = vm.stackTop[-i];
                         }
+                        vm.stackTop--;
                     }
+                }
 
-                    int totalArgs = staticCount + dynamicCount;
+                int totalArgs = staticCount + dynamicCount;
 
-                    if (!invokeFromClass(superclass, method, totalArgs)) {
+                STORE_FRAME();
+                if (!tailInvoke(method, totalArgs)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_UNPACK): {
+                GC_SCOPE;
+                uint8_t expectedCount = READ_BYTE();
+                Value value = pop();
+                pushTemp(value);
+
+                if (!IS_ARRAY(value)) {
+                    RUNTIME_ERROR("Can only destructure arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjArray* array = AS_ARRAY(value);
+                int actualCount = array->count;
+
+                // case 1: not enough elements to satisfy variables
+                if (actualCount < expectedCount) {
+                    RUNTIME_ERROR("Destructuring mismatch: Expected %d elements, but array only has %d.",
+                            expectedCount, actualCount);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                // case 2: too many elements (the strict/warn zone)
+                if (actualCount > expectedCount) {
+                    if (vm.strictMode) {
+                        RUNTIME_ERROR("Destructuring error: Unassigned %d trailing elements.", expectedCount - actualCount);
                         return INTERPRET_RUNTIME_ERROR;
+                    } else if (vm.warnMode) {
+                        printf("Warning: Destructuring assigment ignored %d trailing array elements.\n",
+                                actualCount - expectedCount);
                     }
-
-                    frame = &vm.frames[vm.frameCount - 1];
                 }
-                break;
-            case OP_TAIL_SUPER_INVOKE:
-            case OP_TAIL_SUPER_INVOKE_LONG:
-                {
-                    ObjString* method = (instruction == OP_TAIL_SUPER_INVOKE)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int argCount = READ_BYTE();
-                    ObjClass* superclass = AS_CLASS(pop());
 
-                    if (!tailInvokeFromClass(superclass, method, argCount)) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                    frame = &vm.frames[vm.frameCount - 1];
+                // case 3: clean extraction (unpack in reverse order)
+                for (int i = expectedCount - 1; i >= 0; i--) {
+                    push(array->values[i]);
                 }
-                break;
-            case OP_TAIL_SUPER_INVOKE_SPLAT:
-            case OP_TAIL_SUPER_INVOKE_SPLAT_LONG:
-                {
-                    ObjString* method = (instruction == OP_TAIL_SUPER_INVOKE_SPLAT)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-                    int staticCount = READ_BYTE();
+                DISPATCH();
+            }
+            TARGET(OP_SUPER_INVOKE): {
+                name = READ_STRING();
+                goto super_invoke_shared;
+            }
+            TARGET(OP_SUPER_INVOKE_LONG): {
+                name = READ_STRING_LONG();
+                goto super_invoke_shared;
+            }
+            super_invoke_shared: {
+                ObjString* method = name;
+                //ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+                ObjClass* superclass = AS_CLASS(pop());
+                STORE_FRAME();
+                if (!invokeFromClass(superclass, method, argCount)) {
+                    RUNTIME_ERROR("Call failed.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm.frames[vm.frameCount - 1];
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_SUPER_INVOKE_SPLAT): {
+                name = READ_STRING();
+                goto super_invoke_splat_shared;
+            }
+            TARGET(OP_SUPER_INVOKE_SPLAT_LONG): {
+                name = READ_STRING_LONG();
+                goto super_invoke_splat_shared;
+            }
+            super_invoke_splat_shared: {
+                ObjString* method = name;
+                int staticCount = READ_BYTE();
 
-                    ObjClass* superclass = AS_CLASS(pop());
+                ObjClass* superclass = AS_CLASS(pop());
 
-                    int dynamicCount = 0;
-                    if (IS_SPLAT_COUNT(peek(0))) {
-                        dynamicCount = AS_SPLAT_COUNT(pop());
-                    } else {
-                        Value sentinel = peek(staticCount);
-                        if (IS_SPLAT_COUNT(sentinel)) {
-                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+                int dynamicCount = 0;
+                if (IS_SPLAT_COUNT(peek(0))) {
+                    dynamicCount = AS_SPLAT_COUNT(pop());
+                } else {
+                    Value sentinel = peek(staticCount);
+                    if (IS_SPLAT_COUNT(sentinel)) {
+                        dynamicCount = AS_SPLAT_COUNT(sentinel);
 
-                            for (int i = staticCount; i > 0; i--) {
-                                vm.stackTop[-i - 1] = vm.stackTop[-i];
-                            }
-                            vm.stackTop--;
+                        for (int i = staticCount; i > 0; i--) {
+                            vm.stackTop[-i - 1] = vm.stackTop[-i];
                         }
+                        vm.stackTop--;
                     }
-                    int totalArgs = staticCount + dynamicCount;
-
-                    if (!tailInvokeFromClass(superclass, method, totalArgs)) {
-                        return INTERPRET_RUNTIME_ERROR;
-                    }
-                    if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
-                    frame = &vm.frames[vm.frameCount - 1];
                 }
-                break;
-            case OP_CLOSURE:
-            case OP_CLOSURE_LONG:
-                {
-                    ObjFunction* function = NULL;
-                    if (instruction == OP_CLOSURE) {
-                        function = AS_FUNCTION(READ_CONSTANT());
-                    } else {
-                        function = AS_FUNCTION(READ_CONSTANT_LONG());
-                    }
 
-                    ObjClosure* closure = newClosure(function);
-                    push(OBJ_VAL(closure));
-                    for (int i = 0; i < closure->upvalueCount; i++) {
-                        uint8_t isLocal = READ_BYTE();
-                        uint16_t index = (READ_BYTE() << 8) | READ_BYTE();
-                        if (isLocal) {
-                            closure->upvalues[i] =
-                                captureUpvalue(frame->slots + index);
-                        } else {
-                            closure->upvalues[i] = frame->closure->upvalues[index];
+                int totalArgs = staticCount + dynamicCount;
+
+                STORE_FRAME();
+                if (!invokeFromClass(superclass, method, totalArgs)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_TAIL_SUPER_INVOKE): {
+                name = READ_STRING();
+                goto tail_super_invoke_shared;
+            }
+            TARGET(OP_TAIL_SUPER_INVOKE_LONG): {
+                name = READ_STRING_LONG();
+                goto tail_super_invoke_shared;
+            }
+            tail_super_invoke_shared: {
+                ObjString* method = name;
+                int argCount = READ_BYTE();
+                ObjClass* superclass = AS_CLASS(pop());
+
+                STORE_FRAME();
+                if (!tailInvokeFromClass(superclass, method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_TAIL_SUPER_INVOKE_SPLAT): {
+                name = READ_STRING();
+                goto tail_super_invoke_splat_shared;
+            }
+            TARGET(OP_TAIL_SUPER_INVOKE_SPLAT_LONG): {
+                name = READ_STRING_LONG();
+                goto tail_super_invoke_splat_shared;
+            }
+            tail_super_invoke_splat_shared: {
+                ObjString* method = name;
+                int staticCount = READ_BYTE();
+
+                ObjClass* superclass = AS_CLASS(pop());
+
+                int dynamicCount = 0;
+                if (IS_SPLAT_COUNT(peek(0))) {
+                    dynamicCount = AS_SPLAT_COUNT(pop());
+                } else {
+                    Value sentinel = peek(staticCount);
+                    if (IS_SPLAT_COUNT(sentinel)) {
+                        dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                        /*
+                        for (int i = staticCount; i > 0; i--) {
+                            vm.stackTop[-i - 1] = vm.stackTop[-i];
                         }
+                        */
+                        memmove(&vm.stackTop[-staticCount - 1],
+                                &vm.stackTop[-staticCount],
+                                sizeof(Value) * staticCount);
+                        vm.stackTop--;
                     }
                 }
-                break;
-            case OP_CLOSE_UPVALUE:
+
+                int totalArgs = staticCount + dynamicCount;
+
+                STORE_FRAME();
+                if (!tailInvokeFromClass(superclass, method, totalArgs)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (vm.frameCount == 0) return INTERPRET_OK;
+                
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_CLOSURE): {
+                value = READ_CONSTANT();
+                goto closure_shared;
+            }
+            TARGET(OP_CLOSURE_LONG): {
+                value = READ_CONSTANT_LONG();
+                goto closure_shared;
+            }
+            closure_shared: {
+                ObjFunction* function = AS_FUNCTION(value);
+
+                ObjClosure* closure = newClosure(function);
+                push(OBJ_VAL(closure));
+                for (int i = 0; i < closure->upvalueCount; i++) {
+                    uint8_t isLocal = READ_BYTE();
+                    uint16_t index = (READ_BYTE() << 8) | READ_BYTE();
+                    if (isLocal) {
+                        closure->upvalues[i] =
+                            captureUpvalue(frame->slots + index);
+                    } else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
+                DISPATCH();
+            }
+            TARGET(OP_CLOSE_UPVALUE): {
                 closeUpvalues(vm.stackTop - 1);
                 pop();
-                break;
-            case OP_IMPORT: 
-            case OP_IMPORT_LONG:
-                {
-                    ObjString* moduleName;
-                    if (instruction == OP_IMPORT) {
-                        moduleName = AS_STRING(READ_CONSTANT());
-                    } else {
-                        moduleName = AS_STRING(READ_CONSTANT_LONG());
-                    }
+                DISPATCH();
+            }
+            TARGET(OP_IMPORT): {
+                value = READ_CONSTANT();
+                goto import_shared;
+            }
+            TARGET(OP_IMPORT_LONG): {
+                value = READ_CONSTANT_LONG();
+                goto import_shared;
+            }
+            import_shared: {
+                ObjString* moduleName = AS_STRING(value);
 
-                    /*
-                    if (access(moduleName->chars, F_OK) == -1) {
-                        runtimeError("Module file not found at %s", moduleName->chars);
+                /*
+                if (access(moduleName->chars, F_OK) == -1) {
+                    runtimeError("Module file not found at %s", moduleName->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                */
+
+                void* handle = loadModule(moduleName->chars);
+                if (handle == NULL) {
+                    RUNTIME_ERROR("Could not load module.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                //tableSet(&vm.globals, moduleName, peek(0));
+                //pop();
+                DISPATCH();
+            }
+            TARGET(OP_CALL_SPLAT): {
+                //int dynamicCount = (int)AS_NUMBER(pop());
+                int staticCount = READ_BYTE();
+                int dynamicCount = 0;
+
+                if (IS_SPLAT_COUNT(peek(0))) {
+                    dynamicCount = AS_SPLAT_COUNT(pop());
+                } else {
+                    Value sentinel = peek(staticCount);
+                    if (IS_SPLAT_COUNT(sentinel)) {
+                        dynamicCount = AS_SPLAT_COUNT(sentinel);
+
+                        /*
+                        for (int i = staticCount; i > 0; i--) {
+                            vm.stackTop[-i - 1] = vm.stackTop[-i];
+                        }
+                        */
+                        memmove(&vm.stackTop[-staticCount - 1],
+                                &vm.stackTop[-staticCount],
+                                sizeof(Value) * staticCount);
+                        vm.stackTop--;
+                    }
+                }
+
+                int totalArgs = dynamicCount + staticCount;
+
+                Value callee = peek(totalArgs);
+                STORE_FRAME();
+                if (!callValue(callee, totalArgs)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_SPLAT): {
+                Value value = peek(0);
+                if (!IS_ARRAY(value)) {
+                    RUNTIME_ERROR("Can only splat arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjArray* array = AS_ARRAY(value);
+                pop();
+                int count = array->count;
+                //int currentTotal = AS_NUMBER(pop());
+
+                if (vm.stackTop > vm.stack && IS_SPLAT_COUNT(peek(0))) {
+                    count += AS_SPLAT_COUNT(pop());
+                }
+
+                if (vm.stackTop + array->count + 1 >= vm.stack + STACK_MAX) {
+                    RUNTIME_ERROR("Stack overflow during splat.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                /*
+                for (int i = 0; i < array->count; i++) {
+                    push(array->values[i]);
+                }
+                */
+                memcpy(vm.stackTop, array->values, sizeof(Value) * array->count);
+                vm.stackTop += array->count;
+
+                //push(NUMBER_VAL((double)array->count + currentTotal));
+                push(SPLAT_COUNT_VAL(count));
+
+                DISPATCH();
+            }
+            TARGET(OP_INCLUDE): {
+                Value mixinVal = peek(0);
+                Value targetVal = peek(1);
+
+                if (!IS_CLASS(mixinVal) || !IS_CLASS(targetVal)) {
+                    RUNTIME_ERROR("Only classes can be included.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                includeMixin(AS_CLASS(targetVal), AS_CLASS(mixinVal));
+
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_RETURN): {
+                Value result = pop();
+
+                bool divertedToFinally = false;
+                while (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                    TryBlock* block = &vm.tryStack[vm.tryCount - 1];
+                    if (block->finallyIp != NULL && !block->isReturning) {
+                        block->isReturning = true;
+                        block->returnValue = result;
+                        vm.stackTop = block->stackTop;
+                        frame->ip = block->finallyIp;
+                        
+                        LOAD_FRAME();
+                        DISPATCH();
+                    }
+                    vm.tryCount--;
+                }
+
+                closeUpvalues(frame->slots);
+
+                bool isGetterFrame = frame->isGetter;
+                bool isSetterFrame = frame->isSetter;
+                bool isTimerFrame = frame->isTimer;
+
+                vm.frameCount--;
+                if (vm.frameCount == 0) {
+                    pop();
+                    return INTERPRET_OK;
+                }
+
+                Value* slots = frame->slots;
+                vm.stackTop = slots;
+
+                if (isTimerFrame) {
+                    return INTERPRET_OK;
+                }
+
+                if (isGetterFrame) {
+                    if (isResultInstance(result)) {
+                        if (isResultOk(result)) {
+                            Value fakeStack[2] = { result, NIL_VAL };
+                            result = resultUnwrapOrNative(1, &fakeStack[1]);
+                        } else {
+                            STORE_FRAME();
+                            runtimeError("Property getter returned an error Result state.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                    }
+                } else if (isSetterFrame) {
+                    result = slots[2];
+                }
+
+                //vm.stackTop = vm.frames[vm.frameCount].slots;
+
+                push(result);
+
+                if  (vm.frameCount == vm.nativeExitDepth) {
+                    vm.nativeExitDepth = -1;
+                    return INTERPRET_OK;
+                }
+
+                LOAD_FRAME();
+                DISPATCH();
+            }
+            TARGET(OP_CLASS): {
+                name = READ_STRING();
+                Value existing;
+
+                STORE_FRAME();
+                push(OBJ_VAL(getOrCreateClass(name)));
+                DISPATCH();
+            }
+            TARGET(OP_CLASS_LONG): {
+                name = READ_STRING_LONG();
+                Value existing;
+
+                STORE_FRAME();
+                push(OBJ_VAL(getOrCreateClass(name)));
+                DISPATCH();
+            }
+            TARGET(OP_INHERIT): {
+                Value superclassVal = peek(1);
+                if (!IS_CLASS(superclassVal)) {
+                    STORE_FRAME();
+                    RUNTIME_ERROR("Superclass must be a class.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjClass* superclass = AS_CLASS(superclassVal);
+                ObjClass* subclass = AS_CLASS(peek(0));
+
+                subclass->superclass = superclass;
+
+                if (subclass->obj.klass != NULL && superclass->obj.klass != NULL) {
+                    subclass->obj.klass->superclass = superclass->obj.klass;
+                }
+
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_METHOD): {
+                defineMethod(READ_STRING());
+                DISPATCH();
+            }
+            TARGET(OP_METHOD_LONG): {
+                defineMethod(READ_STRING_LONG());
+                DISPATCH();
+            }
+            TARGET(OP_STATIC_METHOD): {
+                name = READ_STRING();
+                goto static_method_shared;
+            }
+            TARGET(OP_STATIC_METHOD_LONG): {
+                name = READ_STRING_LONG();
+                goto static_method_shared;
+            }
+            static_method_shared: {
+                Value method = peek(0);
+                ObjClass* klass = AS_CLASS(peek(1));
+
+                if (klass->obj.klass != NULL) {
+                    tableSet(&klass->obj.klass->methods, name, method);
+                }
+
+                pop();
+                DISPATCH();
+            }
+            TARGET(OP_MAP): {
+                GC_SCOPE;
+
+                uint8_t itemCount = READ_BYTE();
+                ObjMap* map = newMap();
+                map->obj.klass = vm.mapClass;
+
+                pushTemp(OBJ_VAL(map));
+
+                int totalArgs = itemCount * 2;
+                Value* entries = vm.stackTop - totalArgs;
+
+                for (int i = 0; i < totalArgs; i += 2) {
+                    Value key = entries[i];
+                    Value value = entries[i + 1];
+
+                    if (IS_NIL(key)) {
+                        RUNTIME_ERROR("Map keys cannot be nil.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
-                    */
-
-                    void* handle = loadModule(moduleName->chars);
-                    if (handle == NULL) {
-                        RUNTIME_ERROR("Could not load module.");
-                        break;
-                    }
-                    //tableSet(&vm.globals, moduleName, peek(0));
-                    //pop();
+                    tableSet2(&map->items, key, value);
                 }
-                break;
-            case OP_CALL_SPLAT:
-                {
-                    //int dynamicCount = (int)AS_NUMBER(pop());
-                    int staticCount = READ_BYTE();
-                    int dynamicCount = 0;
+                popn(totalArgs);
+                push(OBJ_VAL(map));
 
-                    if (IS_SPLAT_COUNT(peek(0))) {
-                        dynamicCount = AS_SPLAT_COUNT(pop());
-                    } else {
-                        Value sentinel = peek(staticCount);
-                        if (IS_SPLAT_COUNT(sentinel)) {
-                            dynamicCount = AS_SPLAT_COUNT(sentinel);
+                DISPATCH();
+            }
+            TARGET(OP_ARRAY): {
+                GC_SCOPE;
 
-                            for (int i = staticCount; i > 0; i--) {
-                                vm.stackTop[-i - 1] = vm.stackTop[-i];
-                            }
-                            vm.stackTop--;
-                        }
-                    }
-
-                    int totalArgs = dynamicCount + staticCount;
-
-                    Value callee = peek(totalArgs);
-                    if (!callValue(callee, totalArgs)) {
-                        RUNTIME_ERROR("Call failed.");
-                        break;
-                    }
-                    frame = &vm.frames[vm.frameCount - 1];
-                }
-                break;
-            case OP_SPLAT:
-                {
-                    Value value = peek(0);
-                    if (!IS_ARRAY(value)) {
-                        RUNTIME_ERROR("Can only splat arrays.");
-                        break;
-                    }
-
-                    ObjArray* array = AS_ARRAY(value);
-                    pop();
-                    int count = array->count;
-                    //int currentTotal = AS_NUMBER(pop());
-
-                    if (vm.stackTop > vm.stack && IS_SPLAT_COUNT(peek(0))) {
-                        count += AS_SPLAT_COUNT(pop());
-                    }
-
-                    if (vm.stackTop + array->count >= vm.stack + STACK_MAX) {
-                        RUNTIME_ERROR("Stack overflow during splat.");
-                        break;
-                    }
-
-                    for (int i = 0; i < array->count; i++) {
-                        push(array->values[i]);
-                    }
-
-                    //push(NUMBER_VAL((double)array->count + currentTotal));
-                    push(SPLAT_COUNT_VAL(count));
-
-                }
-                break;
-            case OP_INCLUDE:
-                {
-                    Value mixinVal = peek(0);
-                    Value targetVal = peek(1);
-
-                    if (!IS_CLASS(mixinVal) || !IS_CLASS(targetVal)) {
-                        RUNTIME_ERROR("Only classes can be included.");
-                        break;
-                    }
-
-                    includeMixin(AS_CLASS(targetVal), AS_CLASS(mixinVal));
-
-                    /*
-                    ObjClass* mixin = AS_CLASS(mixinVal);
-                    ObjClass* target = AS_CLASS(targetVal);
-
-                    ObjClass* proxy = newClass(mixin->name);
-                    push(OBJ_VAL(proxy));
-
-                    proxy->mixinsource = mixin;
-
-                    proxy->superclass = target->superclass;
-                    target->superclass = proxy;
-
-                    // insert proxys metaclass into targets metaclass intheritance chain
-                    if (proxy->obj.klass && target->obj.klass) {
-                        ObjClass* proxyMeta = proxy->obj.klass;
-                        ObjClass* targetMeta = target->obj.klass;
-
-                        if (mixin->obj.klass) {
-                            proxyMeta->mixinsource = mixin->obj.klass;
-                        }
-
-                        if (proxy->superclass && proxy->superclass->obj.klass) {
-                            proxyMeta->superclass = proxy->superclass->obj.klass;
-                        }
-
-                        targetMeta->superclass = proxyMeta;
-                    }
-                    pop();
-                    */
-                    //tableMergeGuard(&mixin->methods, &target->methods);
-                    pop();
-                }
-                break;
-            case OP_RETURN:
-                {
-                    Value result = pop();
-
-                    bool divertedToFinally = false;
-                    if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
-                        TryBlock* block = &vm.tryStack[vm.tryCount - 1];
-                        if (block->finallyIp != NULL && !block->isReturning) {
-                            block->isReturning = true;
-                            block->returnValue = result;
-                            vm.stackTop = block->stackTop;
-                            frame->ip = block->finallyIp;
-                            divertedToFinally = true;
-                            break;
-                        }
-                        vm.tryCount--;
-                    }
-
-                    if (divertedToFinally) {
-                        break;
-                    }
-
-                    closeUpvalues(frame->slots);
-
-                    bool isGetterFrame = frame->isGetter;
-                    bool isSetterFrame = frame->isSetter;
-                    bool isTimerFrame = frame->isTimer;
-
-                    vm.frameCount--;
-                    if (vm.frameCount == 0) {
-                        pop();
-                        return INTERPRET_OK;
-                    }
-
-                    Value* slots = frame->slots;
-                    vm.stackTop = slots;
-
-                    if (isTimerFrame) {
-                        return INTERPRET_OK;
-                    }
-
-                    if (isGetterFrame) {
-                        if (isResultInstance(result)) {
-                            if (isResultOk(result)) {
-                                Value fakeStack[2] = { result, NIL_VAL };
-                                result = resultUnwrapOrNative(1, &fakeStack[1]);
-                            } else {
-                                runtimeError("Property getter returned an error Result state.");
-                                return INTERPRET_RUNTIME_ERROR;
-                            }
-                        }
-                    } else if (isSetterFrame) {
-                        result = slots[2];
-                    }
-
-                    push(result);
-
-                    if  (vm.frameCount == vm.nativeExitDepth) {
-                        vm.nativeExitDepth = -1;
-                        return INTERPRET_OK;
-                    }
-                    if (vm.frameCount == 0) return false;
-
-                    frame = &vm.frames[vm.frameCount - 1];
-                }
-                break;
-            case OP_CLASS:
-                {
-                    ObjString* name = READ_STRING();
-                    Value existing;
-
-                    push(OBJ_VAL(getOrCreateClass(name)));
-                    /*
-                    if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
-                        push(existing);
-                    } else {
-                        ObjClass* klass = newClass(name);
-                        push(OBJ_VAL(klass));
-                    }
-                    */
-                }
-                break;
-            case OP_CLASS_LONG:
-                {
-                    ObjString* name = READ_STRING_LONG();
-                    Value existing;
-
-                    push(OBJ_VAL(getOrCreateClass(name)));
-                    /*
-                    if (tableGet(&vm.globals, name, &existing) && IS_CLASS(existing)) {
-                        push(existing);
-                    } else {
-                        ObjClass* klass = newClass(name);
-                        push(OBJ_VAL(klass));
-                    }
-                    */
-                }
-                break;
-            case OP_INHERIT:
-                {
-                    Value superclassVal = peek(1);
-                    if (!IS_CLASS(superclassVal)) {
-                        RUNTIME_ERROR("Superclass must be a class.");
-                        break;
-                    }
-
-                    ObjClass* superclass = AS_CLASS(superclassVal);
-                    ObjClass* subclass = AS_CLASS(peek(0));
-
-                    subclass->superclass = superclass;
-
-                    if (subclass->obj.klass != NULL && superclass->obj.klass != NULL) {
-                        subclass->obj.klass->superclass = superclass->obj.klass;
-                    }
-
-                    pop();
-                }
-                break;
-            case OP_METHOD:
-                defineMethod(READ_STRING());
-                break;
-            case OP_METHOD_LONG:
-                defineMethod(READ_STRING_LONG());
-                break;
-            case OP_STATIC_METHOD:
-            case OP_STATIC_METHOD_LONG:
-                {
-                    ObjString* name = (instruction == OP_STATIC_METHOD)
-                        ? READ_STRING()
-                        : READ_STRING_LONG();
-
-                    Value method = peek(0);
-                    ObjClass* klass = AS_CLASS(peek(1));
-
-                    if (klass->obj.klass != NULL) {
-                        tableSet(&klass->obj.klass->methods, name, method);
-                    }
-
-                    pop();
-                }
-                break;
-            case OP_MAP:
-                {
-                    uint8_t itemCount = READ_BYTE();
-                    ObjMap* map = newMap();
-                    map->obj.klass = vm.mapClass;
-                    push(OBJ_VAL(map));
-
-                    for (int i = 0; i < itemCount; i++) {
-                        Value value = peek(1);
-                        Value key = peek(2);
-
-                        if (IS_NIL(key)) {
-                            RUNTIME_ERROR("Map keys cannot be nil.");
-                            break;
-                        }
-                        tableSet2(&map->items, key, value);
-                        Value mapVal = pop();
-                        popn(2);
-                        push(mapVal);
-                    }
-                }
-                break;
-            case OP_ARRAY:
-                {
-                    uint8_t count = READ_BYTE();
+                uint8_t count = READ_BYTE();
                     
-                    ObjArray* array = newArray();
-                    push(OBJ_VAL(array));
+                ObjArray* array = newArray();
+                pushTemp(OBJ_VAL(array));
 
-                    if (count > 0) {
-                        Value* entries = ALLOCATE(Value, count);
-                        array->values = entries;
-                        array->capacity = count;
-                        array->count = count;
-                    }
+                if (count > 0) {
+                    Value* entries = ALLOCATE(Value, count);
+                    memcpy(entries, vm.stackTop - count, sizeof(Value) * count);
 
-                    for (int i = count - 1; i >= 0; i--) {
-                        array->values[i] = vm.stackTop[- (count - i + 1)];
-                    }
-
-                    Value arrayVal = pop();
-                    vm.stackTop -= count;
-                    push(arrayVal);
+                    array->values = entries;
+                    array->capacity = count;
+                    array->count = count;
                 }
-                break;
-            case OP_ARRAY_FILL:
-                {
-                    Value sizeVal = peek(0);
-                    Value element = peek(1);
 
-                    if (!IS_NUMBER(sizeVal)) {
-                        RUNTIME_ERROR("Array size must be a number.");
-                        break;
-                    }
-
-                    double rawSize = AS_NUMBER(sizeVal);
-                    if (rawSize < 0) {
-                        RUNTIME_ERROR("Array size cannot be negative.");
-                        break;
-                    }
-
-                    int count = (int)rawSize;
-                    ObjArray* array = newArray();
-                    push(OBJ_VAL(array));
-
-                    if (count > 0) {
-                        array->values = ALLOCATE(Value, count);
-                        array->capacity = count;
-                        array->count = count;
-
-                        for (int i = 0; i < count; i++) {
-                            array->values[i] = element;
-                        }
-                    }
-                    vm.stackTop[-3] = OBJ_VAL(array);
-                    popn(2);
+                /*
+                for (int i = count - 1; i >= 0; i--) {
+                    array->values[i] = vm.stackTop[- (count - i + 1)];
                 }
-                break;
-            case OP_GET_INDEX:
-                {
-                    Value indexValue = pop();
-                    Value targetValue = pop();
+                */
 
-                    if (IS_MAP(targetValue) || IS_SET(targetValue)) {
-                        if (IS_NIL(indexValue)) {
-                            RUNTIME_ERROR("Index cannot be nil.");
-                            break;
-                        }
+                //Value arrayVal = pop();
+                vm.stackTop -= count;
+                push(OBJ_VAL(array));
 
-                        Value result;
-                        if (tableGet2(&AS_MAP(targetValue)->items, indexValue, &result)) {
-                            push(result);
-                        } else {
-                            push(NIL_VAL);
-                        }
-                        break;
-                    }
+                DISPATCH();
+            }
+            TARGET(OP_ARRAY_FILL): {
+                GC_SCOPE;
 
-                    if (IS_VEC3(targetValue)) {
-                        if (!IS_NUMBER(indexValue)) {
-                            RUNTIME_ERROR("Vec3 index must be a number.");
-                            break;
-                        }
+                Value sizeVal = peek(0);
+                Value element = peek(1);
 
-                        double rawindex = AS_NUMBER(indexValue);
-                        int index = (int)rawindex;
-
-                        if (rawindex != (double)index) {
-                            RUNTIME_ERROR("Vec3 index must be a whole integer.");
-                            break;
-                        }
-
-                        if (index < 0 || index > 2) {
-                            RUNTIME_ERROR("Vec3 index out of bounds.");
-                            break;
-                        }
-                        Vec3 vec3 = AS_VEC3(targetValue);
-                        switch (index) {
-                            case 0:
-                                push(NUMBER_VAL(vec3.x));
-                                break;
-                            case 1:
-                                push(NUMBER_VAL(vec3.y));
-                                break;
-                            case 2:
-                                push(NUMBER_VAL(vec3.z));
-                                break;
-                        }
-                    }
-
-                    if (IS_ARRAY(targetValue)) {
-                        ObjArray* array = AS_ARRAY(targetValue);
-
-                        if (!IS_NUMBER(indexValue)) {
-                            RUNTIME_ERROR("Array index must be a number.");
-                            break;
-                        }
-
-                        int index = (int)AS_NUMBER(indexValue);
-                        if (index < 0 || index >= array->count) {
-                            RUNTIME_ERROR("Array index out of bounds.");
-                            break;
-                        }
-
-                        push(array->values[index]);
-                        break;
-                    }
-
-                    if (IS_STRING(targetValue)) {
-                        if (!IS_NUMBER(indexValue)) {
-                            RUNTIME_ERROR("String index must be a number.");
-                            break;
-                        }
-
-                        ObjString* string = AS_STRING(targetValue);
-                        int index = AS_NUMBER(indexValue);
-
-                        if (index < 0 || index >= string->length) {
-                            RUNTIME_ERROR("String index out of bounds.");
-                            break;
-                        }
-
-                        push(NUMBER_VAL((double)(uint8_t)string->chars[index]));
-
-                        break;
-                    }
-
-                    RUNTIME_ERROR("Only vec3s, maps and arrays support subscripting.");
+                if (!IS_NUMBER(sizeVal)) {
+                    RUNTIME_ERROR("Array size must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
                 }
-                break;
-            case OP_SET_INDEX:
-                {
-                    Value newValue = peek(0);
-                    Value indexValue = peek(1);
-                    Value targetValue = peek(2);
 
-                    if (IS_SET(targetValue)) {
-                        if (IS_NIL(indexValue)) {
-                            RUNTIME_ERROR("Set keys cannot be nil.");
-                            break;
-                        }
-                        ObjSet* set = AS_SET(targetValue);
+                double rawSize = AS_NUMBER(sizeVal);
+                if (rawSize < 0) {
+                    RUNTIME_ERROR("Array size cannot be negative.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                        if (IS_NIL(newValue) || (IS_BOOL(newValue) && !AS_BOOL(newValue)) ||
-                                (IS_NUMBER(newValue) && AS_NUMBER(newValue) <= 0)) {
-                            tableDelete2(&set->items, indexValue);
-                        } else {
-                            Value setVal = set->isMultiset ? newValue : NUMBER_VAL(1);
-                            tableSet2(&set->items, indexValue, setVal);
-                        }
+                int count = (int)rawSize;
+                ObjArray* array = newArray();
+                pushTemp(OBJ_VAL(array));
 
-                        vm.stackTop[-3] = newValue;
-                        popn(2);
-                        break;
+                if (count > 0) {
+                    Value* entries = ALLOCATE(Value, count);
+                    for (int i = 0; i < count; i++) {
+                        array->values[i] = element;
                     }
-                    if (IS_MAP(targetValue)) {
-                        if (IS_NIL(indexValue)) {
-                            RUNTIME_ERROR("Map keys cannot be nil.");
-                            break;
-                        }
-                        tableSet2(&AS_MAP(targetValue)->items, indexValue, newValue);
-                        vm.stackTop[-3] = newValue;
-                        popn(2);
-                        break;
-                    } else if (!IS_ARRAY(targetValue)) {
-                        RUNTIME_ERROR("Only maps and arrays support subscript assignment.");
-                        break;
+
+                    array->values = entries;
+                    array->capacity = count;
+                    array->count = count;
+
+                }
+                //vm.stackTop[-3] = OBJ_VAL(array);
+                popn(2);
+                push(OBJ_VAL(array));
+
+                DISPATCH();
+            }
+            TARGET(OP_GET_INDEX): {
+                Value indexValue = pop();
+                Value targetValue = pop();
+
+                if (IS_MAP(targetValue) || IS_SET(targetValue)) {
+                    if (IS_NIL(indexValue)) {
+                        RUNTIME_ERROR("Index cannot be nil.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    Value result;
+                    if (!tableGet2(&AS_MAP(targetValue)->items, indexValue, &result)) {
+                        result = NIL_VAL;
+                    }
+
+                    //popn(2);
+                    push(result);
+                    DISPATCH();
+                }
+
+                if (IS_VEC3(targetValue)) {
+                    if (!IS_NUMBER(indexValue)) {
+                        RUNTIME_ERROR("Vec3 index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    double rawindex = AS_NUMBER(indexValue);
+                    int index = (int)rawindex;
+
+                    if (rawindex != (double)index) {
+                        RUNTIME_ERROR("Vec3 index must be a whole integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (index < 0 || index > 2) {
+                        RUNTIME_ERROR("Vec3 index out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    Vec3 vec3 = AS_VEC3(targetValue);
+                    double component = (index == 0) ? vec3.x : (index == 1) ? vec3.y : vec3.z;
+
+                    //popn(2);
+                    push(NUMBER_VAL(component));
+                    DISPATCH();
+                }
+
+                if (IS_ARRAY(targetValue)) {
+                    if (!IS_NUMBER(indexValue)) {
+                        RUNTIME_ERROR("Array index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
                     }
 
                     ObjArray* array = AS_ARRAY(targetValue);
-
-                    if (!IS_NUMBER(indexValue)) {
-                        RUNTIME_ERROR("Array index must be a number.");
-                        break;
-                    }
-
                     int index = (int)AS_NUMBER(indexValue);
+
                     if (index < 0 || index >= array->count) {
                         RUNTIME_ERROR("Array index out of bounds.");
-                        break;
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    //popn(2);
+                    push(array->values[index]);
+                    DISPATCH();
+                }
+
+                if (IS_STRING(targetValue)) {
+                    if (!IS_NUMBER(indexValue)) {
+                        RUNTIME_ERROR("String index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjString* string = AS_STRING(targetValue);
+                    int index = AS_NUMBER(indexValue);
+
+                    if (index < 0 || index >= string->length) {
+                        RUNTIME_ERROR("String index out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    //popn(2);
+                    push(NUMBER_VAL((double)(uint8_t)string->chars[index]));
+                    DISPATCH();
+                }
+
+                RUNTIME_ERROR("Only vec3s, maps and arrays support subscripting.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            TARGET(OP_SET_INDEX): {
+                GC_SCOPE;
+
+                Value newValue = peek(0);
+                Value indexValue = peek(1);
+                Value targetValue = peek(2);
+
+                if (IS_SET(targetValue)) {
+                    if (IS_NIL(indexValue)) {
+                        RUNTIME_ERROR("Set keys cannot be nil.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    ObjSet* set = AS_SET(targetValue);
+
+                    if (IS_NIL(newValue) || (IS_BOOL(newValue) && !AS_BOOL(newValue)) ||
+                            (IS_NUMBER(newValue) && AS_NUMBER(newValue) <= 0)) {
+                        tableDelete2(&set->items, indexValue);
+                    } else {
+                        Value setVal = set->isMultiset ? newValue : NUMBER_VAL(1);
+                        tableSet2(&set->items, indexValue, setVal);
+                    }
+
+                    //vm.stackTop[-3] = newValue;
+                    popn(3);
+                    push(newValue);
+                    DISPATCH();
+                }
+
+                if (IS_MAP(targetValue)) {
+                    if (IS_NIL(indexValue)) {
+                        RUNTIME_ERROR("Map keys cannot be nil.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    tableSet2(&AS_MAP(targetValue)->items, indexValue, newValue);
+
+                    popn(3);
+                    push(newValue);
+                    DISPATCH();
+                } 
+
+                if (IS_ARRAY(targetValue)) {
+                    if (!IS_NUMBER(indexValue)) {
+                        RUNTIME_ERROR("Array index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    
+                    ObjArray* array = AS_ARRAY(targetValue);
+                    int index = (int)AS_NUMBER(indexValue);
+
+                    if (index < 0 || index >= array->count) {
+                        RUNTIME_ERROR("Array index out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
                     }
 
                     array->values[index] = newValue;
@@ -4441,10 +4663,33 @@ InterpretResult run() {
                     popn(3);
                     // push result
                     push(newValue);
+                    DISPATCH();
+
                 }
-                break;
+                RUNTIME_ERROR("Only vec3s, maps and arrays support subscripting.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+#ifdef USE_COMPUTED_GOTO
+    trace_execution: {
+         if (vm.debugTraceExecution) {
+              printf("        ");
+              for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+                  printf("[ ");
+                  printValueMain(*slot);
+                  printf(" ]");
+              }
+              printf("\n");
+              disassembleInstruction(&frame->closure->function->chunk,
+                      (int)(ip - frame->closure->function->chunk.code));
+              
+              goto *dispatchTable[*ip++];
+         }
+
+     }
+#else
         }
     }
+#endif
 
 #undef READ_BYTE
 #undef READ_SHORT

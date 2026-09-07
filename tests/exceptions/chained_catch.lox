@@ -32,7 +32,9 @@ try {
 } catch (Number n) {
   print "FAIL: Caught Number";
 } catch (String s) {
-  print "Caught String: " + s; // expect: Caught String: a string exception
+  print "Caught String: " + s;
+} catch (Error e) {
+  print "Caught auto-wrapped Error: " + e.message; // expect: Caught auto-wrapped Error: a string exception
 }
 
 // 4. Fallback to untyped catch when typed catches miss
