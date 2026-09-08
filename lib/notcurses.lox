@@ -53,7 +53,7 @@ class Plane {
     //flags = flags ?? 0;
     //if (flags == nil) flags = 0;
     // pack 48-bytes ncplane_options struct
-    var opts = Struct.pack("I I I I Q Q Q Q Q Q", [y, x, rows, cols, 0, 0, 0, flags, 0, 0]);
+    var opts = Struct.pack("i i i i Q Q Q Q i i", [y, x, rows, cols, 0, 0, 0, flags, 0, 0]);
     var childPtr = this.fnCreate(this.ptr, opts);
     if (childPtr == nil) return nil;
     return Plane(childPtr, this.ffi);

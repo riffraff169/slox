@@ -2795,6 +2795,22 @@ InterpretResult run() {
                     Value closure = peek(0);
                     ObjClass* klass = AS_CLASS(peek(1));
 
+                    /*
+                    printf("[OP_GETTER] instruction: %s", instruction == OP_GETTER ? "OP_GETTER" : "OP_GETTER_LONG");
+                    printf("        ");
+                    for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+                        printf("[ ");
+                        printValueMain(*slot);
+                        printf(" ]");
+                    }
+                    printf("\n");
+                    disassembleInstruction(&frame->closure->function->chunk,
+                            (int)(frame->ip - frame->closure->function->chunk.code));
+
+                    printf("[OP_GETTER] name: %P\n", name);
+                    //printf("[OP_GETTER] name: %s\n", name->chars);
+                    printValueMain(closure);
+                    */
                     tableSet(&klass->getters, name, closure);
                     pop();
                 }
@@ -3435,7 +3451,6 @@ InterpretResult run() {
                     printf("\n");
                     */
                     
-
                     ObjString* method = (instruction == OP_INVOKE)
                         ? READ_STRING()
                         : READ_STRING_LONG();
