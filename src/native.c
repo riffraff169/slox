@@ -3950,6 +3950,10 @@ Value dirChdirNative(int argCount, Value* args) {
     VM_CALLBACK_ENTER(priorFrameCount);
 
     if (callValue(closure, 0)) {
+        if (vm.exceptionThrown) {
+            return NIL_VAL;
+        }
+
         if (vm.frameCount > priorFrameCount) {
             InterpretResult res = run();
 

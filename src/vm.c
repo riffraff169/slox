@@ -90,6 +90,16 @@ typedef enum {
     PROP_SETTER
 } PropertyResult;
 
+static void closeUpvalues(Value* last) {
+    while (vm.openUpvalues != NULL &&
+            vm.openUpvalues->location >= last) {
+        ObjUpvalue* upvalue = vm.openUpvalues;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        vm.openUpvalues = upvalue->next;
+    }
+}
+
 void pushTemp(Value value) {
     if (vm.tempCount >= TEMP_STACK_MAX) {
         runtimeError("Auxiliary GC stack overflow.");
@@ -186,10 +196,21 @@ bool isResultOk(Value value) {
 
 void raiseException(Value exceptionValue) {
     vm.exceptionThrown = true;
+
+    /*
+    printf("  --> [raiseException START]\n");
+    printf("      tryCount: %d | frameCount: %d | stack height: %td\n",
+           vm.tryCount, vm.frameCount, vm.stackTop - vm.stack);
+           */
+
     if (vm.tryCount == 0) {
+        /*
+        printf("  --> [raiseExceeption UNHANDLED]\n");
+
         fprintf(stderr, "Unhandled Exception: ");
         printValueMain(exceptionValue);
         fprintf(stderr, "\n");
+        */
 
         // print attached e.stack_trace if exception is an instance
         if (IS_INSTANCE(exceptionValue)) {
@@ -216,8 +237,18 @@ void raiseException(Value exceptionValue) {
 
     TryBlock* target = &vm.tryStack[vm.tryCount - 1];
 
-    vm.stackTop = target->stackTop;
+    /*
+    printf("      Target TryBlock[%d]: frameCount=%d, target stack height=%td, catchIp=%p, finallyIp=%p\n",
+           vm.tryCount - 1, target->frameCount, target->stackTop - vm.stack,
+           (void*)target->catchIp, (void*)target->finallyIp);
+           */
+
     vm.frameCount = target->frameCount;
+    vm.stackTop = target->stackTop;
+
+    // XXX - maybe?
+    closeUpvalues(vm.stackTop);
+
     CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
 
     if (target->catchIp != NULL) {
@@ -228,10 +259,17 @@ void raiseException(Value exceptionValue) {
         if (target->finallyIp == NULL) {
             vm.tryCount--;
         }
+
+        /*
+        printf("      Restored vm.stackTop to height: %td\n", vm.stackTop - vm.stack);
         push(exceptionValue);
+        printf("      Pushed exceptionValue. New vm.stackTop height: %td\n", vm.stackTop - vm.stack);
+        */
+
         currentFrame->ip = catchTargetIp;
 
-        //vm.exceptionThrown = true;
+        vm.exceptionThrown = false;
+        //printf("  --> [raiseException END - JUMPING TO CATCH]\n");
     } else if (target->finallyIp != NULL) {
         target->hasUncaughtException = true;
         target->uncaughtException = exceptionValue;
@@ -240,8 +278,10 @@ void raiseException(Value exceptionValue) {
         target->finallyIp = NULL;
 
         currentFrame->ip = finallyTargetIp;
+        //printf("  --> [raiseException END - JUMPING TO FINALLY]\n");
     } else {
         vm.tryCount--;
+        //printf("  --> [raiseException RECURSING]\n");
         raiseException(exceptionValue);
     }
 }
@@ -2392,15 +2432,6 @@ static ObjUpvalue* captureUpvalue(Value* local) {
     return createdUpvalue;
 }
 
-static void closeUpvalues(Value* last) {
-    while (vm.openUpvalues != NULL &&
-            vm.openUpvalues->location >= last) {
-        ObjUpvalue* upvalue = vm.openUpvalues;
-        upvalue->closed = *upvalue->location;
-        upvalue->location = &upvalue->closed;
-        vm.openUpvalues = upvalue->next;
-    }
-}
 
 static void defineMethod(ObjString* name) {
     Value method = peek(0);
@@ -2600,6 +2631,7 @@ InterpretResult run() {
 
     CallFrame* frame = &vm.frames[vm.frameCount - 1];
     register uint8_t* ip = frame->ip;
+    //Value* stackTop = vm.stackTop;
 
     ObjString* name;
     Value value;
@@ -2619,18 +2651,25 @@ InterpretResult run() {
 #define READ_CONSTANT() \
     (frame->closure->function->chunk.constants.values[READ_BYTE()])
 #define READ_CONSTANT_LONG() \
-    (ip += 3, \
-     frame->closure->function->chunk.constants.values[read24(ip - 3)])
+    (frame->closure->function->chunk.constants.values[READ_24BIT()])
 
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 #define READ_STRING_LONG() \
     AS_STRING(READ_CONSTANT_LONG())
 
-#define STORE_FRAME() (frame->ip = ip)
+#define STORE_FRAME() do { \
+    frame->ip = ip; \
+} while (0)
+
+    //vm.stackTop = stackTop; \
+
 #define LOAD_FRAME() do { \
     frame = &vm.frames[vm.frameCount - 1]; \
     ip = frame->ip; \
 } while (0)
+
+    //stackTop = vm.stackTop; \
+    
 
 #define BINARY_OP(valueType, op) \
     do { \
@@ -2721,8 +2760,8 @@ InterpretResult run() {
                 }
 
                 STORE_FRAME();
-                pop();
-                push(OBJ_VAL(copyString(buffer, length)));
+                ObjString* strObj = copyString(buffer, length);
+                vm.stackTop[-1] = OBJ_VAL(strObj);
                 DISPATCH();
             }
             TARGET(OP_NIL): {
@@ -2753,8 +2792,8 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_GET_LOCAL_LONG): {
-                int slot = READ_24BIT();
-                value = frame->slots[slot];
+                int slot24 = READ_24BIT();
+                value = frame->slots[slot24];
                 push(value);
                 DISPATCH();
             }
@@ -2764,8 +2803,8 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_SET_LOCAL_LONG): {
-                int slot = READ_24BIT();
-                frame->slots[slot] = peek(0);
+                int slot24 = READ_24BIT();
+                frame->slots[slot24] = peek(0);
                 DISPATCH();
             }
             TARGET(OP_GET_GLOBAL): {
@@ -2847,7 +2886,7 @@ InterpretResult run() {
 
                 if (tableGet(&vm.globalConstants, name, &value)) {
                     STORE_FRAME();
-                    RUNTIME_ERROR("Canot reassign global constant '%s'.", name->chars);
+                    RUNTIME_ERROR("Cannot reassign global constant '%s'.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -2864,7 +2903,7 @@ InterpretResult run() {
 
                 if (tableGet(&vm.globalConstants, name, &value)) {
                     STORE_FRAME();
-                    RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                    RUNTIME_ERROR("Cannot reassign global constant '%s'.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -2893,15 +2932,16 @@ InterpretResult run() {
                 LOAD_FRAME();
 
                 if (res == PROP_FOUND) {
-                    pop();
-                    push(resolvedValue);
+                    //pop();
+                    //push(resolvedValue);
+                    vm.stackTop[-1] = resolvedValue;
                     DISPATCH();
                 } else if (res == PROP_ASYNC) {
                     //frame = &vm.frames[vm.frameCount - 1];
                     //pop();
                     DISPATCH();
                 }
-                pop();
+                //pop();
 
                 STORE_FRAME();
                 RUNTIME_ERROR("Undefined property or method '%s'.", name->chars);
@@ -2916,28 +2956,36 @@ InterpretResult run() {
                 goto set_property_shared;
             }
             set_property_shared: {
-                GC_SCOPE;
-                Value value = pop();
-                Value receiver = pop();
-
-                int tempFrame = vm.tempCount;
-                pushTemp(value);
-                pushTemp(receiver);
+                value = peek(0);
+                Value receiver = peek(1);
 
                 Value result;
+
+                //printf("\n--- DEBUG OP_SET_PROPERTY: '%s' ---\n", name->chars);
+                //printf("[BEFORE] stack depth: %d | frameCount: %d | frame->slots offset: %d\n",
+                //       (int)(vm.stackTop - vm.stack), vm.frameCount, (int)(frame->slots - vm.stack));
+                //printf("         receiver (peek 1): "); printValue(stderr, receiver); printf("\n");
+                //printf("         value    (peek 0): "); printValue(stderr, value); printf("\n");
 
                 STORE_FRAME();
                 PropertyResult res = setProperty(receiver, name, value, &result);
                 LOAD_FRAME();
 
-                vm.tempCount = tempFrame;
-
                 if (res == PROP_FOUND) {
-                    push(result);
+                    //printf("[PROP_FOUND] Popping 2, pushing result\n");
+                    vm.stackTop[-2] = result;
+                    vm.stackTop--;
+                    //popn(2);
+                    //push(result);
                     DISPATCH();
                 }
 
                 if (res == PROP_ASYNC) {
+                    //printf("[PROP_ASYNC] Before popn(2) -> stackTop offset: %d, active frame->slots offset: %d\n",
+                    //       (int)(vm.stackTop - vm.stack), (int)(frame->slots - vm.stack));
+                    //popn(2);
+                    //printf("[PROP_ASYNC] After popn(2)  -> stackTop offset: %d, active frame->slots offset: %d\n",
+                    //       (int)(vm.stackTop - vm.stack), (int)(frame->slots - vm.stack));
                     DISPATCH();
                 }
 
@@ -2948,7 +2996,7 @@ InterpretResult run() {
                 }
 
                 if (res == PROP_FROZEN) {
-                    STORE_FRAME();
+                    //STORE_FRAME();
                     if (IS_CLASS(receiver)) {
                         RUNTIME_ERROR("Cannot modify properties or methods on frozen class '%s'.",
                                 AS_CLASS(receiver)->name->chars);
@@ -2960,7 +3008,7 @@ InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                         
-                STORE_FRAME();
+                //STORE_FRAME();
                 RUNTIME_ERROR("Cannot set property '%s' on target.", name->chars);
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -2974,7 +3022,7 @@ InterpretResult run() {
             }
             getter_shared: {
                 Value closure = peek(0);
-                ObjClass* klass = AS_CLASS(peek(1));
+                klass = AS_CLASS(peek(1));
 
                 STORE_FRAME();
                 tableSet(&klass->getters, name, closure);
@@ -2991,7 +3039,7 @@ InterpretResult run() {
             }
             setter_shared: {
                 Value closure = peek(0);
-                ObjClass* klass = AS_CLASS(peek(1));
+                klass = AS_CLASS(peek(1));
 
                 STORE_FRAME();
                 tableSet(&klass->setters, name, closure);
@@ -2999,16 +3047,13 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_GET_SUPER): {
-                GC_SCOPE;
-
                 name = READ_STRING();
-                Value superclassVal = pop();
-                ObjClass* superclass = AS_CLASS(superclassVal);
+                //Value superclassVal = peek(0);
+                ObjClass* superclass = AS_CLASS(pop());
 
-                pushTemp(superclassVal);
                 STORE_FRAME();
-
                 bool bound = bindMethod(superclass, name);
+                LOAD_FRAME();
 
                 if (!bound) {
                     RUNTIME_ERROR("Can't bind method.");
@@ -3017,20 +3062,22 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_EQUAL): {
+                vm.stackTop[-2] = BOOL_VAL(valuesEqual(vm.stackTop[-2], vm.stackTop[-1]));
+                vm.stackTop--;
+                /*
                 Value b = pop();
                 Value a = pop();
                 push(BOOL_VAL(valuesEqual(a, b)));
+                */
                 DISPATCH();
             }
             TARGET(OP_GET_UPVALUE): {
-                uint16_t slot = (READ_BYTE() << 8);
-                slot |= READ_BYTE();
+                slot = (READ_BYTE() << 8) | READ_BYTE();
                 push(*frame->closure->upvalues[slot]->location);
                 DISPATCH();
             }
             TARGET(OP_SET_UPVALUE): {
-                uint16_t slot = (READ_BYTE() << 8);
-                slot |= READ_BYTE();
+                slot = (READ_BYTE() << 8) | READ_BYTE();
                 *frame->closure->upvalues[slot]->location = peek(0);
                 DISPATCH();
             }
@@ -3043,12 +3090,13 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_ADD): {
-                GC_SCOPE;
                 // 1. fast path: number + number
                 if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                     double b = AS_NUMBER(pop());
                     double a = AS_NUMBER(pop());
-                    push(NUMBER_VAL(a + b));
+                    vm.stackTop[-2] = NUMBER_VAL(a + b);
+                    vm.stackTop--;
+                    //push(NUMBER_VAL(a + b));
                 } else if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
                     // 2. fast path: string coercion & concatenation
                     Value rawB = peek(0);
@@ -3057,10 +3105,10 @@ InterpretResult run() {
                     STORE_FRAME();
 
                     Value aVal = valueToString(rawA);
-                    pushTemp(aVal);
+                    push(aVal);
 
                     Value bVal = valueToString(rawB);
-                    pushTemp(bVal);
+                    push(bVal);
 
                     ObjString* aStr = AS_STRING(aVal);
                     ObjString* bStr = AS_STRING(bVal);
@@ -3072,9 +3120,17 @@ InterpretResult run() {
                     chars[length] = '\0';
 
                     ObjString* result = takeString(chars, length);
+
+                    vm.stackTop[-4] = OBJ_VAL(result);
+                    vm.stackTop -= 3;
+                    /*
+                    pop();
+                    pop();
+
                     popn(2);
 
                     push(OBJ_VAL(result));
+                    */
                 } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                     double d = AS_NUMBER(pop());
                     Vec3 a = AS_VEC3(pop());
@@ -3097,7 +3153,7 @@ InterpretResult run() {
                     STORE_FRAME();
 
                     ObjArray *result = newArray();
-                    pushTemp(OBJ_VAL(result));
+                    push(OBJ_VAL(result));
 
                     for (int i = 0; i < a->count; i++) {
                         arrayAppend(result, a->values[i]);
@@ -3106,8 +3162,14 @@ InterpretResult run() {
                     for (int i = 0; i < b->count; i++) {
                         arrayAppend(result, b->values[i]);
                     }
+
+                    vm.stackTop[-3] = OBJ_VAL(result);
+                    vm.stackTop -= 2;
+                    /*
+                    pop();
                     popn(2);
                     push(OBJ_VAL(result));
+                    */
                 } else {
                     STORE_FRAME();
                     if (!invoke(vm.str_add, 1)) {
@@ -3373,7 +3435,8 @@ InterpretResult run() {
 
                 uint16_t catchOffset = READ_SHORT();
                 uint16_t finallyOffset = READ_SHORT();
-                frame->ip = ip;
+                //frame->ip = ip;
+                STORE_FRAME();
 
                 /*
                 if (vm.tryCount >= TRY_STACK_MAX) {
@@ -3406,14 +3469,14 @@ InterpretResult run() {
                 block->catchIp = catchOffset == 0 ? NULL : ip + catchOffset;
                 block->finallyIp = finallyOffset == 0 ? NULL : ip + finallyOffset;
 
-                frame->ip = ip;
+                //frame->ip = ip;
 
                 block->isReturning = false;
                 block->hasUncaughtException = false;
                 vm.exceptionThrown = false;
 
                 //LOAD_FRAME();
-                frame->ip = ip;
+                //frame->ip = ip;
                 DISPATCH();
             }
             TARGET(OP_END_TRY): {
@@ -3448,6 +3511,13 @@ InterpretResult run() {
 
                 TryBlock* block = &vm.tryStack[--vm.tryCount];
 
+                /*
+                printf("\n[OP_END_FINALLY] frameCount=%d, tryCount left=%d | isReturning=%d, returnValue=",
+                       vm.frameCount, vm.tryCount, block->isReturning);
+                printValue(stdout, block->returnValue);
+                printf("\n");
+                */
+
                 if (block->isReturning) {
                     // check if an enclosing try-finally block needs to run before returning
                     if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
@@ -3470,14 +3540,50 @@ InterpretResult run() {
                     }
                     Value result = block->returnValue;
 
+                    /*
+                    printf("  -> OP_END_FINALLY returning. Active frame slots[0]=");
+                    printValue(stdout, frame->slots[0]);
+                    if (frame->closure->function->arity > 0) {
+                        printf(" | slots[1]=");
+                        printValue(stdout, frame->slots[1]);
+                    }
+                    printf("\n");
+                    */
+
+                    Value* slots = frame->slots;
+
                     vm.frameCount--;
                     if (vm.frameCount == 0) {
                         pop();
                         return INTERPRET_OK;
                     }
                     frame = &vm.frames[vm.frameCount - 1];
-                    vm.stackTop = frame->slots;
+
+                    /*
+                    printf("  -> Updated frame to caller (frameCount=%d). frame->slots[0]=", vm.frameCount);
+                    printValue(stdout, frame->slots[0]);
+                    if (frame->closure->function->arity > 0) {
+                        printf(" | slots[1]=");
+                        printValue(stdout, frame->slots[1]);
+                    }
+                    printf("\n");
+                    */
+                    
+                    vm.stackTop = slots;
                     push(result);
+
+                    /*
+                    printf("  -> Pushed result to stackTop. stackTop[-1]=");
+                    printValue(stdout, vm.stackTop[-1]);
+                    printf(" | frame->slots[0]=");
+                    printValue(stdout, frame->slots[0]);
+                    if (frame->closure->function->arity > 0) {
+                        printf(" | frame->slots[1]=");
+                        printValue(stdout, frame->slots[1]);
+                    }
+                    printf("\n");
+                    */
+
                     ip = frame->ip;
 
                     //SYNC_FRAME(frame);
@@ -3500,12 +3606,39 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_THROW): {
-                frame->ip = ip;
+                //frame->ip = ip;
+                //vm.stackTop = stackTop;
+
+                /*
+                printf("\n>>> [DEBUG OP_THROW START]\n");
+                printf("    frameCount: %d | tryCount: %d | stack height: %td\n",
+                       vm.frameCount, vm.tryCount, vm.stackTop - vm.stack);
+                if (vm.stackTop > vm.stack) {
+                    printf("    stackTop[-1]: ");
+                    printValueMain(peek(0));
+                    printf("\n");
+                }
+
+                if (vm.debugTraceExecution) {
+                    printf("        ");
+                    for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+                        printf("[ ");
+                        printValueMain(*slot);
+                        printf(" ]");
+                    }
+                    printf("\n");
+                    disassembleInstruction(&frame->closure->function->chunk,
+                            (int)(ip - frame->closure->function->chunk.code));
+
+                }
+                */
+
 
                 Value exception = peek(0);
 
                 // 1. if exception is a string, wrap it in an error instance
                 if (IS_STRING(exception)) {
+                    //printf("    [OP_THROW] Exception is string, wrapping in Error class...\n");
                     ObjString* errorName = copyString("Error", 5);
                     push(OBJ_VAL(errorName));
 
@@ -3530,8 +3663,9 @@ InterpretResult run() {
                         pop(); // errorName
                         //pop(); // strMsg
 
+                        vm.stackTop[-1] = OBJ_VAL(errorInstance);
                         exception = OBJ_VAL(errorInstance);
-                        push(exception);
+                        //push(exception);
                     } else {
                         pop();
                     }
@@ -3539,6 +3673,7 @@ InterpretResult run() {
 
                 // 2. attach e.stack_trace array if exception is an instance and lacks one
                 if (IS_INSTANCE(exception)) {
+                    //printf("    [OP_THROW] Attaching stack trace to exception instance...\n");
                     ObjInstance* instance = AS_INSTANCE(exception);
                     ObjString* traceKey = copyString("stack_trace", 11);
                     push(OBJ_VAL(traceKey));
@@ -3575,13 +3710,82 @@ InterpretResult run() {
 
                 pop();
 
+                /*
+                printf("    [OP_THROW] Calling raiseException()...\n");
+                printf("    [OP_THROW] Exception value: ");
+                printValueMain(exception);
+                printf("\n");
+                printf("    [OP_THROW] Pre-raise stack height: %td\n", vm.stackTop - vm.stack);
+                */
+
+                //vm.stackTop = stackTop;
+                STORE_FRAME();
+                /*
+                printf("[DEBUG OP_THROW] local stackTop height: %td, vm.stackTop height: %td\n",
+                       stackTop - vm.stack, vm.stackTop - vm.stack);
+                if (vm.debugTraceExecution) {
+                    printf("        ");
+                    for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+                        printf("[ ");
+                        printValueMain(*slot);
+                        printf(" ]");
+                    }
+                    printf("\n");
+                    disassembleInstruction(&frame->closure->function->chunk,
+                            (int)(ip - frame->closure->function->chunk.code));
+
+                }
+                */
+                //stackTop = vm.stackTop;
                 raiseException(exception);
 
+                /*
+                if (vm.debugTraceExecution) {
+                    printf("        ");
+                    for (Value* slot = vm.stack; slot < stackTop; slot++) {
+                        printf("[ ");
+                        printValueMain(*slot);
+                        printf(" ]");
+                    }
+                    printf("\n");
+                    disassembleInstruction(&frame->closure->function->chunk,
+                            (int)(ip - frame->closure->function->chunk.code));
+
+                }
+                printf("    [OP_THROW] Post-raise frameCount: %d | tryCount: %d | stack height: %td\n",
+                       vm.frameCount, vm.tryCount, vm.stackTop - vm.stack);
+                if (vm.stackTop > vm.stack) {
+                    printf("    [OP_THROW] Post-raise stackTop[-1]: ");
+                    printValueMain(peek(0));
+                    printf("\n");
+                }
+                */
+                
+                /*
+                if (vm.exceptionThrown) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                */
+
+                
                 if (vm.frameCount < initialFrameCount) {
+                    //printf("<<< [DEBUG OP_THROW EXIT - INTERPRET_OK]\n\n");
                     return INTERPRET_OK;
+                    //return INTERPRET_RUNTIME_ERROR;
                 }
 
                 LOAD_FRAME();
+
+                /*
+                printf("    [OP_THROW] Post-LOAD_FRAME frameCount: %d | ip offset: %td | stack height: %td\n",
+                       vm.frameCount,
+                       frame->ip - frame->closure->function->chunk.code,
+                       vm.stackTop - vm.stack);
+                printf("<<< [DEBUG OP_THROW DISPATCHing]\n\n");
+ 
+                printf("[DEBUG OP_THROW END] local stackTop height: %td, vm.stackTop height: %td\n",
+                       stackTop - vm.stack, vm.stackTop - vm.stack);
+                       */
                 DISPATCH();
             }
             TARGET(OP_JUMP): {
@@ -3659,7 +3863,17 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_CALL): {
+                //printf("[OP_CALL]\n");
                 int argCount = READ_BYTE();
+                Value callee = peek(argCount);
+
+                /*
+                printf("[OP_CALL] argCount=%d | callee=", argCount);
+                printValue(stdout, callee);
+                printf(" | frameCount=%d | stackTop-offset=%ld\n",
+                       vm.frameCount, (long)(vm.stackTop - vm.stack));
+                       */
+
                 STORE_FRAME();
 
                 if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
@@ -3676,6 +3890,14 @@ InterpretResult run() {
                 */
 
                 LOAD_FRAME();
+
+                /*
+                printf("  -> Post-OP_CALL: frameCount=%d | new frame slots-offset=%ld | stackTop-offset=%ld\n",
+                       vm.frameCount,
+                       (long)(frame->slots - vm.stack),
+                       (long)(vm.stackTop - vm.stack));
+                       */
+
                 DISPATCH();
             }
             TARGET(OP_TAIL_CALL): {
@@ -3847,11 +4069,19 @@ InterpretResult run() {
                 if (klass == NULL) {
                     STORE_FRAME();
                     RUNTIME_ERROR("Method calls are not supported on this type.");
+                    if (vm.exceptionThrown) {
+                        LOAD_FRAME();
+                        DISPATCH();
+                    }
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
                 STORE_FRAME();
                 if (!invoke(method, argCount)) {
+                    if (vm.exceptionThrown) {
+                        LOAD_FRAME();
+                        DISPATCH();
+                    }
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -3990,10 +4220,8 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_UNPACK): {
-                GC_SCOPE;
                 uint8_t expectedCount = READ_BYTE();
                 Value value = pop();
-                pushTemp(value);
 
                 if (!IS_ARRAY(value)) {
                     RUNTIME_ERROR("Can only destructure arrays.");
@@ -4297,10 +4525,29 @@ InterpretResult run() {
             TARGET(OP_RETURN): {
                 Value result = pop();
 
+                /*
+                printf("\n[OP_RETURN] frameCount=%d, result=", vm.frameCount);
+                printValue(stdout, result);
+                printf(" | slot[0]=");
+                printValue(stdout, frame->slots[0]);
+                    if (frame->closure->function->arity > 0) {
+                    printf(" | slot[1]=");
+                    printValue(stdout, frame->slots[1]);
+                }
+                printf("\n");
+                */
+
                 bool divertedToFinally = false;
                 while (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
                     TryBlock* block = &vm.tryStack[vm.tryCount - 1];
                     if (block->finallyIp != NULL && !block->isReturning) {
+                        /*
+                        printf("  -> Diverting to finally. Storing retVal=");
+                        printValue(stdout, result);
+                        printf(" in tryStack[%d], reset stackTop to block->stackTop (offset %ld)\n",
+                               vm.tryCount - 1, (long)(block->stackTop - vm.stack));
+                               */
+
                         block->isReturning = true;
                         block->returnValue = result;
                         vm.stackTop = block->stackTop;
@@ -4318,14 +4565,16 @@ InterpretResult run() {
                 bool isSetterFrame = frame->isSetter;
                 bool isTimerFrame = frame->isTimer;
 
+                Value* slots = frame->slots;
+
                 vm.frameCount--;
                 if (vm.frameCount == 0) {
                     pop();
                     return INTERPRET_OK;
                 }
 
-                Value* slots = frame->slots;
-                vm.stackTop = slots;
+                //Value* slots = frame->slots;
+                //vm.stackTop = slots;
 
                 if (isTimerFrame) {
                     return INTERPRET_OK;
@@ -4347,8 +4596,18 @@ InterpretResult run() {
                 }
 
                 //vm.stackTop = vm.frames[vm.frameCount].slots;
+                frame = &vm.frames[vm.frameCount - 1];
+                vm.stackTop = slots;
 
                 push(result);
+
+                /*
+                printf("  -> Standard OP_RETURN finished. Caller frameCount=%d, pushed=", vm.frameCount);
+                printValue(stdout, result);
+                printf(" | stackTop[-1]=");
+                printValue(stdout, vm.stackTop[-1]);
+                printf("\n");
+                */
 
                 if  (vm.frameCount == vm.nativeExitDepth) {
                     vm.nativeExitDepth = -1;
@@ -4422,16 +4681,15 @@ InterpretResult run() {
                 DISPATCH();
             }
             TARGET(OP_MAP): {
-                GC_SCOPE;
-
                 uint8_t itemCount = READ_BYTE();
+                int totalArgs = itemCount * 2;
+
                 ObjMap* map = newMap();
                 map->obj.klass = vm.mapClass;
 
-                pushTemp(OBJ_VAL(map));
+                push(OBJ_VAL(map));
 
-                int totalArgs = itemCount * 2;
-                Value* entries = vm.stackTop - totalArgs;
+                Value* entries = vm.stackTop - 1 - totalArgs;
 
                 for (int i = 0; i < totalArgs; i += 2) {
                     Value key = entries[i];
@@ -4443,22 +4701,24 @@ InterpretResult run() {
                     }
                     tableSet2(&map->items, key, value);
                 }
+                vm.stackTop[-1 - totalArgs] = OBJ_VAL(map);
+                vm.stackTop -= totalArgs;
+                /*
                 popn(totalArgs);
                 push(OBJ_VAL(map));
+                */
 
                 DISPATCH();
             }
             TARGET(OP_ARRAY): {
-                GC_SCOPE;
-
                 uint8_t count = READ_BYTE();
                     
                 ObjArray* array = newArray();
-                pushTemp(OBJ_VAL(array));
+                push(OBJ_VAL(array));
 
                 if (count > 0) {
                     Value* entries = ALLOCATE(Value, count);
-                    memcpy(entries, vm.stackTop - count, sizeof(Value) * count);
+                    memcpy(entries, vm.stackTop - 1 - count, sizeof(Value) * count);
 
                     array->values = entries;
                     array->capacity = count;
@@ -4472,14 +4732,13 @@ InterpretResult run() {
                 */
 
                 //Value arrayVal = pop();
+                vm.stackTop[-1 - count] = OBJ_VAL(array);
                 vm.stackTop -= count;
-                push(OBJ_VAL(array));
+                //push(OBJ_VAL(array));
 
                 DISPATCH();
             }
             TARGET(OP_ARRAY_FILL): {
-                GC_SCOPE;
-
                 Value sizeVal = peek(0);
                 Value element = peek(1);
 
@@ -4496,7 +4755,7 @@ InterpretResult run() {
 
                 int count = (int)rawSize;
                 ObjArray* array = newArray();
-                pushTemp(OBJ_VAL(array));
+                push(OBJ_VAL(array));
 
                 if (count > 0) {
                     Value* entries = ALLOCATE(Value, count);
@@ -4510,7 +4769,7 @@ InterpretResult run() {
 
                 }
                 //vm.stackTop[-3] = OBJ_VAL(array);
-                popn(2);
+                popn(3);
                 push(OBJ_VAL(array));
 
                 DISPATCH();
@@ -4604,8 +4863,6 @@ InterpretResult run() {
                 return INTERPRET_RUNTIME_ERROR;
             }
             TARGET(OP_SET_INDEX): {
-                GC_SCOPE;
-
                 Value newValue = peek(0);
                 Value indexValue = peek(1);
                 Value targetValue = peek(2);
