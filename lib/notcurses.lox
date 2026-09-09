@@ -13,20 +13,27 @@ class PixelBuffer {
   }
 
   clear(rgba) {
-    var r = (rgba >> 24) & 0xff;
-    var g = (rgba >> 16) & 0xff;
-    var b = (rgba >> 8) & 0xff;
-    var a = rgba & 0xff;
+    var totalBytes = this.width * this.height + 4;
 
-    /*
-    for (var i = 0; i < this.width * this.height; i += 1) {
-      var idx = i * 4;
-      this.buf.write_uint8(idx, r);
-      this.buf.write_uint8(idx + 1, g);
-      this.buf.write_uint8(idx + 2, b);
-      this.buf.write_uint8(idx + 3, a);
+    if (rgba <= 255) {
+      // 1. single bytes value (0 - 255); set every byte index directly
+      for (var i = 0; i < totalBytes; i += 1) {
+        this.pixels[i] = rgba;
+      }
+    } else {
+      // 2. packed 32-bit rgba integer (eg 0x1e1e1eff)
+      var r = (rgba >> 24) & 0xff;
+      var g = (rgba >> 16) & 0xff;
+      var b = (rgba >> 8) & 0xff;
+      var a = rgba & 0xff;
+
+      for (var i = 0; i < totalBytes; i += 4) {
+        this.pixels[i] = r;
+        this.pixels[i + 1] = g;
+        this.pixels[i + 2] = b;
+        this.pixels[i + 3] = a;
+      }
     }
-    */
   }
 
   setPixel(x, y, rgba) {

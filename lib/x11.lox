@@ -1,0 +1,96 @@
+import "ffi";
+require("multiffi.lox");
+
+class X11 {
+  init() {
+    this.ffi = MultiFFI([
+        "libX11.so.6",
+        "libX11.so"
+    ]);
+
+    this.fnOpenDisplay = this.ffi.bind("XOpenDisplay", "pointer", ["string"]);
+    this.fnCloseDIsplay = this.ffi.bind("XCloseDisplay", "int32", ["pointer"]);
+    this.fnDefaultScreen = this.ffi.bind("XDefaultScreen", "int32", ["pointer"]);
+    this.fnRootWindow = this.ffi.bind("XRootWindow", "pointer", ["pointer", "int32"]);
+    this.fnDefaultVisual = this.ffi.bind("XDefaultVisual", "pointer", ["pointer", "int32"]);
+
+    this.fnCreateSimpleWindow = this.ffi.bind(
+        "XCreateSimpleWindow",
+        "pointer",
+        ["pointer", "uint64", "int32", "int32", "uint32", "uint32", "uint32", "uint64", "uint64"]
+        );
+
+    this.fnMapWindow = this.ffi.bind("XMapWindow", "int32", ["pointer", "pointer"]);
+    this.fnUnmapWindow = this.ffi.bind("XUnmapWindow", "int32", ["pointer", "pointer"]);
+    this.fnDestroyWindow = this.ffi.bind("XDestroyWindow", "int32", ["pointer", "pointer"]);
+
+    this.fnSelectInput = this.ffi.bind("XSelectInput", "int32", ["pointer", "pointer", "int64"]);
+    this.fnNextEvent = this.ffi.bind("XNextEvent", "int32", ["pointer", "pointer"]);
+    this.fnPending = this.ffi.bind("XPending", "int32", ["pointer"]);
+    this.fnInternAtom = this.ffi.bind("XInternAtom", "uint64", ["pointer", "string", "int32"]);
+    this.fnSetWMProtocols = this.ffi.bind("XSetWMProtocols", "int32", ["pointer", "pointer", "pointer", "int32"]);
+
+    // Common Event Masks
+    this.KeyPressMask        = 1;          // 1L << 0
+    this.KeyReleaseMask      = 2;          // 1L << 1
+    this.ButtonPressMask     = 4;          // 1L << 2
+    this.ButtonReleaseMask   = 8;          // 1L << 3
+    this.ExposureMask        = 32768;      // 1L << 15
+    this.StructureNotifyMask = 131072;     // 1L << 17
+
+    // Common Event Types
+    this.KeyPress         = 2;
+    this.KeyRelease       = 3;
+    this.ButtonPress      = 4;
+    this.ButtonRelease    = 5;
+    this.Expose           = 12;
+    this.DestroyNotify    = 17;
+    this.ClientMessage    = 33;
+  }
+
+  openDisplay(name) {
+    return this.fnOpenDisplay(name);
+  }
+
+  closeDisplay(dpy) {
+    return this.fnCloseDIsplay(dpy);
+  }
+
+  defaultScreen(dpy) {
+    return this.fnDefaultScreen(dpy);
+  }
+
+  rootWindow(dpy, screen) {
+    return this.fnRootWindow(dpy, screen);
+  }
+
+  defaultVisual(dpy, screen) {
+    return this.fnDefaultVisual(dpy, screen);
+  }
+
+  createSimpleWindow(dpy, parent, x, y, width, height, borderWidth, border, background) {
+    return this.fnCreateSimpleWindow(dpy, parent, x, y, width, height, borderWidth, border, background);
+  }
+
+  selectInput(dpy, win, mask) {
+    return this.fnSelectInput(dpy, win, mask);
+  }
+
+  mapWindow(dpy, win) {
+    return this.fnMapWindow(dpy, win);
+  }
+
+  nextEvent(dpy, eventBuffer) {
+    return this.fnNextEvent(dpy, eventBuffer);
+  }
+
+  internAtom(dpy, name, onlyIfExists = true) {
+    return this.fnInternAtom(dpy, name, onlyIfExists ? 1 : 0);
+  }
+
+  setWMProtocols(dpy, win, protocolsArrayPtr, count) {
+    return this.fnSetWMProtocols(dpy, win, protocolsArrayPtr, count);
+  }
+}
+
+

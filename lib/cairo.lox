@@ -1,0 +1,103 @@
+import "ffi";
+require("multiffi.lox");
+
+class Cairo {
+  const FONT_SLANT_NORMAL = 0;
+  const FONT_WEIGHT_NORMAL = 0;
+  const FONT_WEIGHT_BOLD = 1;
+  init() {
+    this.ffi = MultiFFI([
+        "libcairo.so.2",
+        "libcairo.so"
+    ]);
+
+    this.fnXlibSurfaceCreate = this.ffi.bind(
+        "cairo_xlib_surface_create",
+        "pointer",
+        ["pointer", "uint64", "pointer", "int32", "int32"]
+        );
+    this.fnSurfaceDestroy    = this.ffi.bind("cairo_surface_destroy", "void", ["pointer"]);
+    this.fnCreate            = this.ffi.bind("cairo_create", "pointer", ["pointer"]);
+    this.fnDestroy           = this.ffi.bind("cairo_destroy", "void", ["pointer"]);
+    this.fnXlibSurfaceSetSize= this.ffi.bind("cairo_xlib_surface_set_size", "void", ["pointer", "int32", "int32"]);
+
+    // Vector Drawing
+    this.fnSetSourceRGB   = this.ffi.bind("cairo_set_source_rgb", "void", ["pointer", "double", "double", "double"]);
+    this.fnSetLineWidth   = this.ffi.bind("cairo_set_line_width", "void", ["pointer", "double"]);
+    this.fnMoveTo         = this.ffi.bind("cairo_move_to", "void", ["pointer", "double", "double"]);
+    this.fnLineTo         = this.ffi.bind("cairo_line_to", "void", ["pointer", "double", "double"]);
+    this.fnArc            = this.ffi.bind("cairo_arc", "void", ["pointer", "double", "double", "double", "double", "double"]);
+    this.fnStroke         = this.ffi.bind("cairo_stroke", "void", ["pointer"]);
+    this.fnFill           = this.ffi.bind("cairo_fill", "void", ["pointer"]);
+    this.fnPaint          = this.ffi.bind("cairo_paint", "void", ["pointer"]);
+
+    // Text & Fonts
+    this.fnSelectFontFace = this.ffi.bind("cairo_select_font_face", "void", ["pointer", "string", "int32", "int32"]);
+    this.fnSetFontSize   = this.ffi.bind("cairo_set_font_size", "void", ["pointer", "double"]);
+    this.fnShowText       = this.ffi.bind("cairo_show_text", "void", ["pointer", "string"]);
+  }
+
+  xlibSurfaceCreate(dpy, window, visual, width, height) {
+    return this.fnXlibSurfaceCreate(dpy, window, visual, width, height);
+  }
+
+  surfaceDestroy(surface) {
+    this.fnSurfaceDestroy(surface);
+  }
+
+  create(surface) {
+    return this.fnCreate(surface);
+  }
+
+  destroy(cr) {
+    this.fnDestroy(cr);
+  }
+
+  xlibSurfaceSetSize(surface, width, height) {
+    this.fnXlibSurfaceSetSize(surface, width, height);
+  }
+
+  setSourceRGB(cr, r, g, b) {
+    this.fnSetSourceRGB(cr, r, g, b);
+  }
+
+  setLineWidth(cr, width) {
+    this.fnSetLineWidth(cr, width);
+  }
+
+  moveTo(cr, x, y) {
+    this.fnMoveTo(cr, x, y);
+  }
+
+  lineTo(cr, x, y) {
+    this.fnLineTo(cr, x, y);
+  }
+
+  arc(cr, xc, yc, radius, angle1, angle2) {
+    this.fnArc(cr, xc, yc, radius, angle1, angle2);
+  }
+
+  stroke(cr) {
+    this.fnStroke(cr);
+  }
+
+  fill(cr) {
+    this.fnFill(cr);
+  }
+
+  paint(cr) {
+    this.fnPaint(cr);
+  }
+
+  selectFontFace(cr, family, slant, weight) {
+    this.fnSelectFontFace(cr, family, slant, weight);
+  }
+
+  setFontSize(cr, size) {
+    this.fnSetFontSize(cr, size);
+  }
+
+  showText(cr, text) {
+    this.fnShowText(cr, text);
+  }
+}
