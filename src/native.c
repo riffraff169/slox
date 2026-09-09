@@ -4871,6 +4871,7 @@ Value structUnpackNative(int argCount, Value* args) {
         }
 
         switch (type) {
+            case 'b':
             case 'B':
                 {
                     uint8_t val = buffer[offset];
@@ -4878,6 +4879,7 @@ Value structUnpackNative(int argCount, Value* args) {
                     offset += 1;
                 }
                 break;
+            case 'h':
             case 'H':
                 {
                     uint16_t val;
@@ -4890,6 +4892,7 @@ Value structUnpackNative(int argCount, Value* args) {
                     offset += 2;
                 }
                 break;
+            case 'i':
             case 'I':
                 {
                     uint32_t val;
@@ -4908,6 +4911,7 @@ Value structUnpackNative(int argCount, Value* args) {
                     offset += 4;
                 }
                 break;
+            case 'q':
             case 'Q':
                 {
                     uint64_t val = 0;
@@ -6448,6 +6452,27 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value bufferWriteUint8Native(int argCount, Value* args) {
+    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+        return NIL_VAL;
+    }
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    size_t offset = (size_t)AS_NUMBER(args[0]);
+    uint8_t val = (uint8_t)AS_NUMBER(args[1]);
+
+    if (offset < buf->size) {
+        buf->bytes[offset] = val;
+    }
+
+    return NIL_VAL;
+}
+
+Value bufferWriteGetPtrNative(int argCount, Value* args) {
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    void* ptr = buf->bytes;
+    return OBJ_VAL(copyString((char*)&ptr, sizeof(void*)));
+}
+
 void initBufferClass() {
     vm.bufferClass = defineBuiltinClass("Buffer", vm.objectClass, &vm.bufferMetaClass, true);
 
@@ -6463,6 +6488,8 @@ void initBufferClass() {
     defineNativeMethod(vm.bufferClass, "size", bufferSizeNative);
     defineNativeMethod(vm.bufferClass, "fill", bufferFillNative);
     defineNativeMethod(vm.bufferClass, "write_uint64", bufferWriteUint64Native);
+    defineNativeMethod(vm.bufferClass, "write_uint8", bufferWriteUint8Native);
+    defineNativeMethod(vm.bufferClass, "get_ptr", bufferWriteGetPtrNative);
 }
 
 //@ Error

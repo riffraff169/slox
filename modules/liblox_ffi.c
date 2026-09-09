@@ -148,6 +148,13 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
                 *ptr = (void*)AS_BUFFER(val)->bytes;
             } else if (IS_NUMBER(val)) {
                 *ptr = (void*)(uintptr_t)AS_NUMBER(val);
+            } else if (IS_STRING(val)) {
+                ObjString* str = AS_STRING(val);
+                if (str->length == sizeof(void*)) {
+                    memcpy(ptr, str->chars, sizeof(void*));
+                } else {
+                    *ptr = (void*)str->chars;
+                }
             } else if (IS_INSTANCE(val) && AS_INSTANCE(val)->foreignPtr) {
                 *ptr = AS_INSTANCE(val)->foreignPtr;
             } else {

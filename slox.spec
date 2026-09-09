@@ -6,7 +6,6 @@
 %bcond_without sqlite
 %bcond_without postgres
 %bcond_without yaml
-%bcond_without notcurses
 
 Name:       slox
 Version: 1.6.5
@@ -80,17 +79,6 @@ Requires:       %{name}%{?_isa} = %{version}-%{release}
 %description yaml
 Provides the liblox_yaml.so native module for reading and parsing
 YAML configuration files
-%endif
-
-# notcurses
-%if %{with notcurses}
-%package notcurses
-Summary:        Notcurses support for the Lox programming language
-BuildRequires:  notcurses-devel
-Requires:       %{name}%{?_isa} = %{version}-%{release}
-
-%description notcurses
-Provides notcurses module for slox
 %endif
 
 %package vim

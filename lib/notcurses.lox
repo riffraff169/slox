@@ -2,12 +2,194 @@ import "ffi";
 
 require("multiffi.lox");
 
+class PixelBuffer {
+  init(width, height) {
+    this.width = width;
+    this.height = height;
+    // 4 bytes per pixel (rgba)
+    var totalBytes = width * height * 4;
+    this.pixels = [0; totalBytes];
+    //this.clear(0x1e1e1eff); // dark grey canvas
+  }
+
+  clear(rgba) {
+    var r = (rgba >> 24) & 0xff;
+    var g = (rgba >> 16) & 0xff;
+    var b = (rgba >> 8) & 0xff;
+    var a = rgba & 0xff;
+
+    /*
+    for (var i = 0; i < this.width * this.height; i += 1) {
+      var idx = i * 4;
+      this.buf.write_uint8(idx, r);
+      this.buf.write_uint8(idx + 1, g);
+      this.buf.write_uint8(idx + 2, b);
+      this.buf.write_uint8(idx + 3, a);
+    }
+    */
+  }
+
+  setPixel(x, y, rgba) {
+    if (x < 0 or x >= this.width or y < 0 or y >= this.height) return;
+
+    var offset = (y * this.width + x) * 4;
+
+    var r;
+    var g;
+    var b;
+    var a;
+
+    if (typeof(rgba) == "Array") {
+      r, g, b, a = rgba;
+    } else {
+      r = (rgba >> 24) & 0xff;
+      g = (rgba >> 16) & 0xff;
+      b = (rgba >> 8) & 0xff;
+      a = rgba & 0xff;
+    }
+
+    this.pixels[offset] = r;
+    this.pixels[offset + 1] = g;
+    this.pixels[offset + 2] = b;
+    this.pixels[offset + 3] = a;
+    /*
+    this.buf.write_uint8(idx, r);
+    this.buf.write_uint8(idx + 1, g);
+    this.buf.write_uint8(idx + 2, b);
+    this.buf.write_uint8(idx + 3, a);
+    */
+  }
+
+  getBuffer() {
+    return this.pixels.to_string();
+  }
+}
+
+class Visual {
+  const BLIT_DEFAULT = 0;
+  const BLIT_1x1 = 1;
+  const BLIT_2x1 = 2; // half-blocks (2 vertical pixels per char cell)
+  const BLIT_2x2 = 3;
+  const BLIT_3x2 = 4;
+  const BLIT_4x2 = 5;
+  const BLIT_BRAILLE = 6;
+  const BLIT_PIXEL = 7; // sixel / kitty graphics
+  const BLIT_4x1 = 8;
+  const BLIT_8x1 = 9;
+
+  const SCALE_NONE = 0;
+  const SCALE_SCALE = 1;
+  const SCALE_STRETCH = 2;
+  const SCALE_NONE_HIRES = 3;
+
+  init(pixelBuffer, nc) {
+    this.pixelBuffer = pixelBuffer;
+    this.nc = nc;
+    this.ffi = nc.ffi;
+
+    this.fnFromRgba = this.ffi.bind("ncvisual_from_rgba", "pointer",
+        ["pointer", "int32", "int32", "int32"]);
+    this.fnBlit = this.ffi.bind("ncvisual_blit", "pointer",
+        ["pointer", "pointer", "pointer"]);
+    this.fnDestroy = this.ffi.bind("ncvisual_destroy", "void", ["pointer"]);
+    this.fnResize = this.ffi.bind("ncvisual_resize", "int", ["pointer", "int", "int"]);
+
+    var stride = pixelBuffer.width * 4;
+    var rawBuf = pixelBuffer.getBuffer();
+
+    this.ptr = this.fnFromRgba(rawBuf, pixelBuffer.height, stride, pixelBuffer.width);
+
+    /*
+    if (this.ptr == nil) {
+      print ("ERROR: ncvisual_from_rgba returned NULL!");
+    } else {
+      print "SUCCESS: ncvisual created at handle: " + this.ptr;
+    }
+    */
+  }
+
+  resize(rows, cols) {
+    return this.fnResize(this.ptr, rows, cols);
+  }
+
+  pixelGeom() {
+    return this.nc.stdplane.pixelGeom();
+  }
+
+  resizeCells(plane, celLRows, cellCols) {
+    var bufY = Buffer.alloc(4);
+    var bufX = Buffer.alloc(4);
+
+    this.nc.stdplane.fnPixelGeom(this.nc.stdplane, nil, nil, bufY, bufX, nil, nil);
+
+    var cdimy = Struct.unpackNative("I", bufY)[0];
+    var cdimx = Struct.unpackNative("I", bufX)[0];
+
+    if (cdimy > 0 and cdimx > 0) {
+      var pixelRows = cdimy * cellRows;
+      var pixelCols = cdimx * cellCols;
+
+      return this.ffi.fnResize(this.ptr, pixelRows, pixelCols);
+    }
+    return -1;
+  }
+
+  blit(plane, blitMode = 2, scale = 2, y = 0, x = 0, leny = 0, lenx = 0) {
+    if (this.ptr == nil) return nil;
+
+    var flags = 0;
+    if (blitMode == 7 or blitMode == this.BLIT_PIXEL)
+      flags = 32;
+
+    // pack options struct for notcurses
+    // ncplane*, scaling, y, x, beg_y, beg_x, len_y, len_x, blitmode
+    // Q - n (ncplane*)               (0..7)
+    // I - scaling (0 = NSCALE_NONE)  (8..11)
+    // i - y (0)                      (12..15)
+    // i - x (0)                      (16..19)
+    // i - begy (0)                   (20..23)
+    // i - begx (0)                   (24..27)
+    // i - leny (0)                   (28..31)
+    // i - lenx (0)                   (32..35)
+    // I - blitter (blitMode)         (36..39)
+    // Q - flags (0)                  (40..47)
+    // I - transcolor (0)             (48..51)
+    // i - pxoffy (0)                 (52..55)
+    // i - pxoffx (0)                 (56..59)
+    // 4x
+
+    var opts = Struct.pack("Q I i i i i i i I Q I i i 4x", [
+        plane.ptr,  // target plane
+        scale,          // NCSCALE_NONE
+        y, x,       // y, x
+        0, 0,       // beg_y, beg_x
+        leny, lenx,       // len_y, len_x
+        blitMode,   // NCBLIT_PIXEL (or 2)
+        flags,          // flags
+        0,          // transcolor
+        0, 0        // pxoff_y, pxoff_x
+    ]);
+
+    var pl = this.fnBlit(this.nc.ptr, this.ptr, opts);
+    if (pl != nil and pl != 0) {
+        return Plane(pl, this.ffi);
+    }
+    return nil;
+  }
+
+  destroy() {
+    if (this.ptr != nil) {
+      this.fnDestroy(this.ptr);
+      this.ptr = nil;
+    }
+  }
+}
+
 class Plane {
   const NCALIGN_UNALIGNED = 0;
   const NCALIGN_LEFT = 1;
   const NCALIGN_CENTER = 2;
   const NCALIGN_RIGHT = 3;
-
 
   init(ptr, ffiLib) {
     this.ptr = ptr;
@@ -43,10 +225,58 @@ class Plane {
 
     this.fnCellRelease = ffiLib.bind("nccell_release", "void", ["pointer", "pointer"]);
     this.fnChannels = ffiLib.bind("ncplane_channels", "uint64", ["pointer"]);
+
+    this.fnMoveYx = ffiLib.bind("ncplane_move_yx", "int32", ["pointer", "int32", "int32"]);
+    this.fnMoveRelYx = ffiLib.bind("ncplane_move_rel", "int32", ["pointer", "int32", "int32"]);
+    this.fnSetBgAlpha = ffiLib.bind("ncplane_set_bg_alpha", "int32", ["pointer", "int32"]);
+    this.fnSetBase = ffiLib.bind("ncplane_set_base", "int32", ["pointer", "string", "int", "uint64"]);
+    this.fnMoveTop = ffiLib.bind("ncplane_move_top", "void", ["pointer"]);
+    this.fnMoveBottom = ffiLib.bind("ncplane_move_bottom", "void", ["pointer"]);
+
+    this.fnPixelGeom = ffiLib.bind("ncplane_pixel_geom", "void",
+        ["pointer", "pointer", "pointer",
+        "pointer", "pointer",
+        "pointer", "pointer"]);
+  }
+
+  pixelGeom() {
+    var bufY = Buffer.alloc(4);
+    var bufX = Buffer.alloc(4);
+
+    this.fnPixelGeom(this.ptr, nil, nil, bufY, bufX, nil, nil);
+
+    var cdimy = Struct.unpackNative("I", bufY)[0];
+    var cdimx = Struct.unpackNative("I", bufX)[0];
+    return [cdimy, cdimx];
   }
 
   erase() {
     this.fnErase(this.ptr);
+  }
+
+  move_top() {
+    this.fnMoveTop(this.ptr);
+  }
+
+  move_bottom() {
+    this.fnMoveBottom(this.ptr);
+  }
+
+  set_opaque(r, g, b) {
+    this.set_bg(r, g, b);
+
+    // 0 = NCALPHA_OPAQUE
+    this.fnSetBgAlpha(this.ptr, 0);
+
+    // set plane base cell to space using current colors
+    // stylemask = 0, channels = 0
+    this.fnSetBase(this.ptr, " ", 0, 0);
+
+    this.erase();
+  }
+
+  move_yx(y, x) {
+    this.fnMoveYx(this.ptr, y, x);
   }
 
   create_child(y, x, rows, cols, flags = 0) {
@@ -63,7 +293,7 @@ class Plane {
   put_str(a1, a2 = nil, a3 = nil) {
     if (a2 == nil and a3 == nil)
       return this.fnPutStr(this.ptr, a1);
-    return this.fnPutStrYx(this.ptr, a1 ,a2, a3);
+    return this.fnPutStrYx(this.ptr, a1, a2, a3);
   }
 
   // either string name ("center") or integer alignment enum
@@ -182,6 +412,314 @@ class Plane {
   }
 }
 
+class DropdownMenu {
+  init(std, cols, menuData) {
+    this.std = std;
+    this.cols = cols;
+    this.menuData = menuData; // array of section maps
+
+    this.activeSection = -1; // -1 = closed, 0..n = open section
+    this.activeItem = -1; // active item index in open dropdown
+    this.dropdownPlane = nil;
+
+    // calculate section title x-offsets for mouse hit detection
+    this.sectionOffsets = [];
+    var currentX = 2;
+    for (var i = 0; i < menuData.length(); i += 1) {
+      this.sectionOffsets.push(currentX);
+      // title width + padding spaces
+      currentX += menuData[i]["title"].length() + 4;
+    }
+
+    // top menu bar
+    this.barPlane = std.create_child(0, 0, 1, cols);
+    this.draw_bar();
+  }
+
+  draw_text_with_hotkey(plane, y, x, text, hotkeyChar, defaultFg, hotkeyFg) {
+    var hkLower = (hotkeyChar != nil) ? hotkeyChar.to_lower() : "";
+    var hkFound = false;
+
+    for (var i = 0; i < text.length(); i += 1) {
+      var ch = chr(text[i]);
+      if (!hkFound and hkLower != "" and ch.to_lower() == hkLower) {
+        plane.set_fg(hotkeyFg[0], hotkeyFg[1], hotkeyFg[2]);
+        plane.put_str(y, x + i, ch);
+        hkFound = true;
+      } else {
+        plane.set_fg(defaultFg[0], defaultFg[1], defaultFg[2]);
+        plane.put_str(y, x + i, ch);
+      }
+    }
+  }
+
+  draw_bar() {
+    this.barPlane.erase();
+    this.barPlane.set_bg(40, 40, 60);
+
+    var currentX = 0;
+    this.barPlane.set_fg(220, 220, 220);
+    this.barPlane.put_str(0, currentX, " ");
+    currentX += 1;
+
+    for (var i = 0; i < this.menuData.length(); i += 1) {
+      var sec = this.menuData[i];
+      var isSelected = (i == this.activeSection);
+      var title = sec["title"];
+      var hotkey = sec["hotkey"];
+
+      if (isSelected) {
+        this.barPlane.set_bg(70, 70, 110);
+        this.barPlane.put_str(0, currentX, " [");
+        this.draw_text_with_hotkey(this.barPlane, 0, currentX + 2, title, hotkey, [255, 255, 255], [255, 220, 100]);
+        this.barPlane.set_fg(255, 255, 255);
+        this.barPlane.put_str(0, currentX + 2 + title.length(), "] ");
+      } else {
+        this.barPlane.set_bg(40, 40, 60);
+        this.barPlane.put_str(0, currentX, "  ");
+        this.draw_text_with_hotkey(this.barPlane, 0, currentX + 2, title, hotkey, [220, 220, 220], [255, 220, 100]);
+        this.barPlane.set_fg(220, 220, 220);
+        this.barPlane.put_str(0, currentX + 2 + title.length(), "  ");
+      }
+      currentX += title.length() + 4;
+    }
+
+    // file
+    this.barPlane.set_bg(40, 40, 60);
+    if (currentX < this.cols) {
+      this.barPlane.put_str(0, currentX, " " * (this.cols - currentX));
+    }
+
+    return;
+  }
+
+  open_dropdown(sectionIdx) {
+    this.close_dropdown();
+
+    if (sectionIdx < 0 or sectionIdx >= this.menuData.length()) return;
+
+    this.activeSection = sectionIdx;
+    this.activeItem = 0;
+
+    var sec = this.menuData[sectionIdx];
+    var items = sec["items"];
+
+    // compute max width required
+    var maxW = 16;
+    for (var i = 0; i < items.length(); i += 1) {
+      var len = items[i]["label"].length();
+      if (len + 6 > maxW) maxW = len + 6;
+    }
+
+    var px = this.sectionOffsets[sectionIdx];
+    var py = 1; // immediately below the 1-row top bar
+    var pRows = items.length() + 2;
+
+    this.dropdownPlane = this.std.create_child(py, px, pRows, maxW);
+    this.dropdownPlane.set_opaque(25, 25, 35);
+
+    this.draw_bar();
+    this.draw_dropdown();
+  }
+
+  draw_dropdown() {
+    if (this.dropdownPlane == nil) return;
+
+    this.dropdownPlane.erase();
+    this.dropdownPlane.set_opaque(25, 25, 35);
+    this.dropdownPlane.set_fg(220, 220, 220);
+    this.dropdownPlane.box();
+
+    var items = this.menuData[this.activeSection]["items"];
+    var planeWidth = this.dropdownPlane.get_dim()[1];
+    var pad = " " * (planeWidth - 2);
+
+    for (var i = 0; i < items.length(); i += 1) {
+      var isSelected = (i == this.activeItem);
+      var item = items[i];
+
+      if (isSelected) {
+        this.dropdownPlane.set_bg(60, 60, 100);
+        this.dropdownPlane.put_str(i + 1, 1, pad);
+        this.draw_text_with_hotkey(this.dropdownPlane, i + 1, 2, item["label"], item["hotkey"], [255, 255, 255], [255, 220, 100]);
+      } else {
+        this.dropdownPlane.set_bg(25, 25, 35);
+        this.dropdownPlane.put_str(i + 1, 1, pad);
+        this.draw_text_with_hotkey(this.dropdownPlane, i + 1, 2, item["label"], item["hotkey"], [200, 200, 200], [255, 220, 100]);
+      }
+    }
+  }
+
+  close_dropdown() {
+    if (this.dropdownPlane != nil) {
+      this.dropdownPlane.destroy();
+      this.dropdownPlane = nil;
+    }
+    this.activeSection = -1;
+    this.activeItem = -1;
+    this.draw_bar();
+  }
+
+  handle_event(ev) {
+    if (ev == nil) return nil;
+
+    // mouse input
+    if (ev["is_mouse"]) {
+      var mx = ev["x"];
+      var my = ev["y"];
+      var type = ev["type"];
+
+      // 1. mouse interaction on top bar (row 0)
+      if (my == 0 and type == "press") {
+        for (var i = 0; i < this.menuData.length(); i += 1) {
+          var startX = this.sectionOffsets[i];
+          var endX = startX + this.menuData[i]["title"].length() + 4;
+
+          if (mx >= startX and mx < endX) {
+            if (this.activeSection == i) {
+              this.close_dropdown();
+            } else {
+              this.open_dropdown(i);
+            }
+            return nil;
+          }
+        }
+        this.close_dropdown();
+        return nil;
+      }
+
+      // 2. mouse interaction inside open dropdown window
+      if (this.activeSection != -1 and this.dropdownPlane != nil) {
+        var px = this.sectionOffsets[this.activeSection];
+        var items = this.menuData[this.activeSection]["items"];
+        var pRows = items.length() + 2;
+        var pCols = this.dropdownPlane.get_dim()[1];
+
+        // check bounds
+        if (mx >= px and mx < px + pCols and my >= 1 and my < 1 + pRows) {
+          var itemIdx = my - 2;
+          if (itemIdx >= 0 and itemIdx < items.length()) {
+            this.activeItem = itemIdx;
+            this.draw_dropdown();
+
+            if (type == "press") {
+              var action = items[itemIdx]["action"];
+              this.close_dropdown();
+              return action;
+            }
+          }
+          return nil;
+        }
+
+        // clicked outside dropdown
+        if (type == "press") {
+          this.close_dropdown();
+        }
+      }
+      return nil;
+    }
+
+    // 3. keyboard shortcuts
+    if (ev["type"] == "press") {
+      var key = ev["key"];
+      var isAlt = ev["alt"];
+
+      if (key == "Esc") {
+        if (this.activeSection != -1) {
+          this.close_dropdown();
+          return nil;
+        }
+      }
+
+      // 1. f1 activates/toggles menu starting at section 0
+      if (key == "F1") {
+        if (this.activeSection == -1) {
+          this.open_dropdown(0);
+        } else {
+          this.close_dropdown();
+        }
+        return nil;
+      }
+
+      // 2. alt + section hotey (eg Alt+f, Alt+m)
+      if (isAlt or (key != nil and key.length() >= 4 and key.slice(0, 4) == "Alt+")) {
+        var cleanKey = key;
+        if (isAlt) {
+          cleanKey = key;
+        } else if (key.length() >= 5) {
+          cleanKey = key.slice(4,5);
+        }
+        //var cleanKey = isAlt ? key : key.slice(4, 5);
+        cleanKey = cleanKey.to_lower();
+
+        for (var i = 0; i < this.menuData.length(); i += 1) {
+          var secHotkey = this.menuData[i]["hotkey"];
+          if (secHotkey != nil and secHotkey.to_lower() == cleanKey) {
+            this.open_dropdown(i);
+            return nil;
+          }
+        }
+      }
+      
+      // 3. navigation inside open menu
+      if (this.activeSection != -1) {
+        var items = this.menuData[this.activeSection]["items"];
+
+        if (key == "Esc") {
+          this.close_dropdown();
+          return nil;
+        }
+
+        if (key == "Down") {
+          this.activeItem = (this.activeItem + 1) % items.length();
+          this.draw_dropdown();
+          return nil;
+        }
+
+        if (key == "Up") {
+          this.activeItem = (this.activeItem - 1 + items.length()) % items.length();
+          this.draw_dropdown();
+          return nil;
+        }
+
+        if (key == "Right") {
+          var nextSec = (this.activeSection + 1) % this.menuData.length();
+          this.open_dropdown(nextSec);
+          return nil;
+        }
+
+        if (key == "Left") {
+          var prevSec = (this.activeSection - 1 + this.menuData.length()) % this.menuData.length();
+          this.open_dropdown(prevSec);
+          return nil;
+        }
+
+        if (key == "Enter") {
+          if (this.activeItem >= 0 and this.activeItem < items.length()) {
+            var action = items[this.activeItem]["action"];
+            this.close_dropdown();
+            return action;
+          }
+        }
+        // direct single-key shortcut match
+        if (key != nil and key.length() == 1) {
+          var pressedChar = key.to_lower();
+          for (var i = 0; i < items.length(); i += 1) {
+            var itemHotkey = items[i]["hotkey"];
+            if (itemHotkey != nil and itemHotkey.to_lower() == pressedChar) {
+              var action = items[i]["action"];
+              this.close_dropdown();
+              return action;
+            }
+          }
+        }
+      }
+    }
+    //foo;
+    return nil;
+  }
+}
+
 class Notcurses {
   const NCOPTION_INHIBIT_SETLOCALE    = 0x0001;
   const NCOPTION_NO_CLEAR_BITMAPS     = 0x0002;
@@ -218,7 +756,7 @@ class Notcurses {
     // pack struct notcurses_options:
     // termtype (NULL), renderfp(NULL), flags, margin_t, margin_r, margin_b, margin_l
     // Q = termtype (null/0)
-    // I = loglevel (0)
+    // I = loglevel (0) (7 is trace)
     // I I I I = 4 margins (0, 0, 0, 0)
     // I = 4-byte padding for uint64 alignment
     // Q = flags
