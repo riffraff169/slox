@@ -96,6 +96,10 @@ typedef struct {
 
     ObjClass* numberClass;
     ObjClass* numberMetaClass;
+    ObjClass* floatClass;
+    ObjClass* floatMetaClass;
+    ObjClass* integerClass;
+    ObjClass* integerMetaClass;
     ObjClass* boolClass;
     ObjClass* boolMetaClass;
     ObjClass* nilClass;

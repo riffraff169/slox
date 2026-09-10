@@ -103,6 +103,8 @@ void printValueSafe(FILE* stream, Value value) {
             case VAL_NIL:
                 fprintf(stream, "nil");
                 break;
+            case VAL_INT:
+                fprintf(stream, "%" PRId64, AS_INT(value));
             case VAL_NUMBER:
                 if (vm.numNotation == 1) {
                     fprintf(stream, "%.*g", vm.numPrecision, AS_NUMBER(value));
@@ -133,12 +135,21 @@ void printValue(FILE* stream, Value value) {
 }
 
 bool valuesEqual(Value a, Value b) {
-    if (a.type != b.type) return false;
+    if (a.type != b.type) {
+        // cross-type numeric equality coercion (eg 100 == 100.0)
+        if (IS_NUMERIC(a) && IS_NUMERIC(b)) {
+            return valueToDouble(a) == valueToDouble(b);
+        }
+        return false;
+    }
+
     switch (a.type) {
         case VAL_BOOL:
             return AS_BOOL(a) == AS_BOOL(b);
         case VAL_NIL:
             return true;
+        case VAL_INT:
+            return AS_INT(a) == AS_INT(b);
         case VAL_NUMBER:
             return AS_NUMBER(a) == AS_NUMBER(b);
         case VAL_VEC3:

@@ -267,31 +267,48 @@ static bool isOctalDigit(char c) {
 }
 
 static Token number() {
+    bool isFloat = false;
+
+    // hex
     if (peek() == '0' && (peekNext() == 'x' || peekNext() == 'X')) {
         advance();
         advance();
 
         while (isHexDigit(peek())) advance();
-        return makeToken(TOKEN_NUMBER);
+        return makeToken(TOKEN_INT);
     }
 
+    // binary
+    if (scanner.start[0] == '0' && (peek() == 'b' || peek() == 'B')) {
+        advance();
+        if (peek() != '0' && peek() != '1') {
+            return errorToken("Invalid binary number.");
+        }
+        while (peek() == '0' || peek() == '1') advance();
+        return makeToken(TOKEN_INT);
+    }
+
+    // octal
     if (peek() == '0' && (peekNext() == 'o' || peekNext() == 'O')) {
         advance();
         advance();
         
         while (isOctalDigit(peek())) advance();
-        return makeToken(TOKEN_NUMBER);
+        return makeToken(TOKEN_INT);
     }
 
     while (isDigit(peek())) advance();
 
     if (peek() == '.' && isDigit(peekNext())) {
+        isFloat = true;
         advance();
 
         while (isDigit(peek())) advance();
     }
 
+    /*
     if (peek() == 'e' || peek() == 'E') {
+        isFloat = true;
         char next = peekNext();
         if (isDigit(next) || ((next == '+' || next == '-'))) {
             advance();
@@ -305,8 +322,22 @@ static Token number() {
             return errorToken("Unterminated exponent.");
         }
     }
+    */
+    if (peek() == 'e' || peek() == 'E') {
+        isFloat = true;
+        advance();
 
-    return makeToken(TOKEN_NUMBER);
+        if (peek() == '+' || peek() == '-') {
+            advance();
+        }
+
+        if (!isDigit(peek())) {
+            return errorToken("Unterminated exponent.");
+        }
+        while (isDigit(peek())) advance();
+    }
+
+    return makeToken(isFloat ? TOKEN_NUMBER : TOKEN_INT);
 }
 
 static Token continueString() {

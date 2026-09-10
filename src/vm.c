@@ -906,6 +906,7 @@ bool isResultInstance(Value value) {
 ObjClass* getClassForValue(Value value) {
     // 1. Handle primitive immediate values
     if (IS_NUMBER(value)) return vm.numberClass;
+    if (IS_INT(value)) return vm.integerClass;
     if (IS_BOOL(value)) return vm.boolClass;
     if (IS_NIL(value)) return vm.nilClass;
     if (IS_STRING(value)) return vm.stringClass;
@@ -1520,37 +1521,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     // pop the 6 string names from phase 1
     popn(6);
 
-    /*
-    vm.stringClass = newClass(stringName);
-    vm.stringClass->callHandler = strNative;
-    vm.stringClass->superclass = NULL;
-
-    stringName->obj.klass = vm.stringClass;
-    pop();
-
-    ObjString* string = NULL;
-
-    ObjString* objectName = copyString("Object", 6);
-    push(OBJ_VAL(objectName));
-
-    vm.objectClass = newClass(objectName);
-    vm.objectClass->superclass = NULL;
-    pop();
-
-    vm.stringClass->superclass = vm.objectClass;
-
-    tableSet(&vm.globals, vm.stringClass->name, OBJ_VAL(vm.stringClass));
-    tableSet(&vm.globals, vm.objectClass->name, OBJ_VAL(vm.objectClass));
-    */
     initStringClass(); // done
-
-    /*
-    string = copyString("Class", 5);
-    push(OBJ_VAL(string));
-    vm.classClass = newClass(string);
-    vm.classClass->superclass = vm.objectClass;
-    pop();
-    */
 
     // initClassClass();
     defineNativeMethod(vm.classClass, "superclass", classSuperclassMethod);
@@ -1633,77 +1604,27 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.methodMissingString = copyString("method_missing", 14);
     vmAnchor(vm.methodMissingString);
 
-    /*
-    ObjString* string = copyString("Function", 8);
-    push(OBJ_VAL(string));
-    vm.functionClass = newClass(string);
-    vm.functionClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.functionClass));
-    pop();
-    */
     vm.functionClass = defineBuiltinClass("Function", vm.objectClass, &vm.functionMetaClass, true);
     vmAnchor(vm.functionClass);
 
-    /*
-    string = copyString("Native", 6);
-    push(OBJ_VAL(string));
-    vm.nativeFunctionClass = newClass(string);
-    vm.nativeFunctionClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.nativeFunctionClass));
-    pop();
-    */
-
     vm.nativeFunctionClass = defineBuiltinClass("Native", vm.objectClass, &vm.nativeFunctionMetaClass, true);
     vmAnchor(vm.nativeFunctionClass);
-
-    /*
-    string = copyString("Number", 6);
-    push(OBJ_VAL(string));
-    vm.numberClass = newClass(string);
-    vm.numberClass->superclass = vm.objectClass;
-    vm.numberClass->callHandler = toNumberNative;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.numberClass));
-    pop();
-    */
 
     vm.numberClass = defineBuiltinClass("Number", vm.objectClass, &vm.numberMetaClass, true);
     vm.numberClass->callHandler = numberClassCallHandler;
     vmAnchor(vm.numberClass);
 
-    /*
-    string = copyString("Bool", 4);
-    push(OBJ_VAL(string));
-    vm.boolClass = newClass(string);
-    vm.boolClass->superclass = vm.objectClass;
-    vm.boolClass->callHandler = boolCallHandler;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.boolClass));
-    pop();
-    */
+    vm.integerClass = defineBuiltinClass("Integer", vm.objectClass, &vm.numberMetaClass, true);
+    vm.integerClass->callHandler = integerClassCallHandler;
+    vmAnchor(vm.integerClass);
 
     vm.boolClass = defineBuiltinClass("Bool", vm.objectClass, &vm.boolMetaClass, true);
     vm.boolClass->callHandler = boolClassCallHandler;
     vmAnchor(vm.boolClass);
 
-    /*
-    string = copyString("Nil", 3);
-    push(OBJ_VAL(string));
-    vm.nilClass = newClass(string);
-    vm.nilClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.nilClass));
-    pop();
-    */
-
     vm.nilClass = defineBuiltinClass("Nil", vm.objectClass, &vm.nilMetaClass, true);
     vm.nilClass->callHandler = nilClassCallHandler;
     vmAnchor(vm.nilClass);
-
-    /*
-    string = copyString("Module", 6);
-    push(OBJ_VAL(string));
-    vm.moduleClass = newClass(string);
-    vm.moduleClass->superclass = vm.objectClass;
-    pop();
-    */
 
     vm.moduleClass = defineBuiltinClass("Module", vm.objectClass, &vm.moduleMetaClass, true);
     vmAnchor(vm.moduleClass);
@@ -2494,15 +2415,29 @@ InterpretResult run() {
     AS_STRING(READ_CONSTANT_LONG())
 #define BINARY_OP(valueType, op) \
     do { \
-        if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
-            if (runtimeError("Operands must be numbers.")) { \
-                return INTERPRET_RUNTIME_ERROR; \
-            } \
-            break; \
+        if (IS_INT(peek(0)) && IS_INT(peek(1))) { \
+            int64_t b = AS_INT(pop()); \
+            int64_t a = AS_INT(pop()); \
+            push(valueType(a op b)); \
+        } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) { \
+            double b = valueToDouble(pop()); \
+            double a = valueToDouble(pop()) ; \
+            push(NUMBER_VAL(a op b)); \
+        } else { \
+            runtimeError("Operands must be numbers or integers."); \
+            return INTERPRET_RUNTIME_ERROR; \
         } \
-        double b = AS_NUMBER(pop()); \
-        double a = AS_NUMBER(pop()); \
-        push(valueType(a op b)); \
+    } while (false)
+
+#define BITWISE_BINARY_OP(op) \
+    do { \
+        if (!IS_INT(peek(0)) || !IS_INT(peek(1))) { \
+            runtimeError("Operands for bitwise operation must be integers."); \
+            return INTERPRET_RUNTIME_ERROR; \
+        } \
+        int64_t b = AS_INT(pop()); \
+        int64_t a = AS_INT(pop()); \
+        push(INT_VAL(a op b)); \
     } while (false)
 
     for (;;) {
@@ -2558,6 +2493,8 @@ InterpretResult run() {
 
                     if (IS_NUMBER(value)) {
                         length = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(value));
+                    } else if (IS_INT(value)) {
+                        length = snprintf(buffer, sizeof(buffer), "%ld", AS_INT(value));
                     } else if (IS_BOOL(value)) {
                         length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
                     } else if (IS_NIL(value)) {
@@ -2869,9 +2806,13 @@ InterpretResult run() {
             case OP_ADD:
                 {
                     // 1. fast path: number + number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
+                    if (IS_INT(peek(0)) && IS_INT(peek(1))) {
+                        int64_t b = AS_INT(pop());
+                        int64_t a = AS_INT(pop());
+                        push(INT_VAL(a + b));
+                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                        double b = valueToDouble(pop());
+                        double a = valueToDouble(pop());
                         push(NUMBER_VAL(a + b));
                     } else if (IS_STRING(peek(0)) || IS_STRING(peek(1))) {
                         // 2. fast path: string coercion & concatenation
@@ -2902,10 +2843,20 @@ InterpretResult run() {
                         Vec3 a = AS_VEC3(pop());
                         Vec3 res = {a.x + d, a.y + d, a.z + d};
                         push(VEC3_VAL(res));
+                    } else if (IS_VEC3(peek(1)) && IS_INT(peek(0))) {
+                        int64_t b = AS_INT(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 res = {a.x + b, a.y + b, a.z + b};
+                        push(VEC3_VAL(res));
                     } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
                         double d = AS_NUMBER(pop());
                         Vec3 res = {b.x + d, b.y + d, b.z + d};
+                        push(VEC3_VAL(res));
+                    } else if (IS_INT(peek(1)) && IS_VEC3(peek(0))) {
+                        Vec3 b = AS_VEC3(pop());
+                        int64_t a = AS_INT(pop());
+                        Vec3 res = {b.x + a, b.y + a, b.z + a};
                         push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
@@ -2938,10 +2889,19 @@ InterpretResult run() {
             case OP_SUBTRACT:
                 {
                     // 1. fast path: number - number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
+                    if (IS_INT(peek(0)) && IS_INT(peek(1))) {
+                        int64_t b = AS_INT(pop());
+                        int64_t a = AS_INT(pop());
+                        push(INT_VAL(a - b));
+                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                        double b = valueToDouble(pop());
+                        double a = valueToDouble(pop());
                         push(NUMBER_VAL(a - b));
+                    } else if (IS_VEC3(peek(1)) && IS_INT(peek(0))) {
+                        int64_t b = AS_INT(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 res = {a.x - b, a.y - b, a.z - b};
+                        push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         // 2. fast path: vec3 - number
                         double d = AS_NUMBER(pop());
@@ -2965,18 +2925,27 @@ InterpretResult run() {
             case OP_MULTIPLY:
                 {
                     // 1. fast path: number + number
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
+                    if (IS_INT(peek(0)) && IS_INT(peek(1))) {
+                        int64_t b = AS_INT(pop());
+                        int64_t a = AS_INT(pop());
+                        push(INT_VAL(a * b));
+                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                        double b = valueToDouble(pop());
+                        double a = valueToDouble(pop());
                         push(NUMBER_VAL(a * b));
-                    } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
-                        double d = AS_NUMBER(pop());
+                    } else if (IS_VEC3(peek(1)) && IS_INT(peek(0))) {
+                        int64_t b = AS_INT(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        Vec3 res = {a.x * b, a.y * b, a.z * b};
+                        push(VEC3_VAL(res));
+                    } else if (IS_VEC3(peek(1)) && IS_NUMERIC(peek(0))) {
+                        double d = valueToDouble(pop());
                         Vec3 a = AS_VEC3(pop());
                         Vec3 res = {a.x * d, a.y * d, a.z * d};
                         push(VEC3_VAL(res));
-                    } else if (IS_NUMBER(peek(1)) && IS_VEC3(peek(0))) {
+                    } else if (IS_NUMERIC(peek(1)) && IS_VEC3(peek(0))) {
                         Vec3 b = AS_VEC3(pop());
-                        double d = AS_NUMBER(pop());
+                        double d = valueToDouble(pop());
                         Vec3 res = {b.x * d, b.y * d, b.z * d};
                         push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_VEC3(peek(0))) {
@@ -2984,9 +2953,9 @@ InterpretResult run() {
                         Vec3 a = AS_VEC3(pop());
                         Vec3 res = {a.x * b.x, a.y * b.y, a.z * b.z};
                         push(VEC3_VAL(res));
-                    } else if (IS_STRING(peek(1)) && IS_NUMBER(peek(0))) {
+                    } else if (IS_STRING(peek(1)) && IS_INT(peek(0))) {
                         ObjString* str = AS_STRING(peek(1));
-                        int count = (int)AS_NUMBER(peek(0));
+                        int count = AS_INT(peek(0));
                         Value result = multiplyString(str, count);
                         pop();
                         pop();
@@ -3000,13 +2969,38 @@ InterpretResult run() {
                 break;
             case OP_DIVIDE:
                 {
-                    if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-                        double b = AS_NUMBER(pop());
-                        double a = AS_NUMBER(pop());
+                    if (IS_INT(peek(0)) && IS_INT(peek(1))) {
+                        int64_t b = AS_INT(pop());
+                        int64_t a = AS_INT(pop());
+                        if (b == 0) {
+                            runtimeError("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        push(INT_VAL(a / b)); // integer truncation / floor division
+                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                        double b = valueToDouble(pop());
+                        double a = valueToDouble(pop());
+                        if (b == 0.0) {
+                            runtimeError("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                         push(NUMBER_VAL(a / b));
+                    } else if (IS_VEC3(peek(1)) && IS_INT(peek(0))) {
+                        int64_t b = AS_INT(pop());
+                        Vec3 a = AS_VEC3(pop());
+                        if (b == 0) {
+                            runtimeError("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        Vec3 res = {a.x / b, a.y / b, a.z / b};
+                        push(VEC3_VAL(res));
                     } else if (IS_VEC3(peek(1)) && IS_NUMBER(peek(0))) {
                         double d = AS_NUMBER(pop());
                         Vec3 a = AS_VEC3(pop());
+                        if (d == 0.0) {
+                            runtimeError("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
                         Vec3 res = {a.x / d, a.y / d, a.z / d};
                         push(VEC3_VAL(res));
                     } else {
@@ -3021,74 +3015,146 @@ InterpretResult run() {
                 break;
             case OP_POW:
                 {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
+                    if (!IS_NUMERIC(peek(0)) || !IS_NUMERIC(peek(1))) {
                         RUNTIME_ERROR("Operands must be numbers.");
                         break;
                     }
-                    Value b = pop();
-                    Value a = pop();
-                    push(NUMBER_VAL(pow(AS_NUMBER(a), AS_NUMBER(b))));
+                    double b = valueToDouble(pop());
+                    double a = valueToDouble(pop());
+                    push(NUMBER_VAL(pow(a, b)));
                 }
                 break;
             case OP_XOR:
                 {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers.");
+                    if (!IS_INT(peek(0)) || !IS_INT(peek(1))) {
+                        RUNTIME_ERROR("Operands must be integers.");
                         break;
                     }
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
+                    uint64_t b = AS_INT(pop());
+                    uint64_t a = AS_INT(pop());
 
-                    uint32_t result = a ^ b;
-                    push(NUMBER_VAL((double)result));
+                    uint64_t result = a ^ b;
+                    push(INT_VAL(result));
                 }
                 break;
             case OP_MOD:
                 {
-                    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers.");
+                    if (!IS_NUMERIC(peek(0)) || !IS_NUMERIC(peek(1))) {
+                        RUNTIME_ERROR("Operands must be numbers or integers.");
                         break;
                     }
-                    double b = AS_NUMBER(pop());
-                    double a = AS_NUMBER(pop());
+                    if (IS_INT(peek(0)) && IS_INT(peek(1))) {
+                        int64_t b = AS_INT(pop());
+                        int64_t a = AS_INT(pop());
+                        if (b == 0) {
+                            RUNTIME_ERROR("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        push(INT_VAL(a % b));
+                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                        double b = valueToDouble(pop());
+                        double a = valueToDouble(pop());
+                        if (b == 0.0) {
+                            RUNTIME_ERROR("Division by zero.");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        push(NUMBER_VAL(fmod(a, b)));
 
-                    if (b == 0) {
-                        RUNTIME_ERROR("Division by zero.");
-                        break;
                     }
-
-                    push(NUMBER_VAL(fmod(a, b)));
                 }
                 break;
             case OP_BITWISE_NOT:
                 {
-                    uint32_t a = valueToUint32(pop());
-                    push(NUMBER_VAL((double)~a));
+                    if (!IS_INT(peek(0))) {
+                        runtimeError("Operand for '~' must be an integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    uint64_t a = AS_INT(pop());
+                    push(INT_VAL(~a));
                 }
                 break;
             case OP_SHL:
                 {
-                    uint32_t amount = valueToUint32(pop());
-                    uint32_t value = valueToUint32(pop());
+                    Value amountVal = pop();
+                    Value valueVal = pop();
 
+                    int64_t amount;
+                    int64_t val;
+
+                    if (IS_INT(valueVal)) {
+                        val = AS_INT(valueVal);
+                    } else if (IS_NUMBER(valueVal) && isExactInteger(AS_NUMBER(valueVal))) {
+                        val = (int64_t)AS_NUMBER(valueVal);
+                    } else {
+                        runtimeError("Left operand for '<<' must be an integer or exact float.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (IS_INT(amountVal)) {
+                        amount = AS_INT(amountVal);
+                    } else if (IS_NUMBER(amountVal) && isExactInteger(AS_NUMBER(amountVal))) {
+                        amount = (int64_t)AS_NUMBER(amountVal);
+                    } else {
+                        runtimeError("Right operand for '<<' must be an integer or exact float.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (amount < 0) {
+                        runtimeError("Shift amount cannot be negative.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    uint64_t result = ((uint64_t)val) << (amount & 63);
+                    push(INT_VAL((int64_t)result));
                     // masking the amount by 31 is a common cpu behavior to prevent
                     // undefined behavior with shifts >= bit width.
-                    push(NUMBER_VAL((double)(value << (amount & 31))));
+                    //push(NUMBER_VAL((double)(value << (amount & 31))));
                 }
                 break;
             case OP_SHR:
                 {
-                    uint32_t amount = valueToUint32(pop());
-                    uint32_t value = valueToUint32(pop());
+                    Value amountVal = pop();
+                    Value valueVal = pop();
 
-                    // using uint32_t ensures a LOGICAL shift (fills with 0)
-                    // rather than an ARITHMETIC shift (fills with sign bit)
-                    push(NUMBER_VAL((double)(value >> (amount & 31))));
+                    int64_t amount, val;
+
+                    if (IS_INT(valueVal)) {
+                        val = AS_INT(valueVal);
+                    } else if (IS_NUMBER(valueVal) && isExactInteger(AS_NUMBER(valueVal))) {
+                        val = (int64_t)AS_NUMBER(valueVal);
+                    } else {
+                        runtimeError("Left operand for '>>' must be an integer or exactl float.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (IS_INT(amountVal)) {
+                        amount = AS_INT(amountVal);
+                    } else if (IS_NUMBER(amountVal) && isExactInteger(AS_NUMBER(amountVal))) {
+                        val = (int64_t)AS_NUMBER(amountVal);
+                    } else {
+                        runtimeError("Right operand for '>>' must be an integer or exactl float.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (amount < 0) {
+                        runtimeError("Shift amount cannot be negative.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    // Signed int64_t right shift in C is implementation-defined, but on all modern
+                    // x86_64/ARM64 GCC & Clang toolchains it emits SAR (Shift Arithmetic Right).
+                    int64_t result = val >> (amount & 63);
+                    push(INT_VAL(result));
+                    // for OP_USHR, replace with
+                    // uint64_t result = ((uint64_t)val) >> (amount & 63);
+                    // push(INT_VAL((int64_t)result));
                 }
                 break;
             case OP_NEGATE:
                 {
-                    if (IS_NUMBER(peek(0))) {
+                    if (IS_INT(peek(0))) {
+                        push(INT_VAL(-AS_INT(pop())));
+                    } else if (IS_NUMBER(peek(0))) {
                         push(NUMBER_VAL(-AS_NUMBER(pop())));
                     } else if (IS_VEC3(peek(0))) {
                         Vec3 a = AS_VEC3(pop());
@@ -3103,20 +3169,58 @@ InterpretResult run() {
                 break;
             case OP_BITWISE_AND:
                 {
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
+                    Value bVal = pop();
+                    Value aVal = pop();
 
-                    uint32_t result = a & b;
-                    push(NUMBER_VAL((double)result));
+                    int64_t a, b;
+
+                    if (IS_INT(aVal)) {
+                        a = AS_INT(aVal);
+                    } else if (IS_NUMBER(aVal) && isExactInteger(AS_NUMBER(aVal))) {
+                        a = (int64_t)AS_NUMBER(aVal);
+                    } else {
+                        runtimeError("Left operand causes precision loss or is not a valid integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (IS_INT(bVal)) {
+                        b = AS_INT(bVal);
+                    } else if (IS_NUMBER(bVal) && isExactInteger(AS_NUMBER(bVal))) {
+                        b = (int64_t)AS_NUMBER(bVal);
+                    } else {
+                        runtimeError("Right operand causes precision loss or is not a valid integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    push(INT_VAL(a & b));
                 }
                 break;
             case OP_BITWISE_OR:
                 {
-                    uint32_t b = valueToUint32(pop());
-                    uint32_t a = valueToUint32(pop());
+                    Value bVal = pop();
+                    Value aVal = pop();
 
-                    uint32_t result = a | b;
-                    push(NUMBER_VAL((double)result));
+                    int64_t a, b;
+
+                    if (IS_INT(aVal)) {
+                        a = AS_INT(aVal);
+                    } else if (IS_NUMBER(aVal) && isExactInteger(AS_NUMBER(aVal))) {
+                        a = (int64_t)AS_NUMBER(aVal);
+                    } else {
+                        runtimeError("Left operand causes precision loss or is not a valid integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    if (IS_INT(bVal)) {
+                        b = AS_INT(bVal);
+                    } else if (IS_NUMBER(bVal) && isExactInteger(AS_NUMBER(bVal))) {
+                        b = (int64_t)AS_NUMBER(bVal);
+                    } else {
+                        runtimeError("Right operand causes precision loss or is not a valid integer.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    push(INT_VAL(a | b));
                 }
                 break;
             case OP_PRINT:
@@ -3919,14 +4023,24 @@ InterpretResult run() {
                     Value sizeVal = peek(0);
                     Value element = peek(1);
 
-                    if (!IS_NUMBER(sizeVal)) {
-                        RUNTIME_ERROR("Array size must be a number.");
+                    int64_t rawSize;
+
+                    if (IS_INT(sizeVal)) {
+                        rawSize = AS_INT(sizeVal);
+                    } else if (IS_NUMBER(sizeVal) && isExactInteger(AS_NUMBER(sizeVal))) {
+                        rawSize = (int64_t)AS_NUMBER(sizeVal);
+                    } else {
+                        RUNTIME_ERROR("Array must be an integer.");
                         break;
                     }
 
-                    double rawSize = AS_NUMBER(sizeVal);
                     if (rawSize < 0) {
                         RUNTIME_ERROR("Array size cannot be negative.");
+                        break;
+                    }
+
+                    if (rawSize > INT_MAX) {
+                        RUNTIME_ERROR("Array size exceeds maximum capacity.");
                         break;
                     }
 
@@ -3952,6 +4066,7 @@ InterpretResult run() {
                     Value indexValue = pop();
                     Value targetValue = pop();
 
+                    //1. maps and sets
                     if (IS_MAP(targetValue) || IS_SET(targetValue)) {
                         if (IS_NIL(indexValue)) {
                             RUNTIME_ERROR("Index cannot be nil.");
@@ -3967,17 +4082,21 @@ InterpretResult run() {
                         break;
                     }
 
+                    int64_t index;
+                    bool isIntIndex = false;
+
+                    if (IS_INT(indexValue)) {
+                        index = AS_INT(indexValue);
+                        isIntIndex = true;
+                    } else if (IS_NUMBER(indexValue) && isExactInteger(AS_NUMBER(indexValue))) {
+                        index = (int64_t)AS_NUMBER(indexValue);
+                        isIntIndex = true;
+                    }
+
+                    // 2. vec3 indexing
                     if (IS_VEC3(targetValue)) {
-                        if (!IS_NUMBER(indexValue)) {
-                            RUNTIME_ERROR("Vec3 index must be a number.");
-                            break;
-                        }
-
-                        double rawindex = AS_NUMBER(indexValue);
-                        int index = (int)rawindex;
-
-                        if (rawindex != (double)index) {
-                            RUNTIME_ERROR("Vec3 index must be a whole integer.");
+                        if (!isIntIndex) {
+                            RUNTIME_ERROR("Vec3 index must be an integer.");
                             break;
                         }
 
@@ -3997,15 +4116,17 @@ InterpretResult run() {
                                 push(NUMBER_VAL(vec3.z));
                                 break;
                         }
+                        break;
                     }
 
+                    // 3. arrays
                     if (IS_ARRAY(targetValue)) {
-                        ObjArray* array = AS_ARRAY(targetValue);
-
-                        if (!IS_NUMBER(indexValue)) {
-                            RUNTIME_ERROR("Array index must be a number.");
+                        if (!isIntIndex) {
+                            RUNTIME_ERROR("Array index must be an integer.");
                             break;
                         }
+
+                        ObjArray* array = AS_ARRAY(targetValue);
 
                         int index = (int)AS_NUMBER(indexValue);
                         if (index < 0 || index >= array->count) {
@@ -4017,22 +4138,20 @@ InterpretResult run() {
                         break;
                     }
 
+                    // 4. string byte indexing
                     if (IS_STRING(targetValue)) {
-                        if (!IS_NUMBER(indexValue)) {
+                        if (!isIntIndex) {
                             RUNTIME_ERROR("String index must be a number.");
                             break;
                         }
 
                         ObjString* string = AS_STRING(targetValue);
-                        int index = AS_NUMBER(indexValue);
-
                         if (index < 0 || index >= string->length) {
                             RUNTIME_ERROR("String index out of bounds.");
                             break;
                         }
 
-                        push(NUMBER_VAL((double)(uint8_t)string->chars[index]));
-
+                        push(INT_VAL((uint8_t)string->chars[index]));
                         break;
                     }
 
@@ -4045,6 +4164,7 @@ InterpretResult run() {
                     Value indexValue = peek(1);
                     Value targetValue = peek(2);
 
+                    // 1. sets
                     if (IS_SET(targetValue)) {
                         if (IS_NIL(indexValue)) {
                             RUNTIME_ERROR("Set keys cannot be nil.");
@@ -4053,6 +4173,7 @@ InterpretResult run() {
                         ObjSet* set = AS_SET(targetValue);
 
                         if (IS_NIL(newValue) || (IS_BOOL(newValue) && !AS_BOOL(newValue)) ||
+                                (IS_INT(newValue) && AS_INT(newValue) <= 0) ||
                                 (IS_NUMBER(newValue) && AS_NUMBER(newValue) <= 0)) {
                             tableDelete2(&set->items, indexValue);
                         } else {
@@ -4064,6 +4185,8 @@ InterpretResult run() {
                         popn(2);
                         break;
                     }
+
+                    // 2. maps
                     if (IS_MAP(targetValue)) {
                         if (IS_NIL(indexValue)) {
                             RUNTIME_ERROR("Map keys cannot be nil.");
@@ -4073,29 +4196,43 @@ InterpretResult run() {
                         vm.stackTop[-3] = newValue;
                         popn(2);
                         break;
-                    } else if (!IS_ARRAY(targetValue)) {
+                    } /*else if (!IS_ARRAY(targetValue)) {
                         RUNTIME_ERROR("Only maps and arrays support subscript assignment.");
                         break;
+                    }*/
+
+                    // 3. positional containers
+                    int64_t index;
+                    bool isIntIndex = false;
+
+                    if (IS_INT(indexValue)) {
+                        index = AS_INT(indexValue);
+                        isIntIndex = true;
+                    } else if (IS_NUMBER(indexValue) && isExactInteger(AS_NUMBER(indexValue))) {
+                        index = (int64_t)AS_NUMBER(indexValue);
+                        isIntIndex = true;
                     }
 
-                    ObjArray* array = AS_ARRAY(targetValue);
+                    // array
+                    if (!IS_ARRAY(targetValue)) {
+                        if (!isIntIndex) {
+                            RUNTIME_ERROR("Array index must be an integer.");
+                            break;
+                        }
 
-                    if (!IS_NUMBER(indexValue)) {
-                        RUNTIME_ERROR("Array index must be a number.");
+                        ObjArray* array = AS_ARRAY(targetValue);
+
+                        int index = (int)AS_NUMBER(indexValue);
+                        if (index < 0 || index >= array->count) {
+                            RUNTIME_ERROR("Array index out of bounds.");
+                            break;
+                        }
+
+                        array->values[index] = newValue;
+                        vm.stackTop[-3] = newValue;
+                        popn(2);
                         break;
                     }
-
-                    int index = (int)AS_NUMBER(indexValue);
-                    if (index < 0 || index >= array->count) {
-                        RUNTIME_ERROR("Array index out of bounds.");
-                        break;
-                    }
-
-                    array->values[index] = newValue;
-                    // pop args
-                    popn(3);
-                    // push result
-                    push(newValue);
                 }
                 break;
         }

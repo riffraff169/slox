@@ -865,7 +865,36 @@ static void character(bool canAssign) {
     emitConstant(NUMBER_VAL((double)value));
 }
 
+static void integer(bool canAssign) {
+    const char* start = parser.previous.start;
+    int length = parser.previous.length;
+    int64_t value = 0;
+
+    // handle prevised binary / octal / hex literals
+    if (length > 2 && start[0] == '0') {
+        char prefix = start[1];
+        if (prefix == 'b' || prefix == 'B') {
+            // binary 0b10110
+            value = (int64_t)strtoull(start + 2, NULL, 2);
+        } else if (prefix == 'o' || prefix == 'O') {
+            // octal
+            value = (int64_t)strtoull(start + 2, NULL, 8);
+        } else if (prefix = 'x' || prefix == 'X') {
+            // hex
+            value = (int64_t)strtoull(start + 2, NULL, 16);
+        } else {
+            // fallback decimal
+            value = strtoll(start, NULL, 10);
+        }
+    } else {
+        value = strtoll(start, NULL, 10);
+    }
+
+    emitConstant(INT_VAL(value));
+}
+
 static void number(bool canAssign) {
+    /*
     const char* start = parser.previous.start;
     int length = parser.previous.length;
     double value;
@@ -900,6 +929,8 @@ static void number(bool canAssign) {
     } else {
         value = strtod(start, &endptr);
     }
+    */
+    double value = strtod(parser.previous.start, NULL);
 
     emitConstant(NUMBER_VAL(value));
 }
@@ -1313,6 +1344,7 @@ ParseRule rules[] = {
     [TOKEN_RAW_STRING]       = {rawstring, NULL,   PREC_NONE},
     [TOKEN_HEREDOC]          = {heredoc,  NULL,   PREC_NONE},
     [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
+    [TOKEN_INT]              = {integer,  NULL,   PREC_NONE},
     [TOKEN_CHAR]             = {character,NULL,   PREC_NONE},
     [TOKEN_AND]              = {NULL,     and_,   PREC_AND},
     [TOKEN_AMPERSAND]        = {NULL,     binary, PREC_COMPARISON},

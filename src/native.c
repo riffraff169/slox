@@ -121,13 +121,22 @@ Value chrNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    if (!IS_NUMBER(args[0])) {
+    int64_t codePoint;
+
+    if (IS_INT(args[0])) {
+        codePoint = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        codePoint = (int64_t)AS_NUMBER(args[0]);
+    } else {
         return NIL_VAL;
     }
 
-    uint8_t code = (uint8_t)AS_NUMBER(args[0]);
+    if (codePoint < 0 || codePoint > 255) {
+        return NIL_VAL;
+    }
+
     char c_str[2];
-    c_str[0] = (char)code;
+    c_str[0] = (char)(uint8_t)codePoint;
     c_str[1] = '\0';
 
     return OBJ_VAL(copyString(c_str, 1));
@@ -281,6 +290,17 @@ static inline Value getCheckTarget(int argCount, Value* args) {
 Value isNumberNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_NUMBER(target));
+}
+
+//= isint(val)
+// Checks if a value is an integer.
+// Requires:
+//   val: Value
+// Returns:
+//   Bool
+Value isIntNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_INT(target));
 }
 
 //= isstring(val)
@@ -877,7 +897,7 @@ Value stringFindNative(int argCount, Value* args) {
 
     char* location = strstr(haystack->chars, needle->chars);
     if (location != NULL) {
-        return NUMBER_VAL(location - haystack->chars);
+        return INT_VAL(location - haystack->chars);
     }
     return NIL_VAL;
 }
@@ -934,7 +954,7 @@ Value stringToLowerNative(int argCount, Value* args) {
 //   Number: length of string
 Value stringLenNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
-    return NUMBER_VAL((double)str->length);
+    return INT_VAL((double)str->length);
 }
 
 //@ String
@@ -990,13 +1010,21 @@ Value stringSplitNative(int argCount, Value* args) {
         pop();
 
         return pop();
-    } else if (IS_NUMBER(val)) {
-        int split_size = (int)AS_NUMBER(val);
-        if (split_size <= 0) {
+    } else if (IS_INT(val) || (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val)))) {
+        int64_t raw_size = IS_INT(val) ? AS_INT(val) : (int64_t)AS_NUMBER(val);
+
+
+        if (raw_size <= 0) {
             runtimeError("split size must be > 0.");
             return NIL_VAL;
         }
 
+        if (raw_size > INT_MAX) {
+            runtimeError("split size exceeds maximum string limit.");
+            return NIL_VAL;
+        }
+
+        int split_size = (int)raw_size;
         ObjArray* array = newArray();
         push(OBJ_VAL(array));
 
@@ -1032,22 +1060,42 @@ Value stringSplitNative(int argCount, Value* args) {
 // Returns:
 //   String - section of string
 Value stringSliceNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("slice() expects at least a start index.");
+        return NIL_VAL;
+    }
+
+    int64_t rawStart;
+    if (IS_INT(args[0])) {
+        rawStart = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        rawStart = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("slice() start index must be an integer.");
         return NIL_VAL;
     }
 
     ObjString* dom = AS_STRING(args[-1]);
     int length = dom->length;
 
-    int start = (int)AS_NUMBER(args[0]);
+    int start = (int)rawStart;
     if (start < 0) start += length;
     if (start < 0) start = 0;
     if (start > length) start = length;
 
     int end = length;
-    if (argCount >= 2 && IS_NUMBER(args[1])) {
-        end = (int)AS_NUMBER(args[1]);
+    if (argCount >= 2 && !IS_NIL(args[1])) {
+        int64_t rawEnd;
+        if (IS_INT(args[1])) {
+            rawEnd = AS_INT(args[1]);
+        } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+            rawEnd = (int64_t)AS_NUMBER(args[1]);
+        } else {
+            runtimeError("slice() end index must be an integer.");
+            return NIL_VAL;
+        }
+
+        end = (int)rawEnd;
         if (end < 0) end += length;
         if (end < 0) end = 0;
         if (end > length) end = length;
@@ -1070,7 +1118,7 @@ Value stringToarrayNative(int argCount, Value* args) {
 
     for (int i = 0; i < string->length; i++) {
         uint8_t byte = (uint8_t)string->chars[i];
-        arrayAppend(array, NUMBER_VAL((double)byte));
+        arrayAppend(array, INT_VAL(byte));
     }
 
     return pop();
@@ -1125,15 +1173,33 @@ Value stringTokensNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadCenterNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+    if (argCount < 2 || !IS_NUMBER(args[1])) {
+        runtimeError("pad_left() expects a width integer and a 1-character pad string.");
         return NIL_VAL;
     }
-    ObjString* str = AS_STRING(args[-1]);
-    int width = AS_NUMBER(args[0]);
-    char fill = AS_CSTRING(args[1])[0];
 
-    if (str->length >= width) return args[0];
+    int64_t rawWidth;
+    if (IS_INT(args[0])) {
+        rawWidth = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("pad_center() width must be an integer.");
+        return NIL_VAL;
+    }
+
+    ObjString* str = AS_STRING(args[-1]);
+    int width = (int)rawWidth;
+
+    if (width <= str->length) return args[-1];
+
+    ObjString* padStr = AS_STRING(args[1]);
+    if (padStr->length == 0) {
+        runtimeError("pad_center() pad string cannot be empty.");
+        return NIL_VAL;
+    }
+
+    char fill = padStr->chars[0];
 
     int totalPad = width - str->length;
     int leftPad = totalPad / 2;
@@ -1155,17 +1221,35 @@ Value stringPadCenterNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadRightNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+    if (argCount < 2 || !IS_NUMBER(args[1])) {
+        runtimeError("pad_left() expects a number and a 1-character pad string.");
         return NIL_VAL;
     }
+
+    int64_t rawWidth;
+    if (IS_INT(args[0])) {
+        rawWidth = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("pad_right() width must be an integer.");
+        return NIL_VAL;
+    }
+
     ObjString* str = AS_STRING(args[-1]);
-    int width = AS_NUMBER(args[0]);
-    char fill = AS_CSTRING(args[1])[0];
+    int width = (int)rawWidth;
 
-    if (str->length >= width) return args[0];
+    if (width <= str->length) return args[-1];
 
+    ObjString* padStr = AS_STRING(args[1]);
+    if (padStr->length == 0) {
+        runtimeError("pad_right() pad string cannot be empty.");
+        return NIL_VAL;
+    }
+
+    char fill = padStr->chars[0];
     int padLen = width - str->length;
+
     char* buffer = ALLOCATE(char, width + 1);
     memcpy(buffer, str->chars, str->length);
     memset(buffer + str->length, fill, padLen);
@@ -1181,17 +1265,35 @@ Value stringPadRightNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadLeftNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("pad_left() expects a number and a string (1 character) argument.");
+    if (argCount < 2 || !IS_NUMBER(args[1])) {
+        runtimeError("pad_left() expects a number and a 1-character pd string.");
         return NIL_VAL;
     }
+
+    int64_t rawWidth;
+    if (IS_INT(args[0])) {
+        rawWidth = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("pad_left() width must be an integer.");
+        return NIL_VAL;
+    }
+
     ObjString* str = AS_STRING(args[-1]);
-    int width = AS_NUMBER(args[0]);
-    char fill = AS_CSTRING(args[1])[0];
+    int width = (int)rawWidth;
 
-    if (str->length >= width) return args[0];
+    if (width <= str->length) return args[-1];
 
+    ObjString* padStr = AS_STRING(args[1]);
+    if (padStr->length == 0) {
+        runtimeError("pad_left() pad string cannot be empty.");
+        return NIL_VAL;
+    }
+
+    char fill = padStr->chars[0];
     int padLen = width - str->length;
+
     char* buffer = ALLOCATE(char, width + 1);
     memset(buffer, fill, padLen);
     memcpy(buffer + padLen, str->chars, str->length);
@@ -1299,8 +1401,8 @@ Value stringFormatNative(int argCount, Value* args) {
                 case 'd':
                 case 'i':
                     {
-                        if (IS_NUMBER(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (int)AS_NUMBER(val));
+                        if (IS_INT(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_INT(val));
                         } else {
                             formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
                         }
@@ -1327,8 +1429,8 @@ Value stringFormatNative(int argCount, Value* args) {
                 case 'x':
                 case 'X':
                     {
-                        if (IS_NUMBER(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (unsigned int)AS_NUMBER(val));
+                        if (IS_INT(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (unsigned int)AS_INT(val));
                         } else {
                             formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
                         }
@@ -1560,7 +1662,7 @@ Value mapRemoveNative(int argCount, Value* args) {
 }
 
 Value mapLenNative(int argCount, Value* args) {
-    return NUMBER_VAL(AS_MAP(args[-1])->items.count);
+    return INT_VAL(AS_MAP(args[-1])->items.count);
 }
 
 Value mapEachNative(int argCount, Value* args) {
@@ -1643,7 +1745,7 @@ Value setNativeConstructor(int argCount, Value* args) {
             pop();
             return NIL_VAL;
         }
-        tableSet2(&set->items, key, NUMBER_VAL(1.0));
+        tableSet2(&set->items, key, INT_VAL(1));
     }
 
     return pop();
@@ -1662,13 +1764,14 @@ Value setAddNative(int argCount, Value* args) {
     bool found = tableGet2(&set->items, key, &count);
 
     if (set->isMultiset) {
-        double newCount = found ? AS_NUMBER(count) + 1.0 : 1.0;
-        tableSet2(&set->items, key, NUMBER_VAL(newCount));
+        int64_t currentCount = found ? AS_INT(count) : 0;
+        tableSet2(&set->items, key, INT_VAL(currentCount + 1));
     } else {
         if (!found) {
-            tableSet2(&set->items, key, NUMBER_VAL(1.0));
+            tableSet2(&set->items, key, INT_VAL(1));
         }
     }
+    return args[-1];
 }
 
 void setRemove(ObjSet* set, Value val) {
@@ -1676,9 +1779,9 @@ void setRemove(ObjSet* set, Value val) {
     if (!tableGet2(&set->items, val, &count)) return;
 
     if (set->isMultiset) {
-        double c = AS_NUMBER(count);
-        if (c > 1.0)  {
-            tableSet2(&set->items, val, NUMBER_VAL(c - 1.0));
+        int64_t c = AS_INT(count);
+        if (c > 1)  {
+            tableSet2(&set->items, val, INT_VAL(c - 1));
         } else {
             tableDelete2(&set->items, val);
         }
@@ -1698,9 +1801,9 @@ Value setCountNative(int argCount, Value* args) {
 
     Value count;
     if (!tableGet2(&set->items, key, &count)) {
-        return NUMBER_VAL(0);
+        return INT_VAL(0);
     }
-    return set->isMultiset ? count : NUMBER_VAL(1);
+    return set->isMultiset ? count : INT_VAL(1);
 }
 
 Value setRemoveNative(int argCount, Value* args) {
@@ -1734,7 +1837,7 @@ Value setHasNative(int argCount, Value* args) {
 
 Value setLengthNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
-    return NUMBER_VAL(set->items.count);
+    return INT_VAL(set->items.count);
 }
 
 Value setMultisetNative(int argCount, Value* args) {
@@ -1775,7 +1878,7 @@ Value setToMapNative(int argCount, Value* args) {
 
         if (IS_NIL(entry->key)) continue;
 
-        Value val = set->isMultiset ? entry->value : NUMBER_VAL(1.0);
+        Value val = set->isMultiset ? entry->value : INT_VAL(1);
 
         mapSet(map, entry->key, val);
         //tableSet2(&map->items, entry->key, val);
@@ -1837,42 +1940,147 @@ void initSetClass() {
 
 #define EXTRACT_MATH_OP(outVar, funcName) \
     double outVar; \
-    if (IS_NUMBER(args[-1])) { \
+    if (IS_INT(args[-1])) { \
+        outVar = (double)AS_INT(args[-1]); \
+    } else if (IS_NUMBER(args[-1])) { \
         outVar = AS_NUMBER(args[-1]); \
+    } else if (argCount > 0 && IS_INT(args[0])) { \
+        outVar = (double)AS_INT(args[0]); \
     } else if (argCount > 0 && IS_NUMBER(args[0])) { \
         outVar = AS_NUMBER(args[0]); \
     } else { \
-        runtimeError(funcName "() expects a number reciver or a number argument."); \
+        runtimeError(funcName "() expects a numeric receiver or a numeric argument."); \
         return NIL_VAL; \
     }
 
 Value mathSqrtNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "sqrt");
+    if (val < 0) {
+        runtimeError("sqrt() argument cannot be negative.");
+        return NIL_VAL;
+    }
     return NUMBER_VAL(sqrt(val));
 }
 
 Value mathAbsNative(int argCount, Value* args) {
-    EXTRACT_MATH_OP(val, "abs");
-    return NUMBER_VAL(fabs(val));
+    //EXTRACT_MATH_OP(val, "abs");
+    Value target = IS_INT(args[-1]) || IS_NUMBER(args[-1]) ? args[-1] :
+        (argCount > 0 ? args[0] : NIL_VAL);
+
+    if (IS_INT(target)) {
+        int64_t v = AS_INT(target);
+        return INT_VAL(v < 0 ? -v : v);
+    } else if (IS_NUMBER(target)) {
+        double v = AS_NUMBER(target);
+        return NUMBER_VAL(fabs(v));
+    }
+
+    runtimeError("abs() expects a numeric receiver or a numeric argument.");
+    return NIL_VAL;
 }
 
 Value mathFloorNative(int argCount, Value* args) {
+    if ((IS_INT(args[-1])) || (argCount > 0 && IS_INT(args[0]))) {
+        return IS_INT(args[-1]) ? args[-1] : args[0];
+    }
+
     EXTRACT_MATH_OP(val, "floor");
-    return NUMBER_VAL(floor(val));
+    double result = floor(val);
+
+    if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+        return INT_VAL((int64_t)result);
+    }
+
+    return NUMBER_VAL(result);
 }
 
 Value mathCeilNative(int argCount, Value* args) {
+    if ((IS_INT(args[-1])) || (argCount > 0 && IS_INT(args[0]))) {
+        return IS_INT(args[-1]) ? args[-1] : args[0];
+    }
+
     EXTRACT_MATH_OP(val, "ceil");
-    return NUMBER_VAL(ceil(val));
+    double result = ceil(val);
+
+    if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+        return INT_VAL((int64_t)result);
+    }
+
+    return NUMBER_VAL(result);
 }
 
 Value mathRandomNative(int argCount, Value* args) {
-    // return NUMBER_VAL((double)rand() / (double)RAND_MAX);
-    // unsigned long large_rand = ((unsigned long)rand() << 15) | rand();
-    double r = (double)rand();
-    double m = (double)RAND_MAX;
-    // return NUMBER_VAL((double)large_rand / (double)0x3fffffff);
-    return NUMBER_VAL(r / (m + 1.0));
+    // variant 1: zero arguments / static Math.random() -> float [0, 1)
+    if (argCount == 0 && !IS_INT(args[-1]) && !IS_NUMBER(args[-1])) {
+        double r = (double)rand();
+        double m = (double)RAND_MAX;
+        return NUMBER_VAL(r / (m + 1.0));
+    }
+
+    // variant 2: single argument or instance method x.randm()
+    if (argCount == 1 || (argCount == 0 && (IS_INT(args[-1]) || IS_NUMBER(args[-1])))) {
+        Value bound = (argCount > 0) ? args[0] : args[-1];
+
+        // integer max: returns [0, max) as VAL_INT
+        if (IS_INT(bound)) {
+            int64_t max = AS_INT(bound);
+            if (max <= 0) return INT_VAL(0);
+
+            // expand 15-bit rand() to 30-bit for larger integer ranges
+            uint64_t r = ((uint64_t)rand() << 15) | (uint64_t)rand();
+            return INT_VAL((int64_t)(r % (uint64_t)max));
+        }
+
+        // exact integer float max: returns [0, max) as VAL_INT
+        if (IS_NUMBER(bound) && isExactInteger(AS_NUMBER(bound))) {
+            int64_t max = (int64_t)AS_NUMBER(bound);
+            if (max <= 0) return INT_VAL(0);
+
+            uint64_t r = ((uint64_t)rand() << 15) | (uint64_t)rand();
+            return INT_VAL((int64_t)(r % (uint64_t)max));
+        }
+
+        // continuous float max: returns [0, max) as VAL_NUMBER
+        if (IS_NUMBER(bound)) {
+            double max = AS_NUMBER(bound);
+            double r = (double)rand() / ((double)RAND_MAX + 1.0);
+            return NUMBER_VAL(r * max);
+        }
+    }
+
+    // variant 3: two arguments: Math.random(min, max) or min.random(max)
+    Value minVal = args[-1];
+    Value maxVal = args[0];
+
+    // if receiver was a math object, min is args[0] and max is args[1]
+    if (argCount >= 2 && !IS_INT(minVal) && !(IS_NUMBER(minVal))) {
+        minVal = args[0];
+        maxVal = args[1];
+    }
+
+    // both integer range: returns [min, max) as VAL_INT
+    bool minIsInt = IS_INT(minVal) || (IS_NUMBER(minVal) && isExactInteger(AS_NUMBER(minVal)));
+    bool maxIsInt = IS_INT(maxVal) || (IS_NUMBER(maxVal) && isExactInteger(AS_NUMBER(maxVal)));
+
+    if (minIsInt && maxIsInt) {
+        int64_t min = IS_INT(minVal) ? AS_INT(minVal) : (int64_t)AS_NUMBER(minVal);
+        int64_t max = IS_INT(maxVal) ? AS_INT(maxVal) : (int64_t)AS_NUMBER(maxVal);
+
+        if (min >= max) return INT_VAL(min);
+
+        uint64_t range = (uint64_t)(max - min);
+        uint64_t r = ((uint64_t)rand() << 15) | (uint64_t)rand();
+        return INT_VAL(min + (int64_t)(r % range));
+    }
+
+    // floating range: returns [min, max) as VAL_NUMBER
+    double min = IS_INT(minVal) ? (double)AS_INT(minVal) : AS_NUMBER(minVal);
+    double max = IS_INT(maxVal) ? (double)AS_INT(maxVal) : AS_NUMBER(maxVal);
+
+    if (min >= max) return NUMBER_VAL(min);
+
+    double r = (double)rand() / ((double)RAND_MAX + 1.0);
+    return NUMBER_VAL(min + r * (max - min));
 }
 
 Value mathExpNative(int argCount, Value* args) {
@@ -1885,57 +2093,130 @@ Value hexNative(int argCount, Value* args) {
     int precision = 1;
     bool prefix = true;
 
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
+#define EXTRACT_HEX_NUM(val, outNum) \
+    if (IS_INT(val)) { \
+        outNum = (uint64_t)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outNum = (uint64_t)AS_NUMBER(val); \
+    } else { \
+        return NIL_VAL; \
+    }
+
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        EXTRACT_HEX_NUM(args[-1], num);
+
+        if (argCount >= 1) {
+            if (IS_INT(args[0])) precision = (int)AS_INT(args[0]);
+            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) precision = (int)AS_NUMBER(args[0]);
+        }
         if (argCount >= 2 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
     } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 2 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
+        // static call Math.hex(255) or Math.hex(255, 4, false)
+        if (argCount < 1) return NIL_VAL;
+        EXTRACT_HEX_NUM(args[0], num);
+
+        if (argCount >= 2) {
+            if (IS_INT(args[1])) precision = (int)AS_INT(args[1]);
+            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) precision = (int)AS_NUMBER(args[1]);
+        }
         if (argCount >= 3 && IS_BOOL(args[2])) prefix = AS_BOOL(args[2]);
     }
 
-    char buffer[64];
-    if (prefix)
-        snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (uint64_t)num);
-    else
-        snprintf(buffer, sizeof(buffer), "%.*llx", precision, (uint64_t)num);
+#undef EXTRACT_HEX_NUM
 
-    return OBJ_VAL(copyString(buffer, strlen(buffer)));
+    if (precision < 1) precision = 1;
+    if (precision > 32) precision = 32;
+
+    char buffer[64];
+    int len;
+    if (prefix)
+        len = snprintf(buffer, sizeof(buffer), "0x%.*llx", precision, (unsigned long long)num);
+    else
+        len = snprintf(buffer, sizeof(buffer), "%.*llx", precision, (unsigned long long)num);
+
+    if (len < 0 || len >= (int)sizeof(buffer)) return NIL_VAL;
+
+    return OBJ_VAL(copyString(buffer, len));
 }
 
 Value octNative(int argCount, Value* args) {
     uint64_t num;
     int precision = 1;
 
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) precision = (int)AS_NUMBER(args[0]);
-    } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 1 && IS_NUMBER(args[1])) precision = (int)AS_NUMBER(args[1]);
+#define EXTRACT_OCT_NUM(val, outNum) \
+    if (IS_INT(val)) { \
+        outNum = (uint64_t)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outNum = (uint64_t)AS_NUMBER(val); \
+    } else { \
+        return NIL_VAL; \
     }
 
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0%.*llo", precision, (unsigned long long)num);
+    // instance method (64.oct() or 64.oct(3))
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        EXTRACT_OCT_NUM(args[-1], num);
 
-    return OBJ_VAL(copyString(buffer, strlen(buffer)));
+        if (argCount >= 1) {
+            if (IS_INT(args[0])) precision = (int)AS_INT(args[0]);
+            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) precision = (int)AS_NUMBER(args[0]);
+        }
+    } else {
+        // static call: Math.oct(64) or Math.oct(64, 3)
+        if (argCount < 1) return NIL_VAL;
+        EXTRACT_OCT_NUM(args[0], num);
+
+        if (argCount >= 2) {
+            if (IS_INT(args[1])) precision = (int)AS_INT(args[1]);
+            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) precision = (int)AS_NUMBER(args[1]);
+        }
+    }
+
+#undef EXTRACT_OCT_NUM
+
+    if (precision < 1) precision = 1;
+    if (precision > 32) precision = 32;
+
+    char buffer[64];
+    int len = snprintf(buffer, sizeof(buffer), "0%.*llo", precision, (unsigned long long)num);
+
+    if (len < 0 || len >= (int)sizeof(buffer)) return NIL_VAL;
+
+    return OBJ_VAL(copyString(buffer, len));
 }
 
 Value binNative(int argCount, Value* args) {
     uint64_t num;
     int min_bits = 1;
 
-    if (IS_NUMBER(args[-1])) {
-        num = (uint64_t)AS_NUMBER(args[-1]);
-        if (argCount >= 1 && IS_NUMBER(args[0])) min_bits = (int)AS_NUMBER(args[0]);
-    } else {
-        if (argCount < 1 || !IS_NUMBER(args[0])) return NIL_VAL;
-        num = (uint64_t)AS_NUMBER(args[0]);
-        if (argCount >= 1 && IS_NUMBER(args[1])) min_bits = (int)AS_NUMBER(args[1]);
+#define EXTRACT_BIN_NUM(val, outNum) \
+    if (IS_INT(val)) { \
+        outNum = (uint64_t)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outNum = (uint64_t)AS_NUMBER(val); \
+    } else { \
+        return NIL_VAL; \
     }
+
+    // instance method 5.bin() or 5.bin(8)
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        EXTRACT_BIN_NUM(args[-1], num);
+
+        if (argCount >= 1) {
+            if (IS_INT(args[0])) min_bits = (int)AS_INT(args[0]);
+            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) min_bits = (int)AS_NUMBER(args[0]);
+        }
+    } else {
+        // static call: Math.bin(5) or Math.bin(5, 8))
+        if (argCount < 1) return NIL_VAL;
+        EXTRACT_BIN_NUM(args[0], num);
+
+        if (argCount >= 2) {
+            if (IS_INT(args[1])) min_bits = (int)AS_INT(args[1]);
+            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) min_bits = (int)AS_NUMBER(args[1]);
+        }
+    }
+
+#undef EXTRACT_BIN_NUM
 
     if (min_bits > 64) min_bits = 64;
     if (min_bits < 1) min_bits = 1;
@@ -1963,39 +2244,147 @@ Value binNative(int argCount, Value* args) {
 }
 
 Value bitTestNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) return NIL_VAL;
+    uint64_t num;
+    int bit;
 
-    uint64_t num = (uint64_t)AS_NUMBER(args[1]);
-    int bit = (int)AS_NUMBER(args[2]);
+#define EXTRACT_INT_VAL(val, outNum) \
+    if (IS_INT(val)) { \
+        outNum = (uint64_t)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outNum = (uint64_t)AS_NUMBER(val); \
+    } else { \
+        return NIL_VAL; \
+    }
+
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        if (argCount < 1) return NIL_VAL;
+        EXTRACT_INT_VAL(args[-1], num);
+
+        int64_t rawBit;
+        EXTRACT_INT_VAL(args[0], rawBit);
+        bit = (int)rawBit;
+    } else {
+        // static call
+        if (argCount < 2) return NIL_VAL;
+        EXTRACT_INT_VAL(args[0], num);
+
+        int64_t rawBit;
+        EXTRACT_INT_VAL(args[1], rawBit);
+        bit = (int)rawBit;
+    }
+
+#undef EXTRACT_INT_VAL
 
     if (bit < 0 || bit > 63) return BOOL_VAL(false);
 
-    return BOOL_VAL((num >> bit) & 1);
+    return BOOL_VAL((num >> bit) != 0);
 }
 
 Value mathMinNative(int argCount, Value* args) {
-    if (argCount != 3) return NIL_VAL;
-    return NUMBER_VAL(fmin(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
+    Value a, b;
+
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        if (argCount < 1) return NIL_VAL;
+        a = args[-1];
+        b = args[0];
+    } else {
+        if (argCount < 2) return NIL_VAL;
+        a = args[0];
+        b = args[1];
+    }
+
+    if (!IS_NUMERIC(a) || !IS_NUMERIC(b)) {
+        runtimeError("min() expects numeric arguments.");
+        return NIL_VAL;
+    }
+
+    if (IS_INT(a) && IS_INT(b)) {
+        int64_t ia = AS_INT(a);
+        int64_t ib = AS_INT(b);
+        return INT_VAL(ia < ib ? ia : ib);
+    }
+
+    double da = IS_INT(a) ? (double)AS_INT(a) : AS_NUMBER(a);
+    double db = IS_INT(b) ? (double)AS_INT(b) : AS_NUMBER(b);
+
+    return NUMBER_VAL(fmin(da, db));
 }
 
 Value mathMaxNative(int argCount, Value* args) {
-    if (argCount != 3) return NIL_VAL;
-    return NUMBER_VAL(fmax(AS_NUMBER(args[1]), AS_NUMBER(args[2])));
+    Value a, b;
+
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        if (argCount < 1) return NIL_VAL;
+        a = args[-1];
+        b = args[0];
+    } else {
+        if (argCount < 2) return NIL_VAL;
+        a = args[0];
+        b = args[1];
+    }
+
+    if (!IS_NUMERIC(a) || !IS_NUMERIC(b)) {
+        runtimeError("max() expects numeric arguments.");
+        return NIL_VAL;
+    }
+
+    if (IS_INT(a) && IS_INT(b)) {
+        int64_t ia = AS_INT(a);
+        int64_t ib = AS_INT(b);
+        return INT_VAL(ia > ib ? ia : ib);
+    }
+
+    double da = IS_INT(a) ? (double)AS_INT(a) : AS_NUMBER(a);
+    double db = IS_INT(b) ? (double)AS_INT(b) : AS_NUMBER(b);
+
+    return NUMBER_VAL(fmax(da, db));
 }
 
 Value mathParseNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[0])) return NIL_VAL;
-    int base = 0;
-    if (argCount >= 2 && IS_NUMBER(args[1])) {
-        base = AS_NUMBER(args[1]);
+    ObjString* strObj = NULL;
+    int base = 10;
+
+#define EXTRACT_BASE(val) \
+    if (IS_INT(val)) { \
+        base = (int)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        base = (int)AS_NUMBER(val); \
     }
 
-    const char* str = AS_CSTRING(args[0]);
+    if (IS_STRING(args[-1])) {
+        strObj = AS_STRING(args[-1]);
+        if (argCount >= 1) {
+            EXTRACT_BASE(args[0]);
+        }
+    } else {
+        if (argCount < 1 || !IS_STRING(args[0])) {
+            runtimeError("parse() expects a string target.");
+            return NIL_VAL;
+        }
+        strObj = AS_STRING(args[0]);
+        if (argCount >= 2) {
+            EXTRACT_BASE(args[1]);
+        }
+    }
+
+#undef EXTRACT_BASE
+
+    if (base != 0 && (base < 2 || base > 36)) {
+        runtimeError("parse() base must be 0 or between 2 and 36.");
+        return NIL_VAL;
+    }
+
+    const char* str = strObj->chars;
     char* endptr;
+    errno = 0;
 
     unsigned long long result = strtoull(str, &endptr, base);
 
     if (str == endptr) return NIL_VAL;
+
+    if (result <= (unsigned long long)INT64_MAX) {
+        return INT_VAL((int64_t)result);
+    }
 
     return NUMBER_VAL((double)result);
 }
@@ -6542,6 +6931,28 @@ Value nilClassCallHandler(int argCount, Value* args) {
 Value boolClassCallHandler(int argCount, Value* args) {
     if (argCount < 1) return BOOL_VAL(false);
     return BOOL_VAL(isTruthy(args[0]));
+}
+
+Value integerClassCallHandler(int argCount, Value* args) {
+    if (argCount < 1) return INT_VAL(0);
+
+    Value arg = args[0];
+
+    if (IS_INT(arg)) {
+        return arg;
+    }
+
+    if (IS_STRING(arg)) {
+        char* end;
+        int64_t val = strtoll(AS_CSTRING(arg), &end, 10);
+        return INT_VAL(val);
+    }
+    
+    if (IS_BOOL(arg)) {
+        return INT_VAL(AS_BOOL(arg) ? 1 : 0);
+    }
+
+    return INT_VAL(0);
 }
 
 Value numberClassCallHandler(int argCount, Value* args) {

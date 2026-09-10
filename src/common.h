@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 
 #undef DEBUG_PRINT_CODE
 #undef DEBUG_TRACE_EXECUTION
