@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.6.5
+Version: 1.6.6
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -241,6 +241,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sat  Sep 12 2026 Lance Dillon <riffraff169@yahoo.com> - 1.6.6-1-1
+- final integer implementation...all tests passed and ffi working
+
 * Tue  Sep 08 2026 Lance Dillon <riffraff169@yahoo.com> - 1.6.5-1-1
 - Bump version to 1.6.4-1
 
