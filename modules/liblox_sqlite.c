@@ -100,7 +100,7 @@ Value sqliteExec(int argCount, Value* args) {
             Value val = NIL_VAL;
             switch (sqlite3_column_type(stmt, i)) {
                 case SQLITE_INTEGER:
-                    val = NUMBER_VAL((double)sqlite3_column_int64(stmt, i));
+                    val = INT_VAL(sqlite3_column_int64(stmt, i));
                     break;
                 case SQLITE_FLOAT:
                     val = NUMBER_VAL(sqlite3_column_double(stmt, i));

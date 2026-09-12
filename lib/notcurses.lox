@@ -236,7 +236,7 @@ class Plane {
     this.fnMoveYx = ffiLib.bind("ncplane_move_yx", "int32", ["pointer", "int32", "int32"]);
     this.fnMoveRelYx = ffiLib.bind("ncplane_move_rel", "int32", ["pointer", "int32", "int32"]);
     this.fnSetBgAlpha = ffiLib.bind("ncplane_set_bg_alpha", "int32", ["pointer", "int32"]);
-    this.fnSetBase = ffiLib.bind("ncplane_set_base", "int32", ["pointer", "string", "int", "uint64"]);
+    this.fnSetBase = ffiLib.bind("ncplane_set_base", "int32", ["pointer", "string", "int32", "uint64"]);
     this.fnMoveTop = ffiLib.bind("ncplane_move_top", "void", ["pointer"]);
     this.fnMoveBottom = ffiLib.bind("ncplane_move_bottom", "void", ["pointer"]);
 

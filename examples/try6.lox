@@ -3,4 +3,7 @@ try {
 } catch (Number f) {
   print typeof(f);
   print "Caught " + f;
+} catch (Integer f) {
+  print typeof(f);
+  print "Caught " + f;
 }

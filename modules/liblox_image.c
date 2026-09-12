@@ -27,12 +27,12 @@ static Value nxImageClear(int argCount, Value* args) {
     Value wval, hval;
     tableGet(&instance->fields, copyString("width", 5), &wval);
     tableGet(&instance->fields, copyString("height", 6), &hval);
-    int total = (int)AS_NUMBER(wval) * (int)AS_NUMBER(hval);
+    int total = (int)AS_INT(wval) * (int)AS_INT(hval);
 
-    unsigned char r = (unsigned char)AS_NUMBER(color->values[0]);
-    unsigned char g = (unsigned char)AS_NUMBER(color->values[1]);
-    unsigned char b = (unsigned char)AS_NUMBER(color->values[2]);
-    unsigned char a = (color->count > 3) ? (unsigned char)AS_NUMBER(color->values[3]) : 255;
+    unsigned char r = (unsigned char)AS_INT(color->values[0]);
+    unsigned char g = (unsigned char)AS_INT(color->values[1]);
+    unsigned char b = (unsigned char)AS_INT(color->values[2]);
+    unsigned char a = (color->count > 3) ? (unsigned char)AS_INT(color->values[3]) : 255;
 
     for (int i = 0; i < total; i++) {
         pixels[i * 4] = r;
@@ -44,7 +44,7 @@ static Value nxImageClear(int argCount, Value* args) {
 }
 
 static Value nxSetPixel(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])
+    if (argCount < 2 || !IS_INT(args[0]) || !IS_INT(args[1])
             || !IS_ARRAY(args[2])) {
         runtimeError("set_pixel() expects x, y, and a color array.");
         return NIL_VAL;
@@ -56,9 +56,9 @@ static Value nxSetPixel(int argCount, Value* args) {
     Value wval, hval;
     tableGet(&instance->fields, copyString("width", 5), &wval);
 
-    int width = (int)AS_NUMBER(wval);
-    int x = (int)AS_NUMBER(args[0]);
-    int y = (int)AS_NUMBER(args[1]);
+    int width = (int)AS_INT(wval);
+    int x = (int)AS_INT(args[0]);
+    int y = (int)AS_INT(args[1]);
     ObjArray* color = AS_ARRAY(args[2]);
 
     if (x < 0 || x >= width || y < 0) {
@@ -67,12 +67,12 @@ static Value nxSetPixel(int argCount, Value* args) {
 
     int offset = (y * width + x) * 4;
 
-    pixels[offset] = (unsigned char)AS_NUMBER(color->values[0]);
-    pixels[offset + 1] = (unsigned char)AS_NUMBER(color->values[1]);
-    pixels[offset + 2] = (unsigned char)AS_NUMBER(color->values[2]);
+    pixels[offset] = (unsigned char)AS_INT(color->values[0]);
+    pixels[offset + 1] = (unsigned char)AS_INT(color->values[1]);
+    pixels[offset + 2] = (unsigned char)AS_INT(color->values[2]);
 
     if (color->count > 3) {
-        pixels[offset + 3] = (unsigned char)AS_NUMBER(color->values[3]);
+        pixels[offset + 3] = (unsigned char)AS_INT(color->values[3]);
     } else {
         pixels[offset + 3] = 255;
     }
@@ -81,7 +81,7 @@ static Value nxSetPixel(int argCount, Value* args) {
 }
 
 static Value nxGetPixel(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+    if (argCount < 2 || !IS_INT(args[0]) || !IS_INT(args[1])) {
         runtimeError("getPixel() expects x and y coordinates.");
         return NIL_VAL;
     }
@@ -93,10 +93,10 @@ static Value nxGetPixel(int argCount, Value* args) {
     tableGet(&instance->fields, copyString("width", 5), &wval);
     tableGet(&instance->fields, copyString("height", 6), &hval);
 
-    int width = (int)AS_NUMBER(wval);
-    int height = (int)AS_NUMBER(hval);
-    int x = (int)AS_NUMBER(args[0]);
-    int y = (int)AS_NUMBER(args[1]);
+    int width = (int)AS_INT(wval);
+    int height = (int)AS_INT(hval);
+    int x = (int)AS_INT(args[0]);
+    int y = (int)AS_INT(args[1]);
 
     if (x < 0 || x >= width || y < 0 || y >= height) {
         runtimeError("Pixel coordinates out of bounds.");
@@ -107,16 +107,16 @@ static Value nxGetPixel(int argCount, Value* args) {
 
     ObjArray* rgba = newArray();
     push(OBJ_VAL(rgba));
-    arrayAppend(rgba, NUMBER_VAL(pixels[offset]));      // r
-    arrayAppend(rgba, NUMBER_VAL(pixels[offset + 1]));  // g
-    arrayAppend(rgba, NUMBER_VAL(pixels[offset + 2]));  // b
-    arrayAppend(rgba, NUMBER_VAL(pixels[offset + 3]));  // a
+    arrayAppend(rgba, INT_VAL(pixels[offset]));      // r
+    arrayAppend(rgba, INT_VAL(pixels[offset + 1]));  // g
+    arrayAppend(rgba, INT_VAL(pixels[offset + 2]));  // b
+    arrayAppend(rgba, INT_VAL(pixels[offset + 3]));  // a
 
     return pop();
 }
 
 static Value nxImageScale(int argCount, Value* args) {
-    if (argCount < 3 || !IS_INSTANCE(args[-1]) || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+    if (argCount < 3 || !IS_INSTANCE(args[-1]) || !IS_INT(args[0]) || !IS_INT(args[1])) {
         runtimeError("scale() expects (max_width, max_height).");
         return NIL_VAL;
     }
@@ -125,8 +125,8 @@ static Value nxImageScale(int argCount, Value* args) {
     unsigned char* data = (unsigned char*)imgObj->foreignPtr;
     if (!data) return NIL_VAL;
 
-    int max_w = (int)AS_NUMBER(args[0]);
-    int max_h = (int)AS_NUMBER(args[1]);
+    int max_w = (int)AS_INT(args[0]);
+    int max_h = (int)AS_INT(args[1]);
     if (max_w <= 0 || max_h <= 0) return args[-1];
 
     Value wVal, hVal;
@@ -136,8 +136,8 @@ static Value nxImageScale(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    int w = (int)AS_NUMBER(wVal);
-    int h = (int)AS_NUMBER(hVal);
+    int w = (int)AS_INT(wVal);
+    int h = (int)AS_INT(hVal);
 
     if (w <= max_w && h <= max_h) {
         return args[-1];
@@ -167,8 +167,8 @@ static Value nxImageScale(int argCount, Value* args) {
     stbi_image_free(data);
     imgObj->foreignPtr = new_data;
 
-    tableSet(&imgObj->fields, copyString("width", 5), NUMBER_VAL(new_w));
-    tableSet(&imgObj->fields, copyString("height", 6), NUMBER_VAL(new_h));
+    tableSet(&imgObj->fields, copyString("width", 5), INT_VAL(new_w));
+    tableSet(&imgObj->fields, copyString("height", 6), INT_VAL(new_h));
 
     return args[-1];
 }
@@ -189,8 +189,8 @@ static Value nxGetRawBytes(int argCount, Value* args) {
     tableGet(&imgData->fields, copyString("width", 5), &wVal);
     tableGet(&imgData->fields, copyString("height", 6), &hVal);
 
-    int w = (int)AS_NUMBER(wVal);
-    int h = (int)AS_NUMBER(hVal);
+    int w = (int)AS_INT(wVal);
+    int h = (int)AS_INT(hVal);
     int totalBytes = w * h * 4;
 
     ObjString* rawString = copyString((const char*)imgData->foreignPtr, totalBytes);
@@ -216,8 +216,8 @@ static Value nxImageLoad(int argCount, Value* args) {
     push(OBJ_VAL(imgData));
 
     imgData->foreignPtr = data;
-    tableSet(&imgData->fields, copyString("width", 5), NUMBER_VAL(w));
-    tableSet(&imgData->fields, copyString("height", 6), NUMBER_VAL(h));
+    tableSet(&imgData->fields, copyString("width", 5), INT_VAL(w));
+    tableSet(&imgData->fields, copyString("height", 6), INT_VAL(h));
 
     return pop();
 }
@@ -246,8 +246,8 @@ static Value nxImageSave(int argCount, Value* args) {
     tableGet(&instance->fields, copyString("height", 6), &hval);
 
 
-    int w = (int)AS_NUMBER(wval);
-    int h = (int)AS_NUMBER(hval);
+    int w = (int)AS_INT(wval);
+    int h = (int)AS_INT(hval);
     void* data = instance->foreignPtr;
 
     int result = 0;

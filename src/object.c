@@ -169,6 +169,11 @@ static uint32_t hashString(const char* key, int length) {
 
 uint32_t hashValue(Value value) {
     switch (value.type) {
+        case VAL_INT:
+            {
+                int64_t n = AS_INT(value);
+                return hashBytes((const uint8_t*)&n, sizeof(uint64_t));
+            }
         case VAL_NUMBER:
             {
                 double n = AS_NUMBER(value);

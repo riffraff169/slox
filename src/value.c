@@ -105,6 +105,7 @@ void printValueSafe(FILE* stream, Value value) {
                 break;
             case VAL_INT:
                 fprintf(stream, "%" PRId64, AS_INT(value));
+                break;
             case VAL_NUMBER:
                 if (vm.numNotation == 1) {
                     fprintf(stream, "%.*g", vm.numPrecision, AS_NUMBER(value));

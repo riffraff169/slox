@@ -20,8 +20,10 @@ try {
   throw 42;
 } catch (String s) {
   print "FAIL: Caught String";
+} catch (Integer n) {
+  print "Caught Integer: " + n; // expect: Caught Integer: 42
 } catch (Number n) {
-  print "Caught Number: " + n; // expect: Caught Number: 42
+  print "Caught Number: " + n;
 } catch (e) {
   print "FAIL: Caught generic fallback";
 }

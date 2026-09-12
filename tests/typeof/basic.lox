@@ -1,4 +1,5 @@
-print typeof(42);         // expect: Number
+print typeof(42);         // expect: Integer
+print typeof(42.1);         // expect: Number
 print typeof("hello");    // expect: String
 print typeof(true);       // expect: Bool
 print typeof(nil);        // expect: Nil

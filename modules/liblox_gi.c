@@ -40,9 +40,9 @@ void LoxValueToGValue(Value loxVal, GValue* gval) {
     if (g_type_is_a(gtype, G_TYPE_BOOLEAN)) {
         g_value_set_boolean(gval, AS_BOOL(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_INT)) {
-        g_value_set_int(gval, (int)AS_NUMBER(loxVal));
+        g_value_set_int(gval, (int)AS_INT(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_UINT)) {
-        g_value_set_uint(gval, (int)AS_NUMBER(loxVal));
+        g_value_set_uint(gval, (int)AS_INT(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_DOUBLE)) {
         g_value_set_double(gval, AS_NUMBER(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_STRING)) {
@@ -184,20 +184,20 @@ Value scrape_boxed_to_lox(gpointer boxed, GType type) {
 
         GdkEventType evType = gdk_event_get_event_type(event);
 
-        tableSet(&loxEvent->fields, copyString("type", 4), NUMBER_VAL(evType));
+        tableSet(&loxEvent->fields, copyString("type", 4), INT_VAL(evType));
 
         if (evType == GDK_BUTTON_PRESS || evType == GDK_BUTTON_RELEASE ||
                 evType == GDK_MOTION_NOTIFY) {
             double x, y;
             if (gdk_event_get_position(event, &x, &y)) {
-                tableSet(&loxEvent->fields, copyString("x", 1), NUMBER_VAL(x));
-                tableSet(&loxEvent->fields, copyString("y", 1), NUMBER_VAL(y));
+                tableSet(&loxEvent->fields, copyString("x", 1), INT_VAL(x));
+                tableSet(&loxEvent->fields, copyString("y", 1), INT_VAL(y));
             }
         }
 
         if (evType == GDK_KEY_PRESS || evType == GDK_KEY_RELEASE) {
             guint keyval = gdk_key_event_get_keyval(event);
-            tableSet(&loxEvent->fields, copyString("keyval", 6), NUMBER_VAL((double)keyval));
+            tableSet(&loxEvent->fields, copyString("keyval", 6), INT_VAL(keyval));
 
             uint32_t unicode =  gdk_key_event_get_keycode(event);
             if  (unicode != 0) {
@@ -211,11 +211,11 @@ Value scrape_boxed_to_lox(gpointer boxed, GType type) {
 
         if (evType == GDK_BUTTON_PRESS) {
             guint button = gdk_button_event_get_button(event);
-            tableSet(&loxEvent->fields, copyString("button", 6), NUMBER_VAL((double)button));
+            tableSet(&loxEvent->fields, copyString("button", 6), INT_VAL(button));
         }
 
         GdkModifierType state = gdk_event_get_modifier_state(event);
-        tableSet(&loxEvent->fields, copyString("state", 5), NUMBER_VAL((double)state));
+        tableSet(&loxEvent->fields, copyString("state", 5), INT_VAL(state));
     } else if (type == GDK_TYPE_RGBA) {
         GdkRGBA* color = (GdkRGBA*)boxed;
         tableSet(&loxEvent->fields, copyString("red", 3), NUMBER_VAL(color->red));
@@ -242,15 +242,15 @@ static Value GValueToLoxValue(GValue gval) {
                 return OBJ_VAL(copyString(str, strlen(str)));
             } 
         case G_TYPE_INT:
-            return NUMBER_VAL((double)g_value_get_int(&gval));
+            return INT_VAL(g_value_get_int(&gval));
         case G_TYPE_FLOAT:
             return NUMBER_VAL((double)g_value_get_float(&gval));
         case G_TYPE_DOUBLE:
             return NUMBER_VAL(g_value_get_double(&gval));
         case G_TYPE_UINT:
-            return NUMBER_VAL((double)g_value_get_uint(&gval));
+            return INT_VAL(g_value_get_uint(&gval));
         case G_TYPE_FLAGS:
-            return NUMBER_VAL((double)g_value_get_flags(&gval));
+            return INT_VAL(g_value_get_flags(&gval));
         case G_TYPE_BOOLEAN:
             return BOOL_VAL(g_value_get_boolean(&gval));
         case G_TYPE_OBJECT:
@@ -269,7 +269,7 @@ static Value GValueToLoxValue(GValue gval) {
                 return scrape_boxed_to_lox(boxed, G_VALUE_TYPE(&gval));
             }
         case G_TYPE_ENUM:
-            return NUMBER_VAL((double)g_value_get_enum(&gval));
+            return INT_VAL(g_value_get_enum(&gval));
         default:
             printf("Unhandled gtype %d\n", gtype);
             return NIL_VAL;
@@ -393,13 +393,13 @@ static Value giPropertySetter(Value receiver, ObjString* name, Value value) {
     bool success = true;
 
     if (g_type_is_a(spec->value_type, G_TYPE_ENUM)) {
-        if (IS_NUMBER(value))
-            g_value_set_enum(&gval, (int)AS_NUMBER(value));
+        if (IS_INT(value))
+            g_value_set_enum(&gval, (int)AS_INT(value));
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_FLAGS)) {
-        if (IS_NUMBER(value))
-            g_value_set_flags(&gval, (unsigned int)AS_NUMBER(value));
+        if (IS_INT(value))
+            g_value_set_flags(&gval, (unsigned int)AS_INT(value));
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_STRING)) {
@@ -408,8 +408,8 @@ static Value giPropertySetter(Value receiver, ObjString* name, Value value) {
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_INT)) {
-        if (IS_NUMBER(value))
-            g_value_set_int(&gval, (int)AS_NUMBER(value));
+        if (IS_INT(value))
+            g_value_set_int(&gval, (int)AS_INT(value));
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_DOUBLE)) {
@@ -475,7 +475,7 @@ static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_i
             giArg->v_string = (char*)AS_CSTRING(loxValue);
             break;
         case GI_TYPE_TAG_INT32:
-            giArg->v_int32 = (int32_t)AS_NUMBER(loxValue);
+            giArg->v_int32 = (int32_t)AS_INT(loxValue);
             break;
         case GI_TYPE_TAG_FLOAT:
             giArg->v_float = (float)AS_NUMBER(loxValue);
@@ -491,6 +491,8 @@ static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_i
                 giArg->v_pointer = AS_INSTANCE(loxValue)->foreignPtr;
             } else if (IS_NUMBER(loxValue)) {
                 giArg->v_int = (int)AS_NUMBER(loxValue);
+            } else if (IS_INT(loxValue)) {
+                giArg->v_int = (int)AS_INT(loxValue);
             } else {
                 giArg->v_pointer = NULL;
             }
@@ -982,7 +984,7 @@ void register_gdk_module(Table* registry) {
     for (int i = 0; gdk_constants[i].name != NULL; i++) {
         tableSet(&gdkInstance->fields,
                 copyString(gdk_constants[i].name, strlen(gdk_constants[i].name)),
-                NUMBER_VAL(gdk_constants[i].value));
+                INT_VAL(gdk_constants[i].value));
     }
 
     tableSet(&vm.globals, name, OBJ_VAL(gdkInstance));
@@ -996,15 +998,15 @@ void register_gdk_constants() {
     ObjClass* gdkClass = newClass(copyString("Gdk", 3));
     push(OBJ_VAL(gdkClass));
 
-    tableSet(&gdkClass->methods, copyString("SHIFT_MASK", 10), NUMBER_VAL(1 << 0));
-    tableSet(&gdkClass->methods, copyString("LOCK_MASK", 9), NUMBER_VAL(1 << 1));
-    tableSet(&gdkClass->methods, copyString("CONTROL_MASK", 12), NUMBER_VAL(1 << 2));
-    tableSet(&gdkClass->methods, copyString("ALT_MASK", 8), NUMBER_VAL(1 << 3));
-    tableSet(&gdkClass->methods, copyString("BUTTON1_MASK", 8), NUMBER_VAL(1 << 4));
+    tableSet(&gdkClass->methods, copyString("SHIFT_MASK", 10), INT_VAL(1 << 0));
+    tableSet(&gdkClass->methods, copyString("LOCK_MASK", 9), INT_VAL(1 << 1));
+    tableSet(&gdkClass->methods, copyString("CONTROL_MASK", 12), INT_VAL(1 << 2));
+    tableSet(&gdkClass->methods, copyString("ALT_MASK", 8), INT_VAL(1 << 3));
+    tableSet(&gdkClass->methods, copyString("BUTTON1_MASK", 8), INT_VAL(1 << 4));
 
-    tableSet(&gdkClass->methods, copyString("KEY_Q", 5), NUMBER_VAL(113));
-    tableSet(&gdkClass->methods, copyString("KEY_Return", 10), NUMBER_VAL(65293));
-    tableSet(&gdkClass->methods, copyString("KEY_Escape", 10), NUMBER_VAL(65307));
+    tableSet(&gdkClass->methods, copyString("KEY_Q", 5), INT_VAL(113));
+    tableSet(&gdkClass->methods, copyString("KEY_Return", 10), INT_VAL(65293));
+    tableSet(&gdkClass->methods, copyString("KEY_Escape", 10), INT_VAL(65307));
 
     tableSet(&globalRegistry->fields, copyString("Gdk", 3), OBJ_VAL(gdkClass));
     tableSet(&vm.globals, copyString("Gdk", 3), OBJ_VAL(gdkClass));
@@ -1194,7 +1196,7 @@ static Value giLoadNative(int argCount, Value* args) {
             if (g_type_info_get_tag(type_info) == GI_TYPE_TAG_INT32 ||
                     g_type_info_get_tag(type_info) == GI_TYPE_TAG_UINT32) {
                 tableSet(&module->fields, copyString(name, strlen(name)),
-                        NUMBER_VAL((double)arg.v_int));
+                        INT_VAL(arg.v_int));
             }
             g_base_info_unref(type_info);
         }

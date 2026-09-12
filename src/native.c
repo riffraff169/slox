@@ -23,6 +23,7 @@
 #include <poll.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/sendfile.h>
 
 #include "native.h"
 #include "common.h"
@@ -1173,8 +1174,8 @@ Value stringTokensNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadCenterNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) {
-        runtimeError("pad_left() expects a width integer and a 1-character pad string.");
+    if (argCount < 2) {
+        runtimeError("pad_center() expects a width integer and a 1-character pad string.");
         return NIL_VAL;
     }
 
@@ -1265,7 +1266,7 @@ Value stringPadRightNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadLeftNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) {
+    if (argCount < 2) {
         runtimeError("pad_left() expects a number and a 1-character pd string.");
         return NIL_VAL;
     }
@@ -2390,35 +2391,108 @@ Value mathParseNative(int argCount, Value* args) {
 }
 
 Value fromHexNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) return NIL_VAL;
+    ObjString* strObj = NULL;
 
-    const char* str = AS_CSTRING(args[0]);
+    if (IS_STRING(args[-1])) {
+        strObj = AS_STRING(args[-1]);
+    } else {
+        if (argCount != 1 || !IS_STRING(args[0])) {
+            runtimeError("from_hex() expects a string target.");
+            return NIL_VAL;
+        }
+        strObj = AS_STRING(args[0]);
+    }
 
-    uint32_t result = (uint32_t)strtoul(str, NULL, 0);
+    const char* str = strObj->chars;
+    char* endptr;
+
+    unsigned long long result = strtoul(str, NULL, 16);
+
+    if (str == endptr) return NIL_VAL;
+
+    if (result <= (unsigned long long)INT64_MAX) {
+        return INT_VAL((int64_t)result);
+    }
+
     return NUMBER_VAL((double)result);
 }
 
 Value fromBinNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) return NIL_VAL;
+    ObjString* strObj = NULL;
+
+    if (IS_STRING(args[-1])) {
+        strObj = AS_STRING(args[-1]);
+    } else {
+        if (argCount < 1 || !IS_STRING(args[0])) {
+            runtimeError("from_bin() expects a string target.");
+            return NIL_VAL;
+        }
+        strObj = AS_STRING(args[0]);
+    }
 
     const char* str = AS_CSTRING(args[0]);
 
-    uint32_t result = (uint32_t)strtoul(str, NULL, 2);
+    // skip "0b" or "0B" prefix if present
+    if (str[0] == '0' && (str[1] == 'b' || str[1] == 'B')) {
+        str += 2;
+    }
+
+    char* endptr;
+    unsigned long long result = strtoul(str, NULL, 2);
+
+    if (str == endptr) return NIL_VAL;
+
+    if (result <= (unsigned long long)INT64_MAX) {
+        return INT_VAL((int64_t)result);
+    }
+
     return NUMBER_VAL((double)result);
 }
 
 Value mathRoundNative(int argCount, Value* args) {
+    if (IS_INT(args[-1])) return args[-1];
+    if (argCount > 0 && IS_INT(args[0])) return args[0];
+
     EXTRACT_MATH_OP(val, "round");
+    double rounded = round(val);
+
+    if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
+        return INT_VAL((int64_t)rounded);
+    }
+
     return NUMBER_VAL(round(val));
+}
+
+Value valueToNumber(Value val) {
+    if (IS_INT(val)) return val;
+
+    if (IS_NUMBER(val)) return val;
+
+    if (IS_BOOL(val)) {
+        return INT_VAL(AS_BOOL(val) ? 1 : 0);
+    }
+
+    if (IS_STRING(val)) {
+        Value parseArgs[2];
+        parseArgs[0] = val;
+        parseArgs[1] = INT_VAL(0);
+
+        Value result = mathParseNative(1, &parseArgs[1]);
+
+        if (!IS_NIL(result)) return result;
+    }
+
+    return INT_VAL(0);
 }
 
 // also callhandler/constructor
 Value toNumberNative(int argCount, Value* args) {
     Value value = NUMBER_VAL(0);
 
-    if (IS_STRING(args[-1]) || IS_NUMBER(args[-1]) || IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
-        value = args[-1];
-    } else {
+    if (IS_STRING(args[-1]) || IS_INT(args[-1]) || IS_NUMBER(args[-1]) ||
+            IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
+        return valueToNumber(args[-1]);
+    } /*else {
         if (argCount < 1) return NUMBER_VAL(0);
         value = args[0];
     }
@@ -2433,8 +2507,14 @@ Value toNumberNative(int argCount, Value* args) {
     if (str == end) {
         return NUMBER_VAL(0);
     }
+    */
+    if (argCount >= 1) {
+        return valueToNumber(args[0]);
+    }
 
-    return NUMBER_VAL(number);
+    return INT_VAL(0);
+
+    //return NUMBER_VAL(number);
 }
 
 Value mathSinNative(int argCount, Value* args) {
@@ -2450,21 +2530,33 @@ Value mathTanNative(int argCount, Value* args) {
 Value mathAtan2Native(int argCount, Value* args) {
     double y, x;
 
-    if (IS_NUMBER(args[-1])) {
-        if (argCount < 1 || !IS_NUMBER(args[0])) {
-            runtimeError("atan2() expects a number argument when called as a method.");
+#define EXTRACT_DOUBLE(val, outDbl) \
+    if (IS_INT(val)) { \
+        outDbl = (double)AS_INT(val); \
+    } else if (IS_NUMBER(val)) { \
+        outDbl = AS_NUMBER(val); \
+    } else { \
+        runtimeError("atan2() requires numeric arguments."); \
+        return NIL_VAL; \
+    }
+       
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        if (argCount < 1) {
+            runtimeError("atan2() expects 1 argument when called as a method.");
             return NIL_VAL;
         }
-        y = AS_NUMBER(args[-1]);
-        x = AS_NUMBER(args[0]);
+        EXTRACT_DOUBLE(args[-1], y);
+        EXTRACT_DOUBLE(args[0], x);
     } else {
-        if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+        if (argCount < 2) {
             runtimeError("atan2() expects two number arguments when called statically.");
             return NIL_VAL;
         }
-        y = AS_NUMBER(args[0]);
-        x = AS_NUMBER(args[1]);
+        EXTRACT_DOUBLE(args[0], y);
+        EXTRACT_DOUBLE(args[1], x);
     }
+#undef EXTRACT_DOUBLE
+
     return NUMBER_VAL(atan2(y, x));
 }
 
@@ -2479,68 +2571,113 @@ Value mathAcosNative(int argCount, Value* args) {
 }
 
 Value numberToIntNative(int argCount, Value* args) {
+    if (IS_INT(args[-1])) return args[-1];
+    if (argCount > 0 && IS_INT(args[0])) return args[0];
+
     EXTRACT_MATH_OP(val, "to_int");
 
     if (isnan(val) || isinf(val)) return NIL_VAL;
+    if (val < (double)INT64_MIN || val > (double)INT64_MAX) return NIL_VAL;
 
-    return NUMBER_VAL(trunc(val));
-    /*
-    if (isnan(val)) {
-        return OBJ_VAL(copyString("NaN", 3));
-    }
-    if (isinf(val)) {
-        return OBJ_VAL(copyString(val > 0 ? "Infinity" : "-Infinity", val > 0 ? 8 : 9));
-    }
-
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), "%0.f", trunc(val));
-    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
-    */
+    return INT_VAL((int64_t)trunc(val));
 }
 
 Value numberToFixedNative(int argCount, Value* args) {
-    EXTRACT_MATH_OP(val, "to_fixed");
+    double val;
     int decimals = 0;
 
-    if (argCount >= 2) {
-        if (!IS_NUMBER(args[1])) {
-            runtimeError("Number.to_fixed() decimals argument must be a number.");
-            return NIL_VAL;
-        }
-        decimals = (int)AS_NUMBER(args[1]);
-        if (decimals < 0) decimals = 0;
-        if (decimals > 20) decimals = 20;
+#define EXTRACT_DECIMALS(v) \
+    if (IS_INT(v)) { \
+        decimals = (int)AS_INT(v); \
+    } else if (IS_NUMBER(v) && isExactInteger(AS_NUMBER(v))) { \
+        decimals = (int)AS_NUMBER(v); \
+    } else { \
+        runtimeError("to_fixed() decimals argument must be a number."); \
+        return NIL_VAL; \
     }
 
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), "%.*f", decimals, val);
+    if (IS_INT(args[-1]) || IS_NUMBER(args[1])) {
+        val = IS_INT(args[-1]) ? (double)AS_INT(args[-1]) : AS_NUMBER(args[-1]);
 
-    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+        if (argCount < 1) {
+            EXTRACT_DECIMALS(args[0]);
+        }
+    } else {
+        if (argCount < 1) {
+            runtimeError("to_fixed() expects at least 1 argument when called statically.");
+            return NIL_VAL;
+        }
+
+        Value target = args[0];
+        if (IS_INT(target)) {
+            val = (double)AS_INT(target);
+        } else if (IS_NUMBER(target)) {
+            val = AS_NUMBER(target);
+        } else {
+            runtimeError("to_fixed() target must be numeric.");
+            return NIL_VAL;
+        }
+
+        if (argCount >= 2) {
+            EXTRACT_DECIMALS(args[1]);
+        }
+    }
+
+#undef EXTRACT_DECIMALS
+
+    if (decimals < 0) decimals = 0;
+    if (decimals > 20) decimals = 20;
+
+    char buffer[128];
+    int len = snprintf(buffer, sizeof(buffer), "%.*f", decimals, val);
+
+    if (len < 0 || len >= (int)sizeof(buffer)) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(copyString(buffer, len));
 }
 
 Value numberToStringNative(int argCount, Value* args) {
-    if (!IS_NUMBER(args[-1])) {
-        runtimeError("Receiver must be a Number.");
-        return NIL_VAL;
-    }
-    double val = AS_NUMBER(args[-1]);
+    Value target = NIL_VAL;
+    bool isInstanceCall = false;
 
-    int precision = 0;
-
-    if (argCount > 0) {
-        if (!IS_NUMBER(args[0])) {
-            runtimeError("Precision must be a number.");
+    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+        target = args[-1];
+        isInstanceCall = true;
+    } else {
+        if (argCount < 1) {
+            runtimeError("to_string() expects at least 1 argument when called statically.");
             return NIL_VAL;
         }
-        precision =  (int)AS_NUMBER(args[0]);
-        if (precision < 0) precision = 0;
-        if (precision > 20) precision = 20;
+        target = args[0];
     }
-    double displayVal = (precision == 0) ? trunc(val) : val;
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), "%.*f", precision, displayVal);
 
-    return OBJ_VAL(copyString(buffer, (int)strlen(buffer)));
+    if (!IS_NUMERIC(target)) {
+        runtimeError("to_string() target must be a number.");
+        return NIL_VAL;
+    }
+
+    int extraArgs = isInstanceCall ? argCount : (argCount - 1);
+
+    if (extraArgs > 0) {
+        return numberToFixedNative(argCount, args);
+    }
+
+    char buffer[128];
+    int len = 0;
+
+    if (IS_INT(target)) {
+        len = snprintf(buffer, sizeof(buffer), "%" PRId64, AS_INT(target));
+    } else {
+        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(target));
+    }
+
+    if (len < 0 || len >= (int)sizeof(buffer)) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(copyString(buffer, len));
 }
 
 void initMathLibrary() {
@@ -2556,7 +2693,8 @@ void initMathLibrary() {
 
 #define X(name, func) \
     defineNativeMethod(mathMeta, name, func); \
-    defineNativeMethod(vm.numberClass, name, func);
+    defineNativeMethod(vm.numberClass, name, func); \
+    defineNativeMethod(vm.integerClass, name, func);
     MATH_DUAL_METHOD_LIST(X)
 #undef X
 
@@ -2565,6 +2703,7 @@ void initMathLibrary() {
 #undef X
 
     defineNativeMethod(vm.numberClass, "to_string", numberToStringNative);
+    defineNativeMethod(vm.integerClass, "to_string", numberToStringNative);
 
     // or if want single source:
 #define X(name, func, isDual) \
@@ -2638,7 +2777,7 @@ Value arrayPopNative(int argCount, Value* args) {
 
 Value arrayLenNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
-    return NUMBER_VAL(array->count);
+    return INT_VAL(array->count);
 }
 
 Value arrayMapNative(int argCount, Value* args) {
@@ -2938,11 +3077,11 @@ Value arrayIndexOfNative(int argCount, Value* args) {
 
     for (int i = 0; i < array->count; i++) {
         if (valuesEqual(array->values[i], target)) {
-            return NUMBER_VAL(i);
+            return INT_VAL(i);
         }
     }
 
-    return NUMBER_VAL(-1);
+    return INT_VAL(-1);
 }
 
 Value arrayFindIndexNative(int argCount, Value* args) {
@@ -2973,14 +3112,14 @@ Value arrayFindIndexNative(int argCount, Value* args) {
             if (isTruthy(result)) {
                 VM_CALLBACK_RESET_STACK(callbackStackStart);
                 VM_CALLBACK_EXIT(oldExitDepth);
-                return NUMBER_VAL(i);
+                return INT_VAL(i);
             }
         }
         VM_CALLBACK_RESET_STACK(callbackStackStart);
     }
 
     VM_CALLBACK_EXIT(oldExitDepth);
-    return NUMBER_VAL(-1);
+    return INT_VAL(-1);
 }
 
 Value arrayFindNative(int argCount, Value* args) {
@@ -3040,15 +3179,36 @@ Value arrayHasNative(int argCount, Value* args) {
 
 Value arraySliceNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
-    int count = array->count;
+    int64_t count = (int64_t)array->count;
 
-    int start = (argCount >= 1 && IS_NUMBER(args[0])) ? (int)AS_NUMBER(args[0]) : 0;
-    if (start < 0) start = count + start;
+    int64_t start = 0;
+    int64_t end = count;
+
+#define EXTRACT_INDEX(val, outIdx) \
+    if (IS_INT(val)) { \
+        outIdx = AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outIdx = (int64_t)AS_NUMBER(val); \
+    } else { \
+        runtimeError("slic() index must be an integer."); \
+        return NIL_VAL; \
+    }
+
+    if (argCount >= 1) {
+        EXTRACT_INDEX(args[0], start);
+    }
+
+    if (argCount >= 2) {
+        EXTRACT_INDEX(args[1], end);
+    }
+
+#undef EXTRACT_INDEX
+
+    if (start < 0) start += count;
     if (start < 0) start = 0;
     if (start > count) start = count;
 
-    int end = (argCount >= 2 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : count;
-    if (end < 0) end = count + end;
+    if (end < 0) end += count;
     if (end < 0) end = 0;
     if (end > count) end = count;
 
@@ -3068,8 +3228,16 @@ static int defaultSortComparator(const void* a, const void* b) {
     Value valA = *(Value*)a;
     Value valB = *(Value*)b;
 
-    if (IS_NUMBER(valA) && IS_NUMBER(valB)) {
-        double diff = AS_NUMBER(valA) - AS_NUMBER(valB);
+    if (IS_NUMERIC(valA) && IS_NUMERIC(valB)) {
+        if (IS_INT(valA) && IS_INT(valB)) {
+            int64_t ia = AS_INT(valA);
+            int64_t ib = AS_INT(valB);
+            return (ia > ib) - (ia < ib);
+        }
+
+        double da = IS_INT(valA) ? (double)AS_INT(valA) : AS_NUMBER(valA);
+        double db = IS_INT(valB) ? (double)AS_INT(valB) : AS_NUMBER(valB);
+        double diff = da - db;
         return (diff > 0) - (diff < 0);
     }
 
@@ -3085,6 +3253,7 @@ static int defaultSortComparator(const void* a, const void* b) {
     return (int)valA.type - (int)valB.type;
 
 }
+
 static int loxSortComparator(const void* a, const void* b, void* userdata) {
     ObjClosure* callback = (ObjClosure*)userdata;
     Value valA = *(Value*)a;
@@ -3112,12 +3281,16 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
 
         vm.stackTop = comparisonStackBase;
 
-        if (IS_NUMBER(result)) return (int)AS_NUMBER(result);
+        if (IS_INT(result)) {
+            int64_t val = AS_INT(result);
+            return (val > 0) - (val < 0);
+        }
+        if (IS_NUMBER(result)) {
+            double val = AS_NUMBER(result);
+            return (val > 0) - (val < 0);
+        }
         if (IS_BOOL(result)) {
-            if (AS_BOOL(result) == false)
-                return 1;
-            else
-                return -1;
+            return AS_BOOL(result) ? -1 : 1;
         }
     }
     vm.stackTop = comparisonStackBase;
@@ -3200,11 +3373,6 @@ Value arrayFlattenNative(int argCount, Value* args) {
 }
 
 Value arrayStringNative(int argCount, Value* args) {
-    if (!IS_ARRAY(args[-1])) {
-        runtimeError("Receiver must be an Array instance.");
-        return NIL_VAL;
-    }
-
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
 
@@ -3216,20 +3384,33 @@ Value arrayStringNative(int argCount, Value* args) {
 
     for (int i = 0; i < count; i++) {
         Value v = array->values[i];
-        if (!IS_NUMBER(v)) {
+        int64_t byteVal;
+
+        if (IS_INT(v)) {
+            byteVal = AS_INT(v);
+        } else if (IS_NUMBER(v)) {
+            double dbl = AS_NUMBER(v);
+            if (!isExactInteger(dbl)) {
+                FREE_ARRAY(uint8_t, buffer, count);
+                runtimeError("Byte value at index %d must be an integer.", i);
+                return NIL_VAL;
+            }
+            byteVal = (int64_t)dbl;
+        } else {
             FREE_ARRAY(uint8_t, buffer, count);
-            runtimeError("Array contains non-number at index %d.", i);
+            runtimeError("Array contains non-numeric element at index %d.", i);
             return NIL_VAL;
         }
-        double num = AS_NUMBER(v);
-        if (num < 0 || num > 255) {
+
+        if (byteVal < 0 || byteVal > 255) {
             FREE_ARRAY(uint8_t, buffer, count);
-            runtimeError("Byte value %g out of range (0-255).", num);
+            runtimeError("Byte value %" PRId64 " out of range (0-255) at index %d.", byteVal, i);
             return NIL_VAL;
         }
-        buffer[i] = (uint8_t)num;
+        buffer[i] = (uint8_t)byteVal;
     }
-    ObjString* string = copyString((char*)buffer, count);
+
+    ObjString* string = copyString((const char*)buffer, count);
     FREE_ARRAY(uint8_t, buffer, count);
 
     return OBJ_VAL(string);
@@ -3842,19 +4023,21 @@ Value fileOpenNative(int argCount, Value* args) {
 }
 
 Value fileReadNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.read() must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
     if (!handle) return errorResult("%s", "No open file handle found.");
 
     int length = -1;
 
-    if (argCount >= 1 && IS_NUMBER(args[0])) {
-        length = (int)AS_NUMBER(args[0]);
+    if (argCount >= 1) {
+        Value lenVal = args[0];
+        if (IS_INT(lenVal)) {
+            length = AS_INT(lenVal);
+        } else if (IS_NUMBER(lenVal) && isExactInteger(AS_NUMBER(lenVal))) {
+            length = (int64_t)AS_NUMBER(lenVal);
+        } else {
+            return errorResult("%s", "Read length must be an integer.");
+        }
         if (length < 0) {
             return errorResult("%s", "Read length cannot be negative.");
         }
@@ -3865,7 +4048,7 @@ Value fileReadNative(int argCount, Value* args) {
         }
 
         if (fseek(handle, 0L, SEEK_END) != 0) {
-            return errorResult("%s", "Cannot seek file streadm.");
+            return errorResult("%s", "Cannot seek file stream.");
         }
 
         long endPos = ftell(handle);
@@ -3877,7 +4060,7 @@ Value fileReadNative(int argCount, Value* args) {
             return errorResult("%s", "Failed to restore stream cursor position.");
         }
 
-        length = (int)(endPos - currentPos);
+        length = (int64_t)(endPos - currentPos);
     }
 
     if (length == 0) {
@@ -3912,11 +4095,6 @@ Value fileReadNative(int argCount, Value* args) {
 }
 
 Value fileReadlineNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.readline() must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
     if (!handle) return errorResult("%s", "No open file handle found.");
@@ -3980,11 +4158,6 @@ Value fileReadlineNative(int argCount, Value* args) {
 }
 
 Value fileWriteNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.write() must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
 
@@ -4016,22 +4189,12 @@ Value fileWriteNative(int argCount, Value* args) {
 }
 
 Value fileCloseNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.close( must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     int res = closeFileInternal(inst);
     return okResult(NUMBER_VAL(res));
 }
 
 Value fileSeekNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.seek() must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
 
@@ -4039,22 +4202,33 @@ Value fileSeekNative(int argCount, Value* args) {
         return errorResult("%s", "Cannot seek within a closed file descriptor.");
     }
 
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("File.seek() requires at least 1 number argument(offset).");
-        return NIL_VAL;
-    }
-
-    if (argCount == 2 && !IS_NUMBER(args[1])) {
-        runtimeError("File.seek() second argument (whence) must be a number.");
+    if (argCount < 1) {
+        runtimeError("File.seek() requires at least 1 argument (offset).");
         return NIL_VAL;
     }
 
     long offset = (long)AS_NUMBER(args[0]);
-    int whence = 0;
+    int whence = SEEK_SET;
+
+#define EXTRACT_LONG(val, outVal, errMessage) \
+    if (IS_INT(val)) { \
+        outVal = (long)AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outVal = (long)AS_NUMBER(val); \
+    } else { \
+        runtimeError(errMessage); \
+        return NIL_VAL; \
+    }
+
+    EXTRACT_LONG(args[0], offset, "File.seek() offset argument must be an integer.");
+
 
     if (argCount == 2) {
-        whence = (int)AS_NUMBER(args[1]);
+        long whenceVal = 0;
+        EXTRACT_LONG(args[1], whenceVal, "File.seek() whence argument must be an integer.");
+        whence = (int)whenceVal;
     }
+#undef EXTRACT_LONG
 
     if (fseek(handle, offset, whence) != 0) {
         int errsv = errno;
@@ -4066,11 +4240,6 @@ Value fileSeekNative(int argCount, Value* args) {
 }
 
 Value fileTellNative(int argCount, Value* args) {
-    if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.tell() must be called on a File instance.");
-        return NIL_VAL;
-    }
-
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
 
@@ -4085,7 +4254,7 @@ Value fileTellNative(int argCount, Value* args) {
         return errorResult("Failed to query stream position: %s", strerror(errsv));
     }
 
-    return okResult(NUMBER_VAL((double)position));
+    return okResult(INT_VAL((int64_t)position));
 }
 
 Value fileStderrNative(int argCount, Value* args) {
@@ -4122,42 +4291,132 @@ Value fileFlushNative(int argCount, Value* args) {
 }
 
 Value fileCopyNative(int argCount, Value* args) {
-    /*
-    int src_fd = open(src, O_RDONLY);
-    if (src_fd < 0) return false;
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("File.copy() requires source and destination path strings.");
+        return NIL_VAL;
+    }
 
-    struct stat stat_buf;
-    fstat(src_fd, &stat_buf);
+    const char* srcPath = AS_CSTRING(args[0]);
+    const char* destPath = AS_CSTRING(args[1]);
 
-    int dest_fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC, stat_buf.st_mode);
-    if (dest_fd < 0) { close(src_fd); return false; }
+    int srcFd = open(srcPath, O_RDONLY);
+    if (srcFd < 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to open source file: %s", strerror(errsv));
+    }
 
-    off_t bytes_copied = 0;
-    ssize_t result = sendfile(dest_fd, src_fd, &bytes_copied, stat_buf.st_size);
+    struct stat statBuf;
+    if (fstat(srcFd, &statBuf) < 0) {
+        int errsv = errno;
+        close(srcFd);
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to stat source file: %s", strerror(errsv));
+    }
 
-    close(src_fd);
-    close(dest_fd);
-    return result >= 0;
-    */
+    mode_t mode = statBuf.st_mode & 07777;
+
+    int destFd = open(destPath, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    if (destFd < 0) {
+        int errsv = errno;
+        close(srcFd);
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to open destination file: %s", strerror(errsv));
+    }
+
+    off_t offset = 0;
+    ssize_t totalSent = 0;
+    off_t sizeRemaining = statBuf.st_size;
+
+    while (sizeRemaining > 0) {
+        size_t sendChunk = (sizeRemaining > 0x7ffff000) ? 0x7ffff000 : (size_t)sizeRemaining;
+        ssize_t sent = sendfile(destFd, srcFd, &offset, sendChunk);
+
+        if (sent < 0) {
+            if (errno == EINTR) continue;
+
+            int errsv = errno;
+            close(srcFd);
+            close(destFd);
+            setLastError(errsv, "%s", strerror(errsv));
+            return errorResult("Failed to copy data via sendfile: %s", strerror(errsv));
+        }
+
+        if (sent == 0) break;
+        totalSent += sent;
+        sizeRemaining -= sent;
+    }
+
+    close(srcFd);
+    close(destFd);
+
+    return okResult(INT_VAL((int64_t)totalSent));
 }
 
 Value fileChmodNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
-        return BOOL_VAL(false);
+    if (argCount < 2) {
+        return errorResult("%s", "File.chmod() requires 2 arguments: (path, mode).");
     }
+
+    if (!IS_STRING(args[0])) {
+        return errorResult("%s", "File.chmod() path argument must be a string.");
+    }
+
     const char* path = AS_CSTRING(args[0]);
-    mode_t mode = (mode_t)AS_NUMBER(args[1]);
-    return BOOL_VAL(chmod(path, mode) == 0);
+    Value modeVal = args[1];
+    mode_t mode = 0;
+    
+    if (IS_INT(modeVal)) {
+        mode = (mode_t)AS_INT(modeVal);
+    } else if (IS_NUMBER(modeVal) && isExactInteger(AS_NUMBER(modeVal))) {
+        mode = (mode_t)AS_NUMBER(modeVal);
+    } else {
+        return errorResult("%s", "File.chmod() mode argument must be an integer (e.g., 0644).");
+    }
+
+    if (chmod(path, mode) != 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to change permissions for '%s': %s", path, strerror(errsv));
+    }
+
+    return okResult(NIL_VAL);
 }
 
 Value fileChownNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_STRING(args[0]) || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
-        return BOOL_VAL(false);
+    if (argCount < 3) {
+        return errorResult("%s", "File.chown() requires 3 arguments: (path, uid, gid).");
     }
+
+    if (!IS_STRING(args[0])) {
+        return errorResult("%s", "File.chown() path argument must be a string.");
+    }
+
     const char* path = AS_CSTRING(args[0]);
-    uid_t uid = (uid_t)AS_NUMBER(args[1]);
-    gid_t gid = (gid_t)AS_NUMBER(args[2]);
-    return BOOL_VAL(chown(path, uid, gid) == 0);
+    uid_t uid = (uid_t)-1;
+    gid_t gid = (gid_t)-1;
+
+#define EXTRACT_ID(val, outId, name) \
+    if (IS_INT(val)) { \
+        outId = (typeof(outId))AS_INT(val); \
+    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
+        outId = (typeof(outId))AS_NUMBER(val); \
+    } else {  \
+        return errorResult("%s", "File.chown() " name " argument must be an integer."); \
+    }
+
+    EXTRACT_ID(args[1], uid, "uid");
+    EXTRACT_ID(args[2], gid, "gid");
+
+#undef EXTRACT_ID
+
+    if (chown(path, uid, gid) != 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to change ownership for '%s': %s", path, strerror(errsv));
+    }
+
+    return okResult(NIL_VAL);
 }
 
 Value fileUnlinkNative(int argCount, Value* args) {
@@ -4188,7 +4447,7 @@ Value fileRenameNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
-void initFileLibrary(){
+void initFileLibrary() {
     /*
     ObjString* fileName = copyString("File", 4);
     push(OBJ_VAL(fileName));
@@ -4250,8 +4509,16 @@ Value dirMkdirNative(int argCount, Value* args) {
 
     int mode = 0755;
 
-    if (argCount > 1 && IS_NUMBER(args[1])) {
-        mode = (int)AS_NUMBER(args[1]);
+    if (argCount > 1) {
+        Value modeVal = args[1];
+        if (IS_INT(modeVal)) {
+            mode = (mode_t)AS_INT(modeVal);
+        } else if (IS_NUMBER(modeVal) && isExactInteger(AS_NUMBER(modeVal))) {
+            mode = (mode_t)AS_NUMBER(modeVal);
+        } else {
+            runtimeError("Dir.mkdir() mode argument must be an integer.");
+            return NIL_VAL;
+        }
     }
 
     const char* path = AS_CSTRING(args[0]);
@@ -4619,7 +4886,7 @@ Value processRunStatic(int argCount, Value* args) {
         return errorResult("Command exited with code %d", exitCode);
     }
 
-    return okResult(NUMBER_VAL(0.0));
+    return okResult(INT_VAL(0));
 }
 
 Value processCaptureStatic(int argCount, Value* args) {
@@ -4679,12 +4946,16 @@ Value processForkStatic(int argCount, Value* args) {
         return errorResult("Failed to fork process: %s", strerror(errsv));
     }
 
-    return okResult(NUMBER_VAL((double)pid));
+    return okResult(INT_VAL((int64_t)pid));
 }
 
 char* valueToCString(Value val) {
     if (IS_STRING(val)) {
         return strdup(AS_CSTRING(val));
+    } else if (IS_INT(val)) {
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "%" PRId64, AS_INT(val));
+        return strdup(buffer);
     } else if (IS_NUMBER(val)) {
         char buffer[64];
         snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(val));
@@ -4769,18 +5040,21 @@ Value processExecStatic(int argCount, Value* args) {
 }
 
 Value processPidStatic(int argCount, Value* args) {
-    return NUMBER_VAL((double)getpid());
+    return INT_VAL((int64_t)getpid());
 }
 
 Value processWaitStatic(int argCount, Value* args) {
     pid_t targetPid = -1;
 
     if (argCount > 0) {
-        if (!IS_NUMBER(args[0])) {
-            runtimeError("Process.wait() argument must be a process ID number.");
-            return NIL_VAL;
+        Value pidVal = args[0];
+        if (IS_INT(pidVal)) {
+            targetPid = (pid_t)AS_INT(pidVal);
+        } else if (IS_NUMBER(pidVal) && isExactInteger(AS_NUMBER(pidVal))) {
+            targetPid = (pid_t)AS_NUMBER(pidVal);
+        } else {
+            return errorResult("%s", "Process.wait() argument must be a process ID number.");
         }
-        targetPid = (pid_t)AS_NUMBER(args[0]);
     }
 
     int status;
@@ -4800,12 +5074,14 @@ Value processWaitStatic(int argCount, Value* args) {
     }
 #endif
 
-    return okResult(NUMBER_VAL((double)exitCode));
+    return okResult(INT_VAL((int64_t)exitCode));
 }
 
 Value processPipeStatic(int argCount, Value* args) {
     int fds[2];
     if (pipe(fds) < 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
         return errorResult("Failed to allocate OS pipe: %s", strerror(errno));
     }
 
@@ -4814,12 +5090,12 @@ Value processPipeStatic(int argCount, Value* args) {
 
     ObjString* readKey = copyString("read", 4);
     push(OBJ_VAL(readKey));
-    mapSet(pipeMap, OBJ_VAL(readKey), NUMBER_VAL((double)fds[0]));
+    mapSet(pipeMap, OBJ_VAL(readKey), INT_VAL((int64_t)fds[0]));
     pop();
 
     ObjString* writeKey = copyString("write", 5);
     push(OBJ_VAL(writeKey));
-    mapSet(pipeMap, OBJ_VAL(writeKey), NUMBER_VAL((double)fds[1]));
+    mapSet(pipeMap, OBJ_VAL(writeKey), INT_VAL((int64_t)fds[1]));
     pop();
 
     pop();
@@ -4827,20 +5103,44 @@ Value processPipeStatic(int argCount, Value* args) {
 }
 
 Value processReadStatic(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("Process.read() requires a numeric descriptor.");
-        return NIL_VAL;
+    if (argCount < 1) {
+        return errorResult("%s", "Process.read() requires a file descriptor argument.");
     }
 
-    int fd = (int)AS_NUMBER(args[0]);
+    int fd = -1;
+    Value fdVal = args[0];
+
+    if (IS_INT(fdVal)) {
+        fd = (int)AS_INT(fdVal);
+    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
+        fd = (int)AS_NUMBER(fdVal);
+    } else {
+        return errorResult("%s", "Process.read() file descriptor must be an integer.");
+    }
+
     size_t maxBytes = 4096;
 
+    if (argCount >= 2) {
+        Value maxVal = args[1];
+        if (IS_INT(maxVal) && AS_INT(maxVal) > 0) {
+            maxBytes = (size_t)AS_INT(maxVal);
+        } else if (IS_NUMBER(maxVal) && isExactInteger(AS_NUMBER(maxVal)) && AS_NUMBER(maxVal) > 0) {
+            maxBytes = (size_t)AS_NUMBER(maxVal);
+        } else {
+            return errorResult("%s", "Process.read() max bytes argument must be a positive integer.");
+        }
+    }
+
     char* buffer = ALLOCATE(char, maxBytes + 1);
+    if (buffer == NULL) {
+        return errorResult("%s", "Could not allocate read buffer.");
+    }
+
     ssize_t bytesRead = read(fd, buffer, maxBytes);
 
     if (bytesRead < 0) {
         FREE_ARRAY(char, buffer, maxBytes + 1);
-        return errorResult("Failed to read from stream: %s", strerror(errno));
+        return errorResult("Failed to read from descriptor %d: %s", fd, strerror(errno));
     }
 
     buffer[bytesRead] = '\0';
@@ -4851,48 +5151,98 @@ Value processReadStatic(int argCount, Value* args) {
 }
 
 Value processCloseStatic(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("Process.close() requires a numeric descriptor.");
-        return NIL_VAL;
+    if (argCount < 1) {
+        return errorResult("%s", "Process.close() requires a numeric descriptor.");
     }
 
-    close((int)AS_NUMBER(args[0]));
-    return NIL_VAL;
+    int fd = -1;
+    Value fdVal = args[0];
+
+    if (IS_INT(fdVal)) {
+        fd = (int)AS_INT(fdVal);
+    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
+        fd = (int)AS_NUMBER(fdVal);
+    } else {
+        return errorResult("%s", "Process.close() file descriptor must be an integer.");
+    }
+
+    if (close(fd) != 0) {
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to close file descriptor %d: %s", fd, strerror(errsv));
+    }
+
+    return okResult(NIL_VAL);
 }
 
 Value processSignalStatic(int argCount, Value* args) {
-    int offset = IS_NUMBER(args[0]) ? 0 : 1;
+    int offset = (IS_INT(args[0]) || IS_NUMBER(args[0])) ? 0 : 1;
 
-    if (argCount < offset + 2 || !IS_NUMBER(args[offset]) || !IS_NUMBER(args[offset + 1])) {
+    if (argCount < offset + 2) {
         runtimeError("Process.signal() expects (pid, signal).");
         return NIL_VAL;
     }
 
-    pid_t pid = (pid_t)AS_NUMBER(args[offset]);
-    int sig = (int)AS_NUMBER(args[offset + 1]);
+    Value pidVal = args[offset];
+    Value sigVal = args[offset + 1];
+    pid_t pid = 0;
+    int sig = 0;
+
+    if (IS_INT(pidVal)) {
+        pid = (pid_t)AS_INT(pidVal);
+    } else if (IS_NUMBER(pidVal) && isExactInteger(AS_NUMBER(pidVal))) {
+        pid = (pid_t)AS_NUMBER(pidVal);
+    } else {
+        runtimeError("Process.signal() pid argument must be an integer.");
+        return NIL_VAL;
+    }
+
+    if (IS_INT(sigVal)) {
+        pid = (int)AS_INT(sigVal);
+    } else if (IS_NUMBER(sigVal) && isExactInteger(AS_NUMBER(sigVal))) {
+        pid = (int)AS_NUMBER(sigVal);
+    } else {
+        runtimeError("Process.signal() signal argument must be an integer.");
+        return NIL_VAL;
+    }
 
     if (kill(pid, sig) == 0) {
         return BOOL_VAL(true);
     }
 
+    int errsv = errno;
+    setLastError(errsv, "%s", strerror(errsv));
     return BOOL_VAL(false);
 }
 
 Value processWriteStatic(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_STRING(args[1])) {
+    if (argCount < 2 || (!IS_INT(args[0]) && !IS_NUMBER(args[0])) || !IS_STRING(args[1])) {
         runtimeError("Process.write() requires a numeric descriptor and a string message.");
         return NIL_VAL;
     }
 
-    int fd = (int)AS_NUMBER(args[0]);
+    int fd = -1;
+    Value fdVal = args[0];
+
+    if (IS_INT(fdVal)) {
+        fd = (int)AS_INT(fdVal);
+    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
+        fd = (int)AS_NUMBER(fdVal);
+    } else {
+        runtimeError("Process.write() file descriptor must be an integer.");
+        return NIL_VAL;
+    }
+
     ObjString* message = AS_STRING(args[1]);
 
     ssize_t bytesWritten = write(fd, message->chars, message->length);
     if (bytesWritten < 0) {
-        return errorResult("Failed to write to stream: %s", strerror(errno));
+        int errsv = errno;
+        setLastError(errsv, "%s", strerror(errsv));
+        return errorResult("Failed to write to stream: %s", strerror(errsv));
     }
 
-    return okResult(NUMBER_VAL((double)bytesWritten));
+    return okResult(INT_VAL((int64_t)bytesWritten));
 }
 
 Value processPopenStatic(int argCount, Value* args) {
@@ -4964,7 +5314,214 @@ void initProcessClass() {
     */
 }
 
+typedef struct {
+    uint8_t* bytes;
+    int capacity;
+    int count;
+} ByteBuffer;
+
+static void bufInit(ByteBuffer* buf) {
+    buf->capacity = 32;
+    buf->count = 0;
+    buf->bytes = (uint8_t*)malloc(buf->capacity);
+}
+
+static void bufWriteByte(ByteBuffer* buf, uint8_t byte) {
+    if (buf->count + 1 > buf->capacity) {
+        buf->capacity = buf->capacity < 64 ? 64 : buf->capacity * 2;
+        buf->bytes = (uint8_t*)realloc(buf->bytes, buf->capacity);
+    }
+    buf->bytes[buf->count++] = byte;
+}
+
+static void bufWriteBytes(ByteBuffer* buf, const uint8_t* src, int len) {
+    if (buf->count + len > buf->capacity) {
+        while (buf->count + len > buf->capacity) {
+            buf->capacity = buf->capacity < 64 ? 64 : buf->capacity * 2;
+        }
+        buf->bytes = (uint8_t*)realloc(buf->bytes, buf->capacity);
+    }
+    memcpy(buf->bytes + buf->count, src, len);
+    buf->count += len;
+}
+
+#define IS_INT_OR_NUMBER(v) (IS_INT(v) || IS_NUMBER(v))
 Value structPackNative(int argCount, Value* args) {
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_ARRAY(args[1])) {
+        runtimeError("pack() expects format string and value array.");
+        return NIL_VAL;
+    }
+
+    ObjString* fmt = AS_STRING(args[0]);
+    ObjArray* array = AS_ARRAY(args[1]);
+
+    const char* p = fmt->chars;
+    bool bigend = false;
+
+    if (*p == '>') {
+        bigend = true;
+        p++;
+    } else if (*p == '<' || *p == '!') {
+        bigend = false;
+        p++;
+    }
+
+    ByteBuffer buf;
+    bufInit(&buf);
+
+    int valIndex = 0;
+
+    while (*p != '\0') {
+        if (isspace((unsigned char)*p)) {
+            p++;
+            continue;
+        }
+
+        int width = 0;
+        bool hasWidth = false;
+        while (isdigit((unsigned char)*p)) {
+            width = width * 10 + (*p - '0');
+            hasWidth = true;
+            p++;
+        }
+
+        char type = *p;
+        if (type == '\0') break;
+        p++;
+
+        if (type == 'x') {
+            int padLen = hasWidth ? width : 1;
+            for (int i = 0; i < padLen; i++) {
+                bufWriteByte(&buf, 0x00);
+            }
+            continue;
+        }
+
+        if (type == 's') {
+            if (valIndex >= array->count) {
+                free(buf.bytes);
+                runtimeError("Format string rqeuires more values than provided.");
+                return NIL_VAL;
+            }
+
+            Value val = array->values[valIndex++];
+            if (!IS_STRING(val)) {
+                free(buf.bytes);
+                runtimeError("Expected string value for 's' specifier.");
+                return NIL_VAL;
+            }
+
+            ObjString* s = AS_STRING(val);
+            int targetLen = hasWidth ? width : s->length;
+            int copyLen = (s->length < targetLen) ? s->length : targetLen;
+
+            if (copyLen > 0) {
+                bufWriteBytes(&buf, (const uint8_t*)s->chars, copyLen);
+            }
+
+            for (int i = copyLen; i < targetLen; i++) {
+                bufWriteByte(&buf, 0x00);
+            }
+            continue;
+        }
+
+        int repeatCount = hasWidth ? width : 1;
+
+        for (int c = 0; c < repeatCount; c++) {
+            if (valIndex >= array->count) {
+                free(buf.bytes);
+                runtimeError("Format string requires more values than provided.");
+                return NIL_VAL;
+            }
+
+            Value val = array->values[valIndex++];
+            if (!IS_INT_OR_NUMBER(val)) {
+                free(buf.bytes);
+                runtimeError("Expected numeric value for '%c' specifier.", type);
+                return NIL_VAL;
+            }
+
+            uint64_t num = IS_INT(val)
+                ? (uint64_t)AS_INT(val)
+                : (uint64_t)AS_NUMBER(val);
+
+            switch (type) {
+                case 'b':
+                case 'B':
+                    {
+                        bufWriteByte(&buf, (uint8_t)(num & 0xff));
+                        break;
+                    }
+                case 'h':
+                case 'H':
+                    {
+                        uint8_t bytes[2];
+                        if (bigend) {
+                            bytes[0] = (num >> 8) & 0xff;
+                            bytes[1] = num & 0xff;
+                        } else {
+                            bytes[0] = num & 0xff;
+                            bytes[1] = (num >> 8) & 0xff;
+                        }
+                        bufWriteBytes(&buf, bytes, 2);
+                        break;
+                    }
+                case 'i':
+                case 'I':
+                    {
+                        uint8_t bytes[4];
+                        if (bigend) {
+                            bytes[0] = (num >> 24) & 0xff;
+                            bytes[1] = (num >> 16) & 0xff;
+                            bytes[2] = (num >> 8) & 0xff;
+                            bytes[3] = num & 0xff;
+                        } else {
+                            bytes[0] = num & 0xff;
+                            bytes[1] = (num >> 8) & 0xff;
+                            bytes[2] = (num >> 16) & 0xff;
+                            bytes[3] = (num >> 24) & 0xff;
+                        }
+                        bufWriteBytes(&buf, bytes, 4);
+                        break;
+                    }
+                case 'q':
+                case 'Q':
+                    {
+                        uint8_t bytes[8];
+                        if (bigend) {
+                            for (int i = 7; i >= 0; i--) {
+                                bytes[7 - i] = (num >> (i * 8)) & 0xff;
+                            }
+                        } else {
+                            for (int i = 0; i < 8; i++) {
+                                bytes[i] = (num >> (i * 8)) & 0xff;
+                            }
+                        }
+                        bufWriteBytes(&buf, bytes, 8);
+                        break;
+                    }
+                default:
+                    {
+                        free(buf.bytes);
+                        runtimeError("Unknown format specifier '%c'.", type);
+                        return NIL_VAL;
+                    }
+            }
+        }
+    }
+
+    if (valIndex != array->count) {
+        free(buf.bytes);
+        runtimeError("Value array length (%d) does not match format string specifier (%d).", array->count, valIndex);
+        return NIL_VAL;
+    }
+
+    ObjString* result = copyString((const char*)buf.bytes, buf.count);
+    free(buf.bytes);
+    return OBJ_VAL(result);
+}
+
+Value structPackNative1(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Struct.pack() expects at least 2 arguments (format string, value array).");
         return NIL_VAL;
@@ -4984,10 +5541,13 @@ Value structPackNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[1]);
     bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : false;
 
+#define IS_INT_OR_NUMBER(v) (IS_INT(v) || IS_NUMBER(v))
+
     const char* f = format;
     int val_index = 0;
     int totalSize = 0;
 
+    // pass 1: validate types, check value counts, and calculate output buffer size
     while (*f != '\0') {
         if (isspace(*f)) {
             f++;
@@ -5006,14 +5566,7 @@ Value structPackNative(int argCount, Value* args) {
         if (type != '\0') {
             int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
 
-            /*
-            if (val_index >= array->count) {
-                runtimeError("Format string requires more values than provided in the array.");
-                return NIL_VAL;
-            }
-
-            */
-            Value currentVal = array->values[val_index];
+            //Value currentVal = array->values[val_index];
 
             switch (type) {
                 case 'x':
@@ -5024,10 +5577,12 @@ Value structPackNative(int argCount, Value* args) {
                 case 'H': case 'h':
                 case 'I': case 'i':
                 case 'Q': case 'q':
+                    /*
                     if (!IS_NUMBER(currentVal)) {
                         runtimeError("Expected number value for '%c' format specifier.", type);
                         return NIL_VAL;
                     }
+                    */
                     if (type == 'B' || type == 'b') totalSize += 1 * count;
                     else if (type == 'H' || type == 'h') totalSize += 2 * count;
                     else if (type == 'I' || type == 'i') totalSize += 4 * count;
@@ -5058,28 +5613,30 @@ Value structPackNative(int argCount, Value* args) {
                         runtimeError("Format string requires more values than provided in the array.");
                         return NIL_VAL;
                     }
-                    if (!IS_NUMBER(array->values[val_index++])) {
+                    Value val = array->values[val_index++];
+                    if (!IS_INT_OR_NUMBER(val)) {
                         runtimeError("Expected number value for '%c' specifier.", type);
                         return NIL_VAL;
                     }
                 }
             }
-            /*
-            if (type != 's' && !IS_NUMBER(currentVal)) {
-                runtimeError("Expected number value for '%c' format specifier.", type);
-                return NIL_VAL;
-            }
-            val_index++;
-            */
             f++;
         }
     }
 
     uint8_t* buffer = (uint8_t*)calloc(1, totalSize);
+    if (!buffer) {
+        runtimeError("Out of memory in Struct.pack().");
+        return NIL_VAL;
+    }
+
     uint8_t* cursor = buffer;
     f = format;
     val_index = 0;
 
+#define EXTRACT_INT64(val) (IS_INT(val) ? AS_INT(val) : (int64_t)AS_NUMBER(val))
+
+    // pass 2: pack bytes into output buffer
     while (*f != '\0') {
         if (isspace(*f)) {
             f++;
@@ -5096,6 +5653,9 @@ Value structPackNative(int argCount, Value* args) {
         }
 
         const char type = *f;
+        int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
+
+        /*
         switch (type) {
             case 'b':
             case 'B':
@@ -5170,17 +5730,80 @@ Value structPackNative(int argCount, Value* args) {
                     //memcpy(cursor, s->chars, copyLen);
                     cursor += targetWidth;
 
-                    /*
-                    if (copyLen < finalWidth) {
-                        memset(cursor, 0, finalWidth - copyLen);
-                        cursor += (finalWidth - copyLen);
-                    }
-                    */
                 }
                 break;
         }
-        if (*f != '\0') f++;
+    */
+        if (type == 'x') {
+            int padBytes = hasWidth ? width : 1;
+            memset(cursor, 0, padBytes);
+            cursor += padBytes;
+        } else if (type == 's') {
+            ObjString* s = AS_STRING(array->values[val_index++]);
+            int targetWidth = hasWidth ? width : s->length;
+            int copyLen = (s->length < targetWidth) ? s->length : targetWidth;
+
+            if (copyLen > 0) {
+                memcpy(cursor, s->chars, copyLen);
+            }
+            if (copyLen < targetWidth) {
+                memset(cursor + copyLen, 0, targetWidth - copyLen);
+            }
+            cursor += targetWidth;
+        } else {
+            for (int c = 0; c < count; c++) {
+                uint64_t val = (uint64_t)EXTRACT_INT64(array->values[val_index++]);
+
+                switch(type) {
+                    case 'b':
+                    case 'B':
+                        *cursor++ = (uint8_t)(val & 0xff);
+                        break;
+                    case 'h':
+                    case 'H':
+                        if (bigend) {
+                            *cursor++ = (val >> 8) & 0xff;
+                            *cursor++ = val & 0xff;
+                        } else {
+                            *cursor++ = val & 0xff;
+                            *cursor++ = (val >> 8) & 0xff;
+                        }
+                        break;
+                    case 'i':
+                    case 'I':
+                        if (bigend) {
+                            *cursor++ = (val >> 24) & 0xff;
+                            *cursor++ = (val >> 16) & 0xff;
+                            *cursor++ = (val >> 8) & 0xff;
+                            *cursor++ = val & 0xff;
+                        } else {
+                            *cursor++ = val & 0xff;
+                            *cursor++ = (val >> 8) & 0xff;
+                            *cursor++ = (val >> 16) & 0xff;
+                            *cursor++ = (val >> 24) & 0xff;
+                        }
+                        break;
+                    case 'q':
+                    case 'Q':
+                        if (bigend) {
+                            for (int i = 7; i >= 0; i--) {
+                                *cursor++ = (val >> (i * 8)) & 0xff;
+                            }
+                        } else {
+                            for (int i = 0; i < 8; i++) {
+                                *cursor++ = (val >> (i * 8)) & 0xff;
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+        //if (*f != '\0') f++;
+        f++;
     }
+
+#undef EXTRACT_INT64
+#undef IS_INT_OR_NUMBER
 
     ObjString* result = copyString((const char*)buffer, totalSize);
     free(buffer);
@@ -5206,6 +5829,7 @@ Value structUnpackNative(int argCount, Value* args) {
     const char* format = AS_CSTRING(args[0]);
     const uint8_t* buffer;
     int bufferlen;
+
     if (IS_STRING(args[1])) {
         ObjString* data = AS_STRING(args[1]);
         buffer = (const uint8_t*)data->chars;
@@ -5214,6 +5838,7 @@ Value structUnpackNative(int argCount, Value* args) {
         buffer = AS_BUFFER(args[1])->bytes;
         bufferlen = AS_BUFFER(args[1])->size;
     }
+
     bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : true;
 
     ObjArray* result = newArray();
@@ -5242,90 +5867,102 @@ Value structUnpackNative(int argCount, Value* args) {
             return NIL_VAL;
         }
 
-        int requiredSize = 0;
+        int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
+        int elemSize = 0;
+        //int requiredSize = 0;
+
         switch (type) {
-            case 'B': requiredSize = 1; break;
-            case 'H': requiredSize = 2; break;
-            case 'I': requiredSize = 4; break;
-            case 'Q': requiredSize = 8; break;
-            case 's': requiredSize = hasWidth ? width : (bufferlen - offset); break;
+            case 'x': elemSize = 1; break;
+            case 'b': case 'B': elemSize = 1; break;
+            case 'h': case 'H': elemSize = 2; break;
+            case 'i': case 'I': elemSize = 4; break;
+            case 'q': case 'Q': elemSize = 8; break;
+            case 's': elemSize = hasWidth ? width : (bufferlen - offset); break;
             default:
                       runtimeError("Unknown format specifier '%c'.", type);
                       return NIL_VAL;
         }
 
-        if (offset + requiredSize > bufferlen) {
+        int requiredTotal = (type == 's' || type == 'x') ? (hasWidth ? width : elemSize) : (elemSize * count);
+
+        if (offset + requiredTotal > bufferlen) {
             runtimeError("Buffer underflow: Data string is too short o unpack the specified format.");
             return NIL_VAL;
         }
 
-        switch (type) {
-            case 'b':
-            case 'B':
-                {
-                    uint8_t val = buffer[offset];
-                    arrayAppend(result, NUMBER_VAL((double)val));
-                    offset += 1;
-                }
-                break;
-            case 'h':
-            case 'H':
-                {
-                    uint16_t val;
-                    if (bigend) {
-                        val = (buffer[offset] << 8) | buffer[offset + 1];
-                    } else {
-                        val = buffer[offset] | (buffer[offset + 1] << 8);
-                    }
-                    arrayAppend(result, NUMBER_VAL((double)val));
-                    offset += 2;
-                }
-                break;
-            case 'i':
-            case 'I':
-                {
-                    uint32_t val;
-                    if (bigend) {
-                        val = ((uint32_t)buffer[offset] << 24) |
-                            ((uint32_t)buffer[offset + 1] << 16) |
-                            ((uint32_t)buffer[offset + 2] << 8) |
-                            (uint32_t)buffer[offset + 3];
-                    } else {
-                        val = (uint32_t)buffer[offset] |
-                            ((uint32_t)buffer[offset + 1] << 8) |
-                            ((uint32_t)buffer[offset + 2] << 16) |
-                            ((uint32_t)buffer[offset + 3] << 24);
-                    }
-                    arrayAppend(result, NUMBER_VAL((double)val));
-                    offset += 4;
-                }
-                break;
-            case 'q':
-            case 'Q':
-                {
-                    uint64_t val = 0;
-                    if (bigend) {
-                        for (int i = 0; i < 8; i++) {
-                            val = (val << 8) | buffer[offset + i];
+        if (type == 'x') {
+            offset += requiredTotal;
+        } else if (type == 's') {
+            ObjString* str = copyString((const char*)buffer + offset, requiredTotal);
+            push(OBJ_VAL(str));
+            arrayAppend(result, OBJ_VAL(str));
+            pop();
+            offset += requiredTotal;
+        } else {
+            for (int c = 0; c < count; c++) {
+                int64_t val = 0;
+
+                switch (type) {
+                    case 'b':
+                        val = (int8_t)buffer[offset];
+                        offset += 1;
+                        break;
+                    case 'B':
+                        val = (uint8_t)buffer[offset];
+                        offset += 1;
+                        break;
+                    case 'h':
+                    case 'H':
+                        {
+                            uint16_t u16;
+                            if (bigend) {
+                                u16 = (uint16_t)(buffer[offset] << 8) | buffer[offset + 1];
+                            } else {
+                                u16 = (uint16_t)buffer[offset] | (buffer[offset + 1] << 8);
+                            }
+                            val = (type == 'h') ? (int16_t)u16 : u16;
+                            offset += 2;
                         }
-                    } else {
-                        for (int i = 7; i >= 0; i--) {
-                            val = (val << 8) | buffer[offset + i];
-                        }
-                    }
-                    arrayAppend(result, NUMBER_VAL((double)val));
-                    offset += 8;
+                        break;
+                        case 'i':
+                        case 'I':
+                            {
+                                uint32_t u32;
+                                if (bigend) {
+                                    u32 = ((uint32_t)buffer[offset] << 24) |
+                                        ((uint32_t)buffer[offset + 1] << 16) |
+                                        ((uint32_t)buffer[offset + 2] << 8) |
+                                        (uint32_t)buffer[offset + 3];
+                                } else {
+                                    u32 = (uint32_t)buffer[offset] |
+                                        ((uint32_t)buffer[offset + 1] << 8) |
+                                        ((uint32_t)buffer[offset + 2] << 16) |
+                                        ((uint32_t)buffer[offset + 3] << 24);
+                                }
+                                val = (type == 'i') ? (int32_t)u32 : u32;
+                                offset += 4;
+                            }
+                            break;
+                        case 'q':
+                        case 'Q':
+                            {
+                                uint64_t u64 = 0;
+                                if (bigend) {
+                                    for (int i = 0; i < 8; i++) {
+                                        u64 = (u64 << 8) | buffer[offset + i];
+                                    }
+                                } else {
+                                    for (int i = 7; i >= 0; i--) {
+                                        u64 = (u64 << 8) | buffer[offset + i];
+                                    }
+                                }
+                                val = (type == 'q') ? (int64_t)u64 : u64;
+                                offset += 8;
+                            }
+                            break;
                 }
-                break;
-            case 's':
-                {
-                    ObjString* str = copyString((const char*)buffer + offset, requiredSize);
-                    push(OBJ_VAL(str));
-                    arrayAppend(result, OBJ_VAL(str));
-                    pop();
-                    offset += requiredSize;
-                }
-                break;
+                arrayAppend(result, INT_VAL(val));
+            }
         }
         f++;
     }
@@ -5358,12 +5995,21 @@ void initStructClass() {
 }
 
 Value hgfGCNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("heap_growth_Factor() expects a numeric multiplier.");
         return NIL_VAL;
     }
 
-    double val = AS_NUMBER(args[0]);
+    double val;
+
+    if (IS_INT(args[0])) {
+        val = (double)AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0])) {
+        val = AS_NUMBER(args[0]);
+    } else {
+        runtimeError("heap_growth_Factor() expects a numeric multiplier.");
+        return NIL_VAL;
+    }
 
     if (val < 1.1) {
         runtimeError("Heap growth factor must be 1.1 or greater to avoid collection thrashing.");
@@ -5384,18 +6030,28 @@ Value get_hgfGCNative(int argCount, Value* args) {
 }
 
 Value thresholdGCNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("init_threshold() expects a numeric byte size.");
         return NIL_VAL;
     }
 
-    double val = AS_NUMBER(args[0]);
-    if (val < 0) {
+    int64_t thresholdBytes;
+
+    if (IS_INT(args[0])) {
+        thresholdBytes = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        thresholdBytes = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("init_threshold() expects a numeric bytes size.");
+        return NIL_VAL;
+    }
+
+    if (thresholdBytes  < 0) {
         runtimeError("Initial GC threshold cannot be negative.");
         return NIL_VAL;
     }
 
-    vm.init_threshold = (size_t)val;
+    vm.init_threshold = (size_t)thresholdBytes;
     return args[0];
 }
 
@@ -5405,27 +6061,37 @@ Value get_thresholdGCNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return NUMBER_VAL(vm.init_threshold);
+    return INT_VAL(vm.init_threshold);
 }
 
 Value bumpsizeGCNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("bump_size() expects a numeric byte size.");
         return NIL_VAL;
     }
 
-    double val = AS_NUMBER(args[0]);
-    if (val < 0) {
+    int64_t bumpBytes;
+
+    if (IS_INT(args[0])) {
+        bumpBytes = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        bumpBytes = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("bump_size() expects a numeric byte size.");
+        return NIL_VAL;
+    }
+
+    if (bumpBytes < 0) {
         runtimeError("GC bump size cannot be negative.");
         return NIL_VAL;
     }
 
-    if (val < 4096) {
+    if (bumpBytes < 4096) {
         runtimeError("GC bump size must be at least 4096 bytes (4Kb) to prevent thrashing.");
         return NIL_VAL;
     }
 
-    vm.bump_size = (size_t)val;
+    vm.bump_size = (size_t)bumpBytes;
 
     return args[0];
 }
@@ -5436,23 +6102,32 @@ Value get_bumpsizeGCNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return NUMBER_VAL(vm.bump_size);
+    return INT_VAL((int64_t)vm.bump_size);
 }
 
 Value stressmodeGCNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
-        runtimeError("stress_mode() expects an integer (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
+    if (argCount < 1) {
+        runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
         return NIL_VAL;
     }
 
-    double val = AS_NUMBER(args[0]);
+    int64_t mode;
 
-    if (val != 0.0 && val != 1.0 && val != 2.0) {
-        runtimeError("Invalied stress mode.");
+    if (IS_INT(args[0])) {
+        mode = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        mode = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
         return NIL_VAL;
     }
 
-    vm.stress_mode = (int)val;
+    if (mode < 0 || mode > 2) {
+        runtimeError("Invalid stress mode.");
+        return NIL_VAL;
+    }
+
+    vm.stress_mode = (int)mode;
 
     return args[0];
 }
@@ -5463,23 +6138,32 @@ Value get_stressmodeGCNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return NUMBER_VAL(vm.stress_mode);
+    return INT_VAL(vm.stress_mode);
 }
 
 Value typeGCNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
         return NIL_VAL;
     }
 
+    int64_t mode;
 
-    double val = AS_NUMBER(args[0]);
-    if (val != 0.0 && val != 1.0) {
+    if (IS_INT(args[0])) {
+        mode = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        mode = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
+        return NIL_VAL;
+    }
+
+    if (mode < 0 || mode > 1) {
         runtimeError("Invalid GC strategy type. Use GC.TypeLinear (0) or GC.TypeMult (1).");
         return NIL_VAL;
     }
 
-    vm.gctype = (int)val;
+    vm.gctype = (int)mode;
     return args[0];
 }
 
@@ -5488,7 +6172,7 @@ Value get_typeGCNative(int argCount, Value* args) {
         runtimeError("get_gctype() expects 0 arguments.");
         return NIL_VAL;
     }
-    return NUMBER_VAL((double)vm.gctype);
+    return INT_VAL(vm.gctype);
 }
 
 Value systemGCNative(int argCount, Value* args) {
@@ -5505,23 +6189,23 @@ Value gcStatsNative(int argCount, Value* args) {
 
     ObjString* keyStr = copyString("bytesAllocated", 14);
     pushTemp(OBJ_VAL(keyStr));
-    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.bytesAllocated));
+    mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.bytesAllocated));
 
     keyStr = copyString("nextGC", 6);
     pushTemp(OBJ_VAL(keyStr));
-    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.nextGC));
+    mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.nextGC));
 
     keyStr = copyString("collections", 11);
     pushTemp(OBJ_VAL(keyStr));
-    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.gcCount));
+    mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.gcCount));
 
     keyStr = copyString("tempStackDepth", 14);
     pushTemp(OBJ_VAL(keyStr));
-    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.tempCount));
+    mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.tempCount));
 
     keyStr = copyString("globalRootsCount", 16);
     pushTemp(OBJ_VAL(keyStr));
-    mapSet(stats, OBJ_VAL(keyStr), NUMBER_VAL((double)vm.globalRoots.count));
+    mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.globalRoots.count));
 
     //restoreTempScope(gcscope);
 
@@ -5554,12 +6238,12 @@ void initGCLibrary() {
 
     //tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
 
-    defineClassConstant(gcClass, "NormalMode", NUMBER_VAL(0));
-    defineClassConstant(gcClass, "StressMode", NUMBER_VAL(1));
-    defineClassConstant(gcClass, "DisabledMode", NUMBER_VAL(2));
+    defineClassConstant(gcClass, "NormalMode", INT_VAL(0));
+    defineClassConstant(gcClass, "StressMode", INT_VAL(1));
+    defineClassConstant(gcClass, "DisabledMode", INT_VAL(2));
 
-    defineClassConstant(gcClass, "TypeLinear", NUMBER_VAL(0));
-    defineClassConstant(gcClass, "TypeMult", NUMBER_VAL(1));
+    defineClassConstant(gcClass, "TypeLinear", INT_VAL(0));
+    defineClassConstant(gcClass, "TypeMult", INT_VAL(1));
 
     /*
     pop();
@@ -5643,10 +6327,26 @@ Value ioConnectNative(int argCount, Value* args) {
         return errorResult("Connect expects at least 2 arguments: (ip, port).");
     }
 
-    if (!IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
-        runtimeError("Connect expects a string (host) and a number (port).");
-        return errorResult("Invalid argument types.");
+    if (!IS_STRING(args[0])) {
+        runtimeError("Connect expects a string for the host argument.");
+        return errorResult("Invalid host argument type.");
     }
+
+    int64_t portVal;
+    if (IS_INT(args[1])) {
+        portVal = AS_INT(args[1]);
+    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+        portVal = (int64_t)AS_NUMBER(args[1]);
+    } else {
+        runtimeError("Connect expects an integer port.");
+        return errorResult("Invalid port type.");
+    }
+
+    if (portVal < 0 || portVal > 65535) {
+        runtimeError("Port must be an integer between 0 and 65535.");
+        return errorResult("Invalid port value.");
+    }
+    int port = (int)portVal;
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -5661,11 +6361,15 @@ Value ioConnectNative(int argCount, Value* args) {
 
     double timeoutVal = 0.0;
     if (argCount > 2) {
-        if (!IS_NUMBER(args[2])) {
+        if (IS_INT(args[2])) {
+            timeoutVal = (double)AS_INT(args[2]);
+        } else if (IS_NUMBER(args[2])) {
+            timeoutVal = AS_NUMBER(args[2]);
+        } else {
             runtimeError("Timeout must be a numeric value.");
             return errorResult("Invalid timeout type.");
         }
-        timeoutVal = AS_NUMBER(args[2]);
+
         if (timeoutVal < 0.0) {
             runtimeError("Timeout cannot be negative.");
             return errorResult("Negative timeout.");
@@ -5677,13 +6381,6 @@ Value ioConnectNative(int argCount, Value* args) {
         if (so->fd == -1) {
             return errorResult("Failed to re-open socket.");
         }
-    }
-
-    double portNum = AS_NUMBER(args[1]);
-    int port = (int)portNum;
-    if (portNum != (double)port || port < 0 || port > 65535) {
-        runtimeError("Port must be an integer between 0 and 65535.");
-        return errorResult("Invalid port value.");
     }
 
     const char* host = AS_CSTRING(args[0]);
@@ -5773,7 +6470,7 @@ Value ioSendNative(int argCount, Value* args) {
 
     if (bytesSent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return okResult(NUMBER_VAL(0.0));
+            return okResult(INT_VAL(0));
         }
         return errorResult("Socket write error: %s.", strerror(errno));
     }
@@ -5782,20 +6479,21 @@ Value ioSendNative(int argCount, Value* args) {
 }
 
 Value ioRecvNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("recv() expects a buffer size number as the first argument.");
         return errorResult("recv() expects a buffer size number as the first argument.");
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
-
-    if (so == NULL || so->fd == -1 || !so->connected) {
-        runtimeError("Socket is not initialized or connected.");
-        return errorResult("Socket is not initialized or connected");
+    int64_t requestedLength;
+    if (IS_INT(args[0])) {
+        requestedLength = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        requestedLength = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("recv() expects a buffer size number as the first argument.");
+        return errorResult("recv() expects a buffer size number as the first argument.");
     }
 
-    double requestedLength = AS_NUMBER(args[0]);
     if (requestedLength <= 0) {
         runtimeError("recv() buffer size must be greater than 0.");
         return errorResult("recv() buffer size must be greater than 0.");
@@ -5804,6 +6502,14 @@ Value ioRecvNative(int argCount, Value* args) {
     if (requestedLength > 16 * 1024 * 1024) {
         runtimeError("recv() buffer size exceeds maximum limit of 16MB.");
         return errorResult("recv() buffer size exceeds maximum limit of 16MB.");
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    SocketInternal* so = (SocketInternal*)instance->foreignPtr;
+
+    if (so == NULL || so->fd == -1 || !so->connected) {
+        runtimeError("Socket is not initialized or connected.");
+        return errorResult("Socket is not initialized or connected.");
     }
 
     int length = (int)requestedLength;
@@ -5825,7 +6531,7 @@ Value ioRecvNative(int argCount, Value* args) {
             pop();
             return resultVal;
         }
-        return errorResult("SOcket read error: %s", strerror(errno));
+        return errorResult("Socket read error: %s", strerror(errno));
     }
 
     if (bytesRead == 0) {
@@ -5844,10 +6550,26 @@ Value ioRecvNative(int argCount, Value* args) {
 }
 
 Value ioListenNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("listen() expects a port number as the first argument.");
         return errorResult("listen() expects a port number as the first argument.");
     }
+
+    int64_t portVal;
+    if (IS_INT(args[0])) {
+        portVal = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        portVal = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("listen() expects a port number as the first argument.");
+        return errorResult("listen() expects a port number as the first argument.");
+    }
+
+    if (portVal < 0 || portVal > 65535) {
+        runtimeError("Port number must be between 0 and 65535.");
+        return errorResult("Port number must be between 0 and 65535.");
+    }
+    int port = (int)portVal;
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -5857,12 +6579,6 @@ Value ioListenNative(int argCount, Value* args) {
         return errorResult("Socket is not initialized.");
     }
 
-    double portVal = AS_NUMBER(args[0]);
-    if (portVal < 0 || portVal > 65535) {
-        runtimeError("Port number must be between 0 and 65535.");
-        return errorResult("Port number must be between 0 and 65535.");
-    }
-    int port = (int)portVal;
 
     int opt = 1;
     if (setsockopt(so->fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
@@ -5927,10 +6643,31 @@ Value ioAcceptNative(int argCount, Value* args) {
 }
 
 Value ioBindNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_STRING(args[0]) || !IS_NUMBER(args[1])) {
+    if (argCount < 2) {
         runtimeError("bind() expects an IP address string and a port number.");
         return errorResult("bind() expects an IP address string and a port number.");
     }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("bind() expects an IP address string as the first argument.");
+        return errorResult("bind() expects an IP address string as the first argument.");
+    }
+
+    int64_t portVal;
+    if (IS_INT(args[1])) {
+        portVal = AS_INT(args[1]);
+    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+        portVal = (int64_t)AS_NUMBER(args[1]);
+    } else {
+        runtimeError("bind() expects a port integer.");
+        return errorResult("bind() expects a port integer.");
+    }
+
+    if (portVal < 0 || portVal > 65535) {
+        runtimeError("Port number must be between 0 and 65535.");
+        return errorResult("Port number must be between 0 and 65535.");
+    }
+    int port = (int)portVal;
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -5939,13 +6676,6 @@ Value ioBindNative(int argCount, Value* args) {
         runtimeError("Socket is not initialized.");
         return errorResult("Socket is not initialized.");
     }
-
-    double portVal = AS_NUMBER(args[1]);
-    if (portVal < 0 || portVal > 65535) {
-        runtimeError("Port number must be between 0 and 65535.");
-        return errorResult("Port number must be between 0 and 65535.");
-    }
-    int port = (int)portVal;
 
     ObjString* ipStr = AS_STRING(args[0]);
     const char* ip = ipStr->chars;
@@ -6024,9 +6754,26 @@ Value ioPollNative(int argCount, Value* args) {
         return errorResult("poll() must have an array of sockets as the first argument.");
     }
 
+    int timeout = -1;
+    if (argCount > 1) {
+        if (IS_INT(args[1])) {
+            timeout = (int)AS_INT(args[1]);
+        } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+            timeout = (int)AS_NUMBER(args[1]);
+        } else {
+            return errorResult("Timeout must be an integer millisecond value.");
+        }
+    }
+
     int eventMask = POLLIN;
-    if (argCount > 2 && IS_NUMBER(args[2])) {
-        eventMask = (int)AS_NUMBER(args[2]);
+    if (argCount > 2) {
+        if (IS_INT(args[2])) {
+            eventMask = (int)AS_INT(args[2]);
+        } else if (IS_NUMBER(args[2]) && isExactInteger(AS_NUMBER(args[2]))) {
+            eventMask = (int)AS_NUMBER(args[2]);
+        } else {
+            return errorResult("Event mask must be an integer value.");
+        }
     }
 
     ObjArray* socket_array = AS_ARRAY(args[0]);
@@ -6042,7 +6789,7 @@ Value ioPollNative(int argCount, Value* args) {
         ObjInstance* instance = AS_INSTANCE(item);
         SocketInternal* so = (SocketInternal*)instance->foreignPtr;
 
-        if (so != NULL && so->fd != 1) {
+        if (so != NULL && so->fd != -1) {
             fds[valid_fd_count].fd = so->fd;
             fds[valid_fd_count].events = eventMask;
             fds[valid_fd_count].revents = 0;
@@ -6050,7 +6797,6 @@ Value ioPollNative(int argCount, Value* args) {
         }
     }
 
-    int timeout = (argCount < 1 && IS_NUMBER(args[1])) ? (int)AS_NUMBER(args[1]) : -1;
     int pollResult = poll(fds, valid_fd_count, timeout);
 
     if (pollResult < 0) {
@@ -6086,9 +6832,24 @@ Value ioPollNative(int argCount, Value* args) {
 }
 
 Value ioSetRecvTimeoutNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
         return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
+    }
+
+    int64_t requestedMs;
+    if (IS_INT(args[0])) {
+        requestedMs = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        requestedMs = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
+        return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
+    }
+
+    if (requestedMs < 0) {
+        runtimeError("Timeout value cannot be negative.");
+        return errorResult("Timeout value cannot be negative.");
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
@@ -6096,12 +6857,6 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
 
     if (so == NULL || so->fd == -1) {
         return errorResult("Socket is not initialized.");
-    }
-
-    double requestedMs = AS_NUMBER(args[0]);
-    if (requestedMs < 0) {
-        runtimeError("Timeout value cannot be negative.");
-        return errorResult("Timeout value cannot be negative.");
     }
 
     int ms = (int)requestedMs;
@@ -6118,7 +6873,6 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
 }
 
 void initIOClass() {
-
     ObjClass* ioClass = defineBuiltinClass("IO", vm.objectClass, NULL, true);
     /*
     ObjString* ioName = copyString("IO", 2);
@@ -6211,29 +6965,34 @@ void initIOClass() {
 }
 
 Value systemTimeNative(int argCount, Value* args) {
-    return NUMBER_VAL((double)time(NULL));
+    if (argCount > 0) {
+        runtimeError("time() takes 0 arguments.");
+        return NIL_VAL;
+    }
+
+    return INT_VAL((int64_t)time(NULL));
 }
 
 Value systemExitNative(int argCount, Value* args) {
     int code = 0;
     if (argCount > 0) {
-        if (!IS_NUMBER(args[0])) {
-            runtimeError("exit() expects a number argument.");
+        int64_t rawCode;
+
+        if (IS_INT(args[0])) {
+            rawCode = AS_INT(args[0]);
+        } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+            rawCode = (int64_t)AS_NUMBER(args[0]);
+        } else {
+            runtimeError("exit() expects an integer exit code.");
             return NIL_VAL;
         }
 
-        double dcode = AS_NUMBER(args[0]);
-        if (dcode <= -INT_MAX - 1 || dcode > INT_MAX || isnan(dcode)) {
-            fprintf(stderr, "exit(): RangeError: exit code is outside integer range.");
-            exit(1);
-        }
-        int rcode = (int)dcode;
 
-        if (rcode < 0 | rcode > 255) {
-            code = (unsigned char)dcode;
-            fprintf(stderr, "exit() Warning: exit code %d is out of range (0-255).", rcode);
+        if (rawCode < 0 | rawCode > 255) {
+            fprintf(stderr, "exit() Warning: exit code %" PRId64 " is out of range (0-255).", rawCode);
+            code = (int)(uint8_t)rawCode;
         } else {
-            code = rcode;
+            code = rawCode;
         }
     }
 
@@ -6246,6 +7005,13 @@ static void setMapField(ObjMap* map, const char* name, double value) {
     ObjString* key = copyString(name, (int)strlen(name));
     push(OBJ_VAL(key));
     tableSet2(&map->items, OBJ_VAL(key), NUMBER_VAL(value));
+    pop();
+}
+
+static void setMapIntField(ObjMap* map, const char* name, int64_t value) {
+    ObjString* key = copyString(name, (int)strlen(name));
+    push(OBJ_VAL(key));
+    tableSet2(&map->items, OBJ_VAL(key), INT_VAL(value));
     pop();
 }
 
@@ -6285,11 +7051,11 @@ Value systemMemNative(int argCount, Value* args) {
     long page_size = sysconf(_SC_PAGESIZE);
     if (page_size <= 0) page_size = 4096;
 
-    setMapField(memmap, "size", (double)res.size * page_size);
-    setMapField(memmap, "resident", (double)res.resident * page_size);
-    setMapField(memmap, "share", (double)res.share * page_size);
-    setMapField(memmap, "text", (double)res.text * page_size);
-    setMapField(memmap, "data", (double)res.data * page_size);
+    setMapField(memmap, "size", (int64_t)res.size * page_size);
+    setMapField(memmap, "resident", (int64_t)res.resident * page_size);
+    setMapField(memmap, "share", (int64_t)res.share * page_size);
+    setMapField(memmap, "text", (int64_t)res.text * page_size);
+    setMapField(memmap, "data", (int64_t)res.data * page_size);
 
     return pop();
 }
@@ -6308,38 +7074,48 @@ Value systemShowStackNative(int argCount, Value* args) {
 
 Value systemSetPrecisionNative(int argCount, Value* args) {
     if (argCount > 0) {
-        if (!IS_NUMBER(args[0])) {
+        int64_t precisionVal;
+
+        if (IS_INT(args[0])) {
+            precisionVal = AS_INT(args[0]);
+        } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+            precisionVal = (int64_t)AS_NUMBER(args[0]);
+        } else {
             runtimeError("set_precision() expects a number argument.");
             return NIL_VAL;
         }
 
-        int precision = (int)AS_NUMBER(args[0]);
-        if (precision < 0) precision = 0;
-        if (precision > 20) precision = 20;
-        vm.numPrecision = precision;
+        if (precisionVal < 0) precisionVal = 0;
+        if (precisionVal > 20) precisionVal = 20;
+
+        vm.numPrecision = precisionVal;
     }
 
-    return NUMBER_VAL(vm.numPrecision);
+    return INT_VAL(vm.numPrecision);
 }
 
 Value systemSetNotationNative(int argCount, Value* args) {
     if (argCount > 0) {
-        if (!IS_NUMBER(args[0])) {
+        int64_t styleVal;
+
+        if (IS_INT(args[0])) {
+            styleVal = AS_INT(args[0]);
+        } else if (IS_NUMBER(args[0])) {
+            styleVal = (int64_t)AS_NUMBER(args[0]);
+        } else {
             runtimeError("set_notation() expects a number argument.");
             return NIL_VAL;
         }
 
-        int style = (int)AS_NUMBER(args[0]);
-
-        if (style < 0 || style > 2) {
+        if (styleVal < 0 || styleVal > 2) {
             runtimeError("Invalid notation style type.");
             return NIL_VAL;
         }
 
-        vm.numNotation = style;
+        vm.numNotation = (int)styleVal;
     }
 
-    return NUMBER_VAL(vm.numNotation);
+    return INT_VAL(vm.numNotation);
 }
 
 Value systemDebugPrintNative(int argCount, Value* args) {
@@ -6386,21 +7162,43 @@ Value systemWarnNative(int argCount, Value* args) {
 }
 
 Value systemSleepNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("System.sleep() requires a numeric duration in seconds.");
         return NIL_VAL;
     }
 
-    double totalSeconds = AS_NUMBER(args[0]);
-    if (totalSeconds < 0) totalSeconds = 0;
+    double totalSeconds;
 
-    struct timespec ts;
-    ts.tv_sec = (time_t)totalSeconds;
-    ts.tv_nsec = (long)((totalSeconds - (double)ts.tv_sec) * 1e9);
+    if (IS_INT(args[0])) {
+        int64_t sec = AS_INT(args[0]);
+        if (sec < 0) sec = 0;
+        
+        struct timespec ts;
+        ts.tv_sec = (time_t)sec;
+        ts.tv_nsec = 0;
 
-    nanosleep(&ts, NULL);
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
+            // resume if interrupted by signal
+        }
 
-    return NIL_VAL;
+        return NIL_VAL;
+    } else if (IS_NUMBER(args[0])) {
+        totalSeconds = AS_NUMBER(args[0]);
+        if (totalSeconds < 0) totalSeconds = 0;
+
+        struct timespec ts;
+        ts.tv_sec = (time_t)totalSeconds;
+        ts.tv_nsec = (long)((totalSeconds - (double)ts.tv_sec) * 1e9);
+
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
+            // resume if interrupted by signal
+        }
+
+        return NIL_VAL;
+    } else {
+        runtimeError("System.sleep() requires a numeric duration in seconds.");
+        return NIL_VAL;
+    }
 }
 
 Value systemGetIncludesNative(int argCount, Value* args) {
@@ -6617,9 +7415,9 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     }
     tableSet(&systemClass->fields, copyString("ENV", 3), OBJ_VAL(envMap));
 
-    defineClassConstant(systemClass, "Scientific", NUMBER_VAL(1));
-    defineClassConstant(systemClass, "Fixed", NUMBER_VAL(2));
-    defineClassConstant(systemClass, "Default", NUMBER_VAL(0));
+    defineClassConstant(systemClass, "Scientific", INT_VAL(1));
+    defineClassConstant(systemClass, "Fixed", INT_VAL(2));
+    defineClassConstant(systemClass, "Default", INT_VAL(0));
 
     //tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 
@@ -6789,20 +7587,29 @@ void initBase64Class() {
 }
 
 Value bufferAllocNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
         runtimeError("Buffer.alloc() expects a numeric size argument.");
         return NIL_VAL;
     }
 
-    double sizeNum = AS_NUMBER(args[0]);
+    int64_t sizeVal;
+    if (IS_INT(args[0])) {
+        sizeVal = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        sizeVal = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("Buffer.alloc() expects a numeric size argument.");
+        return NIL_VAL;
+    }
 
-    if (sizeNum < 0) {
+    if (sizeVal < 0) {
         runtimeError("Buffer size cannot be negative.");
         return NIL_VAL;
     }
 
-    size_t size = (size_t)sizeNum;
+    size_t size = (size_t)sizeVal;
     ObjBuffer* buffer = newBuffer(size);
+
     if (IS_CLASS(args[-1])) {
         buffer->obj.klass = AS_CLASS(args[-1]);
     } else {
@@ -6813,47 +7620,125 @@ Value bufferAllocNative(int argCount, Value* args) {
 }
 
 Value bufferSizeNative(int argCount, Value* args) {
-    return NUMBER_VAL(AS_BUFFER(args[-1])->size);
+    return INT_VAL(AS_BUFFER(args[-1])->size);
 }
 
 Value bufferFillNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_NUMBER(args[0])) {
+    if (argCount < 1) {
+        runtimeError("Buffer.fil() expects an integer byte value.");
+        return NIL_VAL;
+    }
+
+    int64_t fillVal;
+    if (IS_INT(args[0])) {
+        fillVal =  AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        fillVal = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("Buffer.fill() expects an integer byte value.");
+        return NIL_VAL;
+    }
+
+    if (fillVal < 0 || fillVal > 255) {
+        runtimeError("Buffer fill value must be a byte between 0 and 255.");
         return NIL_VAL;
     }
 
     ObjBuffer* buf = AS_BUFFER(args[-1]);
-    int fillval = (int)AS_NUMBER(args[0]);
-    memset(buf->bytes, fillval, buf->size);
+    memset(buf->bytes, (uint8_t)fillVal, buf->size);
     return NIL_VAL;
 }
 
 Value bufferWriteUint64Native(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+    if (argCount < 2) {
+        runtimeError("Buffer.writeUint64() expands an offset and a uint64 value.");
         return NIL_VAL;
     }
-    ObjBuffer* buf = AS_BUFFER(args[-1]);
-    size_t offset = (size_t)AS_NUMBER(args[0]);
-    uint64_t val = (uint64_t)AS_NUMBER(args[1]);
 
-    if (offset + sizeof(uint64_t) <= buf->size) {
-        memcpy(buf->bytes + offset, &val, sizeof(uint64_t));
+    int64_t offsetVal;
+    if (IS_INT(args[0])) {
+        offsetVal = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        offsetVal = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("Buffer.writeUint64() expects an integer offset as the first argument.");
+        return NIL_VAL;
     }
-    return NIL_VAL;
+
+    if (offsetVal < 0) {
+        runtimeError("Buffer offset cannot be negative.");
+        return NIL_VAL;
+    }
+
+    uint64_t val;
+    if (IS_INT(args[1])) {
+        val = AS_INT(args[1]);
+    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+        val = (int64_t)AS_NUMBER(args[1]);
+    } else {
+        runtimeError("Buffer.writeUint64() expects an integer value as the second argument.");
+        return NIL_VAL;
+    }
+
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    size_t offset = (size_t)offsetVal;
+
+    if (offset + sizeof(uint64_t) > buf->size) {
+        runtimeError("Buffer write out of bounds.");
+        return NIL_VAL;
+    }
+
+    memcpy(buf->bytes + offset, &val, sizeof(uint64_t));
+    return INT_VAL((int64_t)(offset + sizeof(uint64_t)));
 }
 
 Value bufferWriteUint8Native(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[0]) || !IS_NUMBER(args[1])) {
+    if (argCount < 2) {
+        runtimeError("Buffer.writeUint8() expects an offset and a byte value.");
         return NIL_VAL;
     }
-    ObjBuffer* buf = AS_BUFFER(args[-1]);
-    size_t offset = (size_t)AS_NUMBER(args[0]);
-    uint8_t val = (uint8_t)AS_NUMBER(args[1]);
 
-    if (offset < buf->size) {
-        buf->bytes[offset] = val;
+    int64_t offsetVal;
+    if (IS_INT(args[0])) {
+        offsetVal = AS_INT(args[0]);
+    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
+        offsetVal = (int64_t)AS_NUMBER(args[0]);
+    } else {
+        runtimeError("Buffer.writeUint8() expects an integer offset as the first argument.");
+        return NIL_VAL;
     }
 
-    return NIL_VAL;
+    if (offsetVal < 0) {
+        runtimeError("Buffer offset cannot be negative.");
+        return NIL_VAL;
+    }
+
+    int64_t rawVal;
+    if (IS_INT(args[1])) {
+        rawVal = AS_INT(args[1]);
+    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
+        rawVal = (int64_t)AS_NUMBER(args[1]);
+    } else {
+        runtimeError("Buffer.writeUint8() expects an integer byte value as the second argument.");
+        return NIL_VAL;
+    }
+
+    if (rawVal < 0 || rawVal > 255) {
+        runtimeError("Value out of uint8 range (0-255).");
+        return NIL_VAL;
+    }
+
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    size_t offset = (size_t)offsetVal;
+
+    if (offset >= buf->size) {
+        runtimeError("Buffer write out of bounds.");
+        return NIL_VAL;
+    }
+
+    buf->bytes[offset] = (uint8_t)rawVal;
+
+    return INT_VAL((int64_t)(offset + 1));
 }
 
 Value bufferWriteGetPtrNative(int argCount, Value* args) {
@@ -6956,8 +7841,10 @@ Value integerClassCallHandler(int argCount, Value* args) {
 }
 
 Value numberClassCallHandler(int argCount, Value* args) {
-    if (argCount < 1) return NUMBER_VAL(0);
+    if (argCount < 1) return INT_VAL(0);
 
+    return valueToNumber(args[0]);
+    /*
     Value arg = args[0];
     
     if (IS_NUMBER(arg)) {
@@ -6975,6 +7862,7 @@ Value numberClassCallHandler(int argCount, Value* args) {
     }
 
     return NUMBER_VAL(0);
+    */
 }
 
 ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal) {

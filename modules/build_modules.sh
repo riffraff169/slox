@@ -2,7 +2,7 @@
 set -e
 
 CC="${CC:-gcc}"
-CFLAGS="${CFLAGS:--O2} -fPIC -shared -g"
+CFLAGS="${CFLAGS:--g} -fPIC -shared -g"
 LDFLAGS="${LDFLAGS}--shared"
 INC="-I../src"
 TARGET_DIR="${TARGET_DIR:-.}"

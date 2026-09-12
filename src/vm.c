@@ -827,11 +827,13 @@ Value vec3CallHandler(int argCount, Value* args) {
         runtimeError("Vec3 construct expects 3 arguments.");
         return NIL_VAL;
     }
-    if (!IS_NUMBER(args[0]) || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+    if (!IS_NUMERIC(args[0]) || !IS_NUMERIC(args[1]) || !IS_NUMERIC(args[2])) {
         runtimeError("Vec3 arguments must be numbers.");
         return NIL_VAL;
     }
-    Vec3 v = { AS_NUMBER(args[0]), AS_NUMBER(args[1]), AS_NUMBER(args[2]) };
+    Vec3 v = { valueToDouble(args[0]),
+        valueToDouble(args[1]),
+        valueToDouble(args[2]) };
     return VEC3_VAL(v);
 }
 
@@ -1018,7 +1020,7 @@ PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
     }
 
     if (!IS_NIL(propertyGetter))  {
-        push(receiver);
+        //push(receiver);
         if (callValue(propertyGetter, 0)) {
             vm.frames[vm.frameCount - 1].isGetter = true;
             return PROP_ASYNC;
@@ -1614,7 +1616,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.numberClass->callHandler = numberClassCallHandler;
     vmAnchor(vm.numberClass);
 
-    vm.integerClass = defineBuiltinClass("Integer", vm.objectClass, &vm.numberMetaClass, true);
+    vm.integerClass = defineBuiltinClass("Integer", vm.objectClass, &vm.integerMetaClass, true);
     vm.integerClass->callHandler = integerClassCallHandler;
     vmAnchor(vm.integerClass);
 
@@ -2422,7 +2424,7 @@ InterpretResult run() {
         } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) { \
             double b = valueToDouble(pop()); \
             double a = valueToDouble(pop()) ; \
-            push(NUMBER_VAL(a op b)); \
+            push(valueType(a op b)); \
         } else { \
             runtimeError("Operands must be numbers or integers."); \
             return INTERPRET_RUNTIME_ERROR; \
@@ -2664,12 +2666,13 @@ InterpretResult run() {
                         ? READ_STRING()
                         : READ_STRING_LONG();
                     
-                    Value receiver = pop();
+                    Value receiver = peek(0);
                     Value resolvedValue;
 
                     PropertyResult res = getProperty(receiver, name, &resolvedValue);
 
                     if (res == PROP_FOUND) {
+                        pop();
                         push(resolvedValue);
                         break;
                     } else if (res == PROP_ASYNC) {
@@ -2969,21 +2972,24 @@ InterpretResult run() {
                 break;
             case OP_DIVIDE:
                 {
+                    /*
                     if (IS_INT(peek(0)) && IS_INT(peek(1))) {
                         int64_t b = AS_INT(pop());
                         int64_t a = AS_INT(pop());
                         if (b == 0) {
-                            runtimeError("Division by zero.");
-                            return INTERPRET_RUNTIME_ERROR;
+                            push(NUMBER_VAL((double)a / (double)b));
+                        } else {
+                            push(INT_VAL(a / b)); // integer truncation / floor division
                         }
-                        push(INT_VAL(a / b)); // integer truncation / floor division
-                    } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
+                    } else */if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) {
                         double b = valueToDouble(pop());
                         double a = valueToDouble(pop());
+                        /*
                         if (b == 0.0) {
                             runtimeError("Division by zero.");
                             return INTERPRET_RUNTIME_ERROR;
                         }
+                        */
                         push(NUMBER_VAL(a / b));
                     } else if (IS_VEC3(peek(1)) && IS_INT(peek(0))) {
                         int64_t b = AS_INT(pop());
@@ -3876,8 +3882,8 @@ InterpretResult run() {
                     if (isGetterFrame) {
                         if (isResultInstance(result)) {
                             if (isResultOk(result)) {
-                                Value fakeStack[2] = { result, NIL_VAL };
-                                result = resultUnwrapOrNative(1, &fakeStack[1]);
+                                //Value fakeStack[2] = { result, NIL_VAL };
+                                //result = resultUnwrapOrNative(1, &fakeStack[1]);
                             } else {
                                 runtimeError("Property getter returned an error Result state.");
                                 return INTERPRET_RUNTIME_ERROR;
@@ -4128,7 +4134,7 @@ InterpretResult run() {
 
                         ObjArray* array = AS_ARRAY(targetValue);
 
-                        int index = (int)AS_NUMBER(indexValue);
+                        //int index = (int)AS_NUMBER(indexValue);
                         if (index < 0 || index >= array->count) {
                             RUNTIME_ERROR("Array index out of bounds.");
                             break;
@@ -4196,10 +4202,7 @@ InterpretResult run() {
                         vm.stackTop[-3] = newValue;
                         popn(2);
                         break;
-                    } /*else if (!IS_ARRAY(targetValue)) {
-                        RUNTIME_ERROR("Only maps and arrays support subscript assignment.");
-                        break;
-                    }*/
+                    } 
 
                     // 3. positional containers
                     int64_t index;
@@ -4214,7 +4217,7 @@ InterpretResult run() {
                     }
 
                     // array
-                    if (!IS_ARRAY(targetValue)) {
+                    if (IS_ARRAY(targetValue)) {
                         if (!isIntIndex) {
                             RUNTIME_ERROR("Array index must be an integer.");
                             break;
@@ -4222,7 +4225,6 @@ InterpretResult run() {
 
                         ObjArray* array = AS_ARRAY(targetValue);
 
-                        int index = (int)AS_NUMBER(indexValue);
                         if (index < 0 || index >= array->count) {
                             RUNTIME_ERROR("Array index out of bounds.");
                             break;

@@ -1414,7 +1414,9 @@ static void block() {
 }
 
 static Value parseConstant() {
-    if (match(TOKEN_NUMBER)) {
+    if (match(TOKEN_INT)) {
+        return INT_VAL((int64_t)strtol(parser.previous.start, NULL, 10));
+    } else if (match(TOKEN_NUMBER)) {
         return NUMBER_VAL(strtod(parser.previous.start, NULL));
     } else if (match(TOKEN_STRING)) {
         return OBJ_VAL(copyString(parser.previous.start + 1,

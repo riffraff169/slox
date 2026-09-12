@@ -71,7 +71,7 @@ static Value lox_ssl_write(int argCount, Value* args) {
         }
     }
 
-    return NUMBER_VAL(data->length);
+    return INT_VAL(data->length);
 }
 
 static Value lox_ssl_read(int argCount, Value* args) {

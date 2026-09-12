@@ -24,25 +24,40 @@ static ObjClass* gFFIFuncClass = NULL;
 
 static ffi_type* parseFFIType(const char* typeStr) {
     if (strcmp(typeStr, "void") == 0) return &ffi_type_void;
-    if (strcmp(typeStr, "int") == 0 ||
-            strcmp(typeStr, "int32") == 0 ||
-            strcmp(typeStr, "int32_t") == 0)
+
+    if (strcmp(typeStr, "int8") == 0 || strcmp(typeStr, "int8_t") == 0)
+        return &ffi_type_sint8;
+    if (strcmp(typeStr, "uint8") == 0 || strcmp(typeStr, "uint8_t") == 0)
+        return &ffi_type_uint8;
+    if (strcmp(typeStr, "int16") == 0 || strcmp(typeStr, "int16_t") == 0)
+        return &ffi_type_sint16;
+    if (strcmp(typeStr, "uint16") == 0 || strcmp(typeStr, "uint16_t") == 0)
+        return &ffi_type_uint16;
+    if (strcmp(typeStr, "int32") == 0 || strcmp(typeStr, "int32_t") == 0)
         return &ffi_type_sint32;
-    if (strcmp(typeStr, "uint") == 0 ||
-            strcmp(typeStr, "uint32") == 0 ||
-            strcmp(typeStr, "uint32_t") == 0)
+    if (strcmp(typeStr, "uint32") == 0 || strcmp(typeStr, "uint32_t") == 0)
         return &ffi_type_uint32;
-    if (strcmp(typeStr, "int64") == 0 ||
-            strcmp(typeStr, "int64_t") == 0)
+
+    if (strcmp(typeStr, "int") == 0 ||
+            strcmp(typeStr, "int64") == 0 ||
+            strcmp(typeStr, "int64_t") == 0 ||
+            strcmp(typeStr, "long") == 0)
         return &ffi_type_sint64;
-    if (strcmp(typeStr, "uint64") == 0 ||
-            strcmp(typeStr, "uint64_t") == 0)
+
+    if (strcmp(typeStr, "uint") == 0 ||
+            strcmp(typeStr, "uint64") == 0 ||
+            strcmp(typeStr, "uint64_t") == 0 ||
+            strcmp(typeStr, "ulong") == 0 ||
+            strcmp(typeStr, "size_t") == 0)
         return &ffi_type_uint64;
+
     if (strcmp(typeStr, "double") == 0 || strcmp(typeStr, "number") == 0) return &ffi_type_double;
     if (strcmp(typeStr, "float") == 0) return &ffi_type_float;
     if (strcmp(typeStr, "string") == 0) return &ffi_type_pointer;
     if (strcmp(typeStr, "pointer") == 0) return &ffi_type_pointer;
-    if (strcmp(typeStr, "bool") == 0) return &ffi_type_uint8;
+    if (strcmp(typeStr, "ptr") == 0) return &ffi_type_pointer;
+
+    if (strcmp(typeStr, "bool") == 0) return &ffi_type_uchar;
     return NULL;
 }
 
@@ -109,24 +124,59 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
         Value val = args[i];
         const char* tname = fn->argTypeNames[i];
 
-        if (strcmp(tname, "int") == 0 || strcmp(tname, "int32") == 0) {
+        if (strcmp(tname, "int") == 0 || strcmp(tname, "int32") == 0 || strcmp(tname, "int32_t") == 0) {
             int32_t* ptr = (int32_t*)malloc(sizeof(int32_t));
-            *ptr = IS_NUMBER(val) ? (int32_t)AS_NUMBER(val) : 0;
+            if (IS_INT(val)) {
+                *ptr = (int32_t)AS_INT(val);
+            } else if (IS_NUMBER(val)) {
+                *ptr = (int32_t)AS_NUMBER(val);
+            } else {
+                *ptr = 0;
+            }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
-        } else if (strcmp(tname, "int64") == 0 || strcmp(tname, "int64_t") == 0) {
+        } else if (strcmp(tname, "int64") == 0 || strcmp(tname, "int64_t") == 0 || strcmp(tname, "long") == 0) {
             int64_t* ptr = (int64_t*)malloc(sizeof(int64_t));
-            *ptr = IS_NUMBER(val) ? (int64_t)AS_NUMBER(val) : 0;
+            if (IS_INT(val)) {
+                *ptr = AS_INT(val);
+            } else if (IS_NUMBER(val)) {
+                *ptr = (int64_t)AS_NUMBER(val);
+            } else {
+                *ptr = 0;
+            }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
-        } else if (strcmp(tname, "uint64") == 0 || strcmp(tname, "uint64_t") == 0) {
+        } else if (strcmp(tname, "uint64") == 0 || strcmp(tname, "uint64_t") == 0 || strcmp(tname, "size_t") == 0) {
             uint64_t* ptr = (uint64_t*)malloc(sizeof(uint64_t));
-            *ptr = IS_NUMBER(val) ? (int64_t)AS_NUMBER(val) : 0;
+            if (IS_INT(val)) {
+                *ptr = (uint64_t)AS_INT(val);
+            } else if (IS_NUMBER(val)) {
+                *ptr = (uint64_t)AS_NUMBER(val);
+            } else {
+                *ptr = 0;
+            }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "double") == 0 || strcmp(tname, "number") == 0) {
             double* ptr = (double*)malloc(sizeof(double));
-            *ptr = IS_NUMBER(val) ? AS_NUMBER(val) : 0.0;
+            if (IS_NUMBER(val)) {
+                *ptr = AS_NUMBER(val);
+            } else if (IS_INT(val)) {
+                *ptr = (double)AS_INT(val);
+            } else {
+                *ptr = 0.0;
+            }
+            valueAllocations[i] = ptr;
+            ffiArgs[i] = ptr;
+        } else if (strcmp(tname, "float") == 0) {
+            float* ptr = (float*)malloc(sizeof(float));
+            if (IS_NUMBER(val)) {
+                *ptr = (float)AS_NUMBER(val);
+            } else if (IS_INT(val)) {
+                *ptr = (float)AS_INT(val);
+            } else {
+                *ptr = 0.0f;
+            }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "string") == 0) {
@@ -140,12 +190,14 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             }
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
-        } else if (strcmp(tname, "pointer") == 0) {
+        } else if (strcmp(tname, "pointer") == 0 || strcmp(tname, "ptr") == 0) {
             void** ptr = (void**)malloc(sizeof(void*));
             if (IS_NIL(val)) {
                 *ptr = NULL;
             } else if (IS_BUFFER(val)) {
                 *ptr = (void*)AS_BUFFER(val)->bytes;
+            } else if (IS_INT(val)) {
+                *ptr = (void*)(uintptr_t)AS_INT(val);
             } else if (IS_NUMBER(val)) {
                 *ptr = (void*)(uintptr_t)AS_NUMBER(val);
             } else if (IS_STRING(val)) {
@@ -165,6 +217,11 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
         } else if (strcmp(tname, "bool") == 0) {
             uint8_t* ptr = (uint8_t*)malloc(sizeof(uint8_t));
             *ptr = IS_BOOL(val) ? (AS_BOOL(val) ? 1 : 0) : 0;
+            valueAllocations[i] = ptr;
+            ffiArgs[i] = ptr;
+        } else {
+            void** ptr = (void**)malloc(sizeof(void*));
+            *ptr = NULL;
             valueAllocations[i] = ptr;
             ffiArgs[i] = ptr;
         }
@@ -197,21 +254,27 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), NULL, ffiArgs);
     } else if (strcmp(fn->rtypeName, "int") == 0 || strcmp(fn->rtypeName, "int32") == 0 ||
             strcmp(fn->rtypeName, "int32_t") == 0) {
-        int32_t resVal = 0;
+        ffi_arg resVal = 0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
-        result = NUMBER_VAL((double)resVal);
-    } else if (strcmp(fn->rtypeName, "int64") == 0 || strcmp(fn->rtypeName, "int64_t") == 0) {
+        result = INT_VAL(resVal);
+    } else if (strcmp(fn->rtypeName, "int64") == 0 || strcmp(fn->rtypeName, "int64_t") == 0 ||
+            strcmp(fn->rtypeName, "long") == 0) {
         int64_t resVal = 0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
-        result = NUMBER_VAL((double)resVal);
-    } else if (strcmp(fn->rtypeName, "uint64") == 0 || strcmp(fn->rtypeName, "uint64_t") == 0) {
+        result = INT_VAL(resVal);
+    } else if (strcmp(fn->rtypeName, "uint64") == 0 || strcmp(fn->rtypeName, "uint64_t") == 0 ||
+            strcmp(fn->rtypeName, "size_t") == 0) {
         uint64_t resVal = 0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
-        result = NUMBER_VAL((double)resVal);
+        result = INT_VAL((int64_t)resVal);
     } else if (strcmp(fn->rtypeName, "double") == 0 || strcmp(fn->rtypeName, "number") == 0) {
         double resVal = 0.0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
         result = NUMBER_VAL(resVal);
+    } else if (strcmp(fn->rtypeName, "float") == 0) {
+        float resVal = 0.0;
+        ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
+        result = NUMBER_VAL((double)resVal);
     } else if (strcmp(fn->rtypeName, "string") == 0) {
         char* resVal = NULL;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
@@ -219,16 +282,16 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             ObjString* str = copyString(resVal, (int)strlen(resVal));
             result = OBJ_VAL(str);
         }
-    } else if (strcmp(fn->rtypeName, "pointer") == 0) {
+    } else if (strcmp(fn->rtypeName, "pointer") == 0 || strcmp(fn->rtypeName, "ptr") == 0) {
         void* resVal = NULL;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
         if (resVal == NULL) {
             result = NIL_VAL;
         } else {
-            result = NUMBER_VAL((double)(uintptr_t)resVal);
+            result = INT_VAL((int64_t)(uintptr_t)resVal);
         }
     } else if (strcmp(fn->rtypeName, "bool") == 0) {
-        uint8_t resVal = 0;
+        ffi_arg resVal = 0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
         result = BOOL_VAL(resVal != 0);
     }
