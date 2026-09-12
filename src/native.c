@@ -5364,6 +5364,8 @@ Value structPackNative(int argCount, Value* args) {
     } else if (*p == '<' || *p == '!') {
         bigend = false;
         p++;
+    } else if (argCount >= 3) {
+        bigend = AS_BOOL(args[2]);
     }
 
     ByteBuffer buf;
@@ -5443,7 +5445,7 @@ Value structPackNative(int argCount, Value* args) {
 
             uint64_t num = IS_INT(val)
                 ? (uint64_t)AS_INT(val)
-                : (uint64_t)AS_NUMBER(val);
+                : (uint64_t)(int64_t)AS_NUMBER(val);
 
             switch (type) {
                 case 'b':
@@ -5521,295 +5523,6 @@ Value structPackNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
-Value structPackNative1(int argCount, Value* args) {
-    if (argCount < 2) {
-        runtimeError("Struct.pack() expects at least 2 arguments (format string, value array).");
-        return NIL_VAL;
-    }
-
-    if (!IS_STRING(args[0])) {
-        runtimeError("First argument to Struct.pack() must be a format string.");
-        return NIL_VAL;
-    }
-
-    if (!IS_ARRAY(args[1])) {
-        runtimeError("Second argument to Struct.pack() must be an Array.");
-        return NIL_VAL;
-    }
-
-    const char* format = AS_CSTRING(args[0]);
-    ObjArray* array = AS_ARRAY(args[1]);
-    bool bigend = (argCount == 3) ? AS_BOOL(args[2]) : false;
-
-#define IS_INT_OR_NUMBER(v) (IS_INT(v) || IS_NUMBER(v))
-
-    const char* f = format;
-    int val_index = 0;
-    int totalSize = 0;
-
-    // pass 1: validate types, check value counts, and calculate output buffer size
-    while (*f != '\0') {
-        if (isspace(*f)) {
-            f++;
-            continue;
-        }
-
-        int width = 0;
-        bool hasWidth = false;
-        while (isdigit(*f)) {
-            width = width * 10 + (*f - '0');
-            hasWidth = true;
-            f++;
-        }
-
-        const char type = *f;
-        if (type != '\0') {
-            int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
-
-            //Value currentVal = array->values[val_index];
-
-            switch (type) {
-                case 'x':
-                    totalSize += hasWidth ? width : 1;
-                    // 'x' does not consume a value from the array
-                    break;
-                case 'B': case 'b':
-                case 'H': case 'h':
-                case 'I': case 'i':
-                case 'Q': case 'q':
-                    /*
-                    if (!IS_NUMBER(currentVal)) {
-                        runtimeError("Expected number value for '%c' format specifier.", type);
-                        return NIL_VAL;
-                    }
-                    */
-                    if (type == 'B' || type == 'b') totalSize += 1 * count;
-                    else if (type == 'H' || type == 'h') totalSize += 2 * count;
-                    else if (type == 'I' || type == 'i') totalSize += 4 * count;
-                    else if (type == 'Q' || type == 'q') totalSize += 8 * count;
-                    break;
-                case 's':
-                      {
-                          if (val_index >= array->count) {
-                              runtimeError("Format string requires more values than provided in the array.");
-                              return NIL_VAL;
-                          }
-                          Value currentVal = array->values[val_index++];
-                          if (!IS_STRING(currentVal)) {
-                              runtimeError("Expected string value for 's' format specifier.");
-                              return NIL_VAL;
-                          }
-                          totalSize += hasWidth ? width : AS_STRING(currentVal)->length;
-                      }
-                      break;
-                default:
-                      runtimeError("Unknown format specifier '%c'.", *f);
-                      return NIL_VAL;
-            }
-
-            if (type != 's' && type != 'x') {
-                for (int i = 0; i < count; i++) {
-                    if (val_index >= array->count) {
-                        runtimeError("Format string requires more values than provided in the array.");
-                        return NIL_VAL;
-                    }
-                    Value val = array->values[val_index++];
-                    if (!IS_INT_OR_NUMBER(val)) {
-                        runtimeError("Expected number value for '%c' specifier.", type);
-                        return NIL_VAL;
-                    }
-                }
-            }
-            f++;
-        }
-    }
-
-    uint8_t* buffer = (uint8_t*)calloc(1, totalSize);
-    if (!buffer) {
-        runtimeError("Out of memory in Struct.pack().");
-        return NIL_VAL;
-    }
-
-    uint8_t* cursor = buffer;
-    f = format;
-    val_index = 0;
-
-#define EXTRACT_INT64(val) (IS_INT(val) ? AS_INT(val) : (int64_t)AS_NUMBER(val))
-
-    // pass 2: pack bytes into output buffer
-    while (*f != '\0') {
-        if (isspace(*f)) {
-            f++;
-            continue;
-        }
-
-        int width = 0;
-        bool hasWidth = false;
-
-        while (isdigit(*f)) {
-            width = width * 10 + (*f - '0');
-            hasWidth = true;
-            f++;
-        }
-
-        const char type = *f;
-        int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
-
-        /*
-        switch (type) {
-            case 'b':
-            case 'B':
-                double num = AS_NUMBER(array->values[val_index++]);
-                *cursor++ = (uint8_t)num;
-                break;
-            case 'h':
-            case 'H':
-                {
-                    uint16_t val = (uint16_t)AS_NUMBER(array->values[val_index++]);
-                    if (bigend) {
-                        *cursor++ = (val >> 8) & 0xff;
-                        *cursor++ = val & 0xff;
-                    } else {
-                        *cursor++ = val & 0xff;
-                        *cursor++ = (val >> 8) & 0xff;
-                    }
-                }
-                break;
-            case 'i':
-            case 'I':
-                {
-                    uint32_t val = (uint32_t)AS_NUMBER(array->values[val_index++]);
-                    if (bigend) {
-                        *cursor++ = (val >> 24) & 0xff;
-                        *cursor++ = (val >> 16) & 0xff;
-                        *cursor++ = (val >> 8) & 0xff;
-                        *cursor++ = val & 0xff;
-                    } else {
-                        *cursor++ = val & 0xff;
-                        *cursor++ = (val >> 8) & 0xff;
-                        *cursor++ = (val >> 16) & 0xff;
-                        *cursor++ = (val >> 24) & 0xff;
-                    }
-                }
-                break;
-            case 'q':
-            case 'Q':
-                {
-                    uint64_t val = (uint64_t)AS_NUMBER(array->values[val_index++]);
-                    if (bigend) {
-                        for (int i = 7; i >= 0; i--) {
-                            *cursor++ = (val >> (i * 8)) & 0xff;
-                        }
-                    } else {
-                        for (int i = 0; i < 8; i++) {
-                            *cursor++ = (val >> (i * 8)) & 0xff;
-                        }
-                    }
-                }
-                break;
-            case 'x':
-                {
-                    int padBytes = hasWidth ? width : 1;
-                    memset(cursor, 0, padBytes);
-                    cursor += padBytes;
-                }
-                break;
-            case 's':
-                {
-                    ObjString* s = AS_STRING(array->values[val_index++]);
-                    int targetWidth = hasWidth ? width : s->length;
-                    int copyLen = (s->length < targetWidth) ? s->length : targetWidth;
-
-                    if (copyLen > 0) {
-                        memcpy(cursor, s->chars, copyLen);
-                    }
-                    if (copyLen < targetWidth) {
-                        memset(cursor + copyLen, 0, targetWidth - copyLen);
-                    }
-
-                    //memcpy(cursor, s->chars, copyLen);
-                    cursor += targetWidth;
-
-                }
-                break;
-        }
-    */
-        if (type == 'x') {
-            int padBytes = hasWidth ? width : 1;
-            memset(cursor, 0, padBytes);
-            cursor += padBytes;
-        } else if (type == 's') {
-            ObjString* s = AS_STRING(array->values[val_index++]);
-            int targetWidth = hasWidth ? width : s->length;
-            int copyLen = (s->length < targetWidth) ? s->length : targetWidth;
-
-            if (copyLen > 0) {
-                memcpy(cursor, s->chars, copyLen);
-            }
-            if (copyLen < targetWidth) {
-                memset(cursor + copyLen, 0, targetWidth - copyLen);
-            }
-            cursor += targetWidth;
-        } else {
-            for (int c = 0; c < count; c++) {
-                uint64_t val = (uint64_t)EXTRACT_INT64(array->values[val_index++]);
-
-                switch(type) {
-                    case 'b':
-                    case 'B':
-                        *cursor++ = (uint8_t)(val & 0xff);
-                        break;
-                    case 'h':
-                    case 'H':
-                        if (bigend) {
-                            *cursor++ = (val >> 8) & 0xff;
-                            *cursor++ = val & 0xff;
-                        } else {
-                            *cursor++ = val & 0xff;
-                            *cursor++ = (val >> 8) & 0xff;
-                        }
-                        break;
-                    case 'i':
-                    case 'I':
-                        if (bigend) {
-                            *cursor++ = (val >> 24) & 0xff;
-                            *cursor++ = (val >> 16) & 0xff;
-                            *cursor++ = (val >> 8) & 0xff;
-                            *cursor++ = val & 0xff;
-                        } else {
-                            *cursor++ = val & 0xff;
-                            *cursor++ = (val >> 8) & 0xff;
-                            *cursor++ = (val >> 16) & 0xff;
-                            *cursor++ = (val >> 24) & 0xff;
-                        }
-                        break;
-                    case 'q':
-                    case 'Q':
-                        if (bigend) {
-                            for (int i = 7; i >= 0; i--) {
-                                *cursor++ = (val >> (i * 8)) & 0xff;
-                            }
-                        } else {
-                            for (int i = 0; i < 8; i++) {
-                                *cursor++ = (val >> (i * 8)) & 0xff;
-                            }
-                        }
-                        break;
-                }
-            }
-        }
-        //if (*f != '\0') f++;
-        f++;
-    }
-
-#undef EXTRACT_INT64
-#undef IS_INT_OR_NUMBER
-
-    ObjString* result = copyString((const char*)buffer, totalSize);
-    free(buffer);
-    return OBJ_VAL(result);
-}
-
 Value structUnpackNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
@@ -5839,7 +5552,195 @@ Value structUnpackNative(int argCount, Value* args) {
         bufferlen = AS_BUFFER(args[1])->size;
     }
 
-    bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : true;
+    const char* f = format;
+    bool bigend = false;
+
+    if (*f == '>') {
+        bigend  = true;
+        f++;
+    } else if (*f == '<' || *f == '!') {
+        bigend = false;
+        f++;
+    } else if (argCount >= 3) {
+        bigend = AS_BOOL(args[2]);
+    }
+
+    ObjArray* result = newArray();
+    push(OBJ_VAL(result));
+
+    int offset = 0;
+
+    while (*f != '\0') {
+        if (isspace((unsigned char)*f)) {
+            f++;
+            continue;
+        }
+
+        int width = 0;
+        bool hasWidth = false;
+        while (isdigit((unsigned char)*f)) {
+            width = width * 10 + (*f - '0');
+            hasWidth = true;
+            f++;
+        }
+
+        const char type = *f;
+        if (type == '\0') break;
+        f++;
+
+        int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
+        int elemSize = 0;
+
+        switch (type) {
+            case 'x':
+            case 'b':
+            case 'B': elemSize = 1; break;
+            case 'h':
+            case 'H': elemSize = 2; break;
+            case 'i':
+            case 'I': elemSize = 4; break;
+            case 'q':
+            case 'Q': elemSize = 8; break;
+            case 's': elemSize = hasWidth ? width : (bufferlen - offset); break;
+            default:
+                      pop();
+                      runtimeError("Unknown format specifier '%c'.", type);
+                      return NIL_VAL;
+        }
+
+        int requiredTotal = (type == 's' || type == 'x') ? (hasWidth ? width : elemSize) : (elemSize * count);
+
+        if (offset + requiredTotal > bufferlen) {
+            pop();
+            runtimeError("Buffer underflow: Data string is too short to unpack the specified format.");
+            return NIL_VAL;
+        }
+
+        if (type == 'x') {
+            offset += requiredTotal;
+        } else if (type == 's') {
+            ObjString* str = copyString((const char*)buffer + offset, requiredTotal);
+            push(OBJ_VAL(str));
+            arrayAppend(result, OBJ_VAL(str));
+            pop();
+            offset += requiredTotal;
+        } else {
+            for (int c = 0; c < count; c++) {
+                Value valObj;
+
+                switch (type) {
+                    case 'b':
+                        {
+                            int8_t val = (int8_t)buffer[offset];
+                            valObj = INT_VAL(val);
+                            offset += 1;
+                            break;
+                        }
+                    case 'B':
+                        {
+                            uint8_t val = buffer[offset];
+                            valObj = INT_VAL(val);
+                            offset += 1;
+                            break;
+                        }
+                    case 'h':
+                    case 'H':
+                        {
+                            uint16_t u16;
+                            if (bigend) {
+                                u16 = (uint16_t)((buffer[offset] << 8) | buffer[offset + 1]);
+                            } else {
+                                u16 = (uint16_t)(buffer[offset] | (buffer[offset + 1] << 8));
+                            }
+                            if (type == 'h') {
+                                valObj = INT_VAL((int16_t)u16);
+                            } else {
+                                valObj = INT_VAL(u16);
+                            }
+                            offset += 2;
+                            break;
+                        }
+                    case 'i':
+                    case 'I':
+                        {
+                            uint32_t u32;
+                            if (bigend) {
+                                u32 = ((uint32_t)buffer[offset] << 24) |
+                                    ((uint32_t)buffer[offset + 1] << 16) |
+                                    ((uint32_t)buffer[offset + 2] << 8) |
+                                    (uint32_t)buffer[offset + 3];
+                            } else {
+                                u32 = (uint32_t)buffer[offset] |
+                                    ((uint32_t)buffer[offset + 1] << 8) |
+                                    ((uint32_t)buffer[offset + 2] << 16) |
+                                    ((uint32_t)buffer[offset + 3] << 24);
+                            }
+                            if (type == 'i') {
+                                valObj = INT_VAL((int32_t)u32);
+                            } else {
+                                valObj = INT_VAL(u32);
+                            }
+                            offset += 4;
+                            break;
+                        }
+                    case 'q':
+                    case 'Q':
+                        {
+                            uint64_t u64 = 0;
+                            if (bigend) {
+                                for (int i = 0; i < 8; i++) {
+                                    u64 = (u64 << 8) | (uint64_t)buffer[offset + i];
+                                }
+                            } else {
+                                for (int i = 7; i >= 0; i--) {
+                                    u64 |= ((uint64_t)buffer[offset + i]) << (i * 8);
+                                }
+                            }
+                            valObj = INT_VAL((int64_t)u64);
+                            offset += 8;
+                            break;
+                        }
+                }
+                arrayAppend(result, valObj);
+            }
+        }
+
+    }
+    pop();
+    return OBJ_VAL(result);
+}
+
+/*
+Value structUnpackNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[0])) {
+        runtimeError("First argument to Struct.unpack() must be a format string.");
+        return NIL_VAL;
+    }
+
+    if (!IS_STRING(args[1]) && !IS_BUFFER(args[1])) {
+        runtimeError("Second argument to Struct.unpack() must be a data string or buffer.");
+        return NIL_VAL;
+    }
+
+    const char* format = AS_CSTRING(args[0]);
+    const uint8_t* buffer;
+    int bufferlen;
+
+    if (IS_STRING(args[1])) {
+        ObjString* data = AS_STRING(args[1]);
+        buffer = (const uint8_t*)data->chars;
+        bufferlen = data->length;
+    } else {
+        buffer = AS_BUFFER(args[1])->bytes;
+        bufferlen = AS_BUFFER(args[1])->size;
+    }
+
+    bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : false;
 
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
@@ -5949,14 +5850,15 @@ Value structUnpackNative(int argCount, Value* args) {
                                 uint64_t u64 = 0;
                                 if (bigend) {
                                     for (int i = 0; i < 8; i++) {
-                                        u64 = (u64 << 8) | buffer[offset + i];
+                                        u64 = (u64 << 8) | (uint64_t)buffer[offset + i];
                                     }
                                 } else {
                                     for (int i = 7; i >= 0; i--) {
-                                        u64 = (u64 << 8) | buffer[offset + i];
+                                        u64 |= ((uint64_t)buffer[offset + i]) << (i * 8);
                                     }
                                 }
-                                val = (type == 'q') ? (int64_t)u64 : u64;
+                                val = (int64_t)u64;
+                                //val = (type == 'q') ? (int64_t)u64 : u64;
                                 offset += 8;
                             }
                             break;
@@ -5970,6 +5872,7 @@ Value structUnpackNative(int argCount, Value* args) {
     pop();
     return OBJ_VAL(result);
 }
+*/
 
 void initStructClass() {
     /*

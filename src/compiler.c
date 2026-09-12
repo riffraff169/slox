@@ -879,7 +879,7 @@ static void integer(bool canAssign) {
         } else if (prefix == 'o' || prefix == 'O') {
             // octal
             value = (int64_t)strtoull(start + 2, NULL, 8);
-        } else if (prefix = 'x' || prefix == 'X') {
+        } else if (prefix == 'x' || prefix == 'X') {
             // hex
             value = (int64_t)strtoull(start + 2, NULL, 16);
         } else {
@@ -1415,7 +1415,15 @@ static void block() {
 
 static Value parseConstant() {
     if (match(TOKEN_INT)) {
-        return INT_VAL((int64_t)strtol(parser.previous.start, NULL, 10));
+        const  char* start = parser.previous.start;
+        int64_t val;
+
+        if (start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
+            val = (int64_t)strtoull(start, NULL, 16);
+        } else {
+            val = strtoll(start, NULL, 10);
+        }
+        return INT_VAL(val);
     } else if (match(TOKEN_NUMBER)) {
         return NUMBER_VAL(strtod(parser.previous.start, NULL));
     } else if (match(TOKEN_STRING)) {

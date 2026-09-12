@@ -1,0 +1,88 @@
+var totalTests = 0;
+var passedTests = 0;
+
+fun assertEqual(actual, expected, testName) {
+    totalTests = totalTests + 1;
+    if (actual == expected) {
+        print "[PASS] " + testName;
+        passedTests = passedTests + 1;
+    } else {
+        print "[FAIL] " + testName + " | Expected: " + str(expected) + ", Got: " + str(actual);
+    }
+}
+
+fun assertArrayEqual(actual, expected, testName) {
+    totalTests = totalTests + 1;
+    if (actual.length() != expected.length()) {
+        print "[FAIL] " + testName + " | Length mismatch: Expected " + str(expected.length()) + ", Got " + str(actual.length());
+        return;
+    }
+    
+    for (var i = 0; i < actual.length(); i = i + 1) {
+        if (actual[i] != expected[i]) {
+            print "[FAIL] " + testName + " | Mismatch at index " + str(i) + ": Expected " + str(expected[i]) + ", Got " + str(actual[i]);
+            return;
+        }
+    }
+    
+    print "[PASS] " + testName;
+    passedTests = passedTests + 1;
+}
+
+print "==========================================";
+print "   slox Struct.pack / unpack Test Suite   ";
+print "==========================================";
+
+// 1. Single Signed & Unsigned Byte Roundtrip (b / B)
+var bytes_packed = Struct.pack("b B", [-128, 255]);
+var bytes_unpacked = Struct.unpack("b B", bytes_packed);
+assertArrayEqual(bytes_unpacked, [-128, 255], "Byte roundtrip (b B)");
+
+// 2. 16-bit Short Roundtrip (h / H) with Endianness
+var shorts_packed_le = Struct.pack("<h H", [-32768, 65535]);
+var shorts_unpacked_le = Struct.unpack("<h H", shorts_packed_le);
+assertArrayEqual(shorts_unpacked_le, [-32768, 65535], "Little-Endian Shorts roundtrip (<h H)");
+
+var shorts_packed_be = Struct.pack(">h H", [-32768, 65535]);
+var shorts_unpacked_be = Struct.unpack(">h H", shorts_packed_be);
+assertArrayEqual(shorts_unpacked_be, [-32768, 65535], "Big-Endian Shorts roundtrip (>h H)");
+
+// Verify big-endian vs little-endian byte placement directly
+var le_bytes = Struct.pack("<H", [0x1234]).to_array();
+var be_bytes = Struct.pack(">H", [0x1234]).to_array();
+assertArrayEqual(le_bytes, [0x34, 0x12], "Little-endian byte order verification");
+assertArrayEqual(be_bytes, [0x12, 0x34], "Big-endian byte order verification");
+
+// 3. 32-bit Integer Roundtrip (i / I)
+var ints_packed = Struct.pack("i I", [-2147483648, 4294967295]);
+var ints_unpacked = Struct.unpack("i I", ints_packed);
+assertArrayEqual(ints_unpacked, [-2147483648, 4294967295], "32-bit Integer roundtrip (i I)");
+
+// 4. 64-bit Quad/Pointer Roundtrip (q / Q)
+var ptr_val = 0x7FFF888000000000;
+var quads_packed = Struct.pack("q Q", [-9223372036854775807, ptr_val]);
+var quads_unpacked = Struct.unpack("q Q", quads_packed);
+assertArrayEqual(quads_unpacked, [-9223372036854775807, ptr_val], "64-bit Quad roundtrip (q Q)");
+
+// 5. Repeat Counts & Padding Bytes (x specifier)
+var pad_packed = Struct.pack("i 4x 3b", [100, 10, 20, 30]);
+assertEqual(pad_packed.length(), 11, "Packed length with 4 padding bytes (4 + 4 + 3 = 11)");
+
+var pad_unpacked = Struct.unpack("i 4x 3b", pad_packed);
+assertArrayEqual(pad_unpacked, [100, 10, 20, 30], "Unpack with padding skip (4x)");
+
+// 6. Fixed-width String Embedding (s specifier)
+var str_packed = Struct.pack("I 5s", [42, "hello"]);
+var str_unpacked = Struct.unpack("I 5s", str_packed);
+assertArrayEqual(str_unpacked, [42, "hello"], "String embedding roundtrip (I 5s)");
+
+// 7. C-Struct Alignment Emulation
+var c_struct_packed = Struct.pack("H 6x Q I 4x", [0xFEED, ptr_val, 0xAABBCCDD]);
+assertEqual(c_struct_packed.length(), 24, "C Struct alignment size (24 bytes)");
+
+var c_struct_unpacked = Struct.unpack("H 6x Q I 4x", c_struct_packed);
+assertArrayEqual(c_struct_unpacked, [0xFEED, ptr_val, 0xAABBCCDD], "C Struct alignment roundtrip");
+
+print "==========================================";
+print " Summary: " + str(passedTests) + " / " + str(totalTests) + " tests passed.";
+print "==========================================";

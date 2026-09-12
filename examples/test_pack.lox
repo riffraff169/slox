@@ -1,0 +1,9 @@
+var flags = 48;
+// Using 4x for alignment padding instead of dummy 0 values:
+// 8 (Q) + 5*4 (5I) + 4 (4x pad) + 8 (Q) = 40 bytes total
+var opts = Struct.pack("Q 5I 4x Q", [0, 0, 0, 0, 0, 0, flags]);
+
+print opts;
+// Fixed-width C char array (e.g. char name[32]):
+var packedName = Struct.pack("32s", ["lox"]); // Yields 3 bytes "lox" + 29 bytes 0x00
+print packedName;

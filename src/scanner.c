@@ -511,7 +511,7 @@ Token scanToken() {
         if (c == '0' && (peek() == 'x' || peek() == 'X')) {
             advance();
             while (isHexDigit(peek())) advance();
-            return makeToken(TOKEN_NUMBER);
+            return makeToken(TOKEN_INT);
         }
         return number();
     }

@@ -98,21 +98,22 @@ static inline double valueToDouble(Value value) {
 }
 
 // attempts to convert any numeric Value to int64_t
-static inline bool valueToInt64(Value value, int64_t* out) {
-    if (IS_INT(value)) {
-        *out = AS_INT(value);
-        return true;
+static inline int64_t valueToInt64(Value val) {
+    if (IS_INT(val)) {
+        return  AS_INT(val);
+    } else if (IS_NUMBER(val)) {
+        return (int64_t)AS_NUMBER(val);
     }
+    return 0;
+}
 
-    if (IS_NUMBER(value)) {
-        double d = AS_NUMBER(value);
-        int64_t i = (int64_t)d;
-        if ((double)i == d) { // exact whole number check
-            *out = i;
-            return true;
-        }
+static inline uint64_t valueToUint64(Value val) {
+    if (IS_INT(val)) {
+        return (uint64_t)AS_INT(val);
+    } else if (IS_NUMBER(val)) {
+        return (uint64_t)AS_NUMBER(val);
     }
-    return false;
+    return 0;
 }
 
 static inline bool isExactInteger(double d) {
