@@ -337,7 +337,7 @@ static Token number() {
         while (isDigit(peek())) advance();
     }
 
-    return makeToken(isFloat ? TOKEN_NUMBER : TOKEN_INT);
+    return makeToken(isFloat ? TOKEN_FLOAT : TOKEN_INT);
 }
 
 static Token continueString() {

@@ -1,0 +1,11 @@
+require("test_runner.lox");
+
+var runner = TestRunner("System & Environment Tests");
+
+runner.test("ENV variables are accessible", fun(t) {
+    var path = System.ENV["PATH"];
+    t.assertTrue(path != nil, "PATH environment variable should be defined");
+});
+
+var succes = runner.summary();
+

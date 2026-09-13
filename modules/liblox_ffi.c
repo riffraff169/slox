@@ -128,8 +128,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             int32_t* ptr = (int32_t*)malloc(sizeof(int32_t));
             if (IS_INT(val)) {
                 *ptr = (int32_t)AS_INT(val);
-            } else if (IS_NUMBER(val)) {
-                *ptr = (int32_t)AS_NUMBER(val);
+            } else if (IS_FLOAT(val)) {
+                *ptr = (int32_t)AS_FLOAT(val);
             } else {
                 *ptr = 0;
             }
@@ -139,8 +139,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             int64_t* ptr = (int64_t*)malloc(sizeof(int64_t));
             if (IS_INT(val)) {
                 *ptr = AS_INT(val);
-            } else if (IS_NUMBER(val)) {
-                *ptr = (int64_t)AS_NUMBER(val);
+            } else if (IS_FLOAT(val)) {
+                *ptr = (int64_t)AS_FLOAT(val);
             } else {
                 *ptr = 0;
             }
@@ -150,8 +150,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             uint64_t* ptr = (uint64_t*)malloc(sizeof(uint64_t));
             if (IS_INT(val)) {
                 *ptr = (uint64_t)AS_INT(val);
-            } else if (IS_NUMBER(val)) {
-                *ptr = (uint64_t)AS_NUMBER(val);
+            } else if (IS_FLOAT(val)) {
+                *ptr = (uint64_t)AS_FLOAT(val);
             } else {
                 *ptr = 0;
             }
@@ -159,8 +159,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "double") == 0 || strcmp(tname, "number") == 0) {
             double* ptr = (double*)malloc(sizeof(double));
-            if (IS_NUMBER(val)) {
-                *ptr = AS_NUMBER(val);
+            if (IS_FLOAT(val)) {
+                *ptr = AS_FLOAT(val);
             } else if (IS_INT(val)) {
                 *ptr = (double)AS_INT(val);
             } else {
@@ -170,8 +170,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "float") == 0) {
             float* ptr = (float*)malloc(sizeof(float));
-            if (IS_NUMBER(val)) {
-                *ptr = (float)AS_NUMBER(val);
+            if (IS_FLOAT(val)) {
+                *ptr = (float)AS_FLOAT(val);
             } else if (IS_INT(val)) {
                 *ptr = (float)AS_INT(val);
             } else {
@@ -198,8 +198,8 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
                 *ptr = (void*)AS_BUFFER(val)->bytes;
             } else if (IS_INT(val)) {
                 *ptr = (void*)(uintptr_t)AS_INT(val);
-            } else if (IS_NUMBER(val)) {
-                *ptr = (void*)(uintptr_t)AS_NUMBER(val);
+            } else if (IS_FLOAT(val)) {
+                *ptr = (void*)(uintptr_t)AS_FLOAT(val);
             } else if (IS_STRING(val)) {
                 ObjString* str = AS_STRING(val);
                 if (str->length == sizeof(void*)) {
@@ -270,11 +270,11 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
     } else if (strcmp(fn->rtypeName, "double") == 0 || strcmp(fn->rtypeName, "number") == 0) {
         double resVal = 0.0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
-        result = NUMBER_VAL(resVal);
+        result = FLOAT_VAL(resVal);
     } else if (strcmp(fn->rtypeName, "float") == 0) {
         float resVal = 0.0;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);
-        result = NUMBER_VAL((double)resVal);
+        result = FLOAT_VAL((double)resVal);
     } else if (strcmp(fn->rtypeName, "string") == 0) {
         char* resVal = NULL;
         ffi_call(&fn->cif, FFI_FN(fn->fnPtr), &resVal, ffiArgs);

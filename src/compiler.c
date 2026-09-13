@@ -862,7 +862,7 @@ static void character(bool canAssign) {
         }
     }
 
-    emitConstant(NUMBER_VAL((double)value));
+    emitConstant(FLOAT_VAL((double)value));
 }
 
 static void integer(bool canAssign) {
@@ -932,7 +932,7 @@ static void number(bool canAssign) {
     */
     double value = strtod(parser.previous.start, NULL);
 
-    emitConstant(NUMBER_VAL(value));
+    emitConstant(FLOAT_VAL(value));
 }
 
 static void optionalDot(bool canAssign) {
@@ -1343,7 +1343,8 @@ ParseRule rules[] = {
     [TOKEN_STRING]           = {string,   NULL,   PREC_NONE},
     [TOKEN_RAW_STRING]       = {rawstring, NULL,   PREC_NONE},
     [TOKEN_HEREDOC]          = {heredoc,  NULL,   PREC_NONE},
-    [TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
+    //[TOKEN_NUMBER]           = {number,   NULL,   PREC_NONE},
+    [TOKEN_FLOAT]            = {number,   NULL,   PREC_NONE},
     [TOKEN_INT]              = {integer,  NULL,   PREC_NONE},
     [TOKEN_CHAR]             = {character,NULL,   PREC_NONE},
     [TOKEN_AND]              = {NULL,     and_,   PREC_AND},
@@ -1424,8 +1425,8 @@ static Value parseConstant() {
             val = strtoll(start, NULL, 10);
         }
         return INT_VAL(val);
-    } else if (match(TOKEN_NUMBER)) {
-        return NUMBER_VAL(strtod(parser.previous.start, NULL));
+    } else if (match(TOKEN_FLOAT)) {
+        return FLOAT_VAL(strtod(parser.previous.start, NULL));
     } else if (match(TOKEN_STRING)) {
         return OBJ_VAL(copyString(parser.previous.start + 1,
                     parser.previous.length - 2));

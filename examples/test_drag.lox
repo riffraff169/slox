@@ -1,0 +1,111 @@
+import "ffi";
+require("notcurses.lox");
+
+fun run_drag_test(nc, std) {
+  var pRows = 8;
+  var pCols = 34;
+
+  var py = 5;
+  var px = 10;
+
+  var isDragging = false;
+  var dragOffsetX = 0;
+  var dragOffsetY = 0;
+
+  var popup = std.create_child(py, px, pRows, pCols);
+  popup.set_opaque(35, 45, 65);
+
+  fun render_window() {
+    popup.erase();
+    popup.set_bg(35, 45, 65);
+    popup.set_fg(220, 220, 240);
+    popup.box();
+
+    // title bar
+    popup.set_bg(60, 80, 120);
+    popup.set_fg(255, 255, 255);
+    popup.put_str(1, 2, " === Drag Me (Title Bar) === ");
+
+    // window body
+    popup.set_bg(35, 45, 65);
+    popup.set_fg(180, 180, 180);
+    popup.put_str(3, 2, "Click & hold title bar");
+    popup.put_str(4, 2, "Move mouse to drag window");
+    popup.put_str(6, 2, "Press [Q] to quit test");
+  }
+
+  render_window();
+
+  while (true) {
+    nc.render();
+
+    var ev = nc.get_event();
+    std.put_str(1, 1, ev["key"]);
+    if (ev == nil) continue;
+
+    var key = ev["key"];
+    if (key == "q" or key == "Q") break;
+
+    if (ev["is_mouse"]) {
+      std.put_str(2, 1, "is mouse    ");
+      var mx = ev["x"];
+      var my = ev["y"];
+      var type = ev["type"];
+
+      if (type == "press") {
+        // check if click occurred inside the tile bar row (py + 1)
+        if (my == py + 1 and mx >= px + 2 and mx < px + pCols - 2) {
+          isDragging = true;
+          dragOffsetX = mx - px;
+          dragOffsetY = my - py;
+
+          popup.move_top();
+          nc.render();
+        }
+      } else if (type == "release") {
+        isDragging = false;
+      }
+
+      // handle position updates on mouse movement while dragging
+      if (isDragging and (type == "move" or type == "motion" or type == "press")) {
+        var newX = mx - dragOffsetX;
+        var newY = my - dragOffsetY;
+
+        // keep popup bounds inside terminal dimensions
+        var dim = std.get_dim();
+        if (newX < 0) newX = 0;
+        if (newY < 0) newY = 0;
+        if (newX + pCols > dim[1]) newX = dim[1] - pCols;
+        if (newY + pRows > dim[0]) newY = dim[0] - pRows;
+
+        if (newX != px or newY != py) {
+          px = newX;
+          py = newY;
+          popup.move_yx(py, px);
+        }
+      }
+    }
+  }
+
+  popup.destroy();
+  std.erase();
+  nc.render();
+}
+
+var nc = Notcurses();
+at_exit(fun() { nc.stop(); });
+var stdp = nc.get_stdplane();
+nc.enable_mouse();
+
+try {
+  run_drag_test(nc, stdp);
+} catch (Error e) {
+  nc.stop();
+  print "Error: " + e.message;
+} catch (e) {
+  nc.stop();
+  print "Error: " + e;
+} finally {
+  nc.stop();
+}
+

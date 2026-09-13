@@ -1,0 +1,72 @@
+import "ffi";
+require("notcurses.lox");
+
+var nc = Notcurses();
+var std = nc.get_stdplane();
+
+std.set_fg(220, 220, 220);
+std.set_bg(20,20, 30);
+std.erase();
+std.box();
+std.put_str(1, 2, "--- Slox Notcurses Multi-Plane Test ---");
+std.put_str(2, 2, "Press ANY KEY to advance step-by-step (or 'q' to quit");
+
+// 1. create plane 1 (red)
+var p1 = std.create_child(5, 5, 8, 35);
+p1.set_fg(255, 255, 255);
+p1.set_bg(160, 30, 30);
+p1.erase();
+p1.box();
+p1.put_str(1, 2, "[Plane 1 - Red]");
+p1.put_str(3, 2, "Pos: (5, 5)");
+
+// 2. create plane 2 (blue) overlapping plane 1
+var p2 = std.create_child(8, 18, 8, 35);
+p2.set_fg(255, 255, 255);
+p2.set_bg(30, 70, 180);
+p2.erase();
+p2.box();
+p2.put_str(1, 2, "[Plane 2 - Blue]");
+p2.put_str(3, 2, "Pos: (8, 18)");
+
+nc.render();
+
+fun wait_key() {
+  while (true) {
+    var k = nc.get_key();
+    if (k) return k;
+  }
+}
+
+var key = wait_key();
+if (key != "q") {
+  std.put_str(3, 2, "Step 1: Moving Plane 1 down-right to (11, 25)... ");
+  p1.move_yx(11, 25);
+  p1.put_str(3, 2, "Pos: (11, 25)");
+  nc.render();
+  key = wait_key();
+}
+
+if (key != "q") {
+  std.put_str(3, 2, "Step 2: Raising Plane 1 to TOP of Z-stack...        ");
+  p1.move_top();
+  nc.render();
+  key = wait_key();
+}
+
+if (key != "q") {
+  std.put_str(3, 2, "Step 3: Raising Plane 2 back to TOP...              ");
+  p2.move_top();
+  nc.render();
+  key = wait_key();
+}
+
+if (key != "q") {
+  std.put_str(3, 2, "Step 4: Destroying Plane 2...                      ");
+  p2.destroy();
+  nc.render();
+  key = wait_key();
+}
+
+nc.stop();
+print "Multi-plane test complete.";

@@ -1,0 +1,54 @@
+import "ffi";
+require("notcurses.lox");
+// Initialize Notcurses
+var nc = Notcurses();
+
+print "Enabling mouse tracking (Button events + Motion)...";
+if (!nc.enable_mouse(true, true)) {
+  print "Failed to enable mouse support!";
+}
+
+print "\n--- Mouse Test Active ---";
+print "Click anywhere, scroll, or move the mouse.";
+print "Press 'q' or 'Esc' to exit.\n";
+
+while (true) {
+  var ev = nc.get_event();
+  
+  if (ev != nil) {
+    // Exit condition
+    //if (ev == "q" or ev == "Esc") {
+    if (ev["key"] == "q" or ev["key"] == "Esc") {
+      print "Exiting mouse test...";
+      break;
+    }
+
+    // Display mouse events vs standard keypresses
+    print ev;
+    /*
+    if (ev == 200)
+      print "Motion";
+    if (ev == 201)
+      print "Button1";
+    if (ev == 202)
+      print "Button2";
+    if (ev == 203)
+      print "Button3";
+    if (ev == 204)
+      print "ScrollUp";
+      */
+    var thiskey = (ev["key"] != nil) ? ev["key"] : "Unknown(" + ev["id"] + ")";
+    print "[MOUSE] Key: " + thiskey +
+            " | Pos: (" + ev["x"] + ", " + ev["y"] + ")" +
+            " | Type: " + ev["type"] +
+            " | Modifiers: [" + (ev["ctrl"] ? "Ctrl " : "") + (ev["alt"] ? "Alt " : "") + (ev["shift"] ? "Shift" : "") + "]";
+  } else {
+    print "[KEY]   Pressed: " + ev["key"] + " (ID: " + ev["id"] + ")";
+  }
+}
+
+// Cleanup
+print "Disabling mouse...";
+nc.enable_mouse(false);
+nc.stop();
+print "Done.";

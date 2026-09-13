@@ -97,7 +97,7 @@ static Value build_return_array(const uint8_t* digest) {
             ((uint32_t)digest[i * 4 + 2] << 8) |
             (uint32_t)digest[i * 4 + 3];
 
-        arrayAppend(array, NUMBER_VAL((double)h));
+        arrayAppend(array, INT_VAL(h));
     }
     pop();
     return OBJ_VAL(array);
@@ -229,7 +229,7 @@ static Value sha1FinalMethod(int argCount, Value* args) {
             ((uint32_t)digest[i * 4 + 2] << 8) |
             (uint32_t)digest[i * 4 + 3];
 
-        arrayAppend(array, NUMBER_VAL((double)h));
+        arrayAppend(array, INT_VAL(h));
     }
 
     pop();

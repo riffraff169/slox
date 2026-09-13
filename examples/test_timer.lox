@@ -1,0 +1,15 @@
+require("timer.lox");
+
+var count = 0;
+
+// periodic interval every 250ms
+var ticket = Timer.setInterval(250, fun() {
+    count += 1;
+    print "Tick " + String(count);
+    });
+
+// one shot timeout, stops ticket after 1.5s
+Timer.setTimeout(1500, fun() {
+    print "Stopping ticket...";
+    ticket.cancel();
+    });

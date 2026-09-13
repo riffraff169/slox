@@ -250,5 +250,8 @@ Value nilClassCallHandler(int argCount, Value* args);
 Value boolClassCallHandler(int argCount, Value* args);
 Value integerClassCallHandler(int argCount, Value* args);
 Value numberClassCallHandler(int argCount, Value* args);
+Value floatClassCallHandler(int argCount, Value* args);
+Value toFloatNative(int argCount, Value* args);
+
 
 #endif // NATIVE_H

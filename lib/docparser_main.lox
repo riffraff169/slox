@@ -1,0 +1,48 @@
+require("docparser.lox");
+
+var sourceLines = [
+  "//@ Buffer",
+  "// Byte buffer for reading and writing raw memory.",
+  "// Required args:",
+  "//   None",
+  "class Buffer {",
+  "",
+  "  //: alloc",
+  "  // Allocates a raw buffer of specified size.",
+  "  // Required args:",
+  "  //   size: Number",
+  "  static alloc(size) {}",
+  "",
+  "  //: Buffer.write",
+  "  // Writes bytes into the buffer.",
+  "  // Required args:",
+  "  //   data: String or Buffer",
+  "  // Option args:",
+  "  //   offset: Number",
+  "  write(data, offset) {}",
+  "}",
+  "",
+  "//= Math.floor(x)",
+  "// Returns the largest integer less than or equal to x.",
+  "// Required args:",
+  "//   x: Number",
+  "fun floor(x) {}"
+];
+
+if (System.ARGS.length() < 1) {
+  print "Usage: docparser_main.lox <file> [output_file]";
+  System.exit(1);
+}
+
+var source = File.load(System.ARGS[0]).split("\n");
+
+var parser = DocParser();
+parser.parseLines(source);
+var markdown = parser.generateMarkdown();
+
+if (System.ARGS.length() >= 2) {
+  File.save(System.ARGS[1], markdown);
+  print "Documentation written to " + System.ARGS[1];
+} else {
+  print markdown;
+}

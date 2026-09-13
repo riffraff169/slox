@@ -1,0 +1,103 @@
+require("notcurses.lox");
+
+fun main() {
+  var nc = Notcurses();
+  var std = nc.get_stdplane();
+
+  var width = 160;
+  var height = 80;
+  var pbuf = PixelBuffer(width, height);
+
+  // --- DRAW TEST PATTERN ---
+  // A. Color Gradient Background
+  for (var y = 0; y < height; y = y + 1) {
+    for (var x = 0; x < width; x = x + 1) {
+      var r = ((x / width) * 255).floor();
+      var g = ((y / height) * 255).floor();
+      var b = 128;
+      pbuf.setPixel(x, y, [r, g, b, 255]);
+    }
+  }
+
+  // B. Thick Red Diagonal Line (Top-Left to Bottom-Right)
+  for (var i = 0; i < height; i = i + 1) {
+    var x = ((i / height) * width).floor();
+    pbuf.setPixel(x, i, [255, 0, 0, 255]);
+    pbuf.setPixel(x + 1, i, [255, 0, 0, 255]);
+  }
+
+  // --- BLIT TO TERMINAL ---
+  std.erase();
+
+  // 2 = NCBLIT_2x1 (2 vertical pixels per character cell)
+  var ncv = Visual(pbuf, nc);
+  var cdim = ncv.pixelGeom();
+  var cdimy = cdim[0];
+  var cdimx = cdim[1];
+
+  var targetCellRows = 12;
+  var targetCellCols = 40;
+
+  var pixelRows;
+  var pixelCols;
+
+  if (cdimy > 0 and cdimx > 0) {
+    pixelRows = cdimy * targetCellRows;
+    pixelCols = cdimx * targetCellCols;
+    var res = ncv.resize(pixelRows, pixelCols);
+    /*
+    if (res) {
+      nc.stop();
+      print "res: " + res;
+      System.exit(1);
+    }
+    */
+  }
+
+  var cp = ncv.blit(std, Visual.BLIT_PIXEL, Visual.SCALE_NONE_HIRES);
+
+  /*
+  if (cp == nil or cp == 0) {
+    nc.stop();
+    print "cp == nil";
+    System.exit(2);
+  }
+  */
+  if (cp == nil or cp == 0) {
+    cp = ncv.blit(std, Visual.BLIT_3x2, Visual.SCALE_SCALE);
+  }
+
+  if (cp != nil and cp != 0) {
+    //cp.move_bottom();
+
+    cp.set_fg(0xff, 0xff, 0xff);
+    cp.put_str(0, 2, " [ NOTCURSES PIXEL TEST ] ");
+    cp.set_fg(0x00, 0xff, 0x00);
+    cp.put_str(1, 2, " Rendering 160x80 canvas using 8-byte pointer handles. ");
+    cp.set_fg(0xaa, 0xaa, 0xaa);
+    cp.put_str(2, 2, " Press any key to exit. ");
+    cp.put_str(3, 2, " pixelRows: " + pixelRows + " pixelCols: " + pixelCols);
+  }
+
+  //ncv.destroy();
+
+  // --- OVERLAY TEXT ---
+  /*
+  std.set_fg(0xFF, 0xFF, 0xFF);
+  std.put_str(0, 2, " [ NOTCURSES PIXEL TEST ] ");
+  std.set_fg(0x00, 0xFF, 0x00);
+  std.put_str(1, 2, " Rendering 160x80 canvas using 8-byte pointer handles. ");
+  std.set_fg(0xAA, 0xAA, 0xAA);
+  std.put_str(2, 2, " Press any key to exit. ");
+  */
+
+  nc.render();
+
+  // Wait for keypress
+  nc.get_key();
+  ncv.destroy();
+  nc.stop();
+
+}
+
+main();

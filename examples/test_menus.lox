@@ -1,0 +1,63 @@
+import "ffi";
+require("notcurses.lox");
+var menuData = [
+{
+  "title": "File",
+    "hotkey": "f",
+    "items": [
+    { "label": "Save Sprite", "action": "file_save", "hotkey": "s" },
+    { "label": "Load Sprite", "action": "file_load", "hotkey": "l" },
+    { "label": "Exit Editor", "action": "exit", "hotkey": "x" }
+    ]
+},
+{
+  "title": "Mode",
+  "hotkey": "m",
+  "items": [
+  { "label": "Toggle Mono/Color", "action": "toggle_mode", "hotkey": "t" }
+  ]
+}
+];
+
+var nc = Notcurses();
+at_exit(fun() { nc.stop(); });
+var std = nc.get_stdplane();
+
+var dim = std.get_dim();
+var menu = DropdownMenu(std, dim[1], menuData);
+
+var action;
+//try {
+while (true) {
+  nc.render();
+
+  var ev = nc.get_event();
+  if (ev == nil) continue;
+
+  action = menu.handle_event(ev);
+
+  if (action != nil) {
+    if (action == "file_save") {
+      print "file_save";
+    } else if (action == "file_load") {
+      print "file_load";
+    } else if (action == "toggle_mode") {
+      print "toggle_mode";
+    } else if (action == "exit") {
+			print "exit";
+      break;
+    }
+  }
+}
+
+print action;
+/*
+} catch (Error e) {
+  print "Error: " + e.message;
+} catch (e) {
+  print "Error: " + e;
+} finally {
+  nc.stop();
+}
+*/
+print action;

@@ -44,7 +44,7 @@ void LoxValueToGValue(Value loxVal, GValue* gval) {
     } else if (g_type_is_a(gtype, G_TYPE_UINT)) {
         g_value_set_uint(gval, (int)AS_INT(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_DOUBLE)) {
-        g_value_set_double(gval, AS_NUMBER(loxVal));
+        g_value_set_double(gval, AS_FLOAT(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_STRING)) {
         g_value_set_string(gval, AS_CSTRING(loxVal));
     } else if (g_type_is_a(gtype, G_TYPE_OBJECT)) {
@@ -218,10 +218,10 @@ Value scrape_boxed_to_lox(gpointer boxed, GType type) {
         tableSet(&loxEvent->fields, copyString("state", 5), INT_VAL(state));
     } else if (type == GDK_TYPE_RGBA) {
         GdkRGBA* color = (GdkRGBA*)boxed;
-        tableSet(&loxEvent->fields, copyString("red", 3), NUMBER_VAL(color->red));
-        tableSet(&loxEvent->fields, copyString("green", 5), NUMBER_VAL(color->green));
-        tableSet(&loxEvent->fields, copyString("blue", 4), NUMBER_VAL(color->blue));
-        tableSet(&loxEvent->fields, copyString("alpha", 5), NUMBER_VAL(color->alpha));
+        tableSet(&loxEvent->fields, copyString("red", 3), INT_VAL(color->red));
+        tableSet(&loxEvent->fields, copyString("green", 5), INT_VAL(color->green));
+        tableSet(&loxEvent->fields, copyString("blue", 4), INT_VAL(color->blue));
+        tableSet(&loxEvent->fields, copyString("alpha", 5), INT_VAL(color->alpha));
     }
 
     pop();
@@ -244,9 +244,9 @@ static Value GValueToLoxValue(GValue gval) {
         case G_TYPE_INT:
             return INT_VAL(g_value_get_int(&gval));
         case G_TYPE_FLOAT:
-            return NUMBER_VAL((double)g_value_get_float(&gval));
+            return FLOAT_VAL((double)g_value_get_float(&gval));
         case G_TYPE_DOUBLE:
-            return NUMBER_VAL(g_value_get_double(&gval));
+            return FLOAT_VAL(g_value_get_double(&gval));
         case G_TYPE_UINT:
             return INT_VAL(g_value_get_uint(&gval));
         case G_TYPE_FLAGS:
@@ -413,8 +413,8 @@ static Value giPropertySetter(Value receiver, ObjString* name, Value value) {
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_DOUBLE)) {
-        if (IS_NUMBER(value))
-            g_value_set_double(&gval, AS_NUMBER(value));
+        if (IS_FLOAT(value))
+            g_value_set_double(&gval, AS_FLOAT(value));
         else
             success = false;
     } else if (g_type_is_a(spec->value_type, G_TYPE_BOOLEAN)) {
@@ -478,10 +478,10 @@ static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_i
             giArg->v_int32 = (int32_t)AS_INT(loxValue);
             break;
         case GI_TYPE_TAG_FLOAT:
-            giArg->v_float = (float)AS_NUMBER(loxValue);
+            giArg->v_float = (float)AS_FLOAT(loxValue);
             break;
         case GI_TYPE_TAG_DOUBLE:
-            giArg->v_double = AS_NUMBER(loxValue);
+            giArg->v_double = AS_FLOAT(loxValue);
             break;
         case GI_TYPE_TAG_BOOLEAN:
             giArg->v_boolean = AS_BOOL(loxValue);
@@ -489,8 +489,8 @@ static void convertLoxToGI(Value loxValue, GIArgument* giArg, GITypeInfo* type_i
         case GI_TYPE_TAG_INTERFACE:
             if (IS_INSTANCE(loxValue)) {
                 giArg->v_pointer = AS_INSTANCE(loxValue)->foreignPtr;
-            } else if (IS_NUMBER(loxValue)) {
-                giArg->v_int = (int)AS_NUMBER(loxValue);
+            } else if (IS_FLOAT(loxValue)) {
+                giArg->v_int = (int)AS_FLOAT(loxValue);
             } else if (IS_INT(loxValue)) {
                 giArg->v_int = (int)AS_INT(loxValue);
             } else {
@@ -1177,7 +1177,7 @@ static Value giLoadNative(int argCount, Value* args) {
                 const char* val_name = g_base_info_get_name((GIBaseInfo*)val_info);
                 int64_t val = g_value_info_get_value(val_info);
 
-                tableSet(&enumInstance->fields, copyString(val_name, strlen(val_name)), NUMBER_VAL((double)val));
+                tableSet(&enumInstance->fields, copyString(val_name, strlen(val_name)), FLOAT_VAL((double)val));
                 g_base_info_unref(val_info);
             }
 

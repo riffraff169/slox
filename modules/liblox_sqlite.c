@@ -67,13 +67,15 @@ Value sqliteExec(int argCount, Value* args) {
             Value val = params->values[i];
             int paramIdx = i + 1;
 
-            if (IS_NUMBER(val)) {
-                sqlite3_bind_double(stmt, paramIdx, AS_NUMBER(val));
+            if (IS_FLOAT(val)) {
+                sqlite3_bind_double(stmt, paramIdx, AS_FLOAT(val));
             } else if (IS_STRING(val)) {
                 ObjString* str = AS_STRING(val);
                 sqlite3_bind_text(stmt, paramIdx, str->chars, str->length, SQLITE_TRANSIENT);
             } else if (IS_BOOL(val)) {
                 sqlite3_bind_int(stmt, paramIdx, AS_BOOL(val) ? 1 : 0);
+            } else if (IS_INT(val)) {
+                sqlite3_bind_int(stmt, paramIdx, AS_INT(val));
             } else if (IS_NIL(val)) {
                 sqlite3_bind_null(stmt, paramIdx);
             }
@@ -103,7 +105,7 @@ Value sqliteExec(int argCount, Value* args) {
                     val = INT_VAL(sqlite3_column_int64(stmt, i));
                     break;
                 case SQLITE_FLOAT:
-                    val = NUMBER_VAL(sqlite3_column_double(stmt, i));
+                    val = FLOAT_VAL(sqlite3_column_double(stmt, i));
                     break;
                 case SQLITE_TEXT:
                     {
@@ -141,7 +143,7 @@ Value sqliteExec(int argCount, Value* args) {
         return pop();
     } else {
         pop();
-        return NUMBER_VAL((double)sqlite3_changes(db));
+        return INT_VAL(sqlite3_changes(db));
     }
 }
 

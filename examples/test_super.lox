@@ -1,0 +1,39 @@
+class Parent {
+  getSelf() {
+    return this;
+  }
+
+  getValue() {
+    return this.value;
+  }
+}
+
+class Child < Parent {
+  init() {
+    this.value = "instance_ok";
+  }
+
+  testSelf() {
+    return super.getSelf();
+  }
+
+  testValue() {
+    return super.getValue();
+  }
+}
+
+var child = Child();
+
+// Test 1: Identity check
+if (child.testSelf() == child) {
+  print "PASS: super method bound to instance receiver";
+} else {
+  print "FAIL: super method bound to superclass class object";
+}
+
+// Test 2: Instance property access inside super call
+if (child.testValue() == "instance_ok") {
+  print "PASS: instance fields accessible in super method";
+} else {
+  print "FAIL: could not read instance fields in super method";
+}

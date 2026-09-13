@@ -1,0 +1,15 @@
+require("scanner.lox");
+require("c64_parser.lox");
+
+var source = File.load("sample.a64");
+
+var scanner = AssemblyScanner(source);
+var tokens = scanner.scanTokens();
+
+var parser = AssemblyParser(tokens);
+var statements = parser.parse();
+
+print "=== PARSED STATEMENTS ===";
+for (var i = 0; i < statements.length(); i += 1) {
+  print statements[i];
+}

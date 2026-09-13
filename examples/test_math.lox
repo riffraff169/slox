@@ -1,0 +1,79 @@
+// ============================================================================
+// Complete Arithmetic & Type Promotion Test Suite
+// ============================================================================
+
+var passed = 0;
+var failed = 0;
+
+fun assert(condition, message) {
+  if (condition) {
+    passed = passed + 1;
+    print "PASS: " + message;
+  } else {
+    failed = failed + 1;
+    print "FAIL: " + message;
+  }
+}
+
+print "=== 1. Division & Float Promotion ===";
+assert(16 / 2 == 8.0, "16 / 2 yields float 8.0");
+assert(15 / 2 == 7.5, "15 / 2 yields float 7.5 (no integer truncation)");
+assert(15 / 2.0 == 7.5, "15 / 2.0 yields float 7.5");
+assert(15.0 / 2 == 7.5, "15.0 / 2 yields float 7.5");
+assert(0 / 16 == 0.0, "0 / 16 yields float 0.0");
+
+print "";
+print "=== 2. Addition, Subtraction & Multiplication Preservation ===";
+// Int + Int should remain Int, Int + Float promotes to Float
+assert(10 + 5 == 15, "Int + Int stays Int");
+assert(10 + 5.0 == 15.0, "Int + Float promotes to Float");
+assert(20 - 8 == 12, "Int - Int stays Int");
+assert(20 - 8.5 == 11.5, "Int - Float promotes to Float");
+assert(4 * 5 == 20, "Int * Int stays Int");
+assert(4 * 2.5 == 10.0, "Int * Float promotes to Float");
+
+print "";
+print "=== 3. Comparisons Across Types ===";
+assert(15 < 16.0, "15 < 16.0 is true");
+assert(16.0 < 16 == false, "16.0 < 16 is false");
+assert(16 <= 16.0, "16 <= 16.0 is true");
+assert(17.0 > 16, "17.0 > 16 is true");
+assert(16.0 == 16, "16.0 == 16 is true");
+
+print "";
+print "=== 4. Loop Condition Evaluation ===";
+var iterations = 0;
+for (var i = 0; i < 16; i += 1) {
+  iterations = iterations + 1;
+}
+assert(iterations == 16, "Standard integer for-loop completes 16 iterations");
+
+iterations = 0;
+for (var y = 0; y < 16.0; y += 1.0) {
+  iterations = iterations + 1;
+}
+assert(iterations == 16, "Float-bound for-loop completes 16 iterations");
+
+print "";
+print "=== 5. Gradient & Bilinear Coordinate Math ===";
+var width = 16;
+var height = 16;
+var x = 8;
+var y = 8;
+
+var maxSteps = (width - 1) + (height - 1); // 30
+var t = (x + y) / maxSteps;                 // 16 / 30 = 0.533333...
+assert(t > 0.53 and t < 0.54, "(8 + 8) / 30 yields correct ratio (~0.533)");
+
+var u = x / (width - 1);                    // 8 / 15 = 0.533333...
+assert(u > 0.53 and u < 0.54, "8 / (16 - 1) yields correct ratio (~0.533)");
+
+var startR = 0;
+var endR = 255;
+var interpolatedR = startR + t * (endR - startR);
+assert(interpolatedR > 135.0 and interpolatedR < 137.0, "Color interpolation maps cleanly to float");
+
+print "";
+print "=== Summary ===";
+print "Passed: " + String(passed);
+print "Failed: " + String(failed);

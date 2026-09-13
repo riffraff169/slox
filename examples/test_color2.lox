@@ -8,3 +8,12 @@ print SloxColorizer.toTerminal(sampleCode);
 // 2. Generate HTML File content
 var htmlOutput = SloxColorizer.toHtml(sampleCode, true);
 // Stdio.write_file("output.html", htmlOutput); // If your Slox VM has file write builtins
+
+var str = r"[a-z]+";
+var num = 1.23e+5;
+
+try {
+  str = "Fred";
+} catch (e) {
+  print "error";
+}

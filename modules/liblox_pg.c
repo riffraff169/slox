@@ -81,7 +81,7 @@ Value postgresQuery(int argCount, Value* args) {
                     paramValues[i] = AS_CSTRING(val);
                 } else {
                     char buf[64];
-                    if (IS_NUMBER(val)) snprintf(buf, sizeof(buf), "%g", AS_NUMBER(val));
+                    if (IS_FLOAT(val)) snprintf(buf, sizeof(buf), "%g", AS_FLOAT(val));
                     else if (IS_INT(val)) snprintf(buf, sizeof(buf), "%" PRId64, AS_INT(val));
                     else if (IS_BOOL(val)) snprintf(buf, sizeof(buf), "%s", AS_BOOL(val) ? "true" : "false");
                     paramValues[i] = strdup(buf);
@@ -158,7 +158,7 @@ Value postgresQuery(int argCount, Value* args) {
                                 char* endptr;
                                 double num = strtod(valStr, &endptr);
                                 if (endptr != valStr) {
-                                    val = NUMBER_VAL(num);
+                                    val = FLOAT_VAL(num);
                                 } else {
                                     val = OBJ_VAL(copyString(valStr, valLen));
                                 }

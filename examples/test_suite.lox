@@ -1,0 +1,53 @@
+// test_suite.lox
+
+var testsRun = 0;
+var testsFailed = 0;
+
+fun assert(condition, message) {
+    testsRun = testsRun + 1;
+    if (!condition) {
+        print "  [FAIL] " + message;
+        testsFailed = testsFailed + 1;
+    } else {
+        print "  [PASS] " + message;
+    }
+}
+
+fun report() {
+    print "==================================";
+    print "Tests Run:    " + testsRun;
+    print "Tests Failed: " + testsFailed;
+    if (testsFailed == 0) {
+        print "Status:       ALL PASSED! 🎉";
+    } else {
+        print "Status:       SOME FAILED ❌";
+    }
+    print "==================================";
+}
+
+// 1. Primitive and Type Semantics
+print "Running Type Semantics Tests...";
+assert(typeof(5) == "Integer", "typeof(5) should be Integer");
+assert(typeof(7.2) == "Float", "typeof(7.2) should be Float");
+assert(typeof("hello") == "String", "typeof('hello') should be String");
+assert(typeof(true) == "Bool", "typeof(true) should be Bool");
+assert(typeof(nil) == "Nil", "typeof(nil) should be Nil");
+
+// 2. Bound Method and Closure Tests
+print "\nRunning Method and Closure Tests...";
+assert(typeof(Number.to_int) == "Function", "Torn-off method should identify as Function");
+
+// 3. Pipeline / Array Helper Tests
+print "\nRunning Array Pipeline Tests...";
+var numbers = [1.5, 2.7, 3.2];
+
+// Test with standard closure callback
+var doubled = numbers.map(fun(x) { return x * 2; });
+assert(doubled[0] == 3.0 and doubled[2] == 6.4, "map() should process Lox closures");
+
+// Test with native bound-method callback (Tear-off)
+var integers = numbers.map(Number.to_int);
+assert(integers[0] == 1 and integers[1] == 2 and integers[2] == 3, "map() should process native method tear-offs");
+
+// Final Report
+report();

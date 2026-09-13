@@ -43,7 +43,7 @@ static void c_signal_handler(int sig) {
 // Returns:
 //   Nil
 Value lox_signal_trap(int argCount, Value* args) {
-    int sig = AS_NUMBER(args[0]);
+    int sig = AS_NUMERIC(args[0]);
     Value callback = args[1];
 
     if (sig <= 0 || sig >= MAX_SIGNALS) {
@@ -78,7 +78,7 @@ void process_pending_signals() {
             Value cb = signal_callbacks[sig];
             if (!IS_NIL(cb)) {
                 push(cb);
-                push(NUMBER_VAL(sig));
+                push(INT_VAL(sig));
                 callValue(cb, 1);
             }
         }
@@ -103,13 +103,13 @@ uint64_t getCurrentTimeMs(void) {
 // Returns:
 //   Number: id
 Value timerStartNative(int argCount, Value* args) {
-    int offset = IS_NUMBER(args[0]) ? 0 : 1;
-    if (argCount < offset + 3 || !IS_NUMBER(args[offset]) || !IS_NUMBER(args[offset + 1])) {
-        return NUMBER_VAL(-1);
+    int offset = IS_INT(args[0]) ? 0 : 1;
+    if (argCount < offset + 3 || !IS_NUMERIC(args[offset]) || !IS_NUMERIC(args[offset + 1])) {
+        return INT_VAL(-1);
     }
 
-    double delayMs = AS_NUMBER(args[offset]);
-    double intervalMs = AS_NUMBER(args[offset + 1]);
+    double delayMs = AS_NUMERIC(args[offset]);
+    double intervalMs = AS_NUMERIC(args[offset + 1]);
     Value callback = args[2];
 
     if (delayMs < 0) delayMs = 0;
@@ -123,7 +123,7 @@ Value timerStartNative(int argCount, Value* args) {
     }
 
     if (slot == -1) {
-        return NUMBER_VAL(-1);
+        return INT_VAL(-1);
     }
 
     int id = timerMgr.nextId++;
@@ -135,7 +135,7 @@ Value timerStartNative(int argCount, Value* args) {
     timerMgr.entries[slot].callback = callback;
     timerMgr.entries[slot].active = true;
 
-    return NUMBER_VAL(id);
+    return INT_VAL(id);
 }
 
 //@ Timer
@@ -150,13 +150,13 @@ Value timerStopNative(int argCount, Value* args) {
         return BOOL_VAL(false);
     }
 
-    Value handleVal = IS_NUMBER(args[0]) ? args[0] : ((argCount > 1 && IS_NUMBER(args[1])) ? args[1] : NIL_VAL);
+    Value handleVal = IS_INT(args[0]) ? args[0] : ((argCount > 1 && IS_INT(args[1])) ? args[1] : NIL_VAL);
 
-    if (!IS_NUMBER(handleVal)) {
+    if (!IS_INT(handleVal)) {
         return BOOL_VAL(false);
     }
 
-    int handle = (int)AS_NUMBER(handleVal);
+    int handle = (int)AS_INT(handleVal);
     for (int i = 0; i < MAX_TIMERS; i++) {
         if (timerMgr.entries[i].active && timerMgr.entries[i].id == handle) {
             timerMgr.entries[i].active = false;

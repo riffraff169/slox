@@ -79,7 +79,7 @@ void defineNativeClassConstant(ObjClass* klass, const char* name, Value value) {
 //= clock()
 // Interface to c function clock(3)
 Value clockNative(int argCount, Value* args) {
-    return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+    return FLOAT_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
 //= str(val)
@@ -126,8 +126,8 @@ Value chrNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         codePoint = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        codePoint = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        codePoint = (int64_t)AS_FLOAT(args[0]);
     } else {
         return NIL_VAL;
     }
@@ -288,9 +288,14 @@ static inline Value getCheckTarget(int argCount, Value* args) {
 // Checks if a value is a number
 // Returns:
 //   Bool
+Value isFloatNative(int argCount, Value* args) {
+    Value target = getCheckTarget(argCount, args);
+    return BOOL_VAL(IS_FLOAT(target));
+}
+
 Value isNumberNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
-    return BOOL_VAL(IS_NUMBER(target));
+    return BOOL_VAL(IS_FLOAT(target) || IS_INT(target));
 }
 
 //= isint(val)
@@ -838,7 +843,7 @@ void initCoreLibrary() {
     X("slice", stringSliceNative) \
     X("substring", stringSliceNative) \
     X("to_array", stringToarrayNative) \
-    X("to_number", toNumberNative) \
+    X("to_float", toFloatNative) \
     X("tokens", stringTokensNative) \
     X("pad_center", stringPadCenterNative) \
     X("pad_right", stringPadRightNative) \
@@ -1011,8 +1016,8 @@ Value stringSplitNative(int argCount, Value* args) {
         pop();
 
         return pop();
-    } else if (IS_INT(val) || (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val)))) {
-        int64_t raw_size = IS_INT(val) ? AS_INT(val) : (int64_t)AS_NUMBER(val);
+    } else if (IS_INT(val) || (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val)))) {
+        int64_t raw_size = IS_INT(val) ? AS_INT(val) : (int64_t)AS_FLOAT(val);
 
 
         if (raw_size <= 0) {
@@ -1069,8 +1074,8 @@ Value stringSliceNative(int argCount, Value* args) {
     int64_t rawStart;
     if (IS_INT(args[0])) {
         rawStart = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        rawStart = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        rawStart = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("slice() start index must be an integer.");
         return NIL_VAL;
@@ -1089,8 +1094,8 @@ Value stringSliceNative(int argCount, Value* args) {
         int64_t rawEnd;
         if (IS_INT(args[1])) {
             rawEnd = AS_INT(args[1]);
-        } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-            rawEnd = (int64_t)AS_NUMBER(args[1]);
+        } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+            rawEnd = (int64_t)AS_FLOAT(args[1]);
         } else {
             runtimeError("slice() end index must be an integer.");
             return NIL_VAL;
@@ -1182,8 +1187,8 @@ Value stringPadCenterNative(int argCount, Value* args) {
     int64_t rawWidth;
     if (IS_INT(args[0])) {
         rawWidth = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("pad_center() width must be an integer.");
         return NIL_VAL;
@@ -1222,16 +1227,16 @@ Value stringPadCenterNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadRightNative(int argCount, Value* args) {
-    if (argCount < 2 || !IS_NUMBER(args[1])) {
-        runtimeError("pad_left() expects a number and a 1-character pad string.");
+    if (argCount < 2 || !IS_STRING(args[1])) {
+        runtimeError("pad_right() expects a number and a 1-character pad string.");
         return NIL_VAL;
     }
 
     int64_t rawWidth;
     if (IS_INT(args[0])) {
         rawWidth = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("pad_right() width must be an integer.");
         return NIL_VAL;
@@ -1274,8 +1279,8 @@ Value stringPadLeftNative(int argCount, Value* args) {
     int64_t rawWidth;
     if (IS_INT(args[0])) {
         rawWidth = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        rawWidth = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("pad_left() width must be an integer.");
         return NIL_VAL;
@@ -1411,8 +1416,8 @@ Value stringFormatNative(int argCount, Value* args) {
                     break;
                 case 'f':
                     {
-                        if (IS_NUMBER(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_NUMBER(val));
+                        if (IS_FLOAT(val)) {
+                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_FLOAT(val));
                         } else {
                             formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
                         }
@@ -1911,22 +1916,23 @@ void initSetClass() {
     defineNativeMethod(vm.setClass, "to_map", setToMapNative);
 }
 
-#define MATH_DUAL_METHOD_LIST(X) \
+#define MATH_NUMBER_METHOD_LIST(X) \
     X("sqrt", mathSqrtNative) \
     X("abs", mathAbsNative) \
     X("floor", mathFloorNative) \
     X("ceil", mathCeilNative) \
     X("exp", mathExpNative) \
-    X("hex", hexNative) \
-    X("oct", octNative) \
-    X("bin", binNative) \
     X("sin", mathSinNative) \
     X("tan", mathTanNative) \
     X("atan2", mathAtan2Native) \
     X("cos", mathCosNative) \
     X("acos", mathAcosNative) \
-    X("to_int", numberToIntNative) \
     X("to_fixed", numberToFixedNative)
+
+#define MATH_INT_ONLY_METHOD_LIST(X) \
+    X("hex", hexNative) \
+    X("oct", octNative) \
+    X("bin", binNative) 
 
 #define MATH_STATIC_ONLY_METHOD_LIST(X) \
     X("random", mathRandomNative) \
@@ -1937,18 +1943,34 @@ void initSetClass() {
     X("from_hex", fromHexNative) \
     X("from_bin", fromBinNative) \
     X("round", mathRoundNative) \
-    X("to_number", toNumberNative)
+    X("to_float", toFloatNative)
 
+
+//    X("to_int", numberToIntNative)
+
+/*
 #define EXTRACT_MATH_OP(outVar, funcName) \
     double outVar; \
     if (IS_INT(args[-1])) { \
         outVar = (double)AS_INT(args[-1]); \
-    } else if (IS_NUMBER(args[-1])) { \
-        outVar = AS_NUMBER(args[-1]); \
+    } else if (IS_FLOAT(args[-1])) { \
+        outVar = AS_FLOAT(args[-1]); \
     } else if (argCount > 0 && IS_INT(args[0])) { \
         outVar = (double)AS_INT(args[0]); \
-    } else if (argCount > 0 && IS_NUMBER(args[0])) { \
-        outVar = AS_NUMBER(args[0]); \
+    } else if (argCount > 0 && IS_FLOAT(args[0])) { \
+        outVar = AS_FLOAT(args[0]); \
+    } else { \
+        runtimeError(funcName "() expects a numeric receiver or a numeric argument."); \
+        return NIL_VAL; \
+    }
+    */
+
+#define EXTRACT_MATH_OP(outVar, funcName) \
+    double outVar; \
+    if (IS_NUMERIC(args[-1])) { \
+        outVar = AS_NUMERIC(args[-1]); \
+    } else if (argCount > 0 && IS_NUMERIC(args[0])) { \
+        outVar = AS_NUMERIC(args[0]); \
     } else { \
         runtimeError(funcName "() expects a numeric receiver or a numeric argument."); \
         return NIL_VAL; \
@@ -1956,24 +1978,20 @@ void initSetClass() {
 
 Value mathSqrtNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "sqrt");
-    if (val < 0) {
-        runtimeError("sqrt() argument cannot be negative.");
-        return NIL_VAL;
-    }
-    return NUMBER_VAL(sqrt(val));
+    return FLOAT_VAL(sqrt(val));
 }
 
 Value mathAbsNative(int argCount, Value* args) {
     //EXTRACT_MATH_OP(val, "abs");
-    Value target = IS_INT(args[-1]) || IS_NUMBER(args[-1]) ? args[-1] :
-        (argCount > 0 ? args[0] : NIL_VAL);
+    Value target = IS_NUMERIC(args[-1]) ? args[-1] :
+        (argCount > 0 && IS_NUMERIC(args[0]) ? args[0] : NIL_VAL);
 
     if (IS_INT(target)) {
         int64_t v = AS_INT(target);
         return INT_VAL(v < 0 ? -v : v);
-    } else if (IS_NUMBER(target)) {
-        double v = AS_NUMBER(target);
-        return NUMBER_VAL(fabs(v));
+    } else if (IS_FLOAT(target)) {
+        double v = AS_FLOAT(target);
+        return FLOAT_VAL(fabs(v));
     }
 
     runtimeError("abs() expects a numeric receiver or a numeric argument.");
@@ -1981,45 +1999,73 @@ Value mathAbsNative(int argCount, Value* args) {
 }
 
 Value mathFloorNative(int argCount, Value* args) {
-    if ((IS_INT(args[-1])) || (argCount > 0 && IS_INT(args[0]))) {
-        return IS_INT(args[-1]) ? args[-1] : args[0];
+    if (IS_INT(args[-1])) {
+        return args[-1];
+    }
+    if (IS_FLOAT(args[-1])) {
+        double result = floor(AS_FLOAT(args[-1]));
+        if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+            return INT_VAL((int64_t)result);
+        }
+        return FLOAT_VAL(result);
     }
 
-    EXTRACT_MATH_OP(val, "floor");
-    double result = floor(val);
-
-    if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
-        return INT_VAL((int64_t)result);
+    if (argCount > 0) {
+        if (IS_INT(args[0])) {
+            return args[0];
+        }
+        if (IS_FLOAT(args[0])) {
+            double result = floor(AS_FLOAT(args[0]));
+            if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+                return INT_VAL((int64_t)result);
+            }
+            return FLOAT_VAL(result);
+        }
     }
 
-    return NUMBER_VAL(result);
+    runtimeError("floor() expects a numeric receiver or argument.");
+    return NIL_VAL;
 }
 
 Value mathCeilNative(int argCount, Value* args) {
-    if ((IS_INT(args[-1])) || (argCount > 0 && IS_INT(args[0]))) {
-        return IS_INT(args[-1]) ? args[-1] : args[0];
+    if (IS_INT(args[-1])) {
+        return args[-1];
+    }
+    if (IS_FLOAT(args[-1])) {
+        double result = ceil(AS_FLOAT(args[-1]));
+        if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+            return INT_VAL((int64_t)result);
+        }
+        return FLOAT_VAL(result);
     }
 
-    EXTRACT_MATH_OP(val, "ceil");
-    double result = ceil(val);
-
-    if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
-        return INT_VAL((int64_t)result);
+    if (argCount > 0) {
+        if (IS_INT(args[0])) {
+            return args[0];
+        }
+        if (IS_FLOAT(args[0])) {
+            double result = ceil(AS_FLOAT(args[0]));
+            if (result >= (double)INT64_MIN && result <= (double)INT64_MAX) {
+                return INT_VAL((int64_t)result);
+            }
+            return FLOAT_VAL(result);
+        }
     }
 
-    return NUMBER_VAL(result);
+    runtimeError("ceil() expects a numeric receiver or argument.");
+    return NIL_VAL;
 }
 
 Value mathRandomNative(int argCount, Value* args) {
     // variant 1: zero arguments / static Math.random() -> float [0, 1)
-    if (argCount == 0 && !IS_INT(args[-1]) && !IS_NUMBER(args[-1])) {
+    if (argCount == 0 && !IS_INT(args[-1]) && !IS_FLOAT(args[-1])) {
         double r = (double)rand();
         double m = (double)RAND_MAX;
-        return NUMBER_VAL(r / (m + 1.0));
+        return FLOAT_VAL(r / (m + 1.0));
     }
 
     // variant 2: single argument or instance method x.randm()
-    if (argCount == 1 || (argCount == 0 && (IS_INT(args[-1]) || IS_NUMBER(args[-1])))) {
+    if (argCount == 1 || (argCount == 0 && (IS_INT(args[-1]) || IS_FLOAT(args[-1])))) {
         Value bound = (argCount > 0) ? args[0] : args[-1];
 
         // integer max: returns [0, max) as VAL_INT
@@ -2033,19 +2079,19 @@ Value mathRandomNative(int argCount, Value* args) {
         }
 
         // exact integer float max: returns [0, max) as VAL_INT
-        if (IS_NUMBER(bound) && isExactInteger(AS_NUMBER(bound))) {
-            int64_t max = (int64_t)AS_NUMBER(bound);
+        if (IS_FLOAT(bound) && isExactInteger(AS_FLOAT(bound))) {
+            int64_t max = (int64_t)AS_FLOAT(bound);
             if (max <= 0) return INT_VAL(0);
 
             uint64_t r = ((uint64_t)rand() << 15) | (uint64_t)rand();
             return INT_VAL((int64_t)(r % (uint64_t)max));
         }
 
-        // continuous float max: returns [0, max) as VAL_NUMBER
-        if (IS_NUMBER(bound)) {
-            double max = AS_NUMBER(bound);
+        // continuous float max: returns [0, max) as VAL_FLOAT
+        if (IS_FLOAT(bound)) {
+            double max = AS_FLOAT(bound);
             double r = (double)rand() / ((double)RAND_MAX + 1.0);
-            return NUMBER_VAL(r * max);
+            return FLOAT_VAL(r * max);
         }
     }
 
@@ -2054,18 +2100,18 @@ Value mathRandomNative(int argCount, Value* args) {
     Value maxVal = args[0];
 
     // if receiver was a math object, min is args[0] and max is args[1]
-    if (argCount >= 2 && !IS_INT(minVal) && !(IS_NUMBER(minVal))) {
+    if (argCount >= 2 && !IS_INT(minVal) && !(IS_FLOAT(minVal))) {
         minVal = args[0];
         maxVal = args[1];
     }
 
     // both integer range: returns [min, max) as VAL_INT
-    bool minIsInt = IS_INT(minVal) || (IS_NUMBER(minVal) && isExactInteger(AS_NUMBER(minVal)));
-    bool maxIsInt = IS_INT(maxVal) || (IS_NUMBER(maxVal) && isExactInteger(AS_NUMBER(maxVal)));
+    bool minIsInt = isIntegral(minVal);
+    bool maxIsInt = isIntegral(maxVal);
 
     if (minIsInt && maxIsInt) {
-        int64_t min = IS_INT(minVal) ? AS_INT(minVal) : (int64_t)AS_NUMBER(minVal);
-        int64_t max = IS_INT(maxVal) ? AS_INT(maxVal) : (int64_t)AS_NUMBER(maxVal);
+        int64_t min = valueToInt64(minVal);
+        int64_t max = valueToInt64(maxVal);
 
         if (min >= max) return INT_VAL(min);
 
@@ -2074,19 +2120,19 @@ Value mathRandomNative(int argCount, Value* args) {
         return INT_VAL(min + (int64_t)(r % range));
     }
 
-    // floating range: returns [min, max) as VAL_NUMBER
-    double min = IS_INT(minVal) ? (double)AS_INT(minVal) : AS_NUMBER(minVal);
-    double max = IS_INT(maxVal) ? (double)AS_INT(maxVal) : AS_NUMBER(maxVal);
+    // floating range: returns [min, max) as VAL_FLOAT
+    double min = AS_NUMERIC(minVal);
+    double max = AS_NUMERIC(maxVal);
 
-    if (min >= max) return NUMBER_VAL(min);
+    if (min >= max) return FLOAT_VAL(min);
 
     double r = (double)rand() / ((double)RAND_MAX + 1.0);
-    return NUMBER_VAL(min + r * (max - min));
+    return FLOAT_VAL(min + r * (max - min));
 }
 
 Value mathExpNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "exp");
-    return NUMBER_VAL(exp(val));
+    return FLOAT_VAL(exp(val));
 }
 
 Value hexNative(int argCount, Value* args) {
@@ -2097,28 +2143,40 @@ Value hexNative(int argCount, Value* args) {
 #define EXTRACT_HEX_NUM(val, outNum) \
     if (IS_INT(val)) { \
         outNum = (uint64_t)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outNum = (uint64_t)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
+        runtimeError("hex() expects an integer or float with an exact integer value."); \
         return NIL_VAL; \
     }
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+    if (IS_NUMERIC(args[-1])) {
         EXTRACT_HEX_NUM(args[-1], num);
 
         if (argCount >= 1) {
-            if (IS_INT(args[0])) precision = (int)AS_INT(args[0]);
-            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) precision = (int)AS_NUMBER(args[0]);
+            if (IS_INT(args[0])) {
+                precision = (int)AS_INT(args[0]);
+            } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+                precision = (int)AS_FLOAT(args[0]);
+            }
         }
-        if (argCount >= 2 && IS_BOOL(args[1])) prefix = AS_BOOL(args[1]);
+        if (argCount >= 2 && IS_BOOL(args[1])) {
+            prefix = AS_BOOL(args[1]);
+        }
     } else {
         // static call Math.hex(255) or Math.hex(255, 4, false)
-        if (argCount < 1) return NIL_VAL;
+        if (argCount < 1) {
+            runtimeError("hex() requires at least one numeric argument when called statically.");
+            return NIL_VAL;
+        }
         EXTRACT_HEX_NUM(args[0], num);
 
         if (argCount >= 2) {
-            if (IS_INT(args[1])) precision = (int)AS_INT(args[1]);
-            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) precision = (int)AS_NUMBER(args[1]);
+            if (IS_INT(args[1])) {
+                precision = (int)AS_INT(args[1]);
+            } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+                precision = (int)AS_FLOAT(args[1]);
+            }
         }
         if (argCount >= 3 && IS_BOOL(args[2])) prefix = AS_BOOL(args[2]);
     }
@@ -2147,28 +2205,37 @@ Value octNative(int argCount, Value* args) {
 #define EXTRACT_OCT_NUM(val, outNum) \
     if (IS_INT(val)) { \
         outNum = (uint64_t)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outNum = (uint64_t)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
         return NIL_VAL; \
     }
 
     // instance method (64.oct() or 64.oct(3))
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+    if (IS_NUMERIC(args[-1])) {
         EXTRACT_OCT_NUM(args[-1], num);
 
         if (argCount >= 1) {
-            if (IS_INT(args[0])) precision = (int)AS_INT(args[0]);
-            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) precision = (int)AS_NUMBER(args[0]);
+            if (IS_INT(args[0])) {
+                precision = (int)AS_INT(args[0]);
+            } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+                precision = (int)AS_FLOAT(args[0]);
+            }
         }
     } else {
         // static call: Math.oct(64) or Math.oct(64, 3)
-        if (argCount < 1) return NIL_VAL;
+        if (argCount < 1) {
+            runtimeError("oct() requires at least one numeric argument when called statically.");
+            return NIL_VAL;
+        }
         EXTRACT_OCT_NUM(args[0], num);
 
         if (argCount >= 2) {
-            if (IS_INT(args[1])) precision = (int)AS_INT(args[1]);
-            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) precision = (int)AS_NUMBER(args[1]);
+            if (IS_INT(args[1])) {
+                precision = (int)AS_INT(args[1]);
+            } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+                precision = (int)AS_FLOAT(args[1]);
+            }
         }
     }
 
@@ -2192,28 +2259,37 @@ Value binNative(int argCount, Value* args) {
 #define EXTRACT_BIN_NUM(val, outNum) \
     if (IS_INT(val)) { \
         outNum = (uint64_t)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outNum = (uint64_t)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
         return NIL_VAL; \
     }
 
     // instance method 5.bin() or 5.bin(8)
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+    if (IS_NUMERIC(args[-1])) {
         EXTRACT_BIN_NUM(args[-1], num);
 
         if (argCount >= 1) {
-            if (IS_INT(args[0])) min_bits = (int)AS_INT(args[0]);
-            else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) min_bits = (int)AS_NUMBER(args[0]);
+            if (IS_INT(args[0])) {
+                min_bits = (int)AS_INT(args[0]);
+            } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+                min_bits = (int)AS_FLOAT(args[0]);
+            }
         }
     } else {
         // static call: Math.bin(5) or Math.bin(5, 8))
-        if (argCount < 1) return NIL_VAL;
+        if (argCount < 1) {
+            runtimeError("bin() requires at least one numeric argument when called statically.");
+            return NIL_VAL;
+        }
         EXTRACT_BIN_NUM(args[0], num);
 
         if (argCount >= 2) {
-            if (IS_INT(args[1])) min_bits = (int)AS_INT(args[1]);
-            else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) min_bits = (int)AS_NUMBER(args[1]);
+            if (IS_INT(args[1])) {
+                min_bits = (int)AS_INT(args[1]);
+            } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+                min_bits = (int)AS_FLOAT(args[1]);
+            }
         }
     }
 
@@ -2251,14 +2327,17 @@ Value bitTestNative(int argCount, Value* args) {
 #define EXTRACT_INT_VAL(val, outNum) \
     if (IS_INT(val)) { \
         outNum = (uint64_t)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outNum = (uint64_t)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
         return NIL_VAL; \
     }
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
-        if (argCount < 1) return NIL_VAL;
+    if (IS_NUMERIC(args[-1])) {
+        if (argCount < 1) {
+            runtimeError("bit_test requires a bit position argument.");
+            return NIL_VAL;
+        }
         EXTRACT_INT_VAL(args[-1], num);
 
         int64_t rawBit;
@@ -2266,7 +2345,10 @@ Value bitTestNative(int argCount, Value* args) {
         bit = (int)rawBit;
     } else {
         // static call
-        if (argCount < 2) return NIL_VAL;
+        if (argCount < 2) {
+            runtimeError("bit_test requires a target number and a bit position argument.");
+            return NIL_VAL;
+        }
         EXTRACT_INT_VAL(args[0], num);
 
         int64_t rawBit;
@@ -2284,12 +2366,18 @@ Value bitTestNative(int argCount, Value* args) {
 Value mathMinNative(int argCount, Value* args) {
     Value a, b;
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
-        if (argCount < 1) return NIL_VAL;
+    if (IS_NUMERIC(args[-1])) {
+        if (argCount < 1) {
+            runtimeError("min() requires a second numeric argument when called as a method.");
+            return NIL_VAL;
+        }
         a = args[-1];
         b = args[0];
     } else {
-        if (argCount < 2) return NIL_VAL;
+        if (argCount < 2) {
+            runtimeError("min() requires two numeric arguments when called statically.");
+            return NIL_VAL;
+        }
         a = args[0];
         b = args[1];
     }
@@ -2305,21 +2393,27 @@ Value mathMinNative(int argCount, Value* args) {
         return INT_VAL(ia < ib ? ia : ib);
     }
 
-    double da = IS_INT(a) ? (double)AS_INT(a) : AS_NUMBER(a);
-    double db = IS_INT(b) ? (double)AS_INT(b) : AS_NUMBER(b);
+    double da = AS_NUMERIC(a);
+    double db = AS_NUMERIC(b);
 
-    return NUMBER_VAL(fmin(da, db));
+    return FLOAT_VAL(fmin(da, db));
 }
 
 Value mathMaxNative(int argCount, Value* args) {
     Value a, b;
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
-        if (argCount < 1) return NIL_VAL;
+    if (IS_NUMERIC(args[-1])) {
+        if (argCount < 1) {
+            runtimeError("max() requires a second numeric argument when called as a method.");
+            return NIL_VAL;
+        }
         a = args[-1];
         b = args[0];
     } else {
-        if (argCount < 2) return NIL_VAL;
+        if (argCount < 2) {
+            runtimeError("max() requires two numeric arguments when called statically.");
+            return NIL_VAL;
+        }
         a = args[0];
         b = args[1];
     }
@@ -2335,10 +2429,10 @@ Value mathMaxNative(int argCount, Value* args) {
         return INT_VAL(ia > ib ? ia : ib);
     }
 
-    double da = IS_INT(a) ? (double)AS_INT(a) : AS_NUMBER(a);
-    double db = IS_INT(b) ? (double)AS_INT(b) : AS_NUMBER(b);
+    double da = AS_NUMERIC(a);
+    double db = AS_NUMERIC(b);
 
-    return NUMBER_VAL(fmax(da, db));
+    return FLOAT_VAL(fmax(da, db));
 }
 
 Value mathParseNative(int argCount, Value* args) {
@@ -2348,8 +2442,8 @@ Value mathParseNative(int argCount, Value* args) {
 #define EXTRACT_BASE(val) \
     if (IS_INT(val)) { \
         base = (int)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        base = (int)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        base = (int)AS_FLOAT(val); \
     }
 
     if (IS_STRING(args[-1])) {
@@ -2387,7 +2481,7 @@ Value mathParseNative(int argCount, Value* args) {
         return INT_VAL((int64_t)result);
     }
 
-    return NUMBER_VAL((double)result);
+    return FLOAT_VAL((double)result);
 }
 
 Value fromHexNative(int argCount, Value* args) {
@@ -2414,7 +2508,7 @@ Value fromHexNative(int argCount, Value* args) {
         return INT_VAL((int64_t)result);
     }
 
-    return NUMBER_VAL((double)result);
+    return FLOAT_VAL((double)result);
 }
 
 Value fromBinNative(int argCount, Value* args) {
@@ -2446,27 +2540,44 @@ Value fromBinNative(int argCount, Value* args) {
         return INT_VAL((int64_t)result);
     }
 
-    return NUMBER_VAL((double)result);
+    return FLOAT_VAL((double)result);
 }
 
 Value mathRoundNative(int argCount, Value* args) {
-    if (IS_INT(args[-1])) return args[-1];
-    if (argCount > 0 && IS_INT(args[0])) return args[0];
-
-    EXTRACT_MATH_OP(val, "round");
-    double rounded = round(val);
-
-    if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
-        return INT_VAL((int64_t)rounded);
+    if (IS_INT(args[-1])) {
+        return args[-1];
+    }
+    if (IS_FLOAT(args[-1])) {
+        double rounded = round(AS_FLOAT(args[-1]));
+        if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
+            return INT_VAL((int64_t)rounded);
+        }
+        return FLOAT_VAL(rounded);
     }
 
-    return NUMBER_VAL(round(val));
+    if (argCount > 0) {
+        if (IS_INT(args[0])) {
+            return args[0];
+        }
+        if (IS_FLOAT(args[0])) {
+            double rounded = round(AS_FLOAT(args[0]));
+            if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
+                return INT_VAL((int64_t)rounded);
+            }
+            return FLOAT_VAL(rounded);
+        }
+    }
+    runtimeError("round() expects a numeric receiver or argument.");
+    return NIL_VAL;
 }
 
 Value valueToNumber(Value val) {
+}
+
+Value valueToFloat(Value val) {
     if (IS_INT(val)) return val;
 
-    if (IS_NUMBER(val)) return val;
+    if (IS_FLOAT(val)) return val;
 
     if (IS_BOOL(val)) {
         return INT_VAL(AS_BOOL(val) ? 1 : 0);
@@ -2487,60 +2598,73 @@ Value valueToNumber(Value val) {
 
 // also callhandler/constructor
 Value toNumberNative(int argCount, Value* args) {
-    Value value = NUMBER_VAL(0);
+    runtimeError("Cannot instantiate abstrace class 'Number'. Use Integer() or Float() instead.");
+    return NIL_VAL;
+}
 
-    if (IS_STRING(args[-1]) || IS_INT(args[-1]) || IS_NUMBER(args[-1]) ||
-            IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
-        return valueToNumber(args[-1]);
-    } /*else {
-        if (argCount < 1) return NUMBER_VAL(0);
-        value = args[0];
+Value toFloatNative(int argCount, Value* args) {
+    Value target = NIL_VAL;
+
+    if (IS_NUMERIC(args[-1]) || IS_STRING(args[-1]) || IS_BOOL(args[-1]) || IS_NIL(args[-1])) {
+        target = args[-1];
+    } else if (argCount > 0) {
+        target = args[0];
+    } else {
+        return FLOAT_VAL(0.0);
     }
 
-    if (IS_NUMBER(value)) return value;
-    if (!IS_STRING(value)) return NUMBER_VAL(0);
-
-    char* end;
-    const char* str = AS_CSTRING(value);
-    double number = strtod(str, &end);
-
-    if (str == end) {
-        return NUMBER_VAL(0);
+    if (IS_FLOAT(target)) {
+        return target;
     }
-    */
-    if (argCount >= 1) {
-        return valueToNumber(args[0]);
+    if (IS_INT(target)) {
+        return FLOAT_VAL((double)AS_INT(target));
+    }
+    if (IS_BOOL(target)) {
+        return FLOAT_VAL(AS_BOOL(target) ? 1.0 : 0.0);
+    }
+    if (IS_NIL(target)) {
+        return FLOAT_VAL(0.0);
     }
 
-    return INT_VAL(0);
+    if (IS_STRING(target)) {
+        const char* str = AS_CSTRING(target);
+        char* end;
+        errno = 0;
 
-    //return NUMBER_VAL(number);
+        double val = strtod(str, &end);
+
+        if (str == end) {
+            return FLOAT_VAL(0.0);
+        }
+        return FLOAT_VAL(val);
+    }
+
+    runtimeError("to_float() cannot convert given type.");
+    return NIL_VAL;
 }
 
 Value mathSinNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "sin");
-    return NUMBER_VAL(sin(val));
+    return FLOAT_VAL(sin(val));
 }
 
 Value mathTanNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "tan");
-    return NUMBER_VAL(tan(val));
+    return FLOAT_VAL(tan(val));
 }
 
 Value mathAtan2Native(int argCount, Value* args) {
     double y, x;
 
 #define EXTRACT_DOUBLE(val, outDbl) \
-    if (IS_INT(val)) { \
-        outDbl = (double)AS_INT(val); \
-    } else if (IS_NUMBER(val)) { \
-        outDbl = AS_NUMBER(val); \
+    if (IS_NUMERIC(val)) { \
+        outDbl = AS_NUMERIC(val); \
     } else { \
         runtimeError("atan2() requires numeric arguments."); \
         return NIL_VAL; \
     }
        
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+    if (IS_NUMERIC(args[-1])) {
         if (argCount < 1) {
             runtimeError("atan2() expects 1 argument when called as a method.");
             return NIL_VAL;
@@ -2557,17 +2681,17 @@ Value mathAtan2Native(int argCount, Value* args) {
     }
 #undef EXTRACT_DOUBLE
 
-    return NUMBER_VAL(atan2(y, x));
+    return FLOAT_VAL(atan2(y, x));
 }
 
 Value mathCosNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "cos");
-    return NUMBER_VAL(cos(val));
+    return FLOAT_VAL(cos(val));
 }
 
 Value mathAcosNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "acos");
-    return NUMBER_VAL(acos(val));
+    return FLOAT_VAL(acos(val));
 }
 
 Value numberToIntNative(int argCount, Value* args) {
@@ -2589,15 +2713,15 @@ Value numberToFixedNative(int argCount, Value* args) {
 #define EXTRACT_DECIMALS(v) \
     if (IS_INT(v)) { \
         decimals = (int)AS_INT(v); \
-    } else if (IS_NUMBER(v) && isExactInteger(AS_NUMBER(v))) { \
-        decimals = (int)AS_NUMBER(v); \
+    } else if (IS_FLOAT(v) && isExactInteger(AS_FLOAT(v))) { \
+        decimals = (int)AS_FLOAT(v); \
     } else { \
         runtimeError("to_fixed() decimals argument must be a number."); \
         return NIL_VAL; \
     }
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[1])) {
-        val = IS_INT(args[-1]) ? (double)AS_INT(args[-1]) : AS_NUMBER(args[-1]);
+    if (IS_NUMERIC(args[-1])) {
+        val = AS_NUMERIC(args[-1]);
 
         if (argCount < 1) {
             EXTRACT_DECIMALS(args[0]);
@@ -2609,14 +2733,11 @@ Value numberToFixedNative(int argCount, Value* args) {
         }
 
         Value target = args[0];
-        if (IS_INT(target)) {
-            val = (double)AS_INT(target);
-        } else if (IS_NUMBER(target)) {
-            val = AS_NUMBER(target);
-        } else {
+        if (!IS_NUMERIC(target)) {
             runtimeError("to_fixed() target must be numeric.");
             return NIL_VAL;
         }
+        val = AS_NUMERIC(target);
 
         if (argCount >= 2) {
             EXTRACT_DECIMALS(args[1]);
@@ -2642,7 +2763,7 @@ Value numberToStringNative(int argCount, Value* args) {
     Value target = NIL_VAL;
     bool isInstanceCall = false;
 
-    if (IS_INT(args[-1]) || IS_NUMBER(args[-1])) {
+    if (IS_NUMERIC(args[-1])) {
         target = args[-1];
         isInstanceCall = true;
     } else {
@@ -2670,7 +2791,7 @@ Value numberToStringNative(int argCount, Value* args) {
     if (IS_INT(target)) {
         len = snprintf(buffer, sizeof(buffer), "%" PRId64, AS_INT(target));
     } else {
-        len = snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(target));
+        len = snprintf(buffer, sizeof(buffer), "%g", AS_FLOAT(target));
     }
 
     if (len < 0 || len >= (int)sizeof(buffer)) {
@@ -2681,21 +2802,19 @@ Value numberToStringNative(int argCount, Value* args) {
 }
 
 void initMathLibrary() {
-    /*
-    ObjString* mathName = copyString("Math", 4);
-    push(OBJ_VAL(mathName));
-    ObjClass* mathClass = newClass(mathName);
-    push(OBJ_VAL(mathClass));
-    tableSet(&vm.globals, mathName, OBJ_VAL(mathClass));
-    */
     ObjClass* mathClass = defineBuiltinClass("Math", vm.objectClass, &vm.mathMetaClass, true);
     ObjClass* mathMeta = mathClass->obj.klass;
 
 #define X(name, func) \
     defineNativeMethod(mathMeta, name, func); \
-    defineNativeMethod(vm.numberClass, name, func); \
+    defineNativeMethod(vm.numberClass, name, func);
+    MATH_NUMBER_METHOD_LIST(X)
+#undef X
+
+#define X(name, func) \
+    defineNativeMethod(mathMeta, name, func); \
     defineNativeMethod(vm.integerClass, name, func);
-    MATH_DUAL_METHOD_LIST(X)
+    MATH_INT_ONLY_METHOD_LIST(X)
 #undef X
 
 #define X(name, func) defineNativeMethod(mathMeta, name, func);
@@ -2703,7 +2822,8 @@ void initMathLibrary() {
 #undef X
 
     defineNativeMethod(vm.numberClass, "to_string", numberToStringNative);
-    defineNativeMethod(vm.integerClass, "to_string", numberToStringNative);
+    defineNativeMethod(vm.numberClass, "to_int", numberToIntNative);
+    //defineNativeMethod(vm.integerClass, "to_string", numberToStringNative);
 
     // or if want single source:
 #define X(name, func, isDual) \
@@ -2714,8 +2834,8 @@ void initMathLibrary() {
     // then: MATH_SYSTEM_METHODS(X)
 #undef X
 
-    defineNativeClassConstant(mathClass, "PI", NUMBER_VAL(3.1415926535897932));
-    defineNativeClassConstant(mathClass, "E",  NUMBER_VAL(2.7182818284590452));
+    defineNativeClassConstant(mathClass, "PI", FLOAT_VAL(3.1415926535897932));
+    defineNativeClassConstant(mathClass, "E",  FLOAT_VAL(2.7182818284590452));
 
     /*
     pop();
@@ -2885,7 +3005,7 @@ Value arrayReduceNative(int argCount, Value* args) {
         }
 
         if (array->count == 0) {
-            return NUMBER_VAL(0);
+            return FLOAT_VAL(0);
             //runtimeError("Cannot reuduce an empty array with no initial value.");
             //return NIL_VAL;
         }
@@ -3027,9 +3147,22 @@ Value arraySwapDeleteNative(int argCount, Value* args) {
     }
 
     ObjArray* array = AS_ARRAY(args[-1]);
-    int index = AS_NUMBER(args[0]);
+    Value indexVal = args[0];
+    int64_t index;
 
-    if (index < 0 || index >= array->count) return NIL_VAL;
+    if (IS_INT(indexVal)) {
+        index = AS_INT(indexVal);
+    } else if (IS_FLOAT(indexVal) && isExactInteger(AS_FLOAT(indexVal))) {
+        index = (int64_t)AS_FLOAT(indexVal);
+    } else {
+        runtimeError("swap_delete() index must be an integer.");
+        return NIL_VAL;
+    }
+
+    if (index < 0 || index >= array->count) {
+        runtimeError("swap_delete() index out of bounds.");
+        return NIL_VAL;
+    }
 
     Value removed = array->values[index];
 
@@ -3047,9 +3180,20 @@ Value arrayDeleteAtNative(int argCount, Value* args) {
     }
 
     ObjArray* array = AS_ARRAY(args[-1]);
-    int index = AS_NUMBER(args[0]);
+    Value indexVal = args[0];
+    int64_t index;
+
+    if (IS_INT(indexVal)) {
+        index = AS_INT(indexVal);
+    } else if (IS_FLOAT(indexVal) && isExactInteger(AS_FLOAT(indexVal))) {
+        index = (int64_t)AS_FLOAT(indexVal);
+    } else {
+        runtimeError("delete_at() index must be an integer.");
+        return NIL_VAL;
+    }
 
     if (index < 0 || index >= array->count) {
+        runtimeError("delete_at() index out of bounds.");
         return NIL_VAL;
     }
 
@@ -3187,8 +3331,8 @@ Value arraySliceNative(int argCount, Value* args) {
 #define EXTRACT_INDEX(val, outIdx) \
     if (IS_INT(val)) { \
         outIdx = AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outIdx = (int64_t)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outIdx = (int64_t)AS_FLOAT(val); \
     } else { \
         runtimeError("slic() index must be an integer."); \
         return NIL_VAL; \
@@ -3235,10 +3379,14 @@ static int defaultSortComparator(const void* a, const void* b) {
             return (ia > ib) - (ia < ib);
         }
 
-        double da = IS_INT(valA) ? (double)AS_INT(valA) : AS_NUMBER(valA);
-        double db = IS_INT(valB) ? (double)AS_INT(valB) : AS_NUMBER(valB);
-        double diff = da - db;
-        return (diff > 0) - (diff < 0);
+        double da = AS_NUMERIC(valA);
+        double db = AS_NUMERIC(valB);
+
+        if (isnan(da) || isnan(db)) {
+            if (isnan(da) && isnan(db)) return 0;
+            return isnan(da) ? 1 : -1;
+        }
+        return (da > db) - (da < db);
     }
 
     if (IS_STRING(valA) && IS_STRING(valB)) {
@@ -3285,8 +3433,8 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
             int64_t val = AS_INT(result);
             return (val > 0) - (val < 0);
         }
-        if (IS_NUMBER(result)) {
-            double val = AS_NUMBER(result);
+        if (IS_FLOAT(result)) {
+            double val = AS_FLOAT(result);
             return (val > 0) - (val < 0);
         }
         if (IS_BOOL(result)) {
@@ -3313,17 +3461,40 @@ Value arraySortNative(int argCount, Value* args) {
 }
 
 Value arraySortSliceNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("sort_slice() expects start and end index arguments.");
+        return NIL_VAL;
+    }
+
     ObjArray* array = AS_ARRAY(args[-1]);
     if (array->count < 2) return args[-1];
     
-    int start = AS_NUMBER(args[0]);
-    int end = AS_NUMBER(args[1]);
+    int64_t start, end;
+
+    if (IS_INT(args[0])) {
+        start = AS_INT(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        start = (int64_t)AS_FLOAT(args[0]);
+    } else {
+        runtimeError("sort_slice() start index must be an integer.");
+        return NIL_VAL;
+    }
+
+    if (IS_INT(args[1])) {
+        end = AS_INT(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        runtimeError("sort_slice() end index must be an integer.");
+        return NIL_VAL;
+    }
     if (start < 0 || end > array->count || start > end) {
         return args[-1];
     }
 
     Value* sliceStart = &array->values[start];
-    int count = end - start;
+    int count = (int)(end - start);
+
+    if (count < 2) return args[-1];
+
     if (argCount >= 3 && IS_CLOSURE(args[2])) {
         qsort_r(sliceStart, count, sizeof(Value),
                 loxSortComparator, AS_CLOSURE(args[2]));
@@ -3388,8 +3559,8 @@ Value arrayStringNative(int argCount, Value* args) {
 
         if (IS_INT(v)) {
             byteVal = AS_INT(v);
-        } else if (IS_NUMBER(v)) {
-            double dbl = AS_NUMBER(v);
+        } else if (IS_FLOAT(v)) {
+            double dbl = AS_FLOAT(v);
             if (!isExactInteger(dbl)) {
                 FREE_ARRAY(uint8_t, buffer, count);
                 runtimeError("Byte value at index %d must be an integer.", i);
@@ -4033,8 +4204,8 @@ Value fileReadNative(int argCount, Value* args) {
         Value lenVal = args[0];
         if (IS_INT(lenVal)) {
             length = AS_INT(lenVal);
-        } else if (IS_NUMBER(lenVal) && isExactInteger(AS_NUMBER(lenVal))) {
-            length = (int64_t)AS_NUMBER(lenVal);
+        } else if (IS_FLOAT(lenVal) && isExactInteger(AS_FLOAT(lenVal))) {
+            length = (int64_t)AS_FLOAT(lenVal);
         } else {
             return errorResult("%s", "Read length must be an integer.");
         }
@@ -4173,7 +4344,7 @@ Value fileWriteNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[0]);
 
     if (str->length == 0) {
-        return okResult(NUMBER_VAL(0));
+        return okResult(INT_VAL(0));
     }
 
     size_t written = fwrite(str->chars, 1, str->length, handle);
@@ -4185,13 +4356,13 @@ Value fileWriteNative(int argCount, Value* args) {
                 written, str->length, strerror(errsv));
     }
 
-    return okResult(NUMBER_VAL((double)written));
+    return okResult(FLOAT_VAL((double)written));
 }
 
 Value fileCloseNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     int res = closeFileInternal(inst);
-    return okResult(NUMBER_VAL(res));
+    return okResult(INT_VAL(res));
 }
 
 Value fileSeekNative(int argCount, Value* args) {
@@ -4207,14 +4378,14 @@ Value fileSeekNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    long offset = (long)AS_NUMBER(args[0]);
+    long offset = (long)AS_INT(args[0]);
     int whence = SEEK_SET;
 
 #define EXTRACT_LONG(val, outVal, errMessage) \
     if (IS_INT(val)) { \
         outVal = (long)AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outVal = (long)AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outVal = (long)AS_FLOAT(val); \
     } else { \
         runtimeError(errMessage); \
         return NIL_VAL; \
@@ -4368,8 +4539,8 @@ Value fileChmodNative(int argCount, Value* args) {
     
     if (IS_INT(modeVal)) {
         mode = (mode_t)AS_INT(modeVal);
-    } else if (IS_NUMBER(modeVal) && isExactInteger(AS_NUMBER(modeVal))) {
-        mode = (mode_t)AS_NUMBER(modeVal);
+    } else if (IS_FLOAT(modeVal) && isExactInteger(AS_FLOAT(modeVal))) {
+        mode = (mode_t)AS_FLOAT(modeVal);
     } else {
         return errorResult("%s", "File.chmod() mode argument must be an integer (e.g., 0644).");
     }
@@ -4399,8 +4570,8 @@ Value fileChownNative(int argCount, Value* args) {
 #define EXTRACT_ID(val, outId, name) \
     if (IS_INT(val)) { \
         outId = (typeof(outId))AS_INT(val); \
-    } else if (IS_NUMBER(val) && isExactInteger(AS_NUMBER(val))) { \
-        outId = (typeof(outId))AS_NUMBER(val); \
+    } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
+        outId = (typeof(outId))AS_FLOAT(val); \
     } else {  \
         return errorResult("%s", "File.chown() " name " argument must be an integer."); \
     }
@@ -4481,9 +4652,9 @@ void initFileLibrary() {
 
     //tableSet(&vm.globals, fileName, OBJ_VAL(fileClass));
 
-    defineClassConstant(fileClass, "SEEK_SET", NUMBER_VAL(SEEK_SET));
-    defineClassConstant(fileClass, "SEEK_CUR", NUMBER_VAL(SEEK_CUR));
-    defineClassConstant(fileClass, "SEEK_END", NUMBER_VAL(SEEK_END));
+    defineClassConstant(fileClass, "SEEK_SET", INT_VAL(SEEK_SET));
+    defineClassConstant(fileClass, "SEEK_CUR", INT_VAL(SEEK_CUR));
+    defineClassConstant(fileClass, "SEEK_END", INT_VAL(SEEK_END));
 
     //popn(2);
 
@@ -4513,8 +4684,8 @@ Value dirMkdirNative(int argCount, Value* args) {
         Value modeVal = args[1];
         if (IS_INT(modeVal)) {
             mode = (mode_t)AS_INT(modeVal);
-        } else if (IS_NUMBER(modeVal) && isExactInteger(AS_NUMBER(modeVal))) {
-            mode = (mode_t)AS_NUMBER(modeVal);
+        } else if (IS_FLOAT(modeVal) && isExactInteger(AS_FLOAT(modeVal))) {
+            mode = (mode_t)AS_FLOAT(modeVal);
         } else {
             runtimeError("Dir.mkdir() mode argument must be an integer.");
             return NIL_VAL;
@@ -4956,9 +5127,9 @@ char* valueToCString(Value val) {
         char buffer[64];
         snprintf(buffer, sizeof(buffer), "%" PRId64, AS_INT(val));
         return strdup(buffer);
-    } else if (IS_NUMBER(val)) {
+    } else if (IS_FLOAT(val)) {
         char buffer[64];
-        snprintf(buffer, sizeof(buffer), "%g", AS_NUMBER(val));
+        snprintf(buffer, sizeof(buffer), "%g", AS_FLOAT(val));
         return strdup(buffer);
     } else if (IS_BOOL(val)) {
         return strdup(AS_BOOL(val) ? "true" : "false");
@@ -5050,8 +5221,8 @@ Value processWaitStatic(int argCount, Value* args) {
         Value pidVal = args[0];
         if (IS_INT(pidVal)) {
             targetPid = (pid_t)AS_INT(pidVal);
-        } else if (IS_NUMBER(pidVal) && isExactInteger(AS_NUMBER(pidVal))) {
-            targetPid = (pid_t)AS_NUMBER(pidVal);
+        } else if (IS_FLOAT(pidVal) && isExactInteger(AS_FLOAT(pidVal))) {
+            targetPid = (pid_t)AS_FLOAT(pidVal);
         } else {
             return errorResult("%s", "Process.wait() argument must be a process ID number.");
         }
@@ -5112,8 +5283,8 @@ Value processReadStatic(int argCount, Value* args) {
 
     if (IS_INT(fdVal)) {
         fd = (int)AS_INT(fdVal);
-    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
-        fd = (int)AS_NUMBER(fdVal);
+    } else if (IS_FLOAT(fdVal) && isExactInteger(AS_FLOAT(fdVal))) {
+        fd = (int)AS_FLOAT(fdVal);
     } else {
         return errorResult("%s", "Process.read() file descriptor must be an integer.");
     }
@@ -5124,8 +5295,8 @@ Value processReadStatic(int argCount, Value* args) {
         Value maxVal = args[1];
         if (IS_INT(maxVal) && AS_INT(maxVal) > 0) {
             maxBytes = (size_t)AS_INT(maxVal);
-        } else if (IS_NUMBER(maxVal) && isExactInteger(AS_NUMBER(maxVal)) && AS_NUMBER(maxVal) > 0) {
-            maxBytes = (size_t)AS_NUMBER(maxVal);
+        } else if (IS_FLOAT(maxVal) && isExactInteger(AS_FLOAT(maxVal)) && AS_FLOAT(maxVal) > 0) {
+            maxBytes = (size_t)AS_FLOAT(maxVal);
         } else {
             return errorResult("%s", "Process.read() max bytes argument must be a positive integer.");
         }
@@ -5160,8 +5331,8 @@ Value processCloseStatic(int argCount, Value* args) {
 
     if (IS_INT(fdVal)) {
         fd = (int)AS_INT(fdVal);
-    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
-        fd = (int)AS_NUMBER(fdVal);
+    } else if (IS_FLOAT(fdVal) && isExactInteger(AS_FLOAT(fdVal))) {
+        fd = (int)AS_FLOAT(fdVal);
     } else {
         return errorResult("%s", "Process.close() file descriptor must be an integer.");
     }
@@ -5176,7 +5347,7 @@ Value processCloseStatic(int argCount, Value* args) {
 }
 
 Value processSignalStatic(int argCount, Value* args) {
-    int offset = (IS_INT(args[0]) || IS_NUMBER(args[0])) ? 0 : 1;
+    int offset = (IS_INT(args[0]) || IS_FLOAT(args[0])) ? 0 : 1;
 
     if (argCount < offset + 2) {
         runtimeError("Process.signal() expects (pid, signal).");
@@ -5190,8 +5361,8 @@ Value processSignalStatic(int argCount, Value* args) {
 
     if (IS_INT(pidVal)) {
         pid = (pid_t)AS_INT(pidVal);
-    } else if (IS_NUMBER(pidVal) && isExactInteger(AS_NUMBER(pidVal))) {
-        pid = (pid_t)AS_NUMBER(pidVal);
+    } else if (IS_FLOAT(pidVal) && isExactInteger(AS_FLOAT(pidVal))) {
+        pid = (pid_t)AS_FLOAT(pidVal);
     } else {
         runtimeError("Process.signal() pid argument must be an integer.");
         return NIL_VAL;
@@ -5199,8 +5370,8 @@ Value processSignalStatic(int argCount, Value* args) {
 
     if (IS_INT(sigVal)) {
         pid = (int)AS_INT(sigVal);
-    } else if (IS_NUMBER(sigVal) && isExactInteger(AS_NUMBER(sigVal))) {
-        pid = (int)AS_NUMBER(sigVal);
+    } else if (IS_FLOAT(sigVal) && isExactInteger(AS_FLOAT(sigVal))) {
+        pid = (int)AS_FLOAT(sigVal);
     } else {
         runtimeError("Process.signal() signal argument must be an integer.");
         return NIL_VAL;
@@ -5216,7 +5387,7 @@ Value processSignalStatic(int argCount, Value* args) {
 }
 
 Value processWriteStatic(int argCount, Value* args) {
-    if (argCount < 2 || (!IS_INT(args[0]) && !IS_NUMBER(args[0])) || !IS_STRING(args[1])) {
+    if (argCount < 2 || (!IS_INT(args[0]) && !IS_FLOAT(args[0])) || !IS_STRING(args[1])) {
         runtimeError("Process.write() requires a numeric descriptor and a string message.");
         return NIL_VAL;
     }
@@ -5226,8 +5397,8 @@ Value processWriteStatic(int argCount, Value* args) {
 
     if (IS_INT(fdVal)) {
         fd = (int)AS_INT(fdVal);
-    } else if (IS_NUMBER(fdVal) && isExactInteger(AS_NUMBER(fdVal))) {
-        fd = (int)AS_NUMBER(fdVal);
+    } else if (IS_FLOAT(fdVal) && isExactInteger(AS_FLOAT(fdVal))) {
+        fd = (int)AS_FLOAT(fdVal);
     } else {
         runtimeError("Process.write() file descriptor must be an integer.");
         return NIL_VAL;
@@ -5345,7 +5516,7 @@ static void bufWriteBytes(ByteBuffer* buf, const uint8_t* src, int len) {
     buf->count += len;
 }
 
-#define IS_INT_OR_NUMBER(v) (IS_INT(v) || IS_NUMBER(v))
+#define IS_INT_OR_FLOAT(v) (IS_INT(v) || IS_FLOAT(v))
 Value structPackNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_ARRAY(args[1])) {
         runtimeError("pack() expects format string and value array.");
@@ -5437,7 +5608,7 @@ Value structPackNative(int argCount, Value* args) {
             }
 
             Value val = array->values[valIndex++];
-            if (!IS_INT_OR_NUMBER(val)) {
+            if (!IS_INT_OR_FLOAT(val)) {
                 free(buf.bytes);
                 runtimeError("Expected numeric value for '%c' specifier.", type);
                 return NIL_VAL;
@@ -5445,7 +5616,7 @@ Value structPackNative(int argCount, Value* args) {
 
             uint64_t num = IS_INT(val)
                 ? (uint64_t)AS_INT(val)
-                : (uint64_t)(int64_t)AS_NUMBER(val);
+                : (uint64_t)(int64_t)AS_FLOAT(val);
 
             switch (type) {
                 case 'b':
@@ -5907,8 +6078,8 @@ Value hgfGCNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         val = (double)AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0])) {
-        val = AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0])) {
+        val = AS_FLOAT(args[0]);
     } else {
         runtimeError("heap_growth_Factor() expects a numeric multiplier.");
         return NIL_VAL;
@@ -5929,7 +6100,7 @@ Value get_hgfGCNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    return NUMBER_VAL(vm.heap_growth_factor);
+    return FLOAT_VAL(vm.heap_growth_factor);
 }
 
 Value thresholdGCNative(int argCount, Value* args) {
@@ -5942,8 +6113,8 @@ Value thresholdGCNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         thresholdBytes = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        thresholdBytes = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        thresholdBytes = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("init_threshold() expects a numeric bytes size.");
         return NIL_VAL;
@@ -5977,8 +6148,8 @@ Value bumpsizeGCNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         bumpBytes = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        bumpBytes = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        bumpBytes = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("bump_size() expects a numeric byte size.");
         return NIL_VAL;
@@ -6018,8 +6189,8 @@ Value stressmodeGCNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         mode = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        mode = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        mode = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
         return NIL_VAL;
@@ -6054,8 +6225,8 @@ Value typeGCNative(int argCount, Value* args) {
 
     if (IS_INT(args[0])) {
         mode = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        mode = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        mode = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
         return NIL_VAL;
@@ -6238,8 +6409,8 @@ Value ioConnectNative(int argCount, Value* args) {
     int64_t portVal;
     if (IS_INT(args[1])) {
         portVal = AS_INT(args[1]);
-    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-        portVal = (int64_t)AS_NUMBER(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        portVal = (int64_t)AS_FLOAT(args[1]);
     } else {
         runtimeError("Connect expects an integer port.");
         return errorResult("Invalid port type.");
@@ -6266,8 +6437,8 @@ Value ioConnectNative(int argCount, Value* args) {
     if (argCount > 2) {
         if (IS_INT(args[2])) {
             timeoutVal = (double)AS_INT(args[2]);
-        } else if (IS_NUMBER(args[2])) {
-            timeoutVal = AS_NUMBER(args[2]);
+        } else if (IS_FLOAT(args[2])) {
+            timeoutVal = AS_FLOAT(args[2]);
         } else {
             runtimeError("Timeout must be a numeric value.");
             return errorResult("Invalid timeout type.");
@@ -6378,7 +6549,7 @@ Value ioSendNative(int argCount, Value* args) {
         return errorResult("Socket write error: %s.", strerror(errno));
     }
     
-    return okResult(NUMBER_VAL((double)bytesSent));
+    return okResult(FLOAT_VAL((double)bytesSent));
 }
 
 Value ioRecvNative(int argCount, Value* args) {
@@ -6390,8 +6561,8 @@ Value ioRecvNative(int argCount, Value* args) {
     int64_t requestedLength;
     if (IS_INT(args[0])) {
         requestedLength = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        requestedLength = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        requestedLength = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("recv() expects a buffer size number as the first argument.");
         return errorResult("recv() expects a buffer size number as the first argument.");
@@ -6461,8 +6632,8 @@ Value ioListenNative(int argCount, Value* args) {
     int64_t portVal;
     if (IS_INT(args[0])) {
         portVal = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        portVal = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        portVal = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("listen() expects a port number as the first argument.");
         return errorResult("listen() expects a port number as the first argument.");
@@ -6559,8 +6730,8 @@ Value ioBindNative(int argCount, Value* args) {
     int64_t portVal;
     if (IS_INT(args[1])) {
         portVal = AS_INT(args[1]);
-    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-        portVal = (int64_t)AS_NUMBER(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        portVal = (int64_t)AS_FLOAT(args[1]);
     } else {
         runtimeError("bind() expects a port integer.");
         return errorResult("bind() expects a port integer.");
@@ -6661,8 +6832,8 @@ Value ioPollNative(int argCount, Value* args) {
     if (argCount > 1) {
         if (IS_INT(args[1])) {
             timeout = (int)AS_INT(args[1]);
-        } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-            timeout = (int)AS_NUMBER(args[1]);
+        } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+            timeout = (int)AS_FLOAT(args[1]);
         } else {
             return errorResult("Timeout must be an integer millisecond value.");
         }
@@ -6672,8 +6843,8 @@ Value ioPollNative(int argCount, Value* args) {
     if (argCount > 2) {
         if (IS_INT(args[2])) {
             eventMask = (int)AS_INT(args[2]);
-        } else if (IS_NUMBER(args[2]) && isExactInteger(AS_NUMBER(args[2]))) {
-            eventMask = (int)AS_NUMBER(args[2]);
+        } else if (IS_FLOAT(args[2]) && isExactInteger(AS_FLOAT(args[2]))) {
+            eventMask = (int)AS_FLOAT(args[2]);
         } else {
             return errorResult("Event mask must be an integer value.");
         }
@@ -6743,8 +6914,8 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     int64_t requestedMs;
     if (IS_INT(args[0])) {
         requestedMs = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        requestedMs = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        requestedMs = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
         return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
@@ -6858,10 +7029,10 @@ void initIOClass() {
     defineNativeMethod(ioClass, "poll", ioPollNative);
     defineNativeMethod(ioClass, "set_recv_timeout", ioSetRecvTimeoutNative);
 
-    defineClassConstant(ioClass, "PollIn", NUMBER_VAL(POLLIN));
-    defineClassConstant(ioClass, "PollOut", NUMBER_VAL(POLLOUT));
-    defineClassConstant(ioClass, "PollErr", NUMBER_VAL(POLLERR));
-    defineClassConstant(ioClass, "PollHup", NUMBER_VAL(POLLHUP));
+    defineClassConstant(ioClass, "PollIn", INT_VAL(POLLIN));
+    defineClassConstant(ioClass, "PollOut", INT_VAL(POLLOUT));
+    defineClassConstant(ioClass, "PollErr", INT_VAL(POLLERR));
+    defineClassConstant(ioClass, "PollHup", INT_VAL(POLLHUP));
 
     //pop(); // ioClass
     //pop(); // ioName
@@ -6883,8 +7054,8 @@ Value systemExitNative(int argCount, Value* args) {
 
         if (IS_INT(args[0])) {
             rawCode = AS_INT(args[0]);
-        } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-            rawCode = (int64_t)AS_NUMBER(args[0]);
+        } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+            rawCode = (int64_t)AS_FLOAT(args[0]);
         } else {
             runtimeError("exit() expects an integer exit code.");
             return NIL_VAL;
@@ -6907,7 +7078,7 @@ Value systemExitNative(int argCount, Value* args) {
 static void setMapField(ObjMap* map, const char* name, double value) {
     ObjString* key = copyString(name, (int)strlen(name));
     push(OBJ_VAL(key));
-    tableSet2(&map->items, OBJ_VAL(key), NUMBER_VAL(value));
+    tableSet2(&map->items, OBJ_VAL(key), FLOAT_VAL(value));
     pop();
 }
 
@@ -6981,8 +7152,8 @@ Value systemSetPrecisionNative(int argCount, Value* args) {
 
         if (IS_INT(args[0])) {
             precisionVal = AS_INT(args[0]);
-        } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-            precisionVal = (int64_t)AS_NUMBER(args[0]);
+        } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+            precisionVal = (int64_t)AS_FLOAT(args[0]);
         } else {
             runtimeError("set_precision() expects a number argument.");
             return NIL_VAL;
@@ -7003,8 +7174,8 @@ Value systemSetNotationNative(int argCount, Value* args) {
 
         if (IS_INT(args[0])) {
             styleVal = AS_INT(args[0]);
-        } else if (IS_NUMBER(args[0])) {
-            styleVal = (int64_t)AS_NUMBER(args[0]);
+        } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+            styleVal = (int64_t)AS_FLOAT(args[0]);
         } else {
             runtimeError("set_notation() expects a number argument.");
             return NIL_VAL;
@@ -7085,8 +7256,8 @@ Value systemSleepNative(int argCount, Value* args) {
         }
 
         return NIL_VAL;
-    } else if (IS_NUMBER(args[0])) {
-        totalSeconds = AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0])) {
+        totalSeconds = AS_FLOAT(args[0]);
         if (totalSeconds < 0) totalSeconds = 0;
 
         struct timespec ts;
@@ -7154,7 +7325,7 @@ Value systemRemoveIncludeNative(int argCount, Value* args) {
 
 void defineSignalConstants(ObjClass* sg) {
 #define DEFINE_SIG(name) \
-    defineClassConstant(sg, #name, NUMBER_VAL(SIG##name))
+    defineClassConstant(sg, #name, INT_VAL(SIG##name))
 
 #ifdef SIGHUP
     DEFINE_SIG(HUP);
@@ -7498,8 +7669,8 @@ Value bufferAllocNative(int argCount, Value* args) {
     int64_t sizeVal;
     if (IS_INT(args[0])) {
         sizeVal = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        sizeVal = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        sizeVal = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("Buffer.alloc() expects a numeric size argument.");
         return NIL_VAL;
@@ -7535,8 +7706,8 @@ Value bufferFillNative(int argCount, Value* args) {
     int64_t fillVal;
     if (IS_INT(args[0])) {
         fillVal =  AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        fillVal = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        fillVal = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("Buffer.fill() expects an integer byte value.");
         return NIL_VAL;
@@ -7561,8 +7732,8 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     int64_t offsetVal;
     if (IS_INT(args[0])) {
         offsetVal = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        offsetVal = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        offsetVal = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("Buffer.writeUint64() expects an integer offset as the first argument.");
         return NIL_VAL;
@@ -7576,8 +7747,8 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     uint64_t val;
     if (IS_INT(args[1])) {
         val = AS_INT(args[1]);
-    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-        val = (int64_t)AS_NUMBER(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        val = (int64_t)AS_FLOAT(args[1]);
     } else {
         runtimeError("Buffer.writeUint64() expects an integer value as the second argument.");
         return NIL_VAL;
@@ -7604,8 +7775,8 @@ Value bufferWriteUint8Native(int argCount, Value* args) {
     int64_t offsetVal;
     if (IS_INT(args[0])) {
         offsetVal = AS_INT(args[0]);
-    } else if (IS_NUMBER(args[0]) && isExactInteger(AS_NUMBER(args[0]))) {
-        offsetVal = (int64_t)AS_NUMBER(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        offsetVal = (int64_t)AS_FLOAT(args[0]);
     } else {
         runtimeError("Buffer.writeUint8() expects an integer offset as the first argument.");
         return NIL_VAL;
@@ -7619,8 +7790,8 @@ Value bufferWriteUint8Native(int argCount, Value* args) {
     int64_t rawVal;
     if (IS_INT(args[1])) {
         rawVal = AS_INT(args[1]);
-    } else if (IS_NUMBER(args[1]) && isExactInteger(AS_NUMBER(args[1]))) {
-        rawVal = (int64_t)AS_NUMBER(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        rawVal = (int64_t)AS_FLOAT(args[1]);
     } else {
         runtimeError("Buffer.writeUint8() expects an integer byte value as the second argument.");
         return NIL_VAL;
@@ -7743,29 +7914,15 @@ Value integerClassCallHandler(int argCount, Value* args) {
     return INT_VAL(0);
 }
 
-Value numberClassCallHandler(int argCount, Value* args) {
+Value floatClassCallHandler(int argCount, Value* args) {
     if (argCount < 1) return INT_VAL(0);
 
-    return valueToNumber(args[0]);
-    /*
-    Value arg = args[0];
-    
-    if (IS_NUMBER(arg)) {
-        return arg;
-    }
+    return valueToFloat(args[0]);
+}
 
-    if (IS_STRING(arg)) {
-        char* end;
-        double val = strtod(AS_CSTRING(arg), &end);
-        return NUMBER_VAL(val);
-    }
-
-    if (IS_BOOL(arg)) {
-        return NUMBER_VAL(AS_BOOL(arg) ? 1.0 : 0.0);
-    }
-
-    return NUMBER_VAL(0);
-    */
+Value numberClassCallHandler(int argCount, Value* args) {
+    runtimeError("Cannot instantiate abstract class 'Number'. Use Int() or Float() instead.");
+    return NIL_VAL;
 }
 
 ObjClass* defineBuiltinClass(const char* name, ObjClass* superclass, ObjClass** metaOut, bool isGlobal) {

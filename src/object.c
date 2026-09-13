@@ -174,9 +174,9 @@ uint32_t hashValue(Value value) {
                 int64_t n = AS_INT(value);
                 return hashBytes((const uint8_t*)&n, sizeof(uint64_t));
             }
-        case VAL_NUMBER:
+        case VAL_FLOAT:
             {
-                double n = AS_NUMBER(value);
+                double n = AS_FLOAT(value);
                 return hashBytes((const uint8_t*)&n, sizeof(double));
             }
         case VAL_OBJ:
@@ -276,21 +276,6 @@ bool mapSetByCStr(ObjMap* map, const char* cstr, Value value) {
     pop();
     return res;
 }
-
-/*
-ObjVec3* newVec3(Value x, Value y, Value z) {
-    ObjVec3* vec3 = ALLOCATE_OBJ(ObjVec3, OBJ_VEC3);
-
-    //vec3->instance.klass = vm.vec3Class;
-    //initTable(&vec3->instance.fields);
-
-    vec3->x = AS_NUMBER(x);
-    vec3->y = AS_NUMBER(y);
-    vec3->z = AS_NUMBER(z);
-
-    return vec3;
-}
-*/
 
 ObjArray* newArray() {
     ObjArray* array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);

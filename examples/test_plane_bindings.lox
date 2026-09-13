@@ -1,0 +1,143 @@
+import "ffi";
+require("multiffi.lox");
+
+// test_plane_bindings.lox
+
+var strout = "";
+
+class Plane {
+  const NCALIGN_UNALIGNED = 0;
+  const NCALIGN_LEFT = 1;
+  const NCALIGN_CENTER = 2;
+  const NCALIGN_RIGHT = 3;
+
+  init(ptr, ffiLib) {
+    this.ptr = ptr;
+    this.ffi = ffiLib;
+
+    print "[FFI Binding] ncplane_create...";
+    this.fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "pointer"]); // ncplane_options struct pointer
+
+    print "[FFI Binding] ncplane_putstr...";
+    this.fnPutStr = ffiLib.bind("ncplane_putstr", "int32", ["pointer", "string"]);
+
+    print "[FFI Binding] ncplane_putstr_aligned...";
+    this.fnPutStrAlign = ffiLib.bind("ncplane_putstr_aligned", "int32", ["pointer", "int32", "int32", "string"]);
+
+    print "[FFI Binding] ncplane_set_fg_rgb...";
+    this.fnSetFgRgb = ffiLib.bind("ncplane_set_fg_rgb", "int32", ["pointer", "uint32"]);
+
+    print "[FFI Binding] ncplane_set_bg_rgb...";
+    this.fnSetBgRgb = ffiLib.bind("ncplane_set_bg_rgb", "int32", ["pointer", "uint32"]);
+
+    print "[FFI Binding] ncplane_erase...";
+    this.fnErase = ffiLib.bind("ncplane_erase", "void", ["pointer"]);
+
+    print "[FFI Binding] ncplane_destroy...";
+    this.fnDestroy = ffiLib.bind("ncplane_destroy", "int32", ["pointer"]);
+
+    print "[Plane] All core FFI bindings verified.";
+  }
+
+  erase() {
+    this.fnErase(this.ptr);
+  }
+
+  set_fg_rgb(rgb) {
+    print "rgb: " + rgb;
+    return this.fnSetFgRgb(this.ptr, rgb);
+  }
+
+  set_bg_rgb(rgb) {
+    return this.fnSetBgRgb(this.ptr, rgb);
+  }
+
+  put_str(str) {
+    return this.fnPutStr(this.ptr, str);
+  }
+
+  put_str_aligned(y, align, str) {
+    return this.fnPutStrAlign(this.ptr, y, align, str);
+  }
+
+  destroy() {
+    if (this.ptr != nil and this.ptr != 0) {
+      var res = this.fnDestroy(this.ptr);
+      this.ptr = nil;
+      return res;
+    }
+    return 0;
+  }
+}
+
+// Helper to create a new child ncplane using packed ncplane_options struct
+fun createChildPlane(parentPlanePtr, y, x, rows, cols, ffiLib) {
+  // ncplane_options layout: y, x, rows, cols, userptr, name, resizecb, flags, margin_b, margin_r
+  var opts = Struct.pack("i i I I Q Q Q Q i i", [y, x, rows, cols, 0, 0, 0, 0, 0, 0]);
+  var fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "string"]);
+  var childPtr = fnCreate(parentPlanePtr, opts);
+  //var childPtr = fnCreate(parentPlanePtr, 0);
+  if (childPtr == nil or childPtr == 0) {
+    strout += "Unable to create child plane: " + childPtr + "\n";
+    return nil;
+  }
+  return Plane(childPtr, ffiLib);
+}
+
+// Pipeline Execution
+var ffi = MultiFFI([
+    "libnotcurses-ffi.so",
+    "libnotcurses-core.so",
+    "libnotcurses.so"
+]);
+
+var fnInit = ffi.bind("notcurses_init", "pointer", ["string", "pointer"]);
+var fnStop = ffi.bind("notcurses_stop", "int32", ["pointer"]);
+var fnRender = ffi.bind("notcurses_render", "int32", ["pointer"]);
+var fnStdPlane = ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
+
+var flags = 0x0010 | 0x0020;
+//var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
+var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
+print "here 1...";
+
+var nc = fnInit(opts, nil);
+print "here 2...";
+if (nc != nil and nc != 0) {
+  at_exit(fun() { fnStop(nc); } );
+  var stdPtr = fnStdPlane(nc);
+  var stdPlane = Plane(stdPtr, ffi);
+
+  stdPlane.erase();
+  stdPlane.set_fg_rgb(0xFFFFFF);
+  stdPlane.put_str_aligned(0, Plane.NCALIGN_CENTER, "=== Root Stdplane ===");
+
+  print "Creating child sub-plane (10x40 at offset 2, 5)...";
+  var childPlane = createChildPlane(stdPtr, 2, 2, 10, 30, ffi);
+
+  strout += "childPlane: " + childPlane + "\n";
+  if (childPlane != nil) {
+    print "Child plane created successfully!";
+    childPlane.set_bg_rgb(0x1A1A2E); // Dark purple background
+    childPlane.set_fg_rgb(0x00E5FF); // Cyan text
+    childPlane.erase();
+    childPlane.put_str(" Hello inside child plane!");
+
+    fnRender(nc);
+
+    print "Destroying child plane...";
+    childPlane.destroy();
+    print "Child plane destroyed.";
+  } else {
+    print "Failed to create child plane.";
+  }
+
+  System.sleep(5);
+  //fnStop(nc);
+  print "All binding checks completed.";
+} else {
+  print "Failed to initialize Notcurses.";
+}
+
+print "jjjj";
+print strout;

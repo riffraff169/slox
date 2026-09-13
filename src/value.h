@@ -53,7 +53,7 @@ typedef struct {
 #define NIL_VAL                     ((Value){VAL_NIL, {.number = 0}})
 #define NUMBER_VAL(value)           ((Value){VAL_NUMBER, {.number = value}})
 #define INT_VAL(value)              ((Value){VAL_INT, {.integer = value}})
-#define FLOAT_VAL(value)            ((value){VAL_FLOAT, {.number = value}})
+#define FLOAT_VAL(value)            ((Value){VAL_FLOAT, {.number = value}})
 #define OBJ_VAL(object)             ((Value){VAL_OBJ, {.obj = (Obj*)object}})
 #define VEC3_VAL(value)             ((Value){VAL_VEC3, {.vec3 = value}})
 #define SPLAT_COUNT_VAL(count)      ((Value){VAL_SPLAT_COUNT, {.number = (double)(count)}})
@@ -72,7 +72,7 @@ void freeValueArray(ValueArray* array);
 void printValueSafe(FILE* stream, Value value);
 void printValue(FILE* stream, Value value);
 
-#define IS_NUMERIC(value) (IS_INT(value) || IS_NUMBER(value) || IS_FLOAT(value))
+#define IS_NUMERIC(value) (IS_INT(value) || IS_FLOAT(value))
 
 #define MAX_SAFE_INTEGER 9007199254740991LL
 #define MIN_SAFE_INTEGER -9007199254740991LL
@@ -89,11 +89,13 @@ static inline bool isIntegerDouble(double d) {
     return true;
 }
 
+#define AS_NUMERIC(v) valueToDouble(v)
+
 // safely converts any numeric Value to double
 static inline double valueToDouble(Value value) {
     if (IS_INT(value)) return (double)AS_INT(value);
-    if (IS_NUMBER(value)) return AS_NUMBER(value);
-    if (IS_FLOAT(value)) return AS_NUMBER(value);
+    if (IS_FLOAT(value)) return AS_FLOAT(value);
+    //if (IS_NUMBER(value)) return AS_NUMBER(value);
     return 0.0;
 }
 
@@ -101,8 +103,8 @@ static inline double valueToDouble(Value value) {
 static inline int64_t valueToInt64(Value val) {
     if (IS_INT(val)) {
         return  AS_INT(val);
-    } else if (IS_NUMBER(val)) {
-        return (int64_t)AS_NUMBER(val);
+    } else if (IS_FLOAT(val)) {
+        return (int64_t)AS_FLOAT(val);
     }
     return 0;
 }
@@ -110,8 +112,8 @@ static inline int64_t valueToInt64(Value val) {
 static inline uint64_t valueToUint64(Value val) {
     if (IS_INT(val)) {
         return (uint64_t)AS_INT(val);
-    } else if (IS_NUMBER(val)) {
-        return (uint64_t)AS_NUMBER(val);
+    } else if (IS_FLOAT(val)) {
+        return (uint64_t)AS_FLOAT(val);
     }
     return 0;
 }
@@ -121,4 +123,11 @@ static inline bool isExactInteger(double d) {
        (d >= -9223372036854775808.0) &&
        (d < 9223372036854775808.0);
 }
+
+static inline bool isIntegral(Value v) {
+    if (IS_INT(v)) return true;
+    if (IS_FLOAT(v)) return isExactInteger(AS_FLOAT(v));
+    return false;
+}
+
 #endif

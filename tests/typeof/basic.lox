@@ -1,5 +1,5 @@
 print typeof(42);         // expect: Integer
-print typeof(42.1);         // expect: Number
+print typeof(42.1);         // expect: Float
 print typeof("hello");    // expect: String
 print typeof(true);       // expect: Bool
 print typeof(nil);        // expect: Nil
@@ -11,7 +11,8 @@ fun my_func() {}
 print typeof(my_func);    // expect: Function
 
 __END__
-Number
+Integer
+Float
 String
 Bool
 Nil

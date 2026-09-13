@@ -32,7 +32,7 @@ Value parse_scalar(yaml_event_t* event) {
     double num = strtod(val, &endptr);
     if (*endptr == '\0' && endptr != val) {
         yaml_event_delete(event);
-        return NUMBER_VAL(num);
+        return INT_VAL(num);
     }
 
     ObjString* str = copyString(val, (int)len);

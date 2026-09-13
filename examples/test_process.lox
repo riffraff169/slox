@@ -1,0 +1,14 @@
+print "--- Test 1: Simple Process.capture ---";
+var echoRes = Process.capture("echo 'Hello from Process.capture'").unwrap();
+print "Result: " + echoRes.trim();
+
+print "\n--- Test 2: sh -c with 2.&1 redirection ---";
+var testCmd = "sh -c 'ffmpeg -version 2>&1'";
+var shRes = Process.capture(testCmd).unwrap();
+
+if (shRes != nil and shRes.find("ffmpeg version") != -1) {
+  print "SUCCESS: sh -c successfully capture FFmpeg output!";
+} else {
+  print "FAILED: Could not capture shell output. Output was:";
+  print shRes;
+}

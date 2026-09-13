@@ -106,11 +106,11 @@ void printValueSafe(FILE* stream, Value value) {
             case VAL_INT:
                 fprintf(stream, "%" PRId64, AS_INT(value));
                 break;
-            case VAL_NUMBER:
+            case VAL_FLOAT:
                 if (vm.numNotation == 1) {
-                    fprintf(stream, "%.*g", vm.numPrecision, AS_NUMBER(value));
+                    fprintf(stream, "%.*g", vm.numPrecision, AS_FLOAT(value));
                 } else {
-                    fprintf(stream, "%.*f", vm.numPrecision, AS_NUMBER(value));
+                    fprintf(stream, "%.*f", vm.numPrecision, AS_FLOAT(value));
                 }
                 break;
             case VAL_OBJ:
@@ -151,8 +151,8 @@ bool valuesEqual(Value a, Value b) {
             return true;
         case VAL_INT:
             return AS_INT(a) == AS_INT(b);
-        case VAL_NUMBER:
-            return AS_NUMBER(a) == AS_NUMBER(b);
+        case VAL_FLOAT:
+            return AS_FLOAT(a) == AS_FLOAT(b);
         case VAL_VEC3:
             return (AS_VEC3(a).x == AS_VEC3(b).x) &&
                 (AS_VEC3(a).y == AS_VEC3(b).y) &&

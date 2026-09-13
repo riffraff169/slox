@@ -1,0 +1,115 @@
+import "ffi";
+require("multiffi.lox");
+// test_plane_full.lox
+
+class Plane {
+  const NCALIGN_UNALIGNED = 0;
+  const NCALIGN_LEFT = 1;
+  const NCALIGN_CENTER = 2;
+  const NCALIGN_RIGHT = 3;
+
+  init(ptr, ffiLib) {
+    this.ptr = ptr;
+    this.ffi = ffiLib;
+
+    this.fnCreate = ffiLib.bind("ncplane_create", "pointer", ["pointer", "string"]);
+    this.fnPutStr = ffiLib.bind("ncplane_putstr", "int32", ["pointer", "string"]);
+    this.fnPutStrAlign = ffiLib.bind("ncplane_putstr_aligned", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnPutStrYx = ffiLib.bind("ncplane_putstr_yx", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnSetFgRgb = ffiLib.bind("ncplane_set_fg_rgb", "int32", ["pointer", "int32"]);
+    this.fnSetBgRgb = ffiLib.bind("ncplane_set_bg_rgb", "int32", ["pointer", "int32"]);
+    this.fnErase = ffiLib.bind("ncplane_erase", "void", ["pointer"]);
+    this.fnDestroy = ffiLib.bind("ncplane_destroy", "int32", ["pointer"]);
+    
+    this.fnDimY = ffiLib.bind("ncplane_dim_y", "int32", ["pointer"]);
+    this.fnDimX = ffiLib.bind("ncplane_dim_x", "int32", ["pointer"]);
+    this.fnMoveYx = ffiLib.bind("ncplane_move_yx", "int32", ["pointer", "int32", "int32"]);
+    this.fnMoveRelYx = ffiLib.bind("ncplane_move_rel", "int32", ["pointer", "int32", "int32"]);
+    this.fnSetBgAlpha = ffiLib.bind("ncplane_set_bg_alpha", "int32", ["pointer", "int32"]);
+    this.fnMoveTop = ffiLib.bind("ncplane_move_top", "void", ["pointer"]);
+    this.fnMoveBottom = ffiLib.bind("ncplane_move_bottom", "void", ["pointer"]);
+  }
+
+  erase() {
+    this.fnErase(this.ptr);
+  }
+
+  dim_y() {
+    return this.fnDimY(this.ptr);
+  }
+
+  dim_x() {
+    return this.fnDimX(this.ptr);
+  }
+
+  set_fg_rgb(rgb) {
+    return this.fnSetFgRgb(this.ptr, rgb);
+  }
+
+  set_bg_rgb(rgb) {
+    return this.fnSetBgRgb(this.ptr, rgb);
+  }
+
+  put_str(y, x, str) {
+    return this.fnPutStrYx(this.ptr, y, x, str);
+  }
+
+  put_str_aligned(y, align, str) {
+    return this.fnPutStrAlign(this.ptr, y, align, str);
+  }
+
+  move_yx(y, x) {
+    return this.fnMoveYx(this.ptr, y, x);
+  }
+}
+
+// Full execution pipeline test
+var ffi = MultiFFI([
+    "libnotcurses-ffi.so",
+    "libnotcurses-core.so",
+    "libnotcurses.so"
+]);
+
+var fnInit = ffi.bind("notcurses_init", "pointer", ["string", "pointer"]);
+var fnStop = ffi.bind("notcurses_stop", "int32", ["pointer"]);
+var fnRender = ffi.bind("notcurses_render", "int32", ["pointer"]);
+var fnStdPlane = ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
+
+var flags = 0x0010 | 0x0020; // NCOPTION_SUPPRESS_BANNERS | NCOPTION_NO_ALTERNATE_SCREEN
+var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
+print opts.to_array();
+
+var nc = fnInit(opts, nil);
+if (nc != nil and nc != 0) {
+  at_exit(fun() { fnStop(nc); } );
+
+  var stdPtr = fnStdPlane(nc);
+  var plane = Plane(stdPtr, ffi);
+
+  print "Erase plane...";
+  plane.erase();
+
+  print "Setting colors (FG: Cyan 0x00FFFF, BG: Dark Blue 0x000033)...";
+  plane.set_fg_rgb(0x00FFFF);
+  plane.set_bg_rgb(0x000033);
+
+  print "Writing aligned headers...";
+  plane.put_str_aligned(1, Plane.NCALIGN_CENTER, "--- NOTCURSES FFI TEST ---");
+
+  print "Writing positional output...";
+  plane.set_fg_rgb(0x00FF00); // Green
+  plane.put_str(3, 2, "Terminal size: " + plane.dim_y() + "x" + plane.dim_x());
+  
+  plane.set_fg_rgb(0xFFD700); // Gold
+  plane.put_str(4, 2, "Status: All basic plane functions executing properly!");
+
+  print "Rendering to terminal...";
+  var renderResult = fnRender(nc);
+  print "Render return code: " + renderResult;
+
+  System.sleep(5);
+  //fnStop(nc);
+  print "Test completed successfully.";
+} else {
+  print "Failed to initialize Notcurses instance.";
+}

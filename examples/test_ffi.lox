@@ -1,0 +1,99 @@
+import "ffi";
+require("multiffi.lox");
+
+class Plane {
+  const NCALIGN_UNALIGNED = 0;
+  const NCALIGN_LEFT = 1;
+  const NCALIGN_CENTER = 2;
+  const NCALIGN_RIGHT = 3;
+
+  init(ptr, ffiLib) {
+    this.ptr = ptr;
+    this.ffi = ffiLib;
+
+    print "[Plane] Binding plane functions...";
+
+    this.fnPutStr = ffiLib.bind("ncplane_putstr", "int32", ["pointer", "string"]);
+    this.fnPutStrYx = ffiLib.bind("ncplane_putstr_yx", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnPutStrAlign = ffiLib.bind("ncplane_putstr_aligned", "int32", ["pointer", "int32", "int32", "string"]);
+    this.fnSetFgRgb = ffiLib.bind("ncplane_set_fg_rgb", "int32", ["pointer", "int32"]);
+    this.fnSetBgRgb = ffiLib.bind("ncplane_set_bg_rgb", "int32", ["pointer", "int32"]);
+    this.fnErase = ffiLib.bind("ncplane_erase", "void", ["pointer"]);
+    this.fnDimY = ffiLib.bind("ncplane_dim_y", "int32", ["pointer"]);
+    this.fnDimX = ffiLib.bind("ncplane_dim_x", "int32", ["pointer"]);
+
+    // Corrected "int" -> "int32"
+    this.fnSetBase = ffiLib.bind("ncplane_set_base", "int32", ["pointer", "string", "uint32", "uint64"]);
+
+    print "[Plane] Initialized successfully with pointer: " + this.ptr;
+  }
+
+  dim_y() {
+    return this.fnDimY(this.ptr);
+  }
+
+  dim_x() {
+    return this.fnDimX(this.ptr);
+  }
+
+  put_str(y, x, str) {
+    return this.fnPutStrYx(this.ptr, y, x, str);
+  }
+
+  set_fg_rgb(rgb) {
+    return this.fnSetFgRgb(this.ptr, rgb);
+  }
+}
+
+var ffi = MultiFFI([
+    "libnotcurses-ffi.so",
+    "libnotcurses-core.so",
+    "libnotcurses.so"
+]);
+
+print ffi;
+
+var fnInit = ffi.bind("notcurses_init", "pointer", ["string", "pointer"]);
+var fnStop = ffi.bind("notcurses_stop", "int32", ["pointer"]);
+var fnStdPlane = ffi.bind("notcurses_stdplane", "pointer", ["pointer"]);
+var fnRender = ffi.bind("notcurses_render", "int32", ["pointer"]);
+
+var flags = 0x0010 | 0x0020; //NCOPTION_SUPPRESS_BANNERS | NCOPTION_NO_ALTERNATE_SCREEN
+print "Flags integer value: " + flags;
+
+var opts = Struct.pack("Q I I I I I I Q", [0, 0, 0, 0, 0, 0, 0, flags]);
+print "Struct.pack result type check passed.";
+
+var strout = "";
+var nc = fnInit(opts, nil);
+strout += "nc result: " + nc + "\n";
+at_exit(fun() { fnStop(nc); } );
+
+/*
+if (ncPtr == nil or ncPtr == 0) {
+  print "Error: notcurses_init return NULL/nil.";
+} else {
+  print "Success: notcurses_init returned valid pointer handle.";
+  var stdPlanePtr = fnStdPlane(ncPtr);
+  print "stdplane result: " + stdPlanePtr;
+  fnStop(ncPtr);
+}
+*/
+if (nc != nil and nc != 0) {
+  var stdPtr = fnStdPlane(nc);
+  var plane = Plane(stdPtr, ffi);
+  strout += "Plane: " +  plane + "\n";
+
+  strout += "Stdplane dimensions: Y=" + plane.dim_y() + " x=" + plane.dim_x() + "\n";
+
+  plane.set_fg_rgb(0x00ff00);
+  plane.put_str(0, 0, "Hello from Slox Plane FFI!");
+  fnRender(nc);
+  System.sleep(5);
+} else {
+  print "Failed to initialize Notcurses instance.";
+}
+
+//fnStop(nc);
+
+print strout;

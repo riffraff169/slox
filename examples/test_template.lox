@@ -1,0 +1,16 @@
+require("template.lox");
+
+var tpl = Template("user_profile.html");
+
+var data = {
+  "title": "User Dashboard",
+  "username": "ldillon",
+  "role": "System Architect",
+  "status": "Active"
+};
+
+var renderedHtml = tpl.render(data);
+
+File.save("profile.html", renderedHtml);
+
+print renderedHtml;

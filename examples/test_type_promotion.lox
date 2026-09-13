@@ -1,0 +1,96 @@
+// ============================================================================
+// Test Suite: Integer / Float Arithmetic & Type Promotion
+// ============================================================================
+
+fun assert(condition, message) {
+  if (!condition) {
+    print "FAIL: " + message;
+  } else {
+    print "PASS: " + message;
+  }
+}
+
+print "=== 1. Basic Type Inspection & Equality ===";
+var i = 16;
+var f = 16.0;
+
+print "i = 16 (type check)";
+print "f = 16.0 (type check)";
+
+// Test implicit equality between equivalent numeric values
+assert(i == 16, "Int equals int literal");
+assert(f == 16.0, "Float equals float literal");
+assert(i == f, "Int 16 should equal Float 16.0");
+
+print "";
+print "=== 2. Mixed-Type Arithmetic (Promotion) ===";
+
+var intVal = 16;
+var floatVal = 1.0;
+
+// Subtraction: Int - Float & Int - Int
+var subResult1 = intVal - 1;       // 16 - 1 -> 15
+var subResult2 = intVal - floatVal;// 16 - 1.0 -> 15.0
+
+assert(subResult1 == 15, "16 - 1 == 15");
+assert(subResult2 == 15.0, "16 - 1.0 == 15.0");
+
+// Division: Int / Int vs Int / Float vs Float / Float
+var divInt = 15 / 2;               // Integer division (7) or Float division (7.5)?
+var divMixed = 15 / 2.0;           // Should promote to float (7.5)
+var divFloat = 15.0 / 2.0;         // Float division (7.5)
+
+print "15 / 2    => " + String(divInt);
+print "15 / 2.0  => " + String(divMixed);
+print "15.0 / 2.0 => " + String(divFloat);
+
+assert(divMixed == 7.5, "15 / 2.0 should promote and yield 7.5");
+assert(divFloat == 7.5, "15.0 / 2.0 should yield 7.5");
+
+print "";
+print "=== 3. Loop Variable Step & Comparison ===";
+
+// Testing int loop variable with float upper bound and float step
+var count = 0;
+for (var y = 0; y < 16.0; y += 1.0) {
+  count += 1;
+}
+assert(count == 16, "Loop with 'var y = 0; y < 16.0; y += 1.0' ran 16 times (got " + String(count) + ")");
+
+// Testing int loop variable with int increment compared against float
+count = 0;
+for (var y = 0; y < 16; y += 1) {
+  var u = y / 15.0; // Int divided by Float inside loop body
+  count += 1;
+}
+assert(count == 16, "Loop with int step and mixed division ran 16 times");
+
+print "";
+print "=== 4. Bilinear Coordinate Calculation ===";
+
+var width = 16;
+var height = 16;
+
+var x = 8;
+var y = 8;
+
+var maxSteps = (width - 1) + (height - 1); // Int math: 15 + 15 = 30
+assert(maxSteps == 30, "maxSteps (16-1)+(16-1) == 30");
+
+var t = (x + y) / maxSteps; // 16 / 30 -> should be ~0.533333
+print "(8 + 8) / 30 => " + String(t);
+assert(t > 0.5 and t < 0.6, "Mixed division (8+8)/30 yields expected float range (~0.533)");
+
+var u = x / (width - 1); // 8 / 15
+print "8 / (16 - 1) => " + String(u);
+assert(u > 0.5 and u < 0.6, "8 / (16 - 1) yields expected float range (~0.533)");
+
+print "";
+print "=== 5. String Concatenation with Numeric Results ===";
+
+var startR = 0;
+var endR = 255;
+var interpolatedR = startR + t * (endR - startR);
+
+print "Interpolated R: " + String(interpolatedR);
+assert(interpolatedR > 130 and interpolatedR < 145, "Interpolated color value is in valid range");
