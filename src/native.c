@@ -1927,6 +1927,7 @@ void initSetClass() {
     X("atan2", mathAtan2Native) \
     X("cos", mathCosNative) \
     X("acos", mathAcosNative) \
+    X("round", mathRoundNative) \
     X("to_fixed", numberToFixedNative)
 
 #define MATH_INT_ONLY_METHOD_LIST(X) \
@@ -1942,7 +1943,6 @@ void initSetClass() {
     X("parse", mathParseNative) \
     X("from_hex", fromHexNative) \
     X("from_bin", fromBinNative) \
-    X("round", mathRoundNative) \
     X("to_float", toFloatNative)
 
 
@@ -2470,18 +2470,37 @@ Value mathParseNative(int argCount, Value* args) {
     }
 
     const char* str = strObj->chars;
+
+    while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r') {
+        str++;
+    }
+
+    if (*str == '\0') return NIL_VAL;
+
     char* endptr;
     errno = 0;
 
-    unsigned long long result = strtoull(str, &endptr, base);
+    int64_t intResult = strtoll(str, &endptr, base);
 
-    if (str == endptr) return NIL_VAL;
-
-    if (result <= (unsigned long long)INT64_MAX) {
-        return INT_VAL((int64_t)result);
+    if (endptr != str && *endptr == '\0' && errno != ERANGE) {
+        return INT_VAL(intResult);
     }
 
-    return FLOAT_VAL((double)result);
+    if (base == 0 || base == 10) {
+        errno = 0;
+        double floatResult = strtod(str, &endptr);
+
+        if (endptr != str) {
+            while (*endptr == ' ' || *endptr == '\t' || *endptr == '\n' || *endptr == '\r') {
+                endptr++;
+            }
+            if (*endptr == '\0') {
+                return FLOAT_VAL(floatResult);
+            }
+        }
+    }
+
+    return NIL_VAL;
 }
 
 Value fromHexNative(int argCount, Value* args) {
@@ -2544,56 +2563,85 @@ Value fromBinNative(int argCount, Value* args) {
 }
 
 Value mathRoundNative(int argCount, Value* args) {
-    if (IS_INT(args[-1])) {
-        return args[-1];
+    double val;
+    int decimals = 0;
+    bool hasDecimals = false;
+
+#define EXTRACT_DECIMALS(v) \
+    if (IS_INT(v)) { \
+        decimals = (int)AS_INT(v) ; \
+        hasDecimals = true; \
+    } else if (IS_FLOAT(v) && isExactInteger(AS_FLOAT(v))) { \
+        decimals = (int)AS_FLOAT(v); \
+        hasDecimals = true; \
+    } else { \
+        runtimeError("round() decimals argument must be an integer."); \
+        return NIL_VAL; \
     }
-    if (IS_FLOAT(args[-1])) {
-        double rounded = round(AS_FLOAT(args[-1]));
+
+    if (IS_NUMERIC(args[-1])) {
+        val = AS_NUMERIC(args[-1]);
+        if (argCount >= 1) {
+            EXTRACT_DECIMALS(args[0]);
+        }
+    } else {
+        if (argCount < 1 || !IS_NUMERIC(args[0])) {
+            runtimeError("round() expects a numeric receiver or argument.");
+            return NIL_VAL;
+        }
+        val = AS_NUMERIC(args[0]);
+        if (argCount >= 2) {
+            EXTRACT_DECIMALS(args[1]);
+        }
+    }
+#undef EXTRACT_DECIMALS
+
+    // case 1: no decimal places requested (eg val.round())
+    // returns integer if within 64-bit bounds to keep whole numbers typed as integer
+    if (!hasDecimals || decimals == 0) {
+        double rounded = round(val);
         if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
             return INT_VAL((int64_t)rounded);
         }
         return FLOAT_VAL(rounded);
     }
 
-    if (argCount > 0) {
-        if (IS_INT(args[0])) {
-            return args[0];
-        }
-        if (IS_FLOAT(args[0])) {
-            double rounded = round(AS_FLOAT(args[0]));
-            if (rounded >= (double)INT64_MIN && rounded <= (double)INT64_MAX) {
-                return INT_VAL((int64_t)rounded);
-            }
-            return FLOAT_VAL(rounded);
-        }
-    }
-    runtimeError("round() expects a numeric receiver or argument.");
-    return NIL_VAL;
+    // case 2: rounding to specific decimal places (eg val.round(2))
+    if (decimals < 0) decimals = 0;
+    if (decimals > 20) decimals = 20;
+    
+    double factor = pow(10.0, decimals);
+    double rounded = round(val * factor) / factor;
+
+    return FLOAT_VAL(rounded);
 }
 
 Value valueToNumber(Value val) {
 }
 
 Value valueToFloat(Value val) {
-    if (IS_INT(val)) return val;
-
     if (IS_FLOAT(val)) return val;
 
+    if (IS_INT(val)) {
+        return FLOAT_VAL((double)AS_INT(val));
+    }
+
     if (IS_BOOL(val)) {
-        return INT_VAL(AS_BOOL(val) ? 1 : 0);
+        return FLOAT_VAL(AS_BOOL(val) ? 1.0 : 0.0);
     }
 
     if (IS_STRING(val)) {
-        Value parseArgs[2];
-        parseArgs[0] = val;
-        parseArgs[1] = INT_VAL(0);
+        const char* str = AS_CSTRING(val);
+        char* endptr;
+        errno = 0;
 
-        Value result = mathParseNative(1, &parseArgs[1]);
+        double d = strtod(str, &endptr);
 
-        if (!IS_NIL(result)) return result;
+        if (endptr != str) {
+            return FLOAT_VAL(d);
+        }
     }
-
-    return INT_VAL(0);
+    return FLOAT_VAL(0.0);
 }
 
 // also callhandler/constructor
@@ -2723,7 +2771,7 @@ Value numberToFixedNative(int argCount, Value* args) {
     if (IS_NUMERIC(args[-1])) {
         val = AS_NUMERIC(args[-1]);
 
-        if (argCount < 1) {
+        if (argCount >= 1) {
             EXTRACT_DECIMALS(args[0]);
         }
     } else {
@@ -7901,21 +7949,56 @@ Value integerClassCallHandler(int argCount, Value* args) {
         return arg;
     }
 
+    if (IS_FLOAT(arg)) {
+        double f = AS_FLOAT(arg);
+        if (f >= (double)INT64_MIN && f <= (double)INT64_MAX) {
+            return INT_VAL((int64_t)f);
+        }
+        return NIL_VAL;
+    }
+
     if (IS_STRING(arg)) {
+        const char* str = AS_CSTRING(arg);
+
+        while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r') {
+            str++;
+        }
+
+        if (*str == '\0') return NIL_VAL;
+
         char* end;
-        int64_t val = strtoll(AS_CSTRING(arg), &end, 10);
+        errno = 0;
+        int64_t val = strtoll(str, &end, 10);
+
+        // overflow/underflow or no digits
+        if (errno == ERANGE) {
+            return NIL_VAL;
+        }
+
+        if (end == str) {
+            return NIL_VAL;
+        }
+
+        while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') {
+            end++;
+        }
+
+        if (*end != '\0') {
+            return NIL_VAL;
+        }
+
         return INT_VAL(val);
     }
-    
+
     if (IS_BOOL(arg)) {
         return INT_VAL(AS_BOOL(arg) ? 1 : 0);
     }
 
-    return INT_VAL(0);
+    return NIL_VAL;
 }
 
 Value floatClassCallHandler(int argCount, Value* args) {
-    if (argCount < 1) return INT_VAL(0);
+    if (argCount < 1) return FLOAT_VAL(0.0);
 
     return valueToFloat(args[0]);
 }

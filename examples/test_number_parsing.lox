@@ -1,0 +1,51 @@
+// Test suite for Number, Float, and Int string parsing
+
+fun assertEqual(actual, expected, message) {
+    if (actual != expected) {
+        print "FAIL: " + message + " (Expected: " + expected + ", Got: " + actual + ")";
+    } else {
+        print "PASS: " + message;
+    }
+}
+
+fun assertTypeAndValue(val, expectedTypeName, expectedVal, message) {
+    var actualType = typeof(val);
+    if (actualType != expectedTypeName) {
+        print "FAIL: " + message + " - Wrong Type (Expected: " + expectedTypeName + ", Got: " + actualType + ")";
+    } else if (val != expectedVal) {
+        print "FAIL: " + message + " - Wrong Value (Expected: " + expectedVal + ", Got: " + val + ")";
+    } else {
+        print "PASS: " + message;
+    }
+}
+
+print "=== 1. FFmpeg JSON Loudnorm Float Edge Cases ===";
+var inputI = Float("-15.79");
+assertTypeAndValue(inputI, "Float", -15.79, "Float(\"-15.79\") parses negative decimal");
+
+var delta = (Float("-16.0") - inputI).abs();
+// 0.21 floating precision check
+assertEqual(delta.round(2), 0.21, "Delta calculation (-16.0 - -15.79).abs() yields 0.21");
+
+print "\n=== 2. Float Constructor & Casting ===";
+assertTypeAndValue(Float("-0.50"), "Float", -0.5, "Float(\"-0.50\")");
+assertTypeAndValue(Float("255"), "Float", 255.0, "Float(\"255\") converts int string to float");
+assertTypeAndValue(Float(42), "Float", 42.0, "Float(42) converts Int to Float");
+assertTypeAndValue(Float(true), "Float", 1.0, "Float(true) yields 1.0");
+assertTypeAndValue(Float(false), "Float", 0.0, "Float(false) yields 0.0");
+
+print "\n=== 3. Int Constructor & Signed Parsing ===";
+assertTypeAndValue(Integer("-15"), "Integer", -15, "Integer(\"-15\") handles negative integer strings");
+assertTypeAndValue(Integer("18446744073709551615"), "Nil", nil, "Overflow strings return nil or error cleanly");
+
+print "\n=== 4. General Number.parse / mathParseNative ===";
+assertTypeAndValue(Math.parse("-15.79"), "Float", -15.79, "Math.parse(\"-15.79\") returns Float");
+assertTypeAndValue(Math.parse("-42"), "Integer", -42, "Math.parse(\"-42\") returns Int");
+assertTypeAndValue(Math.parse("100"), "Integer", 100, "Math.parse(\"100\") returns Int");
+assertTypeAndValue(Math.parse("3.14159"), "Float", 3.14159, "Math.parse(\"3.14159\") returns Float");
+
+print "\n=== 5. Base / Radix Conversions ===";
+assertTypeAndValue(Math.parse("0xFF", 16), "Integer", 255, "Hex string 0xFF with base 16");
+assertTypeAndValue(Math.parse("1010", 2), "Integer", 10, "Binary string 1010 with base 2");
+
+print "\n=== Complete ===";
