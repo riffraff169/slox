@@ -1,0 +1,56 @@
+class Event  {
+  init(value = nil) {
+    this._value = value;
+    this.listeners = [];
+  }
+
+  get() {
+    return this._value;
+  }
+
+  set(newValue) {
+    if (this._value != newValue) {
+      var oldValue = this._value;
+      this._value = newValue;
+      this.notify(oldValue, newValue);
+    }
+  }
+
+  subscribe(callback) {
+    this.listeners.push(callback);
+    return callback; // Return reference for unsubscription
+  }
+
+  unsubscribe(callback) {
+    var nextListeners = [];
+    for (var i = 0; i < this.listeners.length(); i += 1) {
+      if (this.listeners[i] != callback) {
+        nextListeners.push(this.listeners[i]);
+      }
+    }
+    this.listeners = nextListeners;
+  }
+
+  notify(oldVal, newVal) {
+    for (var i = 0; i < this.listeners.length(); i += 1) {
+      this.listeners[i](newVal, oldVal);
+    }
+  }
+
+  on(cb) {
+    this.listeners.push(cb);
+  }
+
+  off(cb) {
+    var idx = this.listeneris.index_of(cb);
+    if (idx != -1) {
+      this.listeners.delete_at(idx);
+    }
+  }
+
+  emit(data) {
+    for (var i = 0; i < this.listeners.length(); i += 1) {
+      this.listeners[i](data);
+    }
+  }
+}

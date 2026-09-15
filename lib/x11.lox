@@ -9,24 +9,39 @@ class X11 {
     ]);
 
     this.fnOpenDisplay = this.ffi.bind("XOpenDisplay", "pointer", ["string"]);
-    this.fnCloseDIsplay = this.ffi.bind("XCloseDisplay", "int32", ["pointer"]);
+    this.fnCloseDisplay = this.ffi.bind("XCloseDisplay", "int32", ["pointer"]);
     this.fnDefaultScreen = this.ffi.bind("XDefaultScreen", "int32", ["pointer"]);
-    this.fnRootWindow = this.ffi.bind("XRootWindow", "pointer", ["pointer", "int32"]);
+    //this.fnDefaultRootWindow = this.ffi.bind("XDefaultRootWindow", "uint64", ["pointer"]);
     this.fnDefaultVisual = this.ffi.bind("XDefaultVisual", "pointer", ["pointer", "int32"]);
+
+    this.fnScreenOfDisplay = this.ffi.bind("XScreenOfDisplay", "pointer", ["pointer", "int32"]);
+    this.fnRootWindowOfScreen = this.ffi.bind("XRootWindowOfScreen", "uint64", ["pointer"]);
+    this.fnFlush = this.ffi.bind("XFlush", "int32", ["pointer"]);
 
     this.fnCreateSimpleWindow = this.ffi.bind(
         "XCreateSimpleWindow",
-        "pointer",
-        ["pointer", "uint64", "int32", "int32", "uint32", "uint32", "uint32", "uint64", "uint64"]
+        "uint64",
+        [
+        "pointer",  // Display* dpy
+        "uint64", // Window parent (root)
+        "int32", // int x
+        "int32", // int y
+        "uint32", // unsigned int width
+        "uint32", // unsigned int height
+        "uint32", // unsigned int border_width
+        "uint64", // unsigned long border
+        "uint64" // unsigned long background
+        ]
         );
 
-    this.fnMapWindow = this.ffi.bind("XMapWindow", "int32", ["pointer", "pointer"]);
-    this.fnUnmapWindow = this.ffi.bind("XUnmapWindow", "int32", ["pointer", "pointer"]);
-    this.fnDestroyWindow = this.ffi.bind("XDestroyWindow", "int32", ["pointer", "pointer"]);
+    this.fnMapWindow = this.ffi.bind("XMapWindow", "int32", ["pointer", "uint64"]);
+    this.fnUnmapWindow = this.ffi.bind("XUnmapWindow", "int32", ["pointer", "uint64"]);
+    this.fnDestroyWindow = this.ffi.bind("XDestroyWindow", "int32", ["pointer", "uint64"]);
 
-    this.fnSelectInput = this.ffi.bind("XSelectInput", "int32", ["pointer", "pointer", "int64"]);
+    this.fnSelectInput = this.ffi.bind("XSelectInput", "int32", ["pointer", "uint64", "int64"]);
     this.fnNextEvent = this.ffi.bind("XNextEvent", "int32", ["pointer", "pointer"]);
     this.fnPending = this.ffi.bind("XPending", "int32", ["pointer"]);
+
     this.fnInternAtom = this.ffi.bind("XInternAtom", "uint64", ["pointer", "string", "int32"]);
     this.fnSetWMProtocols = this.ffi.bind("XSetWMProtocols", "int32", ["pointer", "pointer", "pointer", "int32"]);
 
@@ -46,23 +61,50 @@ class X11 {
     this.Expose           = 12;
     this.DestroyNotify    = 17;
     this.ClientMessage    = 33;
+
+    this.dpy = nil;
   }
 
   openDisplay(name) {
-    return this.fnOpenDisplay(name);
+    this.dpy = this.fnOpenDisplay(name);
+    return this.dpy;
   }
 
   closeDisplay(dpy) {
-    return this.fnCloseDIsplay(dpy);
+    return this.fnCloseDisplay(dpy);
   }
 
   defaultScreen(dpy) {
     return this.fnDefaultScreen(dpy);
   }
 
-  rootWindow(dpy, screen) {
-    return this.fnRootWindow(dpy, screen);
+  screenOfDisplay(dpy, screenNum) {
+    return this.fnScreenOfDisplay(dpy, screenNum);
   }
+
+  rootWindowOfScreen(screenPtr) {
+    return this.fnRootWindowOfScreen(screenPtr);
+  }
+
+  rootWindow(dpy, screenNum) {
+    var scrPtr = this.screenOfDisplay(dpy, screenNum);
+    if (scrPtr == nil) return 0;
+    return this.rootWindowOfScreen(scrPtr);
+  }
+
+  flush(dpy = nil) {
+    if (dpy != nil) {
+      this.fnFlush(dpy);
+    } else if (this.dpy != nil) {
+      this.fnFlush(this.dpy);
+    }
+  }
+  /*
+
+  defaultRootWindow(dpy) {
+    return this.fnDefaultRootWindow(dpy);
+  }
+  */
 
   defaultVisual(dpy, screen) {
     return this.fnDefaultVisual(dpy, screen);

@@ -1,0 +1,264 @@
+class Matrix {
+  init(rows, cols, data) {
+    this.rows = rows;
+    this.cols = cols;
+    // data should be a flat list or nested array of numbers;
+    this.data = data;
+  }
+
+  // constructors;
+  static zeros(rows, cols) {
+    return Matrix(rows, cols, [0; rows * cols]);
+  }
+
+  static identity(n) {
+    var m = Matrix.zeros(n, n);
+    for (var i = 0; i < n; i += 1) {
+      m.data[i * n + i] = 1;
+    }
+    return m;
+  }
+
+  // helpers
+  get(r, c) {
+    return this.data[r * this.cols + c];
+  }
+
+  set(r, c, val) {
+    this.data[r * this.cols + c] = val;
+  }
+
+  // basic ops
+  transpose() {
+    var res = Matrix.zeros(this.cols, this.rows);
+    for (var r = 0; r < this.rows; r += 1) {
+      for (var c = 0; c < this.cols; c += 1) {
+        res.set(c, r, this.get(r, c));
+      }
+    }
+    return res;
+  }
+
+  add(other) {
+    var res = Matrix.zeros(this.rows, this.cols);
+    for (var i = 0; i < this.rows * this.cols; i += 1) {
+      res.data[i] = this.data[i] + other.data[i];
+    }
+    return res;
+  }
+
+  mul(other) {
+    // scalar mul
+    if (typeof(other) == "Integer" or typeof(other) == "Float") {
+      var res = Matrix.zeros(this.rows, this.cols);
+      for (var i = 0; i < this.rows * this.cols; i += 1) {
+        res.data[i] = this.data[i] * other;
+      }
+      return res;
+    }
+
+    // matrix mult A (m x n) * b (n x p) -> C (m x p)
+    var res = Matrix.zeros(this.rows, other.cols);
+    for (var r = 0; r < this.rows; r += 1) {
+      for (var c = 0; r < other.cols; c += 1) {
+        var sum = 0;
+        for (var k = 0; k < this.cols; k += 1) {
+          sum = sum + (this.get(r, k) * other.get(k, c));
+        }
+        res.set(r, c, sum);
+      }
+    }
+    return res;
+  }
+
+
+  // determinant & trace
+  trace() {
+    var tr = 0;
+    for (var i = 0; i < this.rows; i += 1) {
+      tr = tr + this.get(i, i);
+    }
+    return tr;
+  }
+
+  det() {
+    if (this.rows == 2 and this.cols == 2) {
+      // ad - bc
+      return (this.get(0, 0) * this.get(1, 1)) - (this.get(0, 1) * this.get(1, 0));
+    }
+    // expand here for 3x3 lu decomposition if needed
+    return 0;
+  }
+
+
+  // eigenvalues and eigenvectors
+  eigen2x2() {
+    if (this.rows != 2 or this.cols != 2) return nil;
+
+    var a = this.get(0, 0);
+    var b = this.get(0, 1);
+    var c = this.get(1, 0);
+    var d = this.get(1, 1);
+
+    var tr = a + d;
+    var dt = (a * d) - (b * c);
+
+    // characteristic eq: lambda^2 - trace(A)*lambda + det(A) = 0
+    var discriminant = (tr * tr) - (4 * dt);
+
+    if (discriminant < 0) {
+      // complex eigenvalues
+      var realPart = tr / 2.0;
+      var imagPart = Math.sqrt(-distriminant) / 2.0;
+      return [
+        Complex(realPart, imagPart),
+        Complex(realPart, -imagPart)
+      ];
+    }
+
+    var lambda1 = (tr + Math.sqrt(discriminant)) / 2.0;
+    var lambda2 = (tr - Math.sqrt(discriminant)) / 2.0;
+
+
+    // compute eigenvectors (A - lambdaI)v = 0
+    var v1 = this.eigenvectorForValue(lambda1);
+    var v2 = this.eigenvectorForValue(lambda2);
+
+    return {
+      "values": [lambda1, lambda2],
+      "vectors": [v1, v2]
+    };
+  }
+
+  eigenvectorForValue(lambda) {
+    var a = this.get(0, 0) - lambda;
+    var b = this.get(0, 1);
+    var c = this.get(1, 0);
+    var d = this.get(1, 1) - lambda;
+
+    var x = 0;
+    var y = 0;
+
+    if (b != 0) {
+      x = -b;
+      y = a;
+    } else if (c != 0) {
+      x = d;
+      y = -c;
+    } else {
+      x = 1;
+      y = 0;
+    }
+
+    // norm
+    var norm = Math.sqrt(x * x + y * y);
+    if (norm != 0) {
+      x = x / norm;
+      y = y / norm;
+    }
+
+    return Matrix(2, 1, [x, y]);
+  }
+
+  // extract a column vector as a 1d array
+  static getCol(m, colIdx) {
+    var v = [0; m.rows];
+    for (var r = 0; r < m.rows; r += 1) {
+      v[r] = m.data[r * m.cols + colIdx];
+    }
+    return v;
+  }
+  
+  // dot product
+  static dot(u, v) {
+    var sum = 0;
+    for (var i = 0; i < u.length(); i += 1) {
+      sum = sum + u[i] * v[i];
+    }
+    return sum;
+  }
+
+  static norm(v) {
+    return Math.sqrt(Matrix.dot(v, v));
+  }
+
+  // qr decomposition using gram-schmidt process: A = Q * R
+  qrDecompose() {
+    var n = this.rows;
+    var Q = Matrix.zeros(n, n);
+    var R = Matrix.zeros(n, n);
+
+    // matrix to hold intermediate orthogonal basis vectors
+    var U = [];
+    for (var i = 0; i < n; i += 1) {
+      U.push([0; n]);
+    }
+
+    for (var j = 0; j < n; j += 1) {
+      var aj = Matrix.getCol(this, j);
+
+      // u_j = a_j - su_i <a_j, q_i> q_i
+      var uj = [0; n];
+      for (var k = 0; k < n; k += 1) { uj[k] = aj[k]; }
+
+      for (var i = 0; i < j; i += 1) {
+        var qi = Matrix.getCol(Q, i);
+        var projCoeff = Matrix.dot(aj, qi);
+        R.data[i * n + j] = projCoeff;
+
+        for (var k = 0; k < n; k += 1) {
+          uj[k] = uj[k] - projCoeff * qi[k];
+        }
+      }
+
+      var normUj = Matrix.norm(uj);
+      R.data[j * n + j] = normUj;
+
+      // normalize u_j to get q_j
+      if (normUj > 0.0000000001) {
+        for (var k = 0; k < n; k += 1) {
+          Q.data[k * n + j] = uj[k] / normUj;
+        }
+      }
+    }
+
+    return { "Q": Q, "R": R };
+  }
+
+  // compute all real eigenvalues for n x n matrix using qr iteration
+  eigenvaluesQR(maxIter) {
+    var A = Matrix.zeros(this.rows, this.cols);
+    for (var i = 0; i < this.data.length(); i += 1) {
+      A.data[i] = this.data[i];
+    }
+
+    // iteratively apply A_{k+1} = R_k * Q_k
+    for (var iter = 0; iter < maxIter; iter += 1) {
+      var qr = A.qrDecompose();
+      A = qr["R"].mul(qr["Q"]);
+
+      // extract diagonal elements (eigenvalues)
+      var evs = [0; this.rows];
+      for (var i = 0; i < this.rows; i += 1) {
+        evs[i] = A.data[i * this.rows + i];
+      }
+      return evs;
+    }
+  }
+
+  // op hooks
+  __add__(other) { return this.add(other); }
+  __mul__(other) { return this.mul(other); }
+
+  to_string() {
+    var s = "[\n";
+    for (var r = 0; r < this.rows; r += 1) {
+      s = s + "  [ ";
+      for (var c = 0; c < this.cols; c += 1) {
+        s = s + String(this.get(r, c)) + " ";
+      }
+      s = s  + "]\n";
+    }
+    return s + "]";
+  }
+}

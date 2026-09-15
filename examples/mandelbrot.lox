@@ -1,0 +1,84 @@
+class Mandelbrot {
+  init(width, height, maxIter) {
+    this.width = width;
+    this.height = height;
+    this.maxIter = maxIter;
+
+    // compless plane viewport
+    this.xmin = -2.0;
+    this.xmax = 0.5;
+    this.ymin = -1.25;
+    this.ymax = 1.25;
+  }
+
+  appendVal(buf, val) {
+    var bytes = String(val).to_array();
+    for (var i = 0; i < bytes.length(); i += 1) {
+      buf.push(bytes[i]);
+    }
+  }
+
+  getColor(iter) {
+    if (iter == this.maxIter) return [0, 0, 0];
+    return [
+      (iter * 12) % 256,
+      (iter * 7) % 256,
+      (iter * 24) % 256
+    ];
+  }
+
+  generate(filename) {
+    print "Generating Mandelbrot set (" + this.width + "x" + this.height + ")...";
+
+    var buf = [];
+    
+    var dx = (this.xmax - this.xmin) / this.width;
+    var dy = (this.ymax - this.ymin) / this.height;
+
+    for (var py = 0; py < this.height; py += 1) {
+      var cy = this.ymin + (py * dy);
+
+      for (var px = 0; px < this.width; px += 1) {
+        var cx = this.xmin + (px * dx);
+
+        var zr = 0.0;
+        var zi = 0.0;
+        var iter = 0;
+
+        while (iter < this.maxIter and ((zr * zr) + (zi * zi)) <= 4.0) {
+          var zr_next = (zr * zr) - (zi * zi) + cx;
+          zi = (2.0 * zr * zi) + cy;
+          zr = zr_next;
+          iter += 1;
+        }
+
+        var color = this.getColor(iter);
+
+        this.appendVal(buf, color[0]);
+        buf.push(32); // space
+        this.appendVal(buf, color[1]);
+        buf.push(32); // space
+        this.appendVal(buf, color[2]);
+        buf.push(32); // space
+      }
+      buf.push(10); // newline
+
+      var step = (this.height / 10);
+      if ((py + 1) % step == 0 or py + 1 == this.height) {
+        var pct = ((py + 1) * 100 / this.height);
+        print "Rendering: " + pct + "% (" + (py + 1) + "/" + this.height + " rows)";
+      }
+    }
+
+    var header = "P3\n# Mandelbrot Set\n" + this.width + " " + this.height + "\n255\n";
+    var ppmData = header + buf.to_string();
+
+    print "Writing to file: " + filename;
+    File.save(filename, ppmData);
+    print "Done!";
+  }
+}
+
+var mb = Mandelbrot(800, 600, 100);
+mb.generate("mandelbrot.ppm");
+

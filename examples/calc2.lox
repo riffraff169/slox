@@ -280,12 +280,23 @@ class CalculatorTUI {
   run() {
     var plotExpr = "2 * x^2 + 5 * x + 3";
     var running = true;
+    var childPlane = nil;
 
     while (running) {
+      /*
+      if (childPlane != nil) {
+        childPlane.erase();
+        //childPlane.destroy();
+        //childPlane = nil;
+      }
+      */
+
       this.stdPlane.erase();
 
+      this.pixelBuffer.clear(0x1e1e1eff);
+
       // 1. Tokenize & Parse Plot Expression
-      var tokens = tokenize(plotExpr);
+      var tokens = tokenize(this.plotExpr);
       var parser = Parser(tokens);
 
       // 2. Render plot to pixel buffer
@@ -293,25 +304,44 @@ class CalculatorTUI {
 
       // 3. Blit pixel buffer using hardware pixel mode (BLIT_PIXEL = 7 with CHILDPLANE / flags = 32)
       var visual = Visual(this.pixelBuffer, this.nc);
-      var childPlane = visual.blit(this.stdPlane, Visual.BLIT_PIXEL, Visual.SCALE_NONE, 2, 0);
+      childPlane = visual.blit(this.stdPlane, Visual.BLIT_PIXEL, Visual.SCALE_NONE, 2, 0);
 
       // 4. Draw Overlay Text
       this.stdPlane.set_fg(0x00, 0xFF, 0xD7);
-      this.stdPlane.put_str(0, 0, "MODE: RAD | WINDOW: [-10, 10, -2, 2] | Y1 = " + plotExpr);
+      this.stdPlane.put_str(0, 0, "TI-84 SLOX CALCULATOR | MODE: RAD | WINDOW: [-10, 10, -2, 2]");
+
+      // 5. draw live input line & instructions at bottom (row 22 and 23)
+      this.stdPlane.set_fg(0xff, 0xff, 0xff);
+      this.stdPlane.put_str(22, 0, "Y1 = " + this.currentInput + "_");
 
       this.stdPlane.set_fg(0x88, 0x88, 0x88);
-      this.stdPlane.put_str(1, 0, "Press 'q' or 'Esc' to exit");
+      this.stdPlane.put_str(23, 0, "[Enter] Plot Expression | [Esc/Ctrl+C] Quit");
 
       this.nc.render();
 
       // 5. Cleanup visual frame resources
-      if (childPlane != nil) childPlane.destroy();
+      if (childPlane != nil) {
+        childPlane.erase();
+        childPlane.destroy();
+        childPlane = nil;
+      }
       visual.destroy();
 
       // Key Listener
       var key = this.nc.get_key();
       if (key == "q" or key == "Esc") {
         running = false;
+      } else if (key == "Enter" or key == "Return" or key == "\n") {
+        if (this.currentInput.len() > 0) {
+          this.plotExpr = this.currentInput;
+        }
+      } else if (key == "Backspace" or key == "Delete" or key == "\b") {
+        if (this.currentInput.len() > 0) {
+          this.currentInput = this.currentInput.slice(0, this.currentInput.len() - 1);
+        }
+      } else if (key != nil and key.len() == 1) {
+        // append printable characters to the input buffer
+        this.currentInput = this.currentInput + key;
       }
     }
 

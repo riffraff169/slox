@@ -1,0 +1,26 @@
+require("timer.lox");
+
+var count = 0;
+
+// Periodic interval (every 250ms)
+var ticker = Timer.setInterval(250, fun() {
+  count += 1;
+  print "Tick " + str(count);
+});
+
+// One-shot timeout (stops ticker after 1.5s)
+Timer.setTimeout(1500, fun() {
+  print "Stopping ticker...";
+  ticker.cancel();
+});
+
+var guard = Timer.setInterval(1000, fun() {
+    if (count > 15) {
+      print "Cancelling tick...";
+      ticker.cancel();
+      guard.cancel();
+    } else if (!ticker.active) {
+      print "Ticker is no longer active, stopping guard.";
+      guard.cancel();
+    }
+});

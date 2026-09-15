@@ -1,0 +1,17 @@
+class Parent {
+  get_offset() {
+    return 12;
+  }
+}
+
+class Child < Parent {
+  get_total(str) {
+    return this.get_offset() + str.length() + 2;
+  }
+}
+
+var child = Child();
+var test_str = " Target: align_fill_test.a64";
+
+print "Test 5.1 (Inherited invoke in expression = 42):";
+print child.get_total(test_str);

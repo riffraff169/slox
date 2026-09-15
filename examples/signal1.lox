@@ -1,0 +1,17 @@
+// Trap Ctrl+C (SIGINT = 2)
+Signal.trap(2, fun(sig) {
+  print "Caught SIGINT (" + sig + ")! Cleaning up temporary files...";
+  //File.remove("/tmp/app.lock");
+  System.exit(0);
+});
+
+// Trap SIGTERM = 15
+Signal.trap(15, fun(sig) {
+  print "Received SIGTERM, gracefully shutting down server...";
+  Server.stop();
+});
+
+// Main loop
+while (true) {
+  //Server.poll();
+}

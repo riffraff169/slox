@@ -1,0 +1,20 @@
+class Scalar {
+  init(val) {
+    this.val = val;
+  }
+  get_val() {
+    return this.val;
+  }
+}
+
+var obj = Scalar(28);
+
+// 1. Primitive arithmetic around method invocation
+var res1 = 12 + obj.get_val();
+print "Test 1.1 (12 + 28 = 40):";
+print res1;
+
+// 2. Chained arithmetic with multiple operands
+var res2 = 12 + obj.get_val() + 2;
+print "Test 1.2 (12 + 28 + 2 = 42):";
+print res2;

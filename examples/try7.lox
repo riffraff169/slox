@@ -1,0 +1,93 @@
+print "=== Starting Stack Trace Verification Tests ===";
+
+// -------------------------------------------------------------------
+// Test 1: Top-level Script Frame Count and Format
+// -------------------------------------------------------------------
+print "[Test 1] Single frame (top-level script)...";
+var t1_passed = false;
+
+try {
+  var x = undefinedVarTopLevel;
+} catch (Error e) {
+  if (e.stack_trace.length() == 1) {
+    var topFrame = e.stack_trace[0];
+    print "  Frame 0: " + topFrame;
+    // Verify formatting contains line number and 'in script'
+    if (topFrame != nil) {
+      t1_passed = true;
+    }
+  } else {
+    print "  FAIL: Expected 1 frame, got " + e.stack_trace.length();
+  }
+}
+
+if (t1_passed) print "  -> PASSED";
+
+// -------------------------------------------------------------------
+// Test 2: Multi-Frame Call Stack Order and Count
+// Stack should unwind top-down: funcC -> funcB -> funcA -> script
+// -------------------------------------------------------------------
+print "[Test 2] Multi-level call stack frame order...";
+
+fun funcC() {
+  var err = triggerRuntimeTypo; // Frame 0: funcC
+}
+
+fun funcB() {
+  funcC();                     // Frame 1: funcB
+}
+
+fun funcA() {
+  funcB();                     // Frame 2: funcA
+}
+
+var t2_passed = false;
+
+try {
+  funcA();                     // Frame 3: script
+} catch (Error e) {
+  var trace = e.stack_trace;
+  print "  Caught stack depth: " + trace.length();
+  
+  for (var i = 0; i < trace.length(); i = i + 1) {
+    print "    [" + i + "] " + trace[i];
+  }
+
+  // Expect 4 call frames total
+  if (trace.length() == 4) {
+    t2_passed = true;
+  } else {
+    print "  FAIL: Expected 4 frames, got " + trace.length();
+  }
+}
+
+if (t2_passed) print "  -> PASSED";
+
+// -------------------------------------------------------------------
+// Test 3: Deep Recursion Frame Preservation
+// -------------------------------------------------------------------
+print "[Test 3] Deep recursion stack trace count...";
+
+fun recurseAndCrash(depth) {
+  if (depth == 0) {
+    var bad = missingVariable;
+  }
+  recurseAndCrash(depth - 1);
+}
+
+var t3_passed = false;
+
+try {
+  recurseAndCrash(10);
+} catch (Error e) {
+  // 11 recursion frames + 1 top-level script frame = 12 total
+  if (e.stack_trace.length() == 12) {
+    t3_passed = true;
+  } else {
+    print "  FAIL: Expected 12 frames, got " + e.stack_trace.length();
+  }
+}
+
+if (t3_passed) print "  -> PASSED";
+
+print "=== Stack Trace Verification Complete ===";

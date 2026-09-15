@@ -1,0 +1,24 @@
+require("timer.lox");
+
+var count = 0;
+
+var ticker = Timer.setInterval(250, fun() {
+  count += 1;
+  print "Tick " + str(count);
+});
+
+Timer.setTimeout(1500, fun() {
+  print "Stopping ticker...";
+  ticker.cancel();
+});
+
+// Anonymous guard timer (no stored handle)
+Timer.setInterval(1000, fun() {
+  if (count > 15) {
+    print "Count reached limit, shutting down all timers.";
+    Timer.cancelAll();
+  } else if (!ticker.active) {
+    print "Ticker stopped, shutting down remaining timers.";
+    Timer.cancelAll();
+  }
+});

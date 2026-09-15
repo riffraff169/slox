@@ -1,0 +1,119 @@
+class Complex {
+  init(real, imag) {
+    this.real = real;
+    this.imag = imag;
+  }
+
+  static fromReal(r) {
+    return Complex(r, 0);
+  }
+
+  static fromPolar(r, theta) {
+    return Complex(r * Math.cos(theta), r * Math.sin(theta));
+  }
+
+  abs() {
+    // magnitude |z| = sqrt(a^2 + b^2)
+    return (this.real * this.real + this.imag * this.imag).sqrt();
+  }
+
+  arg() {
+    // pase / argument angle
+    return Math.atan2(this.imag, this.real);
+  }
+
+  conj() {
+    // complex conjugate: a - bi
+    return Complex(this.real, -this.imag);
+  }
+
+  neg() {
+    // negation: -a - bi
+    return Complex(-this.real, -this.imag);
+  }
+
+  // math ops
+  add(other) {
+    if (typeof(other) == "Float") {
+      return Complex(this.real + other, this.imag);
+    }
+    return Complex(this.real + other.real, this.imag + other.imag);
+  }
+
+  __add__(other) {
+    return this.add(other);
+  }
+
+  sub(other) {
+    if (typeof(other) == "Float") {
+      return Complex(this.real - other, this.imag);
+    }
+    return Complex(this.real - other.real, this.imag - other.imag);
+  }
+
+  __sub__(other) {
+    return this.sub(other);
+  }
+
+  mul(other) {
+    if (typeof(other) == "Float") {
+      return Complex(this.real * other, this.imag * other);
+    }
+    // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+    var a = this.real;
+    var b = this.imag;
+    var c = other.real;
+    var d = other.imag;
+    return Complex(a * c - b * d, a * d + b * c);
+  }
+
+  __mul__(other) {
+    return this.mul(other);
+  }
+
+  div(other) {
+    if (typeof(other) == "Float") {
+      return Complex(this.real / other, this.imag / other);
+    }
+
+    // (a * bi) / (c + di) = [(ac + bd) + (bc - ad)i] / (c^2 + d^2)
+    var a = this.real;
+    var b = this.imag;
+    var c = other.real;
+    var d = other.imag;
+    var denom = c * c + d * d;
+
+    return Complex(
+        (a * c + b * d) / denom,
+        (b * c - a * d) / denom
+        );
+  }
+
+  __div__(other) {
+    return this.div(other);
+  }
+
+  // advanced functions
+  exp() {
+    // e^(a + bi) = e^a * (cos(b) + i * sin(b))
+    var expReal = Math.exp(this.real);
+    return Complex(
+        expReal * Math.cos(this.imag),
+        expReal * Math.sin(this.imag)
+        );
+  }
+
+  // formatting
+  to_string() {
+    if (this.imag == 0) return String(this.real);
+    if (this.real == 0) return String.imag + "i";
+
+    var sign = " + ";
+    var absImag = this.imag;
+    if (this.imag < 0) {
+      sign = " - ";
+      absImag = -this.imag;
+    }
+    return String(this.real) + sign + absImag + "i";
+  }
+}

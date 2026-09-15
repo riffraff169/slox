@@ -1,0 +1,6 @@
+require("event.lox");
+
+var onClick = Event();
+
+onClick.on(fun(e) { print "Button clicked!"; });
+onClick.emit(nil);

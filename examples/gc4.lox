@@ -1,0 +1,48 @@
+print "=== Starting GC Exception Handling Stress Test ===";
+
+fun allocateGarbage(count) {
+  for (var i = 0; i < count; i = i + 1) {
+    var temp = "gc_pressure_" + i + "_" + (i * 2);
+  }
+}
+
+fun nestedErrorGenerator(depth) {
+  allocateGarbage(50); // Constant allocation pressure down the call stack
+  if (depth == 0) {
+    var fail = invalidReferenceToForceGC;
+  }
+  nestedErrorGenerator(depth - 1);
+}
+
+var gc_stress_passed = true;
+
+print "[Test] Executing 50 exception cycles under heavy heap allocation...";
+
+for (var cycle = 0; cycle < 50; cycle = cycle + 1) {
+  try {
+    allocateGarbage(100);
+    nestedErrorGenerator(5);
+  } catch (Error e) {
+    allocateGarbage(100);
+    
+    // Verify e.message and e.stack_trace survived GC intact
+    if (e.message == nil or e.stack_trace == nil) {
+      print "  FAIL: Corrupted Error object on cycle " + cycle;
+      gc_stress_passed = false;
+      break;
+    }
+
+    // Verify stack_trace elements were not swept by GC
+    if (e.stack_trace.length() != 7) { // 6 calls + 1 script frame
+      print "  FAIL: Stack trace truncated on cycle " + cycle + " (length: " + e.stack_trace.length() + ")";
+      gc_stress_passed = false;
+      break;
+    }
+  }
+}
+
+if (gc_stress_passed) {
+  print "  -> PASSED: All 50 GC exception cycles completed without corruption or dangling pointers.";
+}
+
+print "=== GC Stress Test Complete ===";

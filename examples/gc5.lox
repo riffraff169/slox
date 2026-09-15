@@ -1,0 +1,55 @@
+print "=== Starting Explicit GC Exception Stress Test ===";
+
+fun nestedErrorGenerator(depth) {
+  if (depth == 0) {
+    var fail = invalidReferenceToForceGC;
+  }
+  nestedErrorGenerator(depth - 1);
+}
+
+var gc_stress_passed = true;
+
+print "[Test] Executing exception cycles with forced GC sweeps...";
+
+for (var cycle = 0; cycle < 50; cycle = cycle + 1) {
+  try {
+    nestedErrorGenerator(5);
+  } catch (Error e) {
+    // Force a full garbage collection right after catching the error.
+    // If e.message or e.stack_trace were not anchored on the VM stack 
+    // during C-side construction, this sweep will collect them.
+    GC.gc();
+
+    // Verify error object fields survived the sweep
+    if (e.message == nil or e.stack_trace == nil) {
+      print "  FAIL: Error object fields collected on cycle " + cycle;
+      gc_stress_passed = false;
+      break;
+    }
+
+    // Force another sweep while iterating through e.stack_trace elements
+    GC.gc();
+
+    if (e.stack_trace.length() != 7) { // 6 recursion frames + 1 script frame
+      print "  FAIL: Stack trace corrupted on cycle " + cycle + " (length: " + e.stack_trace.length() + ")";
+      gc_stress_passed = false;
+      break;
+    }
+
+    // Verify individual array element strings weren't swept
+    for (var i = 0; i < e.stack_trace.length(); i = i + 1) {
+      if (e.stack_trace[i] == nil) {
+        print "  FAIL: Stack trace element " + i + " was swept on cycle " + cycle;
+        gc_stress_passed = false;
+        break;
+      }
+    }
+  }
+  if (!gc_stress_passed) break;
+}
+
+if (gc_stress_passed) {
+  print "  -> PASSED: All 50 cycles survived forced GC sweeps intact.";
+}
+
+print "=== Explicit GC Stress Test Complete ===";

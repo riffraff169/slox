@@ -11,6 +11,7 @@ typedef struct {
 } SloxFFILib;
 
 typedef struct {
+    char* name;
     void* fnPtr;
     ffi_cif cif;
     ffi_type* rtype;
@@ -91,6 +92,7 @@ static void freeFFIFuncDestructor(ObjNative* native) {
     if (native->foreignData != NULL) {
         SloxFFIFunc* fn = (SloxFFIFunc*)native->foreignData;
 
+        if (fn->name) free(fn->name);
         if (fn->argTypes) free(fn->argTypes);
         if (fn->argTypeNames) {
             for (int i = 0; i < fn->argCount; i++) {
@@ -134,6 +136,17 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
                 *ptr = 0;
             }
             valueAllocations[i] = ptr;
+            ffiArgs[i] = ptr;
+        } else if (strcmp(tname, "uint32") == 0 || strcmp(tname, "uint32_t") == 0 || strcmp(tname, "uint") == 0) {
+            uint32_t* ptr = (uint32_t*)malloc(sizeof(uint32_t));
+            if (IS_INT(val)) {
+                *ptr = (uint32_t)AS_INT(val);
+            } else if (IS_FLOAT(val)) {
+                *ptr = (uint32_t)AS_FLOAT(val);
+            } else {
+                *ptr = 0;
+            }
+            valueAllocations[i] =  ptr;
             ffiArgs[i] = ptr;
         } else if (strcmp(tname, "int64") == 0 || strcmp(tname, "int64_t") == 0 || strcmp(tname, "long") == 0) {
             int64_t* ptr = (int64_t*)malloc(sizeof(int64_t));
@@ -227,6 +240,34 @@ static Value executeFFICall(SloxFFIFunc* fn, int argCount, Value* args) {
         }
     }
 
+    // Inside slox FFI invocation wrapper:
+ // Place this directly AFTER the for (...) argument parsing loop:
+ /*
+if (strcmp(fn->name, "XCreateSimpleWindow") == 0) {
+    printf("[FFI Debug] Calling XCreateSimpleWindow:\n");
+    printf("  arg[0] dpy: %p\n",          *(void**)ffiArgs[0]);
+    printf("  arg[1] parent: %lu\n",       *(uint64_t*)ffiArgs[1]);
+    printf("  arg[2] x: %d\n",             *(int32_t*)ffiArgs[2]);
+    printf("  arg[3] y: %d\n",             *(int32_t*)ffiArgs[3]);
+    printf("  arg[4] width: %u\n",         *(uint32_t*)ffiArgs[4]);
+    printf("  arg[5] height: %u\n",        *(uint32_t*)ffiArgs[5]);
+    printf("  arg[6] border_width: %u\n",  *(uint32_t*)ffiArgs[6]);
+    printf("  arg[7] border: %lu\n",       *(uint64_t*)ffiArgs[7]);
+    printf("  arg[8] background: %lu\n",   *(uint64_t*)ffiArgs[8]);
+}
+*/
+/*
+printf("[FFI Debug] Calling %s:\n", func_name);
+printf("  arg[0] dpy: %p\n", *(void**)args[0]);
+printf("  arg[1] parent: %lu\n", *(uint64_t*)args[1]);
+printf("  arg[2] x: %d\n", *(int32_t*)args[2]);
+printf("  arg[3] y: %d\n", *(int32_t*)args[3]);
+printf("  arg[4] width: %u\n", *(uint32_t*)args[4]);
+printf("  arg[5] height: %u\n", *(uint32_t*)args[5]);
+printf("  arg[6] border_width: %u\n", *(uint32_t*)args[6]);
+printf("  arg[7] border: %lu\n", *(uint64_t*)args[7]);
+printf("  arg[8] background: %lu\n", *(uint64_t*)args[8]);
+*/
     /*
     printf("[FFI DEBUG] Invoking function at %p (%d args, return: %s)\n",
             fn->fnPtr, fn->argCount, fn->rtypeName);
@@ -418,6 +459,7 @@ Value ffiBindMethod(int argCount, Value* args) {
     }
 
     SloxFFIFunc* fn = (SloxFFIFunc*)malloc(sizeof(SloxFFIFunc));
+    fn->name = strdup(symName);
     fn->fnPtr = fnPtr;
     fn->rtype = rtype;
     fn->argTypes = argTypes;

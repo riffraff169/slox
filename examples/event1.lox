@@ -1,0 +1,11 @@
+require("event.lox");
+
+var count = Event(0);
+
+// Subscribe to state updates
+count.subscribe(fun(newVal, oldVal) {
+  print "Counter changed: " + oldVal + " -> " + newVal;
+});
+
+count.set(1); // Output: Counter changed: 0 -> 1
+count.set(5); // Output: Counter changed: 1 -> 5

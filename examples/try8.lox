@@ -1,0 +1,40 @@
+// Test 1: Throw a number
+try {
+  throw 123;
+} catch (e) {
+  print "Caught " + e; // If this prints, you support numeric throws
+  // expect: Caught 123
+}
+
+// Test 2: Throw nil
+try {
+  throw nil;
+} catch (e) {
+  print "Caught nil"; // If this works, you support nil throws
+  // expect: Caught nil
+}
+
+// Test 3: Throw an instance
+class MyError < Error {}
+try {
+  throw MyError();
+} catch (Error e) {
+  print "Caught object"; // If this works, you support object throws
+  // expect: Caught object
+}
+
+try {
+  try {
+    throw "Inner Error";
+  } catch (Error e) {
+    print "Caught inner: " + e.message; // expect: Caught inner: Inner Error
+    throw e;
+  } catch (e) {
+    print "Caught inner: " + e;
+    throw e;
+  }
+} catch (Error e) {
+  print "Caught outer: " + e.message; // expect: Caught outer: Inner Error
+} catch (e) {
+  print "Caught outer: " + e;
+}

@@ -1,0 +1,20 @@
+class FieldCaller {
+  init() {
+    // Store a function inside a property field
+    this.compute = fun(x, y) {
+      return x * y;
+    };
+  }
+  
+  normal_method(x, y) {
+    return x + y;
+  }
+}
+
+var fc = FieldCaller();
+
+// Invoking normal class method
+print "Test 4.1 (Method invoke): " + String(fc.normal_method(3, 4));
+
+// Invoking function stored in an instance field via method syntax
+print "Test 4.2 (Field invoke):  " + String(fc.compute(3, 4));

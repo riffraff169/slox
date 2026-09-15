@@ -1,0 +1,16 @@
+var str = " Target: align_fill_test.a64";
+
+// 1. Native method in isolated assignment
+var len = str.length();
+print "Test 2.1 (String length = 28):";
+print len;
+
+// 2. Native method inside arithmetic addition
+var boundary = 12 + str.length() + 2;
+print "Test 2.2 (12 + 28 + 2 = 42):";
+print boundary;
+
+// 3. Nested string method calls
+var formatted = "Length is: " + String(str.length());
+print "Test 2.3:";
+print formatted;

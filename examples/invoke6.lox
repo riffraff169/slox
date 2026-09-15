@@ -1,0 +1,24 @@
+class Node {
+  init(val) {
+    this.val = val;
+    this.next = nil;
+  }
+  set_next(n) {
+    this.next = n;
+    return n;
+  }
+  get_next() {
+    return this.next;
+  }
+  get_val() {
+    return this.val;
+  }
+}
+
+var n1 = Node(100);
+var n2 = Node(200);
+n1.set_next(n2);
+
+// Chained invocation: n1.get_next().get_val()
+print "Test 6.1 (Chained invoke = 200):";
+print n1.get_next().get_val();

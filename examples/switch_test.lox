@@ -1,0 +1,11 @@
+
+var x = "string";
+
+switch (typeof(x)) {
+  case "String":
+    print "A String";
+  case "string":
+    print "String: " + x;
+  default:
+    print "Who knows";
+}

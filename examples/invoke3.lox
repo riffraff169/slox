@@ -1,0 +1,21 @@
+class StackTest {
+  arg0() {
+    return 10;
+  }
+  arg1(a) {
+    return a * 2;
+  }
+  arg2(a, b) {
+    return a + b;
+  }
+  arg4(a, b, c, d) {
+    return a + b + c + d;
+  }
+}
+
+var st = StackTest();
+
+print "Test 3.1 (0 args): " + String(st.arg0());
+print "Test 3.2 (1 arg):  " + String(st.arg1(5));
+print "Test 3.3 (2 args): " + String(st.arg2(10, 20));
+print "Test 3.4 (4 args): " + String(st.arg4(1, 2, 3, 4));
