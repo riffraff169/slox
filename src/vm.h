@@ -149,6 +149,7 @@ typedef struct {
     ObjString* classString;
     ObjString* isSomeString;
     ObjString* methodMissingString;
+    ObjString* isPipeString;
 
     TryBlock tryStack[TRY_STACK_MAX];
     int tryCount;

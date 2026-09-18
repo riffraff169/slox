@@ -258,6 +258,7 @@ static void freeObject(Obj* object) {
             {
                 ObjFunction* function = (ObjFunction*)object;
                 freeChunk(&function->chunk);
+                freeValueArray(&function->defaults);
                 FREE(ObjFunction, object);
             }
             break;

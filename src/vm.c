@@ -1463,6 +1463,31 @@ void initVM(int argc, const char* argv[], const char* env[]) {
 
     initValueArray(&vm.globalRoots);
 
+    vm.isPipeString = NULL;
+    vm.errnoString = NULL;
+    vm.errstrString = NULL;
+    vm.initString = NULL;
+    vm.toString = NULL;
+    vm.str_add = NULL;
+    vm.str_sub = NULL;
+    vm.str_mul = NULL;
+    vm.str_div = NULL;
+    vm.str_neg = NULL;
+    vm.str_lt = NULL;
+    vm.str_gt = NULL;
+    vm.str_le = NULL;
+    vm.str_ge = NULL;
+    vm.str_eq = NULL;
+    vm.xString = NULL;
+    vm.yString = NULL;
+    vm.zString = NULL;
+    vm.classString = NULL;
+    vm.okString = NULL;
+    vm.valString = NULL;
+    vm.errString = NULL;
+    vm.isSomeString = NULL;
+    vm.methodMissingString = NULL;
+
     // phase 1. allocate class & metaclass name strings
     ObjString* objectName = copyString("Object", 6);
     push(OBJ_VAL(objectName));
@@ -1538,77 +1563,57 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     // initObjectClass();
     defineNativeMethod(vm.objectClass, "class_name", objectClassNameNative);
 
-    vm.errnoString = NULL;
     vm.errnoString = copyString("errno", 5);
     vmAnchor(vm.errnoString);
 
-    vm.errstrString = NULL;
     vm.errstrString = copyString("errstr", 6);
     vmAnchor(vm.errstrString);
     clearLastError();
 
-    vm.initString = NULL;
     vm.initString = copyString("init", 4);
     vmAnchor(vm.initString);
-    vm.toString = NULL;
     vm.toString = copyString("to_string", 9);
     vmAnchor(vm.toString);
-    vm.str_add = NULL;
     vm.str_add = copyString("__add__", 7);
     vmAnchor(vm.str_add);
-    vm.str_sub = NULL;
     vm.str_sub = copyString("__sub__", 7);
     vmAnchor(vm.str_sub);
-    vm.str_mul = NULL;
     vm.str_mul = copyString("__mul__", 7);
     vmAnchor(vm.str_mul);
-    vm.str_div = NULL;
     vm.str_div = copyString("__div__", 7);
     vmAnchor(vm.str_div);
-    vm.str_neg = NULL;
     vm.str_neg = copyString("__neg__", 7);
     vmAnchor(vm.str_neg);
-    vm.str_lt = NULL;
     vm.str_lt = copyString("__lt__", 6);
     vmAnchor(vm.str_lt);
-    vm.str_gt = NULL;
     vm.str_gt = copyString("__gt__", 6);
     vmAnchor(vm.str_gt);
-    vm.str_le = NULL;
     vm.str_le = copyString("__le__", 6);
     vmAnchor(vm.str_le);
-    vm.str_ge = NULL;
     vm.str_ge = copyString("__ge__", 6);
     vmAnchor(vm.str_ge);
-    vm.str_eq = NULL;
     vm.str_eq = copyString("__eq__", 6);
     vmAnchor(vm.str_eq);
-    vm.xString = NULL;
     vm.xString = copyString("x", 1);
     vmAnchor(vm.xString);
-    vm.yString = NULL;
     vm.yString = copyString("y", 1);
     vmAnchor(vm.yString);
-    vm.zString = NULL;
     vm.zString = copyString("z", 1);
     vmAnchor(vm.zString);
-    vm.classString = NULL;
     vm.classString = copyString("class", 5);
     vmAnchor(vm.classString);
-    vm.okString = NULL;
     vm.okString = copyString("ok", 2);
     vmAnchor(vm.okString);
-    vm.valString = NULL;
     vm.valString = copyString("val", 3);
     vmAnchor(vm.valString);
-    vm.errString = NULL;
     vm.errString = copyString("err", 3);
     vmAnchor(vm.errString);
-    vm.isSomeString = NULL;
     vm.isSomeString = copyString("is_some", 7);
     vmAnchor(vm.isSomeString);
 
-    vm.methodMissingString = NULL;
+    vm.isPipeString = copyString("__is_pipe", 9);
+    vmAnchor(vm.isPipeString);
+
     vm.methodMissingString = copyString("method_missing", 14);
     vmAnchor(vm.methodMissingString);
 

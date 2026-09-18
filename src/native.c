@@ -755,8 +755,10 @@ Value requireNative(int argCount, Value* args) {
 
     push(OBJ_VAL(function));
     ObjClosure* closure = newClosure(function);
-    pop();
-    push(OBJ_VAL(closure));
+
+    vm.stackTop[-1] = OBJ_VAL(closure);
+    //pop();
+    //push(OBJ_VAL(closure));
 
     VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
     VM_CALLBACK_ENTER(priorFrameCount);
@@ -773,10 +775,16 @@ Value requireNative(int argCount, Value* args) {
             exportResult = BOOL_VAL(true);
         }
 
+        push(exportResult);
         tableSet(&vm.requires, path, exportResult);
+        pop();
+
         VM_CALLBACK_EXIT(oldExitDepth);
         return exportResult;
     }
+
+    pop();
+
     VM_CALLBACK_EXIT(oldExitDepth);
     return NIL_VAL;
 }
@@ -4061,10 +4069,8 @@ int closeFileInternal(ObjInstance* inst) {
 
         bool isPipe = false;
         Value isPipeVal;
-        ObjString* isPipeKey = copyString("__is_pipe", 9);
-        push(OBJ_VAL(isPipeKey));
 
-        if (tableGet(&inst->fields, isPipeKey, &isPipeVal) && IS_BOOL(isPipeVal)) {
+        if (tableGet(&inst->fields, vm.isPipeString, &isPipeVal) && IS_BOOL(isPipeVal)) {
             isPipe = AS_BOOL(isPipeVal);
         }
         pop();
@@ -7519,7 +7525,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
 
     for (const char **envp = env; *envp != NULL; envp++) {
         const char* entry = *envp;
-        char *sep = strchr(entry, '=');
+        const char *sep = strchr(entry, '=');
 
         if (sep != NULL) {
             int keyLen = (int)(sep - entry);
@@ -7745,9 +7751,66 @@ Value bufferSizeNative(int argCount, Value* args) {
     return INT_VAL(AS_BUFFER(args[-1])->size);
 }
 
+Value bufferToStringNative(int argCount, Value* args) {
+    ObjBuffer* self = AS_BUFFER(args[-1]);
+    return OBJ_VAL(copyString((char*)self->bytes, self->size));
+}
+
+Value bufferToArrayNative(int argCount, Value* args) {
+    ObjBuffer* self = AS_BUFFER(args[-1]);
+    ObjArray* array = newArray();
+    push(OBJ_VAL(array));
+
+    for (size_t i = 0; i < self->size; i++) {
+        arrayAppend(array, INT_VAL(self->bytes[i]));
+    }
+    pop();
+    return OBJ_VAL(array);
+}
+
+Value bufferSliceNative(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("Buffer.slice() expects an offset and a length.");
+        return NIL_VAL;
+    }
+
+    ObjBuffer* self = AS_BUFFER(args[-1]);
+    int64_t offset;
+    int64_t length;
+
+    if (IS_INT(args[0])) {
+        offset =  AS_INT(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        offset = (int64_t)AS_FLOAT(args[0]);
+    } else {
+        runtimeError("Buffer.slice() expects an integer offset value.");
+        return NIL_VAL;
+    }
+
+    if (IS_INT(args[1])) {
+        length =  AS_INT(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        length = (int64_t)AS_FLOAT(args[1]);
+    } else {
+        runtimeError("Buffer.slice() expects an integer length value.");
+        return NIL_VAL;
+    }
+
+    if (offset < 0 || length < 0 || (offset + length) > self->size) {
+        runtimeError("Buffer.slice() offset and length is out of bounds.");
+        return NIL_VAL;
+    }
+
+    ObjBuffer* sliced = newBuffer(length);
+    memcpy(sliced->bytes, self->bytes + offset, length);
+    return OBJ_VAL(sliced);
+    //ObjString* str = copyString((const char*)(self->bytes + offset), length);
+    //return OBJ_VAL(str);
+}
+
 Value bufferFillNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Buffer.fil() expects an integer byte value.");
+        runtimeError("Buffer.fill() expects an integer byte value.");
         return NIL_VAL;
     }
 
@@ -7883,6 +7946,9 @@ void initBufferClass() {
 
     defineNativeMethod(vm.bufferClass, "size", bufferSizeNative);
     defineNativeMethod(vm.bufferClass, "fill", bufferFillNative);
+    defineNativeMethod(vm.bufferClass, "slice", bufferSliceNative);
+    defineNativeMethod(vm.bufferClass, "to_string", bufferToStringNative);
+    defineNativeMethod(vm.bufferClass, "to_array", bufferToArrayNative);
     defineNativeMethod(vm.bufferClass, "write_uint64", bufferWriteUint64Native);
     defineNativeMethod(vm.bufferClass, "write_uint8", bufferWriteUint8Native);
     defineNativeMethod(vm.bufferClass, "get_ptr", bufferWriteGetPtrNative);

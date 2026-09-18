@@ -1447,7 +1447,6 @@ static void function(FunctionType type) {
 
     beginScope();
 
-    //printf("[FUNCTION] begin argument parsing\n");
     if (type == TYPE_GETTER) {
         // getters have 0 parameters implicitly
         // no '(' or ')' to parse.
@@ -1483,14 +1482,10 @@ static void function(FunctionType type) {
                 if (current->function->arity > 255) {
                     errorAtCurrent("Can't have more than 255 parameters.");
                 }
-                //printf("get constant\n");
                 int constant = parseVariable("Expect parameter name.");
-                //printf("define variable\n");
                 defineVariable(constant);
 
-                //printf("looking for default value\n");
                 if (match(TOKEN_EQUAL)) {
-                    //printf("getting default value\n");
                     isOptional = true;
                     Value defaultValue = parseConstant();
                     writeValueArray(&current->function->defaults, defaultValue);
@@ -1502,9 +1497,6 @@ static void function(FunctionType type) {
         }
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
     }
-    //printf("[FUNCTION] before expect\n");
-    //consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
-    //printf("[FUNCTION] after expect\n");
     consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     block();
 
@@ -1514,6 +1506,7 @@ static void function(FunctionType type) {
     }
 
     int constant = makeConstant(OBJ_VAL(function));
+
     if (constant < 256) {
         emitByte(OP_CLOSURE);
         emitByte((uint8_t)constant);
