@@ -4073,7 +4073,7 @@ int closeFileInternal(ObjInstance* inst) {
         if (tableGet(&inst->fields, vm.isPipeString, &isPipeVal) && IS_BOOL(isPipeVal)) {
             isPipe = AS_BOOL(isPipeVal);
         }
-        pop();
+
         int res;
 
         if (isPipe) {
