@@ -2444,7 +2444,7 @@ InterpretResult run() {
             double a = valueToDouble(pop()) ; \
             push(valueType(a op b)); \
         } else { \
-            runtimeError("Operands must be numbers or integers."); \
+            runtimeError("Operands must be floats or integers."); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
     } while (false)
@@ -3065,7 +3065,7 @@ InterpretResult run() {
             case OP_MOD:
                 {
                     if (!IS_NUMERIC(peek(0)) || !IS_NUMERIC(peek(1))) {
-                        RUNTIME_ERROR("Operands must be numbers or integers.");
+                        RUNTIME_ERROR("Operands must be floats or integers.");
                         break;
                     }
                     if (IS_INT(peek(0)) && IS_INT(peek(1))) {

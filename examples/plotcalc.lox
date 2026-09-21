@@ -1,6 +1,21 @@
 require("kittycanvas.lox");
 require("readline.lox");
 
+class ClosureWrapper {
+  init(fnClosure, reprText) {
+    this.fn = fnClosure;
+    this.repr = reprText;
+  }
+
+  call(val) {
+    return this.fn(val);
+  }
+
+  to_string() {
+    return this.repr;
+  }
+}
+
 class Matrix {
   init(rows, cols, data) {
     this.rows = rows;
@@ -19,6 +34,18 @@ class Matrix {
   }
 
   add(other) {
+    if (typeof(other) == "Float" or typeof(other) == "Integer") {
+      var res = [];
+      for (var i = 0; i < this.rows; i += 1) {
+        var row = [];
+        for (var j = 0; j < this.cols; j += 1) {
+          row.push(this.data[i][j] + other);
+        }
+        res.push(row);
+      }
+      return Matrix.fromArray(res);
+    }
+
     if (this.rows != other.rows or this.cols != other.cols) {
       print "Error: Matrix dimension mismatch for addition.";
       return nil;
@@ -97,7 +124,9 @@ class Matrix {
       for (var j = 0; j < this.cols; j += 1) {
         var cell = this.data[i][j];
 
-        if (typeof(cell) == "Function") {
+        if (typeof(cell) == "ClosureWrapper") {
+          row.push(cell.call(x_val));
+        } else if (typeof(cell) == "Function") {
           row.push(cell(x_val));
         } else {
           row.push(cell);
@@ -113,7 +142,14 @@ class Matrix {
     for (var i = 0; i < this.rows; i += 1) {
       s += "  [";
       for (var j = 0; j < this.cols; j += 1) {
-        s += this.data[i][j];
+        var cell = this.data[i][j];
+
+        if (typeof(cell) == "ClosureWrapper") {
+          s += cell.repr;
+        } else {
+          s += cell;
+        }
+        //s += this.data[i][j];
         if (j < this.cols - 1) s += ", ";
       }
       s += "]";
@@ -189,7 +225,7 @@ cnf.register_func("transpose", fun(m) {
       res.push(row);
     }
     return Matrix.fromArray(res);
-    });
+  });
 
 cnf.register_func("identity", fun(n) {
     var size = Integer(n);
@@ -202,11 +238,11 @@ cnf.register_func("identity", fun(n) {
       res.push(row);
     }
     return Matrix.fromArray(res);
-    });
+  });
 
 cnf.register_func("get", fun(m, row, col) {
     if (typeof(m) != "Matrix") return 0;
-    return m.get(Integer(row), Integer(col));
+      return m.get(Integer(row), Integer(col));
     });
 
 fun customWave(a, b) {
@@ -214,6 +250,12 @@ fun customWave(a, b) {
 }
 cnf.register_func("wave", customWave);
 
+cnf.register_func("eval_at", fun(m, x_val) {
+    if (typeof(m) == "Matrix") {
+      return m.eval_at(x_val);
+    }
+    return m;
+  });
 
 class Token {
   init(type, text, val) {
@@ -457,7 +499,18 @@ class Parser {
     return 0;
   }
 
+  consume(expectedText) {
+    if (this.curr.text != expectedText) {
+      print "Syntax Error: Expected '" + expectedText + "' but got '" + this.curr.text + "'";
+      return false;
+    }
+    this.advance();
+    return true;
+  }
+
   parseExpression(precedence) {
+    //print "[DEBUG] parseExpression enter | curr: '" + this.curr.text + "' (" + this.curr.type + ")";
+
     var token = this.curr;
     this.advance();
 
@@ -477,20 +530,35 @@ class Parser {
       if (this.curr.type == "RPAREN") this.advance();
     } else if (token.type == "FN") {
       var fnName = token.text;
-      var args = [];
 
-      if (this.curr.type == "LPAREN") this.advance();
+      // anon lambda special case: fun(...) <expr>
+      if (fnName == "fun") {
+        if (this.curr.type == "LPAREN") this.advance();
 
-      if (this.curr.type != "RPAREN") {
-        args.push(this.parseExpression(0));
-        while (this.curr.type == "COMMA") {
-          this.advance();
+        var paramName = this.curr.text;
+        this.advance();
+
+        if (this.curr.type == "RPAREN") this.advance();
+
+        var bodyAst = this.parseExpression(0);
+        left = FunNode(paramName, bodyAst);
+      } else {
+        // standard builtin / registered function call
+        var args = [];
+
+        if (this.curr.type == "LPAREN") this.advance();
+
+        if (this.curr.type != "RPAREN") {
           args.push(this.parseExpression(0));
+          while (this.curr.type == "COMMA") {
+            this.advance();
+            args.push(this.parseExpression(0));
+          }
         }
-      }
 
-      if (this.curr.type == "RPAREN") this.advance();
-      left = CallNode(fnName, args);
+        if (this.curr.type == "RPAREN") this.advance();
+        left = CallNode(fnName, args);
+      }
     } else if (token.type == "LBRACKET") {
       // parse [[1, 2], [3, 4]]
       var rows = [];
@@ -517,6 +585,24 @@ class Parser {
 
       if (this.curr.type == "RBRACKET") this.advance();
       left = MatrixNode(rows);
+      /*
+    } else if (token.type == "KEYWORD" and token.text == "fun") {
+      print "[DEBUG] Prefix fun start";
+      this.advance(); // consume 'fun' keyword -> now on '('
+
+      if (!this.consume("(")) return nil;
+
+      var paramName = this.curr.text;
+      print "[DEBUG] fun param: " + paramName;
+      this.advance(); // consume param name 'x' -> now on ')'
+
+      if (!this.consume(")")) return nil;
+
+      print "[DEBUG] Parsing fun body...";
+      var bodyAst = this.parseExpression(0);
+      left = FunNode(paramName, bodyAst);
+      print "[DEBUG] FunNode constructed successfully";
+      */
     } else {
       return NumNode(0);
     }
@@ -537,6 +623,42 @@ class Parser {
     }
 
     return left;
+  }
+}
+
+class FunNode {
+  init(paramName, bodyAst) {
+    this.paramName = paramName;
+    this.bodyAst = bodyAst;
+  }
+
+  eval() {
+    // return an executable closure that binds the parameter in SymbolTable at runtime
+    var param = this.paramName;
+    var body = this.bodyAst;
+    var reprText = "fun(" + param + ") " + body.to_string();
+
+    var rawClosure = fun(val) {
+      var prevVal = symbols.vars.has(param) ? symbols.getVar(param).val : nil;
+      symbols.setVar(param, val);
+
+      var res = body.eval();
+
+      if (prevVal != nil) {
+        symbols.setVar(param, prevVal);
+      }
+      return res;
+    };
+
+    return ClosureWrapper(rawClosure, reprText);
+  }
+
+  hasVar(name) {
+    return this.bodyAst.hasVar(name);
+  }
+
+  to_string() {
+    return "fun(" + this.paramName + ") ...";
   }
 }
 
@@ -622,15 +744,62 @@ fun repl() {
         var currentX = xMin + (px / (width - 1)) * (xMax - xMin);
         symbols.setVar("x", currentX);
 
-        var y = ast.eval();
-        var py = Integer(height - 1 - (( y - yMin) / (yMax - yMin) * (height - 1)));
+        var y = nil;
+        var valid = false;
 
-        if (px > 0 and py >= 0 and py < height and prevY >= 0 and prevY < height) {
-          canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+        try {
+          var result = ast.eval();
+        
+          if (typeof(result) == "Matrix" and result.rows >= 2) {
+            // parametric mode: extract x and y components from column matrix
+            var worldX = result.get(0, 0);
+            var worldY = result.get(1, 0);
+
+            var px = Integer(((worldX - xMin) / (xMax - xMin)) * width);
+            var py = Integer(height - ((worldY - yMin) / (yMax - yMin)) * height);
+
+            if (prevX >= 0 and prevY >= 0) {
+              canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+            }
+            prevX = px;
+            prevY = py;
+          } else if (result == result) {
+            // scalar y = f(x) mode
+            var py = Integer(height - ((result - yMin) / (yMax - yMin)) * height);
+
+            if (prevX >= 0 and prevY >= 0 and py >= 0 and py < height) {
+              canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+            }
+            prevX = px;
+            prevY = py;
+          }
+        } catch (e) {
+          prevX = -1;
+          prevY = -1;
+        }
+        /*
+          if (y != nil and y == y and typeof(y) != "Matrix") {
+            valid = true;
+          }
+        } catch (err) {
+          valid = false;
         }
 
-        prevX = px;
-        prevY = py;
+        if (valid) {
+          //var py = Integer(height - 1 - (( y - yMin) / (yMax - yMin) * (height - 1)));
+          var py = Integer(height - ((y - yMin) / (yMax - yMin)) * height);
+
+          if (px > 0 and py >= 0 and py < height and prevY >= 0 and prevY < height) {
+            canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+          }
+
+          prevX = px;
+          prevY = py;
+        } else {
+          prevY = -1;
+        }
+      }
+      */
       }
 
       canvas.render();
@@ -645,3 +814,26 @@ fun repl() {
 repl();
 
 
+/* examples
+get([[exp(-0.2 * x), 0], [0, exp(-0.2 * x)]] * [[sin(3 * x)], [cos(3 * x)]], 0, 0)
+
+calc> A = [[fun(x) exp(-0.2 * x), fun(x) 0], [fun(x) 0, fun(x) exp(-0.2 * x)]]
+Set A = [
+  [fun(x) CallNode(exp, args=1), fun(x) NumNode(0)],
+  [fun(x) NumNode(0), fun(x) CallNode(exp, args=1)]
+]
+calc> V = [[fun(x) sin(3 * x)], [fun(x) cos(3 * x)]]
+Set V = [
+  [fun(x) CallNode(sin, args=1)],
+  [fun(x) CallNode(cos, args=1)]
+]
+calc> get(eval_at(A, x) * eval_at(V, x), 0, 0)
+AST: CallNode(get, args=3)
+
+
+R = [[fun(x) 2 * cos(x), fun(x) -2 * sin(x)], [fun(x) 2 * sin(x), fun(x) 2 * cos(x)]]
+v = [[1], [0]]
+M = eval_at(R, x) * v
+eval_at(R, x) * v
+
+*/
