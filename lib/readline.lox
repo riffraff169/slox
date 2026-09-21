@@ -1,0 +1,23 @@
+import "ffi";
+require("multiffi.lox");
+
+class Readline {
+  init() {
+    this.ffi = MultiFFI([
+        "libreadline.so"
+    ]);
+
+    this.fnReadline = this.ffi.bind("readline", "string", ["string"]);
+    this.fnAddHistory = this.ffi.bind("add_history", "void", ["string"]);
+  }
+
+  prompt(p) {
+    var line = this.fnReadline(p);
+    if (line == nil) return nil;
+
+    if (line.length() > 0) {
+      this.fnAddHistory(line);
+    }
+    return line;
+  }
+}

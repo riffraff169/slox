@@ -1,0 +1,404 @@
+require("kittycanvas.lox");
+require("readline.lox");
+
+class SymbolTable {
+  init() {
+    this.vars = {};
+  }
+
+  setVar(name, val) {
+    if (this.vars.has(name)) {
+      this.vars[name].val = val;
+    } else {
+      var node = VarNode(name, val);
+      this.vars[name] = node;
+    }
+  }
+
+  getVar(name) {
+    if (this.vars.has(name)) {
+      return this.vars[name];
+    }
+    var node = VarNode(name, 0);
+    this.vars[name] = node;
+    return node;
+  }
+}
+
+var symbols = SymbolTable();
+
+class FunctionRegistry {
+  init() {
+    this.funcs = {};
+  }
+
+  register_func(name, fn) {
+    this.funcs[name] = fn;
+  }
+
+  get_func(name) {
+    if (this.funcs.has(name)) {
+      return this.funcs[name];
+    }
+    return nil;
+  }
+}
+
+var cnf = FunctionRegistry();
+cnf.register_func("sin", Math.sin);
+cnf.register_func("cos", Math.cos);
+cnf.register_func("tan", Math.tan);
+cnf.register_func("atan2", Math.atan2);
+cnf.register_func("sqrt", Math.sqrt);
+cnf.register_func("abs", fun(v) { return v.abs(); });
+cnf.register_func("sinc", fun(v) { return v == 0 ? 1 : Math.sin(v) / v; });
+
+fun customWave(a, b) {
+  return Math.sin(a) * Math.cos(b);
+}
+cnf.register_func("wave", customWave);
+
+
+class Token {
+  init(type, text, val) {
+    this.type = type;
+    this.text = text;
+    this.val = val;
+  }
+
+  to_string() {
+    return "Token(\"" + this.type + "\", \"" + this.text + "\", " + this.val + ")";
+  }
+}
+
+class Lexer {
+  init(source) {
+    this.source = source;
+    this.pos = 0;
+    this.len = source.length();
+  }
+
+  next() {
+    while (this.pos < this.len and this.source[this.pos] == ' ') {
+      this.pos += 1;
+    }
+
+    if (this.pos >= this.len) return Token("EOF", "", nil);
+
+    var c = this.source[this.pos];
+
+    // Number (integers or floats)
+    if (c >= '0' and c <= '9') {
+      var start = this.pos;
+      while (this.pos < this.len and ((this.source[this.pos] >= '0' and this.source[this.pos] <= '9') or this.source[this.pos] == '.')) {
+        this.pos = this.pos + 1;
+      }
+      var numStr = this.source.slice(start, this.pos);
+      return Token("NUMBER", numStr, numStr.to_float());
+    }
+
+    // identifiers and functions (x, sin, cos, tan, etc)
+    if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_') {
+      var start = this.pos;
+      while (this.pos < this.len and ((this.source[this.pos] >= 'a' and this.source[this.pos] <= 'z') or
+            (this.source[this.pos] >= 'A' and this.source[this.pos] <= 'Z') or this.source[this.pos] == '_')) {
+        this.pos = this.pos + 1;
+      }
+      var name = this.source.slice(start, this.pos);
+
+      var peekPos = this.pos;
+      while (peekPos < this.len and this.source[peekPos] == ' ') {
+        peekPos += 1;
+      }
+
+      if (peekPos < this.len and this.source[peekPos] == '(') {
+        return Token("FN", name, nil);
+      }
+      return Token("VAR", name, nil);
+    }
+
+    // operators and parentheses
+    this.pos = this.pos + 1;
+    if (c == '+') return Token("PLUS", "+", nil);
+    if (c == '-') return Token("MINUS", "-", nil);
+    if (c == '*') return Token("STAR", "*", nil);
+    if (c == '/') return Token("SLASH", "/", nil);
+    if (c == '^') return Token("POWER", "^", nil);
+    if (c == '(') return Token("LPAREN", "(", nil);
+    if (c == ')') return Token("RPAREN", ")", nil);
+    if (c == ',') return Token("COMMA", ",", nil);
+
+    return Token("EOF", "", nil);
+  }
+}
+
+class NumNode {
+  init(val) { this.val = val; }
+  eval() { return this.val; }
+
+  to_string() {
+    return "NumNode(" + this.val + ")";
+  }
+}
+
+class VarNode {
+  init(name, val) {
+    this.name = name;
+    this.val = val;
+  }
+
+  eval() {
+    return this.val;
+  }
+
+  to_string() {
+    return "VarNode(" + this.name + "=" + this.val + ")";
+  }
+}
+
+class UnaryNode {
+  init(op, expr) {
+    this.op = op;
+    this.expr = expr;
+  }
+
+  eval() {
+    var v = this.expr.eval();
+    if (this.op == "-") return -v;
+    return v;
+  }
+
+  to_string() {
+    return "UnaryNode(" + this.op + this.expr + ")";
+  }
+}
+
+class BinaryNode {
+  init(left, op, right) {
+    this.left = left;
+    this.op = op;
+    this.right = right;
+  }
+
+  eval() {
+    var l = this.left.eval();
+    var r = this.right.eval();
+    if (this.op == "+") return l + r;
+    if (this.op == "-") return l - r;
+    if (this.op == "*") return l * r;
+    if (this.op == "/") return r == 0 ? 0 : l / r;
+    if (this.op == "^") return l ** r;
+    return 0;
+  }
+
+  to_string() {
+    return "BinaryNode(" + this.left + " " + this.op + " " + this.right + ")";
+  }
+}
+
+class CallNode {
+  init(fnName, args) {
+    this.fnName = fnName;
+    this.args = args;
+  }
+  
+  eval() {
+    var fn = cnf.get_func(this.fnName);
+    if (fn == nil) {
+      return 0;
+    }
+
+    var evaluatedArgs = [];
+    for (var i = 0; i < this.args.length(); i += 1) {
+      evaluatedArgs.push(this.args[i].eval());
+    }
+
+    return fn(*evaluatedArgs);
+  }
+
+  to_string() {
+    return "CallNode(" + this.fnName + ", args=" + this.args.length() + ")";
+  }
+}
+
+class Parser {
+  init(lexer) {
+    this.lexer = lexer;
+    this.curr = lexer.next();
+  }
+
+  advance() {
+    this.curr = this.lexer.next();
+  }
+
+  getPrecedence(tokenType) {
+    if (tokenType == "PLUS" or tokenType == "MINUS") return 10;
+    if (tokenType == "STAR" or tokenType == "SLASH") return 20;
+    if (tokenType == "POWER") return 30; // right associative exponentiation
+    return 0;
+  }
+
+  parseExpression(precedence) {
+    var token = this.curr;
+    this.advance();
+
+    var left = nil;
+
+    // nulled denoation (prefix / primary)
+    if (token.type == "NUMBER") {
+      left = NumNode(token.val);
+    } else if (token.type == "VAR") {
+      //left = VarNode();
+      left = symbols.getVar(token.text);
+    } else if (token.type == "MINUS") {
+      // unary negation (prec 40)
+      left = UnaryNode("-", this.parseExpression(40));
+    } else if (token.type == "LPAREN") {
+      left = this.parseExpression(0);
+      if (this.curr.type == "RPAREN") this.advance();
+    } else if (token.type == "FN") {
+      var fnName = token.text;
+      var args = [];
+
+      if (this.curr.type == "LPAREN") this.advance();
+
+      if (this.curr.type != "RPAREN") {
+        args.push(this.parseExpression(0));
+        while (this.curr.type == "COMMA") {
+          this.advance();
+          args.push(this.parseExpression(0));
+        }
+      }
+
+      if (this.curr.type == "RPAREN") this.advance();
+      left = CallNode(fnName, args);
+    } else {
+      return NumNode(0);
+    }
+
+    // left denotation (infix / power)
+    while (precedence < this.getPrecedence(this.curr.type)) {
+      var opToken = this.curr;
+      this.advance();
+
+      // rigth assoc handling for '^'
+      var nextPrec = this.getPrecedence(opToken.type);
+      if (opToken.type == "POWER") {
+        nextPrec = nextPrec - 1;
+      }
+
+      var right = this.parseExpression(nextPrec);
+      left = BinaryNode(left, opToken.text, right);
+    }
+
+    return left;
+  }
+}
+
+fun parseMath(exprStr) {
+  var lexer = Lexer(exprStr);
+  var parser = Parser(lexer);
+  //return parser.parseExpression(0);
+  var p1 = parser.parseExpression(0);
+  return p1;
+}
+
+fun repl() {
+  var readline = Readline();
+
+  print "==================================================";
+  print " Pratt Math REPL & Kitty Plotter";
+  print " Commands:";
+  print "   <expr>       - Plot mathematical expression";
+  print "   var=val      - Set variable (e.g., a=2.5)";
+  print "   vars         - Display symbol table";
+  print "   bounds       - Set plot range (xMin xMax yMin yMax)";
+  print "   exit / quit  - Exit shell";
+  print "==================================================";
+
+  symbols.setVar("xMin", -10.0);
+  symbols.setVar("xMax", 10.0);
+  symbols.setVar("yMin", -3.0);
+  symbols.setVar("yMax", 3.0);
+  symbols.setVar("x", 0.0);
+  symbols.setVar("width", 512);
+  symbols.setVar("height", 256);
+
+  /*
+  var xMin = -10.0;
+  var xMax = 10.0;
+  var yMin = -3.0;
+  var yMax = 3.0;
+  var width = 512;
+  var height = 256;
+  */
+
+  while (true) {
+    var line = readline.prompt("plot> ");
+
+    if (line == nil or line == "exit" or line == "quit") {
+      print "Exiting.";
+      break;
+    }
+
+    if (line.length() == 0) continue;
+
+    if (line == "vars") {
+      print "--- Symbol Table ---";
+      symbols.vars.each(fun(k, v) {
+          print k + " = " + v.val;
+          });
+      continue;
+    }
+
+    if (line.contains("=") and !line.contains("==")) {
+      var parts = line.split("=");
+      if (parts.length() == 2) {
+        var varName = parts[0].trim();
+        var valExpr = parseMath(parts[1].trim());
+        var assignedVal = valExpr.eval();
+        symbols.setVar(varName, assignedVal);
+        print "Set " + varName + " = " + assignedVal;
+        continue;
+      }
+    }
+
+    var xMin = symbols.getVar("xMin").val;
+    var xMax = symbols.getVar("xMax").val;
+    var yMin = symbols.getVar("yMin").val;
+    var yMax = symbols.getVar("yMax").val;
+    var width = symbols.getVar("width").val;
+    var height = symbols.getVar("height").val;
+
+    var ast = parseMath(line);
+    print "AST: " + ast;
+
+    var canvas = KittyCanvas(width, height);
+    canvas.drawAxes(xMin, xMax, yMin, yMax);
+
+    var prevX = -1;
+    var prevY = -1;
+
+    for (var px = 0; px < width; px += 1) {
+      var currentX = xMin + (px / (width - 1)) * (xMax - xMin);
+
+      symbols.setVar("x", currentX);
+
+      var y = ast.eval();
+      var py = Integer(height - 1 - (( y - yMin) / (yMax - yMin) * (height - 1)));
+
+      if (px > 0 and py >= 0 and py < height and prevY >= 0 and prevY < height) {
+        canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+      }
+
+      prevX = px;
+      prevY = py;
+    }
+
+    canvas.render();
+  }
+}
+    
+repl();
+
+

@@ -1,0 +1,140 @@
+class KittyCanvas {
+  init(width, height) {
+    this.width = width;
+    this.height = height;
+    
+    // Represent the 2D pixel grid as a flat array of RGB bytes
+    // Size = width * height * 3 (R, G, B for each pixel)
+    this.bufferSize = width * height * 3;
+    // Initialize with black background (0, 0, 0)
+    this.buffer = [0; this.bufferSize];
+  }
+
+  // Set a pixel at (x, y) with RGB values (0-255)
+  setPixel(x, y, r, g = 0, b = 0) {
+    if (x < 0 or x >= this.width or y < 0 or y >= this.height) return;
+
+    var index = (y * this.width + x) * 3;
+    if (typeof(r) == "Array") {
+      this.buffer[index]     = r[0];
+      this.buffer[index + 1] = r[1];
+      this.buffer[index + 2] = r[2];
+    } else {
+      this.buffer[index]     = r;
+      this.buffer[index + 1] = g;
+      this.buffer[index + 2] = b;
+    }
+  }
+
+  drawLine(x0, y0, x1, y1, r, g = 0, b = 0) {
+    if (typeof(r) == "Array") {
+      b = r[2];
+      g = r[1];
+      r = r[0];
+    }
+    var dx = (x1 - x0).abs();
+    var dy = (y1 - y0).abs();
+    var sx = x0 < x1 ? 1 : -1;
+    var sy = y0 < y1 ? 1 : -1;
+    var err = dx - dy;
+
+    while (true) {
+      this.setPixel(x0, y0, r, g, b);
+      if (x0 == x1 and y0 == y1) break;
+      var e2 = 2 * err;
+      if (e2 > -dy) {
+        err = err - dy;
+        x0 = x0 + sx;
+      }
+      if (e2 < dx) {
+        err = err + dx;
+        y0 = y0 + sy;
+      }
+    }
+  }
+
+  drawAxes(xMin, xMax, yMin, yMax) {
+    var originX = Integer((0 - xMin) / (xMax - xMin) * (this.width - 1));
+    var originY = Integer(this.height - 1 - ((0 - yMin) / (yMax - yMin) * (this.height - 1)));
+
+    if (originX >= 0 and originX < this.width) {
+      this.drawLine(originX, 0, originX, this.height - 1, 50, 60, 70);
+    }
+    if (originY >= 0 and originY < this.height) {
+      this.drawLine(0, originY, this.width - 1, originY, 50, 60, 70);
+    }
+  }
+
+  // Fill a rectangle
+  fillRect(x, y, w, h, r, g, b) {
+    for (var py = y; py < y + h; py = py + 1) {
+      for (var px = x; px < x + w; px = px + 1) {
+        this.setPixel(px, py, r, g, b);
+      }
+    }
+  }
+
+  // Draw a simple circle
+  drawCircle(cx, cy, radius, r, g, b) {
+    var r2 = radius * radius;
+    for (var y = cy - radius; y <= cy + radius; y = y + 1) {
+      for (var x = cx - radius; x <= cx + radius; x = x + 1) {
+        var dx = x - cx;
+        var dy = y - cy;
+        if (dx * dx + dy * dy <= r2) {
+          this.setPixel(x, y, r, g, b);
+        }
+      }
+    }
+  }
+
+  // Render the canvas to stdout using Kitty Protocol
+  render() {
+    // 1. Convert byte array/buffer to raw binary string
+    // (Depending on your Lox standard library string/byte methods)
+    /*
+    var rawBytes = "";
+    for (var i = 0; i < this.bufferSize; i = i + 1) {
+      rawBytes = rawBytes + String.fromCharCode(this.buffer[i]);
+    }
+    */
+    var rawBytes = this.buffer.to_string();
+
+    // 2. Encode to Base64 using native VM Base64 class
+    var b64Data = Base64.encode(rawBytes);
+
+    // 3. Format Kitty escape code
+    var esc = chr(27); // ESC (\x1b)
+    var header = esc + "_Ga=T,f=24,s=" + String(this.width) + ",v=" + String(this.height) + ";";
+    var footer = esc + chr('\\');
+
+    // 4. Print directly to terminal output
+    print header + b64Data + footer;
+  }
+}
+
+// ----------------------------------------------------------------
+// Example: Draw a simple scene and render
+// ----------------------------------------------------------------
+
+if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+  var width = 192;
+  var height = 192;
+
+  var canvas = KittyCanvas(192, 192);
+
+  // Dark blue background
+  canvas.fillRect(0, 0, width, height, 15, 15, 35);
+
+  // Red square
+  canvas.fillRect(30, 30, 60, 60, 220, 50, 50);
+
+  // Green circle
+  canvas.drawCircle(135, 135, 36, 50, 220, 100);
+
+  // Yellow center dot
+  canvas.drawCircle(96, 96, 12, 255, 215, 0);
+
+  // Output to terminal
+  canvas.render();
+}
