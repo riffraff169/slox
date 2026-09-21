@@ -1,6 +1,131 @@
 require("kittycanvas.lox");
 require("readline.lox");
 
+class Matrix {
+  init(rows, cols, data) {
+    this.rows = rows;
+    this.cols = cols;
+    this.data = data;
+  }
+
+  static fromArray(arr) {
+    var r = arr.length();
+    var c = arr[0].length();
+    return Matrix(r, c, arr);
+  }
+
+  get(r, c) {
+    return this.data[r][c];
+  }
+
+  add(other) {
+    if (this.rows != other.rows or this.cols != other.cols) {
+      print "Error: Matrix dimension mismatch for addition.";
+      return nil;
+    }
+    var res = [];
+    for (var i = 0; i < this.rows; i += 1) {
+      var row = [];
+      for (var j = 0; j < this.cols; j += 1) {
+        row.push(this.data[i][j] + other.data[i][j]);
+      }
+      res.push(row);
+    }
+    return Matrix.fromArray(res);
+  }
+
+  __add__(other) {
+    return this.add(other);
+  }
+
+  // matrix multiplication (dot product) or scalar mult
+  multiply(other) {
+    // scalar mult: m * 5
+    if (typeof(other) == "NumNode" or typeof(other) != "Matrix") {
+
+      var scalar = other;
+      var res = [];
+      for (var i = 0; i < this.rows; i += 1) {
+        var row = [];
+        for (var j = 0; j < this.cols; j += 1) {
+          row.push(this.data[i][j] * scalar);
+        }
+        res.push(row);
+      }
+      return Matrix.fromArray(res);
+    }
+
+    if (this.cols != other.rows) {
+      print "Error: Matrix dimension mismatch for multiplication.";
+      return nil;
+    }
+
+    var res = [];
+    for (var i = 0; i < this.rows; i += 1) {
+      var row = [];
+      for (var j = 0; j < other.cols; j += 1) {
+        var sum = 0;
+        for (var k = 0; k < this.cols; k += 1) {
+          sum += this.data[i][k] * other.data[k][j];
+        }
+        row.push(sum);
+      }
+      res.push(row);
+    }
+    return Matrix.fromArray(res);
+  }
+
+  __mul__(other) {
+    return this.multiply(other);
+  }
+
+  __sub__(other) {
+    if (typeof(other) == "Matrix") {
+      return this.add(other.multiply(-1));
+    }
+    return this.add(other * -1);
+  }
+
+  __neg__() {
+    return this.multiply(-1);
+  }
+
+  eval_at(x_val) {
+    var res = [];
+    for (var i = 0; i < this.rows; i += 1) {
+      var row = [];
+      for (var j = 0; j < this.cols; j += 1) {
+        var cell = this.data[i][j];
+
+        if (typeof(cell) == "Function") {
+          row.push(cell(x_val));
+        } else {
+          row.push(cell);
+        }
+      }
+      res.push(row);
+    }
+    return Matrix.fromArray(res);
+  }
+
+  to_string() {
+    var s = "[\n";
+    for (var i = 0; i < this.rows; i += 1) {
+      s += "  [";
+      for (var j = 0; j < this.cols; j += 1) {
+        s += this.data[i][j];
+        if (j < this.cols - 1) s += ", ";
+      }
+      s += "]";
+
+      if (i < this.rows - 1) s += ",\n";
+      else s += "\n";
+    }
+    s += "]";
+    return s;
+  }
+}
+
 class SymbolTable {
   init() {
     this.vars = {};
@@ -48,10 +173,41 @@ var cnf = FunctionRegistry();
 cnf.register_func("sin", Math.sin);
 cnf.register_func("cos", Math.cos);
 cnf.register_func("tan", Math.tan);
+cnf.register_func("exp", Math.exp);
 cnf.register_func("atan2", Math.atan2);
 cnf.register_func("sqrt", Math.sqrt);
 cnf.register_func("abs", fun(v) { return v.abs(); });
 cnf.register_func("sinc", fun(v) { return v == 0 ? 1 : Math.sin(v) / v; });
+cnf.register_func("transpose", fun(m) {
+    if (typeof(m) != "Matrix") return nil;
+    var res = [];
+    for (var j = 0; j < m.cols; j += 1) {
+      var row = [];
+      for (var i = 0; i < m.rows; i += 1) {
+        row.push(m.get(i, j));
+      }
+      res.push(row);
+    }
+    return Matrix.fromArray(res);
+    });
+
+cnf.register_func("identity", fun(n) {
+    var size = Integer(n);
+    var res = [];
+    for (var i = 0; i < size; i += 1) {
+      var row = [];
+      for (var j = 0; j < size; j += 1) {
+        row.push(i == j ? 1 : 0);
+      }
+      res.push(row);
+    }
+    return Matrix.fromArray(res);
+    });
+
+cnf.register_func("get", fun(m, row, col) {
+    if (typeof(m) != "Matrix") return 0;
+    return m.get(Integer(row), Integer(col));
+    });
 
 fun customWave(a, b) {
   return Math.sin(a) * Math.cos(b);
@@ -128,6 +284,9 @@ class Lexer {
     if (c == ')') return Token("RPAREN", ")", nil);
     if (c == ',') return Token("COMMA", ",", nil);
 
+    if (c == '[') return Token("LBRACKET", "[", nil);
+    if (c == ']') return Token("RBRACKET", "]", nil);
+
     return Token("EOF", "", nil);
   }
 }
@@ -135,6 +294,8 @@ class Lexer {
 class NumNode {
   init(val) { this.val = val; }
   eval() { return this.val; }
+
+  hasVar(name) { return false; }
 
   to_string() {
     return "NumNode(" + this.val + ")";
@@ -146,6 +307,8 @@ class VarNode {
     this.name = name;
     this.val = val;
   }
+
+  hasVar(name) { return this.name == name; }
 
   eval() {
     return this.val;
@@ -161,6 +324,8 @@ class UnaryNode {
     this.op = op;
     this.expr = expr;
   }
+
+  hasVar(name) { return this.expr.hasVar(name); }
 
   eval() {
     var v = this.expr.eval();
@@ -183,13 +348,29 @@ class BinaryNode {
   eval() {
     var l = this.left.eval();
     var r = this.right.eval();
+
+    // not necessary?
+    /*
+    if (typeof(l) == "Matrix") {
+      if (this.op == "+") return l.add(r);
+      if (this.op == "*") return l.multiply(r);
+    }
+    if (typeof(r) == "Matrix" and this.op == "*") {
+      return r.multiply(l);
+    }
+    */
     if (this.op == "+") return l + r;
     if (this.op == "-") return l - r;
+    if (typeof(r) == "Matrix" and typeof(l) != "Matrix" and this.op == "*") {
+      return r.multiply(l);
+    }
     if (this.op == "*") return l * r;
     if (this.op == "/") return r == 0 ? 0 : l / r;
     if (this.op == "^") return l ** r;
     return 0;
   }
+
+  hasVar(name) { return this.left.hasVar(name) or this.right.hasVar(name); }
 
   to_string() {
     return "BinaryNode(" + this.left + " " + this.op + " " + this.right + ")";
@@ -216,8 +397,46 @@ class CallNode {
     return fn(*evaluatedArgs);
   }
 
+  hasVar(name) {
+    for (var i = 0; i < this.args.length(); i += 1) {
+      if (this.args[i].hasVar(name)) return true;
+    }
+    return false;
+  }
+
   to_string() {
     return "CallNode(" + this.fnName + ", args=" + this.args.length() + ")";
+  }
+}
+
+class MatrixNode {
+  init(rows) {
+    this.rows = rows;
+  }
+
+  eval() {
+    var evaluatedMatrix = [];
+    for (var i = 0; i < this.rows.length(); i += 1) {
+      var row = [];
+      for (var j = 0; j < this.rows[i].length(); j += 1) {
+        row.push(this.rows[i][j].eval());
+      }
+      evaluatedMatrix.push(row);
+    }
+    return Matrix.fromArray(evaluatedMatrix);
+  }
+
+  hasVar(name) {
+    for (var i = 0; i < this.rows.length(); i += 1) {
+      for (var j = 0; j < this.rows[i].length(); j += 1) {
+        if (this.rows[i][j].hasVar(name)) return true;
+      }
+    }
+    return false;
+  }
+
+  to_string() {
+    return "MatrixNode(...)";
   }
 }
 
@@ -272,6 +491,32 @@ class Parser {
 
       if (this.curr.type == "RPAREN") this.advance();
       left = CallNode(fnName, args);
+    } else if (token.type == "LBRACKET") {
+      // parse [[1, 2], [3, 4]]
+      var rows = [];
+
+      while (this.curr.type != "RBRACKET" and this.curr.type != "EOF") {
+        if (this.curr.type == "LBRACKET") {
+          this.advance();
+          var rowExprs = [];
+          if (this.curr.type != "RBRACKET") {
+            rowExprs.push(this.parseExpression(0));
+            while (this.curr.type == "COMMA") {
+              this.advance();
+              rowExprs.push(this.parseExpression(0));
+            }
+          }
+          if (this.curr.type == "RBRACKET") this.advance();
+          rows.push(rowExprs);
+        }
+
+        if (this.curr.type == "COMMA") {
+          this.advance();
+        }
+      }
+
+      if (this.curr.type == "RBRACKET") this.advance();
+      left = MatrixNode(rows);
     } else {
       return NumNode(0);
     }
@@ -308,11 +553,11 @@ fun repl() {
 
   print "==================================================";
   print " Pratt Math REPL & Kitty Plotter";
-  print " Commands:";
-  print "   <expr>       - Plot mathematical expression";
-  print "   var=val      - Set variable (e.g., a=2.5)";
+  print " Usage:";
+  print "   5 * 8        - Evaluates scalar expression";
+  print "   sin(x) * 2   - Plots equation (contains 'x')";
+  print "   a = 2.5      - Variable / Bound assigment";
   print "   vars         - Display symbol table";
-  print "   bounds       - Set plot range (xMin xMax yMin yMax)";
   print "   exit / quit  - Exit shell";
   print "==================================================";
 
@@ -324,17 +569,8 @@ fun repl() {
   symbols.setVar("width", 512);
   symbols.setVar("height", 256);
 
-  /*
-  var xMin = -10.0;
-  var xMax = 10.0;
-  var yMin = -3.0;
-  var yMax = 3.0;
-  var width = 512;
-  var height = 256;
-  */
-
   while (true) {
-    var line = readline.prompt("plot> ");
+    var line = readline.prompt("calc> ");
 
     if (line == nil or line == "exit" or line == "quit") {
       print "Exiting.";
@@ -363,39 +599,46 @@ fun repl() {
       }
     }
 
-    var xMin = symbols.getVar("xMin").val;
-    var xMax = symbols.getVar("xMax").val;
-    var yMin = symbols.getVar("yMin").val;
-    var yMax = symbols.getVar("yMax").val;
-    var width = symbols.getVar("width").val;
-    var height = symbols.getVar("height").val;
-
     var ast = parseMath(line);
-    print "AST: " + ast;
 
-    var canvas = KittyCanvas(width, height);
-    canvas.drawAxes(xMin, xMax, yMin, yMax);
+    // plotting vs simple calc
+    if (ast.hasVar("x")) {
+      print "AST: " + ast;
+      // equation depends on 'x' -> render kitty plot
+      var xMin = symbols.getVar("xMin").val;
+      var xMax = symbols.getVar("xMax").val;
+      var yMin = symbols.getVar("yMin").val;
+      var yMax = symbols.getVar("yMax").val;
+      var width = Integer(symbols.getVar("width").val);
+      var height = Integer(symbols.getVar("height").val);
 
-    var prevX = -1;
-    var prevY = -1;
+      var canvas = KittyCanvas(width, height);
+      canvas.drawAxes(xMin, xMax, yMin, yMax);
 
-    for (var px = 0; px < width; px += 1) {
-      var currentX = xMin + (px / (width - 1)) * (xMax - xMin);
+      var prevX = -1;
+      var prevY = -1;
 
-      symbols.setVar("x", currentX);
+      for (var px = 0; px < width; px += 1) {
+        var currentX = xMin + (px / (width - 1)) * (xMax - xMin);
+        symbols.setVar("x", currentX);
 
-      var y = ast.eval();
-      var py = Integer(height - 1 - (( y - yMin) / (yMax - yMin) * (height - 1)));
+        var y = ast.eval();
+        var py = Integer(height - 1 - (( y - yMin) / (yMax - yMin) * (height - 1)));
 
-      if (px > 0 and py >= 0 and py < height and prevY >= 0 and prevY < height) {
-        canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+        if (px > 0 and py >= 0 and py < height and prevY >= 0 and prevY < height) {
+          canvas.drawLine(prevX, prevY, px, py, 0, 220, 255);
+        }
+
+        prevX = px;
+        prevY = py;
       }
 
-      prevX = px;
-      prevY = py;
+      canvas.render();
+    } else {
+      // pure arithmetic or predefined variable evaluation
+      var result = ast.eval();
+      print "= " + result;
     }
-
-    canvas.render();
   }
 }
     
