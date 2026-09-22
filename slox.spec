@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.7.6
+Version: 1.7.7
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -241,6 +241,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Tue  Sep 22 2026 Lance Dillon <riffraff169@yahoo.com> - 1.7.7-1-1
+- added overload for comparison operators
+
 * Tue  Sep 22 2026 Lance Dillon <riffraff169@yahoo.com> - 1.7.6-1-1
 - more features with calc plot
 
