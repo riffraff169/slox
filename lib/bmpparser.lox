@@ -1,0 +1,157 @@
+require("kittycanvas.lox");
+
+class BMPImage {
+  init(width, height, pixels) {
+    this.width = width;
+    this.height = height;
+    this.pixels = pixels;
+  }
+
+  static loadFromBytes(bytes) {
+    if (bytes[0] != 66 or bytes[1] != 77) {
+      print "Error: Not a valid BMP file.";
+      return nil;
+    }
+
+    var readInt32 = fun(offset) {
+      return bytes[offset] |
+        (bytes[offset + 1] << 8) |
+        (bytes[offset + 2] << 16) |
+        (bytes[offset + 3] << 24);
+    };
+
+    var readInt16 = fun(offset) {
+      return bytes[offset] | (bytes[offset + 1] << 8);
+    };
+
+    var pixelDataOffset = readInt32(10);
+    var headerSize = readInt32(14); // 40 for windows 3.x
+    var width = readInt32(18);
+    var height = readInt32(22);
+    var bpp = readInt16(28);
+    var compression = readInt32(30); // 0 = uncompressed
+
+    /*
+    print "Pixel Data Offset: " + pixelDataOffset;
+    print "Header Size: " + headerSize;
+    print "Width: " + width;
+    print "Height: " + height;
+    print "BPP: " + bpp;
+    print "Compressed: " + compression;
+    */
+
+    if ((bpp != 8 and bpp != 24) or compression != 0) {
+      print "Error: Unsupported BMP format. (bpp: " + bpp + ", compression: " + compression + ")";
+      return nil;
+    }
+
+    // 1. read color palette if 8 bit
+    var palette = [];
+    if (bpp == 8) {
+      var paletteOffset = 14 + headerSize; // 54 for standard headers
+      // read 256 quad-byte entries (b, g, r, reserved)
+      for (var i = 0; i < 256; i += 1) {
+        var entryStart = paletteOffset + (i * 4);
+        var b = bytes[entryStart];
+        var g = bytes[entryStart + 1];
+        var r = bytes[entryStart + 2];
+        palette.push([r, g, b]);
+      }
+    }
+
+    // row size padded to 4 byte boundary
+    var rowSize = Integer((bpp * width + 31) / 32) * 4;
+    var absHeight = height.abs();
+    var isTopDown = height < 0;
+    var pixels = [];
+
+    // pre allocate row grid
+    for (var y = 0; y < absHeight; y += 1) {
+      var row = [[0, 0, 0]; width];
+      pixels.push(row);
+    }
+
+    // 2 parse pixel data
+    for (var rowIdx = 0; rowIdx < absHeight; rowIdx += 1) {
+      var y = isTopDown ? rowIdx : (absHeight - 1 - rowIdx);
+      var rowStart = pixelDataOffset + rowIdx * rowSize;
+      var row = [];
+
+      for (var x = 0; x < width; x += 1) {
+        if (bpp == 8) {
+          // 8 bit: read palette index and lookup rgb
+          var paletteIndex = bytes[rowStart + x];
+          row.push(palette[paletteIndex]);
+          //pixels[y][x] = palette[paletteIndex];
+        } else if (bpp == 24) {
+          // 24 bit: read raw bgr
+          var pxOffset = rowStart + x * 3;
+          var b = bytes[pxOffset];
+          var g = bytes[pxOffset + 1];
+          var r = bytes[pxOffset + 2];
+          row.push([r, g, b]);
+          //pixels[y][x] = [r, g, b];
+        }
+      }
+      pixels[y] = row;
+    }
+
+    return BMPImage(width, absHeight, pixels);
+  }
+
+  renderToCanvas(canvas, targetWidth, targetHeight) {
+    for (var py = 0; py < targetHeight; py += 1) {
+      // map canvas pixel y back to bmp texture y
+      var texY = Integer((py / targetHeight) * this.height);
+
+      for (var px = 0; px < targetWidth; px += 1) {
+        // map canvas pixel x back to bmp texture x
+        var texX = Integer((px / targetWidth) * this.width);
+
+        var rgb = this.pixels[texY][texX];
+        canvas.setPixel(px, py, *rgb);
+      }
+    }
+  }
+
+  drawToCanvasAt(canvas, offsetX, offsetY) {
+    for (var y = 0; y < this.height; y += 1) {
+      for (var x = 0; x < this.width; x += 1) {
+        var rgb = this.pixels[y][x];
+        canvas.setPixel(offsetX + x, offsetY + y, *rgb);
+      }
+    }
+  }
+}
+
+/*
+if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+  var imgW = 64;
+  var imgH = 58;
+  var cols = 5;
+  var rows = 5;
+
+  var canvasWidth = cols * imgW;
+  var canvasHeight = rows * imgH;
+  var canvas = KittyCanvas(canvasWidth, canvasHeight);
+  var files = Dir.glob("dm/Portraits/DM/*.bmp");
+
+  for (var i = 0; i < files.length(); i += 1) {
+    var col = i % cols;
+    var row = Integer(i / cols);
+
+    var offsetX = col * imgW;
+    var offsetY = row * imgH;
+
+    var bytes = File.load(files[i]);
+    var img = BMPImage.loadFromBytes(bytes);
+
+    if (img != nil) {
+      print "Loaded portrait: " + img.width + "x" + img.height;
+
+      img.drawToCanvasAt(canvas, offsetX, offsetY);
+    }
+  }
+  canvas.render();
+}
+*/
