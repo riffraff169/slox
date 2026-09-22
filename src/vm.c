@@ -2449,6 +2449,26 @@ InterpretResult run() {
         } \
     } while (false)
 
+#define BINARY_REL_OP(op, method_str) \
+    do { \
+        if (IS_INT(peek(0)) && IS_INT(peek(1))) { \
+            int64_t b = AS_INT(pop()); \
+            int64_t a = AS_INT(pop()); \
+            push(BOOL_VAL(a op b)); \
+        } else if (IS_NUMERIC(peek(0)) && IS_NUMERIC(peek(1))) { \
+            double b = valueToDouble(pop()); \
+            double a = valueToDouble(pop()); \
+            push(BOOL_VAL(a op b)); \
+        } else if (IS_INSTANCE(peek(1))) { \
+            if (!invoke(method_str, 1)) { \
+                return INTERPRET_RUNTIME_ERROR; \
+            } \
+        } else { \
+            runtimeError("Operands must be numbers or support overload."); \
+            return INTERPRET_RUNTIME_ERROR; \
+        } \
+    } while (false)
+
 #define BITWISE_BINARY_OP(op) \
     do { \
         if (!IS_INT(peek(0)) || !IS_INT(peek(1))) { \
@@ -2799,8 +2819,21 @@ InterpretResult run() {
                 break;
             case OP_EQUAL:
                 {
+                    if (IS_INSTANCE(peek(1))) {
+                        ObjInstance* instance = AS_INSTANCE(peek(1));
+                        Value dummyMethod;
+
+                        if (findMethod(instance->obj.klass, vm.str_eq, &dummyMethod)) {
+                            if (!invoke(vm.str_eq, 1)) {
+                                return INTERPRET_RUNTIME_ERROR;
+                            }
+                            break;
+                        }
+                    }
+
                     Value b = pop();
                     Value a = pop();
+
                     push(BOOL_VAL(valuesEqual(a, b)));
                 }
                 break;
@@ -2819,10 +2852,16 @@ InterpretResult run() {
                 }
                 break;
             case OP_GREATER:
-                BINARY_OP(BOOL_VAL, >);
+                BINARY_REL_OP(>, vm.str_gt);
+                break;
+            case OP_GREATER_EQUAL:
+                BINARY_REL_OP(>=, vm.str_ge);
                 break;
             case OP_LESS:
-                BINARY_OP(BOOL_VAL, <);
+                BINARY_REL_OP(<, vm.str_lt);
+                break;
+            case OP_LESS_EQUAL:
+                BINARY_REL_OP(<=, vm.str_le);
                 break;
             case OP_ADD:
                 {

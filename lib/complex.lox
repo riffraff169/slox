@@ -32,6 +32,39 @@ class Complex {
     return Complex(-this.real, -this.imag);
   }
 
+  __neg__() {
+    return this.neg();
+  }
+
+  __lt__(other) {
+    if (typeof(other) == "Float" or typeof(other) == "Integer") {
+      return this.abs() < other;
+    } else {
+      return this.abs() < other.abs();
+    }
+  }
+
+  __gt__(other) {
+    if (typeof(other) == "Float" or typeof(other) == "Integer") {
+      return this.abs() > other;
+    } else {
+      return this.abs() > other.abs();
+    }
+  }
+
+  __ge__(other) {
+    return !this.__lt__(other);
+  }
+
+  __le__(other) {
+    return !this.__gt__(other);
+  }
+
+  __eq__(other) {
+    if (typeof(other) != "Complex") return false;
+    return this.real == other.real and this.imag == other.imag;
+  }
+
   // math ops
   add(other) {
     if (typeof(other) == "Float") {

@@ -198,8 +198,12 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return constantLongInstruction("OP_IMPORT_LONG", chunk, offset);
         case OP_GREATER:
             return simpleInstruction("OP_GREATER", offset);
+        case OP_GREATER_EQUAL:
+            return simpleInstruction("OP_GREATER_EQUAL", offset);
         case OP_LESS:
             return simpleInstruction("OP_LESS", offset);
+        case OP_LESS_EQUAL:
+            return simpleInstruction("OP_LESS_EQUAL", offset);
         case OP_ADD:
             return simpleInstruction("OP_ADD", offset);
         case OP_XOR:

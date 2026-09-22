@@ -1,0 +1,41 @@
+require("complex.lox");
+// Test suite for Complex class operator overloading
+
+var c1 = Complex(3, 4);   // Magnitude = 5
+var c2 = Complex(1, 2);   // Magnitude = sqrt(5) ≈ 2.236
+var c3 = Complex(3, 4);   // Equivalent to c1
+var c4 = Complex(6, 8);   // Magnitude = 10
+
+//print "--- Arithmetic Overloads ---";
+print "c1 + c2 = " + (c1 + c2); // expect: c1 + c2 = 4 + 6i
+print "c1 - c2 = " + (c1 - c2); // expect: c1 - c2 = 2 + 2i
+print "c1 * c2 = " + (c1 * c2); // Expected: (3*1 - 4*2) + (3*2 + 4*1)i = -5 + 10i
+                                // expect: c1 * c2 = -5 + 10i
+print "-c1     = " + (-c1);     // expect: -c1     = -3 - 4i
+
+//print "\n--- Equality Overloads (__eq__) ---";
+print "c1 == c3: " + (c1 == c3); // expect: c1 == c3: true
+print "c1 == c2: " + (c1 == c2); // expect: c1 == c2: false
+print "c1 == 42: " + (c1 == 42); // expect: c1 == 42: false
+
+//print "\n--- Relational Overloads (__lt__, __gt__, __le__, __ge__) ---";
+print "c2 < c1:  " + (c2 < c1);  // expect: c2 < c1:  true
+print "c1 > c2:  " + (c1 > c2);  // expect: c1 > c2:  true
+print "c1 <= c3: " + (c1 <= c3); // expect: c1 <= c3: true
+print "c4 >= c1: " + (c4 >= c1); // expect: c4 >= c1: true
+
+//print "\n--- Real/Scalar Mixed Comparisons ---";
+print "c1 > 4.0: " + (c1 > 4.0); // expect: c1 > 4.0: true
+print "c2 < 3.0: " + (c2 < 3.0); // expect: c2 < 3.0: true
+
+//print "\n--- Spectrum Magnitude Filtering Test ---";
+var spectrum = [Complex(0.1, 0.2), Complex(2.5, 4.0), Complex(0.0, 0.1), Complex(5.0, 12.0)];
+var threshold = 3.0;
+
+for (var i = 0; i < spectrum.length(); i += 1) {
+  if (spectrum[i] > threshold) {
+    print "Bin " + i + " exceeded threshold with magnitude " + spectrum[i].abs() + " (" + spectrum[i] + ")";
+  }
+}
+// expect: Bin 1 exceeded threshold with magnitude 4.71699 (2.5 + 4i)
+// expect: Bin 3 exceeded threshold with magnitude 13 (5 + 12i)

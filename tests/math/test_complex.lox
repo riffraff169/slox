@@ -1,0 +1,28 @@
+require("complex.lox");
+
+// Create complex numbers: z1 = 3 + 4i, z2 = 1 - 2i
+var z1 = Complex(3, 4);
+var z2 = Complex(1, -2);
+
+print "z1 = " + z1;              // expect: z1 = 3 + 4i
+print "z2 = " + z2;              // expect: z2 = 1 - 2i
+
+// Magnitude & Conjugate
+print "|z1| = " + z1.abs();                 // expect: |z1| = 5
+print "conj(z1) = " + z1.conj();  // expect: conj(z1) = 3 - 4i
+
+// Addition: (3 + 4i) + (1 - 2i) = 4 + 2i
+var sum = z1.add(z2);
+print "z1 + z2 = " + sum; // expect: z1 + z2 = 4 + 2i
+
+// Multiplication: (3 + 4i)(1 - 2i) = (3 - (-8)) + (-6 + 4)i = 11 - 2i
+var prod = z1.mul(z2);
+print "z1 * z2 = " + prod; // expect: z1 * z2 = 11 - 2i
+
+// Division: (3 + 4i) / (1 - 2i) = (-1 + 2i)
+var quot = z1.div(z2);
+print "z1 / z2 = " + quot; // expect: z1 / z2 = -1 + 2i
+
+// Scalar operations
+var scalar = z1.mul(2.5);
+print "z1 * 2.5 = " + scalar;     // expect: z1 * 2.5 = 7.5 + 10i
