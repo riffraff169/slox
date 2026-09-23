@@ -2012,7 +2012,12 @@ static void tryStatement() {
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after exception variable.");
         consume(TOKEN_LEFT_BRACE, "Expect '{' before catch body.");
 
-        current->localCount = tryLocalCount;
+        // 1. open scope & bind exceptino variable to current stack slot
+        beginScope();
+        addLocal(exceptionVar);
+        markInitialized();
+
+        //current->localCount = tryLocalCount;
 
         if (hasTypeCheck) {
             emitByte(OP_DUP);
@@ -2022,20 +2027,7 @@ static void tryStatement() {
             lastMismatchJump = emitJump(OP_JUMP_IF_FALSE);
             emitByte(OP_POP);
 
-            beginScope();
-            addLocal(exceptionVar);
-            markInitialized();
-            block();
-            endScope();
-
-            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
-    
             /*
-            patchJump(mismatchJump);
-            emitByte(OP_POP);
-            emitByte(OP_THROW);
-            */
-        } else {
             beginScope();
             addLocal(exceptionVar);
             markInitialized();
@@ -2043,7 +2035,20 @@ static void tryStatement() {
             endScope();
 
             catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
-        }
+            */
+        } /*else {
+            beginScope();
+            addLocal(exceptionVar);
+            markInitialized();
+            block();
+            current->localCount--;
+            endScope();
+
+            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
+        } */
+        block();
+        endScope();
+        catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
     }
 
     if (lastMismatchJump != -1) {

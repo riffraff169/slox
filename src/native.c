@@ -171,13 +171,19 @@ Value evalNative(int argCount, Value* args) {
     push(OBJ_VAL(closure));
 
     VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
-
     VM_CALLBACK_ENTER(priorFrameCount);
+
+    int priorTryCount = vm.tryCount;
 
     if (callValue(OBJ_VAL(closure), 0)) {
         if (vm.frameCount > priorFrameCount) {
             InterpretResult result = run();
             VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart);
+        }
+
+        if (vm.tryCount < priorTryCount) {
+            VM_CALLBACK_EXIT(oldExitDepth);
+            return NIL_VAL;
         }
 
         Value evalResult = pop();

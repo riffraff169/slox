@@ -3443,7 +3443,7 @@ InterpretResult run() {
                 break;
             case OP_THROW:
                 {
-                    Value exception = pop();
+                    Value exception = peek(0);
 
                     // 1. if exception is a string, wrap it in an error instance
                     if (IS_STRING(exception)) {
@@ -3470,15 +3470,16 @@ InterpretResult run() {
                             pop(); // errorName
                             pop(); // strMsg
 
+                            pop(); // exception
                             push(OBJ_VAL(errorInstance));
                         } else {
                             pop();
                             pop();
-                            push(exception);
+                            //push(exception);
                         }
-                    } else {
+                    } /*else {
                         push(exception);
-                    }
+                    }*/
 
                     // 2. attach e.stack_trace array if exception is an instance and lacks one
                     if (IS_INSTANCE(exception)) {
