@@ -249,13 +249,20 @@ class PP {
   format(obj) {
     // 1. Handle Primitives
     if (obj == nil) return "nil";
+
+    var klass = obj.class();
+
     if (obj.class() == Bool) {
-      if (obj)
-        return "true";
+      if (obj) return "true";
       return "false";
     }
-    if (obj.class() == Number) return String(obj);
-    if (obj.class() == String) return "\"" + obj + "\"";
+
+    if (klass == Integer or klass == Float or klass == Number) {
+      return String(obj);
+    }
+
+    //if (obj.class() == Number) return String(obj);
+    if (klass == String) return "\"" + obj + "\"";
 
     if (this.visited.find(fun(a) { return a == obj; }) != nil) {
       return "[Circular ...]";
@@ -266,6 +273,8 @@ class PP {
 
     if (obj.class() == Array) {
       res = this.formatArray(obj);
+    } else if (klass == Set) {
+      res = this.formatSet(obj);
     } else if (obj.class() == Map) {
       res = this.formatMap(obj);
     } else if (obj.class() == Vec3) {
@@ -276,6 +285,23 @@ class PP {
     this.visited.pop();
 
     return res;
+  }
+
+  formatSet(set) {
+    var items = set.keys();
+    if (items.len() == 0) return "Set {}";
+
+    this.indentValue += 2;
+    var pad = this.getPad();
+    var result = "Set {\n";
+
+    for (var i = 0; i < items.length(); i += 1) {
+      result = result + pad + this.format(items[i]);
+      if (i < items.length() - 1) result = result + ",\n";
+    }
+
+    this.indentValue -= 2;
+    return result + "\n" + this.getPad() + "}";
   }
 
   formatMap(map) {
@@ -359,7 +385,6 @@ const STDOUT = File.open("STDOUT").unwrap();
 const STDERR = File.stderr();
 const STDIN = File.open("STDIN").unwrap();
 
-// 
 fun sendAll(socket, data) {
   var totalBytes = data.length();
   var bytesSent = 0;
