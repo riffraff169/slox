@@ -1,0 +1,154 @@
+require("json.lox");
+
+class LSPServer {
+  init() {
+    this.running = true;
+    this.documents = {};
+  }
+
+  sendResponse(id, result) {
+    var responseMap = {};
+    responseMap["jsonrpc"] = "2.0";
+    responseMap["id"] = id;
+    responseMap["result"] = result;
+
+    var jsonString = Json.to_string(responseMap);
+    var header = "Content-Length: " + jsonString.length() + "\r\n\r\n";
+
+    STDOUT.write(header + jsonString);
+    STDOUT.flush();
+    //print header + jsonString;
+  }
+
+  handleMessage(msg) {
+    var method = msg["method"];
+    var id = msg["id"];
+
+    // 1. lifecycle: initialize
+    if (method == "initialize") {
+      var capabilities = {};
+
+      // tell the editor client what features slox lsp supports
+      var syncOptions = {};
+      syncOptions["openClose"] = true;
+      syncOptions["change"] = 1; // 1 = full text sync
+      capabilities["textDocumentSync"] = syncOptions;
+
+      var completionOptions = {};
+      completionOptions["triggerCharacters"] = [".", ":"];
+      capabilities["completionProvider"] = completionOptions;
+
+      var result = {};
+      result["capabilities"] = capabilities;
+      this.sendResponse(id, result);
+      return;
+    }
+
+    // 2. lifecycle: shutdown
+    if (method == "shutdown") {
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    if (method == "exit") {
+      this.running = false;
+      return;
+    }
+
+    // 3. document sync: didOpen
+    if (method == "textDocument/didOpen") {
+      var params = msg["params"];
+      var doc = params["textDocument"];
+      this.documents[doc["uri"]] = doc["text"];
+      return;
+    }
+
+    // 4. document sync: didChange
+    if (method == "textDocument/didChange") {
+      var params = msg["params"];
+      var uri = params["textDocument"]["uri"];
+      var changes = params["contentChanges"];
+      if (changes.length() > 0) {
+        // full sync updates entire file string
+        this.documents[uri] = changes[0]["text"];
+      }
+      return;
+    }
+
+    // 5. completion provider (textDocument/completion)
+    if (method == "textDocument/completion") {
+      var items = [
+        this.makeCompletionItem("fun", "Keyword", "Function declaration"),
+        this.makeCompletionItem("var", "Keyword", "Variable declaration"),
+        this.makeCompletionItem("class", "Keyword", "Class declaration"),
+        this.makeCompletionItem("print", "Keyword", "Print statement")
+      ];
+      this.sendResponse(id, items);
+      return;
+    }
+
+    // fallback for unhandled requests: send error or empty response
+    if (id != nil) {
+      this.sendResponse(id, nil);
+    }
+  }
+
+  makeCompletionItem(label, kind, detail) {
+    var item = {};
+    item["label"] = label;
+    item["detail"] = detail;
+    return item;
+  }
+
+  // main event loop
+  start() {
+    while (this.running) {
+      // 1. read headers from stdin until blank line
+      var contentLength = 0;
+      
+      while (true) {
+        var lineres = STDIN.readline();
+        if (!lineres) break;
+
+        var line = lineres.unwrap();
+        if (line == nil or line == "\r\n" or line == "\n") break;
+
+        if (line.slice(0, 15) == "Content-Length:") {
+          var parts = line.split(":");
+          contentLength = Integer(parts[1].trim());
+        }
+      }
+
+      if (contentLength > 0) {
+        // 2. read exactly contentLength bytes from stdin
+        var readRes = STDIN.read(contentLength);
+        if (readRes) {
+          var rawJson = readRes.unwrap();
+
+          // 3. parse json
+          var message = Json.parse(rawJson);
+
+          // 4. dispatch rpc call
+          if (message != nil) {
+            this.handleMessage(message);
+          }
+        }
+      }
+    }
+  }
+}
+
+/*
+Signal.trap(10, fun(sig) {
+    var trace = System.backtrace();
+    STDERR.write("\n");
+    STDERR.write("=============== LIVE SLOX STACK TRACE =================\n");
+    for (var i = 0; i < trace.length(); i += 1) {
+      STDERR.write("  " + trace[i] + "\n");
+    }
+    STDERR.write("=======================================================\n");
+    });
+*/
+
+var server = LSPServer();
+server.start();

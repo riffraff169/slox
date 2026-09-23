@@ -7204,6 +7204,36 @@ Value systemMemNative(int argCount, Value* args) {
     return pop();
 }
 
+Value systemBacktraceNative(int argCount, Value* args) {
+    (void)argCount;
+    (void)args;
+
+    ObjArray* stackTrace = newArray();
+    push(OBJ_VAL(stackTrace));
+
+    for (int i = vm.frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm.frames[i];
+        ObjFunction* function = frame->closure->function;
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        int line = getLine(&function->chunk, instruction);
+
+        const char* file = function->filename ? function->filename->chars : "unknown";
+        const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+
+        char lineBuffer[256];
+        int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+                file, line, fnName, (function->name == NULL) ? "" : "()");
+
+        ObjString* lineStr = copyString(lineBuffer, len);
+        push(OBJ_VAL(lineStr));
+        arrayAppend(stackTrace, OBJ_VAL(lineStr));
+        pop();
+    }
+
+    pop();
+    return OBJ_VAL(stackTrace);
+}
+
 Value systemResetStackNative(int argCount, Value* args) {
     for (Value* slot = vm.stackTop; slot < vm.stack + STACK_MAX; slot++) {
         *slot = NIL_VAL;
@@ -7449,6 +7479,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemMeta, "exit", systemExitNative);
     defineNativeMethod(systemMeta, "gc", systemGCNative);
     defineNativeMethod(systemMeta, "mem", systemMemNative);
+    defineNativeMethod(systemMeta, "backtrace", systemBacktraceNative);
     defineNativeMethod(systemMeta, "reset_stack", systemResetStackNative);
     defineNativeMethod(systemMeta, "show_stack", systemShowStackNative);
     defineNativeMethod(systemMeta, "set_notation", systemSetNotationNative);

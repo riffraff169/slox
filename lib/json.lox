@@ -1,5 +1,5 @@
 class Json {
-  parse(jsonstr) {
+  static parse(jsonstr) {
     if (jsonstr == nil or jsonstr.length() == 0) return nil;
 
     var code = jsonstr;
@@ -10,8 +10,58 @@ class Json {
     code = stringReplaceAll(code, ",null", ",nil");
     code = stringReplaceAll(code, ", null", ", nil");
 
-    eval("var __json_res = " + code + ";");
-    return __json_res;
+    try {
+      eval("var __json_res = " + code + ";");
+    } catch (Error e) {
+      print "[Json.parse Error] " + e.message;
+      return nil;
+    } catch (e) {
+      print "[Json.parse Error] " + e;
+      return nil;
+    }
+    var result = __json_res;
+
+    __json_res = nil;
+
+    return result;
+  }
+
+  static to_string(obj) {
+    if (obj == nil) return "null";
+    var klass = obj.class();
+
+    if (klass == Bool) return obj ? "true" : "false";
+    if (klass == Integer or klass == Float or klass == Number) return String(obj);
+
+    if (klass == String) {
+      var s = stringReplaceAll(obj, "\\", "\\\\");
+      s = stringReplaceAll(s, "\"", "\\\"");
+      s = stringReplaceAll(s, "\n", "\\n");
+      s = stringReplaceAll(s, "\r", "\\r");
+      s = stringReplaceAll(s, "\t", "\\t");
+      return "\"" + s + "\"";
+    }
+
+    if (klass == Array) {
+      var res = "[";
+      for (var i = 0; i < obj.len(); i += 1) {
+        res = res + Json.to_string(obj[i]);
+        if (i < obj.length() - 1) res = res + ",";
+      }
+      return res + "]";
+    }
+
+    if (klass == Map) {
+      var keys = obj.keys();
+      var res = "{";
+      for (var i = 0; i < keys.length(); i += 1) {
+        var k = keys[i];
+        res = res + Json.to_string(String(k)) + ":" + Json.to_string(obj[k]);
+        if (i < keys.length() - 1) res = res + ",";
+      }
+      return res + "}";
+    }
+    return "null";
   }
 }
 

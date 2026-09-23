@@ -3445,10 +3445,11 @@ InterpretResult run() {
                 {
                     Value exception = peek(0);
 
+                    /*
                     // 1. if exception is a string, wrap it in an error instance
                     if (IS_STRING(exception)) {
                         ObjString* strMsg = AS_STRING(exception);
-                        push(OBJ_VAL(strMsg));
+                        //push(OBJ_VAL(strMsg));
 
                         Value errorClassVal;
                         ObjString* errorName = copyString("Error", 5);
@@ -3462,22 +3463,24 @@ InterpretResult run() {
                             ObjString* messageKey = copyString("message", 7);
                             push(OBJ_VAL(messageKey));
 
-                            Value stringMsg = peek(2);
-                            tableSet(&errorInstance->fields, messageKey, stringMsg);
+                            //Value stringMsg = peek(3);
+                            tableSet(&errorInstance->fields, messageKey, OBJ_VAL(strMsg));
 
                             pop(); // messageKey
                             pop(); // errorInstance
                             pop(); // errorName
-                            pop(); // strMsg
+                            //pop(); // strMsg
 
                             pop(); // exception
                             push(OBJ_VAL(errorInstance));
+                            //exception = OBJ_VAL(errorInstance);
                         } else {
                             pop();
-                            pop();
+                            //pop();
                             //push(exception);
                         }
                     }
+                    */
 
                     // 2. attach e.stack_trace array if exception is an instance and lacks one
                     if (IS_INSTANCE(exception)) {
@@ -3515,7 +3518,10 @@ InterpretResult run() {
                         pop();
                     }
 
+                    /*
                     pop();
+                    push(exception);
+                    */
 
                     raiseException(exception);
 

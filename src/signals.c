@@ -8,6 +8,7 @@
 #include "signals.h"
 #include "value.h"
 #include "memory.h"
+#include "debug.h"
 
 volatile sig_atomic_t pending_signals[MAX_SIGNALS] = {0};
 Value signal_callbacks[MAX_SIGNALS];
@@ -285,4 +286,46 @@ void runBackend(void) {
         }
     }
 }
+*/
+
+
+void native_sigusr1_handler(int sig) {
+    (void)sig;
+    fprintf(stderr, "\n================ LIVE C/LOX STACK TRACE (SIGUSR1) ================\n");
+    if (vm.frameCount == 0) {
+        fprintf(stderr, "  [VM is idle or initializing]\n");
+    } else {
+        for (int i = vm.frameCount - 1; i >= 0; i--) {
+            CallFrame* frame = &vm.frames[i];
+            ObjFunction* function = frame->closure->function;
+            size_t instruction = frame->ip - function->chunk.code - 1;
+            int line = getLine(&function->chunk, instruction);
+
+            const char* file = function->filename ? function->filename->chars : "unknown";
+            const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
+
+            fprintf(stderr, "  [%s:%d] in %s%s\n",
+                    file, line, fnName, (function->name == NULL) ? "" : "()");
+        }
+    }
+    fprintf(stderr, "==================================================================\n");
+}
+
+/*
+void native_sigusr1_handler(int sig) {
+    (void)sig;
+    fprintf(stderr, "\n=== SIGUSR1: VM Stack Trace ===\n");
+    for (int i = vm.frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm.frames[i];
+        ObjFunction* function = frame->closure->function;
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        int line = getLine(&function->chunk, instruction);
+        const char* fnName = function->name ? function->name->chars : "<script>";
+        fprintf(stderr, "  frame [%d] in %s() line %d\n", i, fnName, line);
+    }
+    fprintf(stderr, "===============================\n");
+}
+
+// In main():
+signal(SIGUSR1, handle_sigusr1);
 */

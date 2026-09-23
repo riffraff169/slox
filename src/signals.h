@@ -40,5 +40,6 @@ void initTimerClass(void);
 void markTimerRoots(void);
 bool hasActiveTimers(void);
 void awaitTimers(void);
+void native_sigusr1_handler(int sig);
 
 #endif

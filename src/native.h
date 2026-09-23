@@ -220,6 +220,7 @@ void initIOClass();
 Value systemTimeNative(int argCount, Value* args);
 Value systemExitNative(int argCount, Value* args);
 Value systemMemNative(int argCount, Value* args);
+Value systemBacktraceNative(int argCount, Value* args);
 Value systemResetStackNative(int argCount, Value* args);
 Value systemShowStackNative(int argCount, Value* args);
 Value systemSetPrecisionNative(int argCount, Value* args);

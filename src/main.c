@@ -163,6 +163,11 @@ static void runFile(const char* path) {
 int main(int argc, const char* argv[], const char* env[]) {
     initVM(argc, argv, env);
 
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    signal(SIGUSR1, native_sigusr1_handler);
+
     if (!vm.noStdLib) {
         char* stdlibSource = locateAndReadLoxFile("stdlib.lox");
         if (stdlibSource != NULL) {
