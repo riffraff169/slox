@@ -94,7 +94,28 @@ Value valueToString(Value value) {
 
 void printValueSafe(FILE* stream, Value value) {
     if (IS_STRING(value)) {
-        fprintf(stream, "\"%s\"", AS_CSTRING(value));
+        ObjString* string = AS_STRING(value);
+        fputc('"', stream);
+        for (int i = 0; i < string->length; i++) {
+            char c = string->chars[i];
+            switch (c) {
+                case '\0': fputs("\\0", stream); break;
+                case '\n': fputs("\\n", stream); break;
+                case '\r': fputs("\\r", stream); break;
+                case '\t': fputs("\\t", stream); break;
+                case '\\': fputs("\\\\", stream); break;
+                case '"': fputs("\\\"", stream); break;
+                default:
+                          if ((unsigned char)c >= 32 && (unsigned char)c <= 126) {
+                              fputc(c, stream);
+                          } else {
+                              fprintf(stream, "\\x%02x", (unsigned char)c);
+                          }
+                          break;
+            }
+        }
+        fputc('"', stream);
+        //fprintf(stream, "\"%s\"", AS_CSTRING(value));
     } else {
         switch (value.type) {
             case VAL_BOOL:
@@ -129,7 +150,9 @@ void printValueSafe(FILE* stream, Value value) {
 
 void printValue(FILE* stream, Value value) {
     if (IS_STRING(value)) {
-        fprintf(stream, "%s", AS_CSTRING(value));
+        ObjString* string = AS_STRING(value);
+        //fprintf(stream, "%s", AS_CSTRING(value));
+        fwrite(string->chars, sizeof(char), string->length, stream);
     } else {
         printValueSafe(stream, value);
     }

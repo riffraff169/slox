@@ -3477,9 +3477,7 @@ InterpretResult run() {
                             pop();
                             //push(exception);
                         }
-                    } /*else {
-                        push(exception);
-                    }*/
+                    }
 
                     // 2. attach e.stack_trace array if exception is an instance and lacks one
                     if (IS_INSTANCE(exception)) {

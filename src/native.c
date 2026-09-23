@@ -795,6 +795,15 @@ Value requireNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+Value inspectNative(int argCount, Value* args) {
+    for (int i = 0; i < argCount; i++) {
+        printValueSafe(stdout, args[i]);
+        if (i < argCount - 1) printf(" ");
+    }
+    printf("\n");
+    return NIL_VAL;
+}
+
 #define CORE_GLOBAL_LIST(X) \
     X("clock", clockNative) \
     X("str", strNative) \
@@ -803,6 +812,7 @@ Value requireNative(int argCount, Value* args) {
     X("eval", evalNative) \
     X("create_instance", createInstanceNative) \
     X("program", programNative) \
+    X("inspect", inspectNative) \
     X("require", requireNative)
 
 #define CORE_DUAL_LIST(X) \
