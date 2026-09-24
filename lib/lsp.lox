@@ -8,7 +8,7 @@ class LSPServer {
 
     this.log = Logger({
         "app_name": "slox-lsp",
-        "level": 0, // 0 = trace (logs everything)
+        "level": 3, // 0 = trace (logs everything)
         "file": logFilePath,
         "truncate": true
         });
@@ -87,6 +87,7 @@ class LSPServer {
         this.log.trace("Found require: " + reqPath);
 
         if (reqPath != nil) {
+          this.log.trace("Calling this.resolvePath()");
           var targetPath = this.resolvePath(fileUri, reqPath);
           this.log.trace("Resolved path: " + targetPath);
 
@@ -122,15 +123,23 @@ class LSPServer {
     };
   }
 
-  resolvePath(currentUri, relativePath) {
-    if (currentUri == nil or reqPath == nil) return nil;
+  resolvePath(currentUri, reqPath) {
+    this.log.trace("resolvePath called with currentUri='" + currentUri + "', reqPath='" + reqPath + "'");
+
+    if (currentUri == nil or reqPath == nil) {
+      this.log.trace("resolvePath: currentUri or reqPath is nil");
+      return nil;
+    }
 
     var baseFilePath = currentUri;
     if (baseFilePath.slice(0, 7) == "file://") {
       baseFilePath = baseFilePath.slice(7);
     }
+    this.log.trace("resolvePath: baseFilePath='" + baseFilePath + "'");
 
+    this.log.trace("resolvePath: callingDir.dirname('" + baseFilePath + "')");
     var currentDir = Dir.dirname(baseFilePath);
+    this.log.trace("resolvePath: currentDir='" + currentDir + "'");
 
     var paths = [
       currentDir + "/" + reqPath,
@@ -140,24 +149,35 @@ class LSPServer {
 
     for (var i = 0; i < paths.length(); i += 1) {
       var path = paths[i];
-      if (File.exists(path)) {
+      this.log.trace("resolvePath: checking path[" + i + "]='" + path + "'");
+
+      this.log.trace("resolvePath: calling File.exists('" + path + "')");
+      var exists = File.exists(path);
+      this.log.trace("resolvePath: File.exists result=" + exists);
+
+      if (exists) {
+        this.log.trace("resolvePath: calling Dir.realPath('" + path + "')");
         var real = Dir.realpath(path);
+        this.log.trace("resolvePath: Dir.realPath result='" + real + "'");
+
         if (real != nil) return real;
       }
     }
+
+    this.log.trace("resolvePath: no path resolved successfully");
     return nil;
   }
 
   // helper to extract word under cursor from line text and character index
   getWordAtPosition(text, lineNum, charNum) {
-    this.log.trace("getWordAtPosition called: line=" + lineNum + ", char=" + charNum);
+    //this.log.trace("getWordAtPosition called: line=" + lineNum + ", char=" + charNum);
 
     if (text == nil) {
       this.log.trace("getWordAtPosition: text is nil");
       return "";
     }
     var lines = text.split("\n");
-    this.log.trace("getWordAtPosition: total lines=" + lines.length());
+    //this.log.trace("getWordAtPosition: total lines=" + lines.length());
 
     if (lineNum >= lines.length()) {
       this.log.trace("getWordAtPosition: total lines=" + lineNum + " out of bounds");
@@ -165,7 +185,7 @@ class LSPServer {
     }
 
     var line = lines[lineNum];
-    this.log.trace("getWordAtPosition: target line len=" + line.length() + " contents: '" + line + "'");
+    //this.log.trace("getWordAtPosition: target line len=" + line.length() + " contents: '" + line + "'");
 
     if (charNum >= line.length()) {
       this.log.trace("getWordAtPosition: charNum" + charNum + " >= line len " + line.length());
@@ -174,33 +194,33 @@ class LSPServer {
 
     // scan left to start of identifier
     var start = charNum;
-    this.log.trace("getWordAtPosition: starting left scan from start=" + start);
+    //this.log.trace("getWordAtPosition: starting left scan from start=" + start);
 
     while (start > 0) { // and this.isIdentChar(line[start - 1])) {
       var prevChar = line[start - 1];
 
-      this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar));
+      //this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar));
       var isIdent = this.isIdentChar(prevChar);
-      this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar) + " isIdent=" + isIdent);
+      //this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar) + " isIdent=" + isIdent);
 
       if (!isIdent) break;
       start = start - 1;
     }
-    this.log.trace("getWordAtPosition: final start=" + start);
+    //this.log.trace("getWordAtPosition: final start=" + start);
 
     // scan right to end of identifier
     var end = charNum;
-    this.log.trace("getWordAtPosition: starting right scan from end=" + end);
+    //this.log.trace("getWordAtPosition: starting right scan from end=" + end);
 
     while (end < line.length()) { // and this.isIdentChar(line[end])) {
       var currChar = line[end];
       var isIdent = this.isIdentChar(currChar);
-      this.log.trace("right scan: idx=" + end + " charCode=" + chr(currChar) + " isIdent=" + isIdent);
+      //this.log.trace("right scan: idx=" + end + " charCode=" + chr(currChar) + " isIdent=" + isIdent);
 
       if (!isIdent) break;
       end += 1;
     }
-    this.log.trace("getWordAtPosition: final end=" + end);
+    //this.log.trace("getWordAtPosition: final end=" + end);
 
     var word = line.slice(start, end);
     this.log.trace("getWordAtPosition: extracted word='" + word + "'");
@@ -512,9 +532,15 @@ class LSPServer {
         var line = lineres.unwrap();
         if (line == nil or line == "\r\n" or line == "\n") break;
 
+        line = line.trim();
+
+        if (line.length() == 0) break;
+
         if (line.slice(0, 15) == "Content-Length:") {
           var parts = line.split(":");
-          contentLength = Integer(parts[1].trim());
+          if (parts.length() > 1) {
+            contentLength = Integer(parts[1].trim());
+          }
         }
       }
 
@@ -522,6 +548,8 @@ class LSPServer {
         var readRes = STDIN.read(contentLength);
         if (readRes) {
           var rawJson = readRes.unwrap();
+          this.log.trace("RAW JSON RECV: " + rawJson);
+
           var message = Json.parse(rawJson);
 
           if (message != nil) {
