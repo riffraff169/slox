@@ -4,6 +4,134 @@ class LSPServer {
   init() {
     this.running = true;
     this.documents = {};
+
+    this.keywords = [
+      "var", "const", "and", "or", "class", "else", "false",
+      "true", "fun", "for", "if", "nil", "print", "return",
+      "super", "this", "true", "while", "try", "catch",
+      "finally", "break", "continue", "switch", "case",
+      "default", "throw", "static", "include", "import"
+    ];
+  }
+
+  findSymbolDefinition(symbolName, currentUri) {
+    var sourceText = this.documents[currentUri];
+    if (sourceText == nil) return nil;
+
+    var visitedFiles = {};
+    visitedFiles[currentUri] = true;
+
+    return this.searchSymbolInFile(symbolName, sourceText, currentUri, visitedFiles);
+  }
+
+  searchSymbolInFile(symbolName, text, fileUri, visitedFiles) {
+    if (text == nil) return nil;
+
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+      var lineNum = i; // lsp used 0-based indexing for lines and characters
+
+      // 1. check for class definition: class KittyCanvas
+      if (line.slice(0, 6) == "class ") {
+        var name = line.slice(6, line.length()).trim().split(" ")[0].split("{")[0].trim();
+        if (name == symbolName) {
+          var col = line.find(symbolName);
+          return this.makeLocation(fileUri, lineNum, col, symbolName.length());
+        }
+      }
+
+      // 2. check for function definition: fun draw()
+      if (line.slice(0, 4) == "fun ") {
+        var name = line.slice(4, line.length()).trim().split("(")[0].trim();
+        if (name == symbolName) {
+          var col = line.find(symbolName);
+          return this.makeLocation(fileUri, lineNum, col, symbolName.length());
+        }
+      }
+
+      // 3. check for variable definition: var canvas = ...
+      if (line.slice(0, 4) == "var ") {
+        var name = line.slice(4, line.length()).trim().split("=")[0].trim();
+        if (name == symbolName) {
+          var col = line.find(symbolName);
+          return this.makeLocation(fileUri, lineNum, col, symbolName.length());
+        }
+      }
+
+      // 4. follow require("...") dependencies recursively
+      if (line.slice(0, 8) == "require(") {
+        var reqPath = this.extractRequirePath(line);
+        var targetPath = this.resolvePath(reqPath);
+
+        if (targetPath != nil) {
+          var targetUri = "file://" + targetPath;
+          if (visitedFiles[targetUri] != true) {
+            var depContent = File.load(targetPath);
+
+            var match = this.searchSymbolInFile(symbolName, depContent, targetUri, visitedFiles);
+            if (match != nil) return match;
+          }
+        }
+      }
+    }
+    return nil;
+  }
+
+  // construct standard lsp location json response
+  makeLocation(uri, line, character, length) {
+    return {
+      "uri": uri,
+      "range": {
+        "start": { "line": line, "character": character },
+        "end":   { "line": line, "character": character + length }
+      }
+    };
+  }
+
+  resolvePath(relativePath) {
+    var paths = [
+      relativePath,
+      "./lib/" + relativePath,
+      "/usr/lib64/slox/lib/" + relativePath
+    ];
+
+    for (var i = 0; i < paths.length(); i += 1) {
+      if (File.exists(paths[i])) return paths[i];
+    }
+    return nil;
+  }
+
+  // helper to extract word under cursor from line text and character index
+  getWordAtPosition(text, lineNum, charNum) {
+    if (text == nil) return "";
+    var lines = text.split("\n");
+    if (lineNum >= lines.length()) return "";
+
+    var line = lines[lineNum];
+    if (charNum >= line.length()) return "";
+
+    // scan left to start of identifier
+    var start = charNum;
+    while (start > 0 and this.isIdentChar(line[start - 1])) {
+      start = start - 1;
+    }
+
+    // scan right to end of identifier
+    var end = charNum;
+    while (end < line.length() and this.isIdentChar(line[end])) {
+      end += 1;
+    }
+
+    return line.slice(start, end);
+  }
+
+  isIdentChar(code) {
+    if (code >= 65 and code <= 90) return true;
+    if (code >= 97 and code <= 122) return true;
+    if (code >= 48 and code <= 57) return true;
+    if (c == '_') return true;
+    return false;
   }
 
   sendResponse(id, result) {
@@ -17,7 +145,71 @@ class LSPServer {
 
     STDOUT.write(header + jsonString);
     STDOUT.flush();
-    //print header + jsonString;
+  }
+
+  getCompletionsForUri(uri) {
+    var items = [];
+
+    for (var i = 0; i < this.keywords.length(); i += 1) {
+      items.push(this.makeCompletionItem(this.keywords[i], 14, "Keyword"));
+    }
+
+    var sourceText = this.documents[uri];
+    if (sourceText != nil) {
+      var visitedFiles = {};
+      visitedFiles[uri] = true;
+
+      var docSymbols = this.extractSymbolsFromSource(sourceText, "current file", visitedFiles);
+      items = items + docSymbols;
+    }
+    return items;
+  }
+
+  getBuiltinCompletions() {
+    var items = [];
+
+    for (var i = 0; i < this.keywords.length(); i += 1) {
+      items.push(this.makeCompletionItem(this.keywords[i], 14, "Keyword"));
+    }
+
+    return items;
+  }
+
+  getWorkspaceCompletions(uri) {
+    var items = this.getBuiltinCompletions();
+    var text = this.documents[uri];
+    if (text == nil) return items;
+
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+
+      if (line.slice(0, 4) == "fun ") {
+        var parts = line.split(" ");
+        if (parts.length() > 1) {
+          var name = parts[1].split("(")[0];
+          items.push(this.makeCompletionItem(name, 3, "Function defined on line " + (i + 1)));
+        }
+      }
+
+      if (line.slice(0, 4) == "var ") {
+        var parts = line.split(" ");
+        if (parts.length() > 1) {
+          var name = parts[1].split("=")[0].trim();
+          items.push(this.makeCompletionItem(name, 6, "Variable defined on line " + (i + 1)));
+        }
+      }
+
+      if (line.slice(0, 6) == "class ") {
+        var parts = line.split(" ");
+        if (parts.length() > 1) {
+          var name = parts[1].trim();
+          items.push(this.makeCompletionItem(name, 7, "Class defined on line " + (i + 1)));
+        }
+      }
+    }
+
+    return items;
   }
 
   handleMessage(msg) {
@@ -28,11 +220,11 @@ class LSPServer {
     if (method == "initialize") {
       var capabilities = {};
 
-      // tell the editor client what features slox lsp supports
       var syncOptions = {};
       syncOptions["openClose"] = true;
       syncOptions["change"] = 1; // 1 = full text sync
       capabilities["textDocumentSync"] = syncOptions;
+      capabilities["definitionProvider"] = true;
 
       var completionOptions = {};
       completionOptions["triggerCharacters"] = [".", ":"];
@@ -69,25 +261,39 @@ class LSPServer {
       var uri = params["textDocument"]["uri"];
       var changes = params["contentChanges"];
       if (changes.length() > 0) {
-        // full sync updates entire file string
         this.documents[uri] = changes[0]["text"];
       }
       return;
     }
 
-    // 5. completion provider (textDocument/completion)
+    // 5. completion provider
     if (method == "textDocument/completion") {
-      var items = [
-        this.makeCompletionItem("fun", "Keyword", "Function declaration"),
-        this.makeCompletionItem("var", "Keyword", "Variable declaration"),
-        this.makeCompletionItem("class", "Keyword", "Class declaration"),
-        this.makeCompletionItem("print", "Keyword", "Print statement")
-      ];
+      var params = msg["params"];
+      var uri = params["textDocument"]["uri"];
+
+      var items = this.getCompletionsForUri(uri);
       this.sendResponse(id, items);
       return;
     }
 
-    // fallback for unhandled requests: send error or empty response
+    if (method == "textDocument/definition") {
+      var params = msg["params"];
+      var uri = params["textDocument"]["uri"];
+      var line = params["position"]["line"];
+      var character = params["position"]["character"];
+
+      var docText = this.documents[uri];
+      var word = this.getWordAtPosition(docText, line, character);
+
+      if (word != "") {
+        var location = this.findSymbolDefinition(word, uri);
+        this.sendResponse(id, location);
+      } else {
+        this.sendResponse(id, nil);
+      }
+      return;
+    }
+
     if (id != nil) {
       this.sendResponse(id, nil);
     }
@@ -96,16 +302,101 @@ class LSPServer {
   makeCompletionItem(label, kind, detail) {
     var item = {};
     item["label"] = label;
+    item["kind"] = kind;
     item["detail"] = detail;
     return item;
   }
 
-  // main event loop
+  extractSymbolsFromSource(text, sourceFilename, visitedFiles) {
+    var symbols = [];
+    if (text == nil) return symbols;
+
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+      var lineNum = i + 1;
+
+      if (line.slice(0, 6) == "class ") {
+        var rest = line.slice(6, line.length()).trim();
+        var className = rest.split(" ")[0].split("{")[0].trim();
+        if (className.length() > 0) {
+          var detail = "Class defined in " + sourceFilename + " line " + lineNum;
+          symbols.push(this.makeCompletionItem(className, 7, detail));
+        }
+      }
+
+      if (line.slice(0, 4) == "fun ") {
+        var rest = line.slice(4, line.length()).trim();
+        var fnName = rest.split("(")[0].trim();
+        if (fnName.length() > 0) {
+          var detail = "Function defined in " + sourceFilename + " line " + lineNum;
+          symbols.push(this.makeCompletionItem(fnName, 3, detail));
+        }
+      }
+
+      if (line.slice(0, 4) == "var ") {
+        var rest = line.slice(4, line.length()).trim();
+        var varName = rest.split("=")[0].trim();
+        if (varName.length() > 0) {
+          var detail = "Variable defined in " + sourceFilename + " line " + lineNum;
+          symbols.push(this.makeCompletionItem(varName, 6, detail));
+        }
+      }
+
+      if (line.slice(0, 8) == "require(") {
+        var reqPath = this.extractRequirePath(line);
+        if (reqPath != nil) {
+          var importedSymbols = this.loadRequiredSymbols(reqPath, visitedFiles);
+          symbols = symbols + importedSymbols;
+        }
+      }
+    }
+
+    return symbols;
+  }
+
+  extractRequirePath(line) {
+    var firstQuote = line.find("\"");
+    if (firstQuote == nil) return nil;
+
+    var rest = line.slice(firstQuote + 1, line.length());
+    var secondQuote = rest.find("\"");
+    if (secondQuote == nil) return nil;
+
+    return rest.slice(0, secondQuote);
+  }
+
+  loadRequiredSymbols(relativePath, visitedFiles) {
+    if (visitedFiles[relativePath] == true) return [];
+    visitedFiles[relativePath] = true;
+
+    var searchPaths = [
+      relativePath,
+      "./lib/" + relativePath,
+      "/usr/lib64/slox/lib/" + relativePath
+    ];
+
+    var fileContent = nil;
+
+    for (var i = 0; i < searchPaths.length(); i += 1) {
+      var candidate = searchPaths[i];
+      if (File.exists(candidate)) {
+        fileContent = File.load(candidate);
+        break;
+      }
+    }
+
+    if (fileContent != nil) {
+      return this.extractSymbolsFromSource(fileContent, relativePath, visitedFiles);
+    }
+
+    return [];
+  }
+
   start() {
     while (this.running) {
-      // 1. read headers from stdin until blank line
       var contentLength = 0;
-      
+
       while (true) {
         var lineres = STDIN.readline();
         if (!lineres) break;
@@ -120,15 +411,11 @@ class LSPServer {
       }
 
       if (contentLength > 0) {
-        // 2. read exactly contentLength bytes from stdin
         var readRes = STDIN.read(contentLength);
         if (readRes) {
           var rawJson = readRes.unwrap();
-
-          // 3. parse json
           var message = Json.parse(rawJson);
 
-          // 4. dispatch rpc call
           if (message != nil) {
             this.handleMessage(message);
           }
@@ -137,18 +424,6 @@ class LSPServer {
     }
   }
 }
-
-/*
-Signal.trap(10, fun(sig) {
-    var trace = System.backtrace();
-    STDERR.write("\n");
-    STDERR.write("=============== LIVE SLOX STACK TRACE =================\n");
-    for (var i = 0; i < trace.length(); i += 1) {
-      STDERR.write("  " + trace[i] + "\n");
-    }
-    STDERR.write("=======================================================\n");
-    });
-*/
 
 var server = LSPServer();
 server.start();
