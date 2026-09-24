@@ -4,6 +4,13 @@ class Logger {
   init(options = nil) {
     options = options ?? {};
 
+    this.min_level = options["level"] ?? this.INFO;
+    this.app_name = options["app_name"] ?? "";
+    this.show_colors = options["colors"] ?? false;
+    this.quiet = options["quiet"] ?? false; // force silence stdout when needed
+    this.file_path = options["file"] ?? nil;
+    this.fd = nil;
+
     this.TRACE = 0;
     this.DEBUG = 1;
     this.INFO = 2;
@@ -12,16 +19,18 @@ class Logger {
     this.FATAL = 5;
     this.OFF = 6;
 
-    this.min_level = options["level"] ?? this.INFO;
-    this.app_name = options["app_name"] ?? "";
-    this.show_colors = options["colors"] ?? false;
-
     this.counts = {
       "TRACE": 0, "DEBUG": 0, "INFO": 0,
       "WARN": 0, "ERROR": 0, "FATAL": 0
     };
 
     this.custom_tags = {};
+
+    if (this.file_path != nil) {
+      var mode = (options["truncate"] ?? false) ? "w" : "a";
+      this.fd = File.open(this.file_path, mode).unwrap();
+      this.show_colors = false;
+    }
   }
 
   set_level(level) {
@@ -30,6 +39,27 @@ class Logger {
 
   set_app_name(name) {
     this.app_name = name ?? "";
+  }
+
+  set_file(path, truncate = false) {
+    if (this.fd != nil) {
+      this.fd.close();
+      this.fd = nil;
+    }
+
+    this.file_path = path;
+    if (path != nil) {
+      var mode = truncate ? "w" : "a";
+      this.fd = File.open(this.file_path, mode).unwrap();
+    }
+    this.show_colors = false;
+  }
+
+  close() {
+    if (this.fd != nil) {
+      this.fd.close();
+      this.fd = nil;
+    }
   }
 
   register_tag(tag, level, color) {
@@ -56,20 +86,31 @@ class Logger {
 
     var app_str = this.app_name.length() > 0 ? "(" + this.app_name + ") " : "";
 
-    var formatted_tag = "[" + tag + "]";
+    var plain_tag = "[" + tag + "]";
+    var plain_line = app_str + plain_tag + ctx_str + " " + msg;
+
+    if (this.fd != nil) {
+      this.fd.write(plain_line + "\n");
+      this.fd.flush();
+      return;
+    }
+
+    if (this.quiet) return;
+
+    var stdout_tag = "[" + tag + "]";
     if (this.show_colors) {
       var col = this.get_color_for(tag, level);
 
       if (isstring(col) and !col.contains(chr(27))) {
-        formatted_tag = Color.format("{" + col + "}[" + tag + "]");
+        stdout_tag = Color.format("{" + col + "}[" + tag + "]");
       } else if (isnumber(col) or typeof(col) == "Array" or typeof(col) == "Map" or (isstring(col) and col.contains("#"))) {
-        formatted_tag = Color.makeColor(col) + "[" + tag + "]" + Color.RESET;
+        stdout_tag = Color.makeColor(col) + "[" + tag + "]" + Color.RESET;
       } else {
-        formatted_tag = String(col) + "[" + tag + "]" + Color.RESET;
+        stdout_tag = String(col) + "[" + tag + "]" + Color.RESET;
       }
     }
 
-    print app_str + formatted_tag + ctx_str + " " + msg;
+    print app_str + stdout_tag + ctx_str + " " + msg;
   }
 
   get_color_for(tag, level) {

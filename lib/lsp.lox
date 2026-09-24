@@ -1,9 +1,19 @@
 require("json.lox");
+require("logger.lox");
 
 class LSPServer {
-  init() {
+  init(logFilePath = "/tmp/slox_lsp.log") {
     this.running = true;
     this.documents = {};
+
+    this.log = Logger({
+        "app_name": "slox-lsp",
+        "level": 0, // 0 = trace (logs everything)
+        "file": logFilePath,
+        "truncate": true
+        });
+    
+    this.log.info("LSP Server initialized");
 
     this.keywords = [
       "var", "const", "and", "or", "class", "else", "false",
@@ -15,8 +25,12 @@ class LSPServer {
   }
 
   findSymbolDefinition(symbolName, currentUri) {
+    this.log.debug("findSymbolDefinition looking for: '" + symbolName + "' in " + currentUri);
     var sourceText = this.documents[currentUri];
-    if (sourceText == nil) return nil;
+    if (sourceText == nil) {
+      this.log.warn("findSymbolDefinition: Document text is nil for " + currentUri);
+      return nil;
+    }
 
     var visitedFiles = {};
     visitedFiles[currentUri] = true;
@@ -25,9 +39,14 @@ class LSPServer {
   }
 
   searchSymbolInFile(symbolName, text, fileUri, visitedFiles) {
-    if (text == nil) return nil;
+    if (text == nil) {
+      this.log.warn("searchSymbolInFile received nil text for " + fileUri);
+      return nil;
+    }
 
     var lines = text.split("\n");
+    this.log.trace("Searching " + lines.length() + " lines in " + fileUri);
+
     for (var i = 0; i < lines.length(); i += 1) {
       var line = lines[i].trim();
       var lineNum = i; // lsp used 0-based indexing for lines and characters
@@ -37,6 +56,7 @@ class LSPServer {
         var name = line.slice(6, line.length()).trim().split(" ")[0].split("{")[0].trim();
         if (name == symbolName) {
           var col = line.find(symbolName);
+          this.log.info("Found class match at line " + lineNum);
           return this.makeLocation(fileUri, lineNum, col, symbolName.length());
         }
       }
@@ -46,6 +66,7 @@ class LSPServer {
         var name = line.slice(4, line.length()).trim().split("(")[0].trim();
         if (name == symbolName) {
           var col = line.find(symbolName);
+          this.log.info("Found fun match at line " + lineNum);
           return this.makeLocation(fileUri, lineNum, col, symbolName.length());
         }
       }
@@ -55,6 +76,7 @@ class LSPServer {
         var name = line.slice(4, line.length()).trim().split("=")[0].trim();
         if (name == symbolName) {
           var col = line.find(symbolName);
+          this.log.info("Found var match at line " + lineNum);
           return this.makeLocation(fileUri, lineNum, col, symbolName.length());
         }
       }
@@ -62,15 +84,26 @@ class LSPServer {
       // 4. follow require("...") dependencies recursively
       if (line.slice(0, 8) == "require(") {
         var reqPath = this.extractRequirePath(line);
-        var targetPath = this.resolvePath(reqPath);
+        this.log.trace("Found require: " + reqPath);
 
-        if (targetPath != nil) {
-          var targetUri = "file://" + targetPath;
-          if (visitedFiles[targetUri] != true) {
-            var depContent = File.load(targetPath);
+        if (reqPath != nil) {
+          var targetPath = this.resolvePath(fileUri, reqPath);
+          this.log.trace("Resolved path: " + targetPath);
 
-            var match = this.searchSymbolInFile(symbolName, depContent, targetUri, visitedFiles);
-            if (match != nil) return match;
+          if (targetPath != nil) {
+            var targetUri = "file://" + targetPath;
+
+            if (visitedFiles[targetUri] != true) {
+              visitedFiles[targetUri] = true;
+              this.log.debug("Recursing into require: " + targetPath);
+
+              var depContent = File.load(targetPath);
+
+              var match = this.searchSymbolInFile(symbolName, depContent, targetUri, visitedFiles);
+              if (match != nil) return match;
+            }
+          } else {
+            this.log.warn("Could not resolve require path: " + reqPath);
           }
         }
       }
@@ -89,48 +122,105 @@ class LSPServer {
     };
   }
 
-  resolvePath(relativePath) {
+  resolvePath(currentUri, relativePath) {
+    if (currentUri == nil or reqPath == nil) return nil;
+
+    var baseFilePath = currentUri;
+    if (baseFilePath.slice(0, 7) == "file://") {
+      baseFilePath = baseFilePath.slice(7);
+    }
+
+    var currentDir = Dir.dirname(baseFilePath);
+
     var paths = [
-      relativePath,
-      "./lib/" + relativePath,
-      "/usr/lib64/slox/lib/" + relativePath
+      currentDir + "/" + reqPath,
+      "./lib/" + reqPath,
+      "/usr/lib64/slox/lib/" + reqPath
     ];
 
     for (var i = 0; i < paths.length(); i += 1) {
-      if (File.exists(paths[i])) return paths[i];
+      var path = paths[i];
+      if (File.exists(path)) {
+        var real = Dir.realpath(path);
+        if (real != nil) return real;
+      }
     }
     return nil;
   }
 
   // helper to extract word under cursor from line text and character index
   getWordAtPosition(text, lineNum, charNum) {
-    if (text == nil) return "";
+    this.log.trace("getWordAtPosition called: line=" + lineNum + ", char=" + charNum);
+
+    if (text == nil) {
+      this.log.trace("getWordAtPosition: text is nil");
+      return "";
+    }
     var lines = text.split("\n");
-    if (lineNum >= lines.length()) return "";
+    this.log.trace("getWordAtPosition: total lines=" + lines.length());
+
+    if (lineNum >= lines.length()) {
+      this.log.trace("getWordAtPosition: total lines=" + lineNum + " out of bounds");
+      return "";
+    }
 
     var line = lines[lineNum];
-    if (charNum >= line.length()) return "";
+    this.log.trace("getWordAtPosition: target line len=" + line.length() + " contents: '" + line + "'");
+
+    if (charNum >= line.length()) {
+      this.log.trace("getWordAtPosition: charNum" + charNum + " >= line len " + line.length());
+      return "";
+    }
 
     // scan left to start of identifier
     var start = charNum;
-    while (start > 0 and this.isIdentChar(line[start - 1])) {
+    this.log.trace("getWordAtPosition: starting left scan from start=" + start);
+
+    while (start > 0) { // and this.isIdentChar(line[start - 1])) {
+      var prevChar = line[start - 1];
+
+      this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar));
+      var isIdent = this.isIdentChar(prevChar);
+      this.log.trace("left scan: idx=" + String(start - 1) + " charCode=" + chr(prevChar) + " isIdent=" + isIdent);
+
+      if (!isIdent) break;
       start = start - 1;
     }
+    this.log.trace("getWordAtPosition: final start=" + start);
 
     // scan right to end of identifier
     var end = charNum;
-    while (end < line.length() and this.isIdentChar(line[end])) {
+    this.log.trace("getWordAtPosition: starting right scan from end=" + end);
+
+    while (end < line.length()) { // and this.isIdentChar(line[end])) {
+      var currChar = line[end];
+      var isIdent = this.isIdentChar(currChar);
+      this.log.trace("right scan: idx=" + end + " charCode=" + chr(currChar) + " isIdent=" + isIdent);
+
+      if (!isIdent) break;
       end += 1;
     }
+    this.log.trace("getWordAtPosition: final end=" + end);
 
-    return line.slice(start, end);
+    var word = line.slice(start, end);
+    this.log.trace("getWordAtPosition: extracted word='" + word + "'");
+
+    return word;
   }
 
   isIdentChar(code) {
+    //this.log.trace("isIdentChar: code=" + code);
+    if (code == nil) return false;
+    //this.log.trace("isIdentChar: !nil");
+    //this.log.trace("isIdentChar: checking if >= 65 and <= 90");
     if (code >= 65 and code <= 90) return true;
+    //this.log.trace("isIdentChar: checking if >= 97 and <= 122");
     if (code >= 97 and code <= 122) return true;
+    //this.log.trace("isIdentChar: checking if >= 48 and <= 57");
     if (code >= 48 and code <= 57) return true;
-    if (c == '_') return true;
+    //this.log.trace("isIdentChar: checking if '_'");
+    if (code == '_') return true;
+    //this.log.trace("isIdentChar: not valid identifier character");
     return false;
   }
 
@@ -142,6 +232,8 @@ class LSPServer {
 
     var jsonString = Json.to_string(responseMap);
     var header = "Content-Length: " + jsonString.length() + "\r\n\r\n";
+
+    this.log.trace("OUT -> ID: " + id + " Body: " + jsonString);
 
     STDOUT.write(header + jsonString);
     STDOUT.flush();
@@ -216,6 +308,8 @@ class LSPServer {
     var method = msg["method"];
     var id = msg["id"];
 
+    this.log.debug("IN <- Method: " + method + " (id: " +id + ")");
+
     // 1. lifecycle: initialize
     if (method == "initialize") {
       var capabilities = {};
@@ -238,12 +332,15 @@ class LSPServer {
 
     // 2. lifecycle: shutdown
     if (method == "shutdown") {
+      this.log.infi("LSP received shutdown request");
       this.sendResponse(id, nil);
       return;
     }
 
     if (method == "exit") {
+      this.log.info("LSP exiting");
       this.running = false;
+      this.log.close();
       return;
     }
 
@@ -252,6 +349,7 @@ class LSPServer {
       var params = msg["params"];
       var doc = params["textDocument"];
       this.documents[doc["uri"]] = doc["text"];
+      this.log.info("Opened document: " + doc["uri"]);
       return;
     }
 
@@ -262,6 +360,7 @@ class LSPServer {
       var changes = params["contentChanges"];
       if (changes.length() > 0) {
         this.documents[uri] = changes[0]["text"];
+        this.log.trace("Updated document text for " + uri);
       }
       return;
     }
@@ -277,24 +376,31 @@ class LSPServer {
     }
 
     if (method == "textDocument/definition") {
+      this.log.debug("in textDocument/definition");
+
       var params = msg["params"];
       var uri = params["textDocument"]["uri"];
       var line = params["position"]["line"];
       var character = params["position"]["character"];
 
       var docText = this.documents[uri];
+      this.log.debug("before getWordAtPosition()");
       var word = this.getWordAtPosition(docText, line, character);
+      this.log.debug("after getWordAtPosition()");
 
       if (word != "") {
         var location = this.findSymbolDefinition(word, uri);
+        this.log.debug("Definition match: " + Json.to_string(location));
         this.sendResponse(id, location);
       } else {
+        this.log.debug("No symbol found under cursor, sending null response");
         this.sendResponse(id, nil);
       }
       return;
     }
 
     if (id != nil) {
+      this.log.warn("Unhandled message with ID " + id + ", sending null result");
       this.sendResponse(id, nil);
     }
   }
@@ -394,6 +500,8 @@ class LSPServer {
   }
 
   start() {
+    this.log.info("Server event loop starting...");
+
     while (this.running) {
       var contentLength = 0;
 
@@ -418,10 +526,14 @@ class LSPServer {
 
           if (message != nil) {
             this.handleMessage(message);
+          } else {
+            this.log.error("Failed to parse incoming JSON payload: " + rawJson);
           }
         }
       }
     }
+    this.log.info("Server event loop finished");
+    this.log.close();
   }
 }
 

@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/sendfile.h>
+#include <libgen.h>
 
 #include "native.h"
 #include "common.h"
@@ -5068,6 +5069,54 @@ Value dirIsemptyNative(int argCount, Value* args) {
     return BOOL_VAL(empty);
 }
 
+Value dirBasenameNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.realpath() expects a path string.");
+        return NIL_VAL;
+    }
+
+    ObjString* pathStr = AS_STRING(args[0]);
+
+    char* buffer = strdup(pathStr->chars);
+    char* result = basename(buffer);
+
+    Value ret = OBJ_VAL(copyString(result, (int)strlen(result)));
+    free(buffer);
+    return ret;
+}
+
+Value dirDirnameNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.dirname() expects a path string.");
+        return NIL_VAL;
+    }
+
+    ObjString* pathStr = AS_STRING(args[0]);
+
+    char* buffer = strdup(pathStr->chars);
+    char* result = dirname(buffer);
+
+    Value ret = OBJ_VAL(copyString(result, (int)strlen(result)));
+    free(buffer);
+    return ret;
+}
+
+Value dirRealpathNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.realpath() expects a path string.");
+        return NIL_VAL;
+    }
+
+    const char* path = AS_CSTRING(args[0]);
+    char resolved_path[PATH_MAX];
+
+    if (realpath(path, resolved_path) != NULL) {
+        return OBJ_VAL(copyString(resolved_path, (int)strlen(resolved_path)));
+    }
+
+    return NIL_VAL;
+}
+
 void initDirLibrary(){
     /*
     ObjString* dirName = copyString("Dir", 3);
@@ -5093,6 +5142,9 @@ void initDirLibrary(){
     defineNativeMethod(dirMeta, "each", dirEachNative);
     defineNativeMethod(dirMeta, "glob", dirGlobNative);
     defineNativeMethod(dirMeta, "isempty", dirIsemptyNative);
+    defineNativeMethod(dirMeta, "realpath", dirRealpathNative);
+    defineNativeMethod(dirMeta, "basename", dirBasenameNative);
+    defineNativeMethod(dirMeta, "dirname", dirDirnameNative);
 
     /*
     tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
