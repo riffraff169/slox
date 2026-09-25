@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.7.11
+Version: 1.7.12
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -241,6 +241,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Fri  Sep 25 2026 Lance Dillon <riffraff169@yahoo.com> - 1.7.12-1-1
+- more lsp fixes and updates
+
 * Thu  Sep 24 2026 Lance Dillon <riffraff169@yahoo.com> - 1.7.11-1-1
 - added a couple Dir functions, more lsp work
 
