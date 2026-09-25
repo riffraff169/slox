@@ -38,3 +38,5 @@ augroup SloxLspBuffer
     autocmd!
     autocmd User lsp_buffer_enabled call s:on_lsp_buffer_init()
 augroup END
+
+nnoremap K :LspHover<CR>

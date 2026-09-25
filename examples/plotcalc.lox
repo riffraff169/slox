@@ -167,6 +167,7 @@ class SymbolTable {
     this.vars = {};
   }
 
+  // Set variable with value in SymbolTable
   setVar(name, val) {
     if (this.vars.has(name)) {
       this.vars[name].val = val;
@@ -176,6 +177,7 @@ class SymbolTable {
     }
   }
 
+  // Get variable value in SymbolTable
   getVar(name) {
     if (this.vars.has(name)) {
       return this.vars[name];

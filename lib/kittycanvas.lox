@@ -1,3 +1,5 @@
+// Manages drawing operations on the terminal canvas
+// Supports RGB color rending
 class KittyCanvas {
   init(width, height) {
     this.width = width;
@@ -26,6 +28,7 @@ class KittyCanvas {
     }
   }
 
+  // draw a line
   drawLine(x0, y0, x1, y1, r, g = 0, b = 0) {
     if (typeof(r) == "Array") {
       b = r[2];
@@ -53,6 +56,7 @@ class KittyCanvas {
     }
   }
 
+  // draw x and y axes
   drawAxes(xMin, xMax, yMin, yMax) {
     var originX = Integer((0 - xMin) / (xMax - xMin) * (this.width - 1));
     var originY = Integer(this.height - 1 - ((0 - yMin) / (yMax - yMin) * (this.height - 1)));

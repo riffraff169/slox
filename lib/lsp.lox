@@ -8,7 +8,7 @@ class LSPServer {
 
     this.log = Logger({
         "app_name": "slox-lsp",
-        "level": 3, // 0 = trace (logs everything)
+        "level": 0, // 0 = trace (logs everything) 3 = warn
         "file": logFilePath,
         "truncate": true
         });
@@ -339,9 +339,10 @@ class LSPServer {
       syncOptions["change"] = 1; // 1 = full text sync
       capabilities["textDocumentSync"] = syncOptions;
       capabilities["definitionProvider"] = true;
+      capabilities["hoverProvider"] = true;
 
       var completionOptions = {};
-      completionOptions["triggerCharacters"] = [".", ":"];
+      completionOptions["triggerCharacters"] = ["."];
       capabilities["completionProvider"] = completionOptions;
 
       var result = {};
@@ -370,6 +371,18 @@ class LSPServer {
       var doc = params["textDocument"];
       this.documents[doc["uri"]] = doc["text"];
       this.log.info("Opened document: " + doc["uri"]);
+      return;
+    }
+
+    if (method == "textDocument/didClose") {
+      var params = msg["params"];
+      var doc = params["textDocument"];
+      var uri = doc["uri"];
+      this.log.trace("didClose received for: " + uri);
+
+      if (this.documents[uri] != nil) {
+        this.documents[uri] = nil;
+      }
       return;
     }
 
@@ -419,8 +432,242 @@ class LSPServer {
       return;
     }
 
+    if (method == "textDocument/hover") {
+      var params = msg["params"];
+      this.handleHover(id, params);
+      return;
+    }
+
     if (id != nil) {
       this.log.warn("Unhandled message with ID " + id + ", sending null result");
+      this.sendResponse(id, nil);
+    }
+  }
+
+  extractDocComments(lines, matchLineIndex) {
+    var comments = [];
+    var i = matchLineIndex - 1;
+
+    while (i >= 0) {
+      var line = lines[i].trim();
+      if (line.slice(0, 2) == "//") {
+        var commentBody = line.slice(2).trim();
+        comments = [commentBody] + comments;
+        i = i - 1;
+      } else {
+        break;
+      }
+    }
+
+    if (comments.length() == 0) return "";
+
+    return "\n---\n" + comments.join("\n");
+  }
+
+  findSymbolHover(symbolName, docText) {
+    if (symbolName == nil or symbolName == "") {
+      this.log.trace("findSymbolHover: empty or nil symbolName");
+      return nil;
+    }
+
+    var lines = docText.split("\n");
+    this.log.trace("findSymbolHover: scanning " + lines.length() + " lines for '" + symbolName + "'");
+
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i];
+      var trimmed = line.trim();
+      var isMatch = false;
+
+      var pos = trimmed.find(symbolName);
+      if (pos != nil) {
+        this.log.trace("  L" + i + " found '" + symbolName + "' in trimmed line: '" + trimmed + "' at pos=" + pos);
+
+        var endPos = pos + symbolName.length();
+
+        // 1. explicit declarations: class x, fun x, var x
+        var isDecl = (trimmed.slice(0, 6) == "class ") or
+            (trimmed.slice(0, 4) == "fun ") or
+            (trimmed.slice(0, 4) == "var ");
+
+        // 2. class method signature: name followed immediately by '('
+        var isMethod = false;
+        if (pos == 0 and endPos < trimmed.length()) {
+          var ch = trimmed[endPos];
+          this.log.trace("    L" + i + " isMethod evaluation: pos=0, char at endPos(" + endPos + ")=" + chr(ch));
+          if (ch == '(') {
+            isMethod = true;
+          }
+        }
+
+        this.log.trace("  L" + i + " flags: isDecl=" + isDecl + " isMethod=" + isMethod);
+
+
+        if (isDecl or isMethod) {
+          var endPos = pos + symbolName.length();
+          if (endPos >= trimmed.length()) {
+            isMatch = true;
+          } else {
+            var nextChar = trimmed[endPos];
+            this.log.trace("    L" + i + " checking boundary nextChar=" + chr(nextChar));
+            if (nextChar == ' ' or nextChar == '(' or nextChar == '{' or nextChar == ';' or nextChar == ':') {
+              isMatch = true;
+            }
+          }
+        }
+      }
+
+      this.log.trace("    L" + i + " isMatch=" + isMatch);
+
+      if (isMatch) {
+        this.log.trace("    L" + i + " MATCH CONFIRMED! Processing signature...");
+        var signature = trimmed;
+        if (signature.slice(-1) == "{") {
+          signature = signature.slice(0, -1).trim();
+        }
+
+        this.log.trace("    L" + i + " extracting doc comments for line " + i);
+        var docs = "";
+        if (this.extraDocComments != nil) {
+          docs = this.extractDocComments(lines, i);
+        } else {
+          this.log.trace("    L" + i + " extraDocComments is nil or missing!");
+        }
+
+        this.log.trace("    L" + i + " final result signature: '" + signature + "'");
+        //return "```slox\n" + signature + "\n```" + docs;
+        // send plain signature line directly without backticks
+        return signature + docs;
+      }
+    }
+    this.log.trace("findSymbolHover: finished loop without finding match for '" + symbolName +"'");
+    return nil;
+  }
+
+  extraDocComments(lines, targetLineIndex) {
+    var comments = [];
+    var currIndex = targetLineIndex - 1;
+
+    while (currIndex >= 0) {
+      var line = lines[currIndex].trim();
+      if (line.slice(0, 2) == "//") {
+        var commentText = line.slice(2).trim();
+        comments.push(commentText);
+        currIndex -= 1;
+      } else {
+        break;
+      }
+
+      if (comments.length() == 0) return "";
+
+      var docStr = "\n\n";
+      docStr = docStr + comments.reverse() + "\n";
+      return docStr;
+    }
+  }
+
+  searchHoverInFile(symbolName, fileContent, fileUri, visitedFiles) {
+    this.log.trace("searchHoverInFile: enter uri=" + fileUri);
+
+    var hoverText = this.findSymbolHover(symbolName, fileContent);
+    if (hoverText != nil) {
+      this.log.trace("searchHoverInFile: match found in " + fileUri);
+      return hoverText;
+    }
+
+    var lines = fileContent.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+
+      if (line.slice(0, 8) == "require(") {
+        var reqPath = this.extractRequirePath(line);
+        this.log.trace("searchHoverInFile: found require path '" + reqPath + "'");
+
+        if (reqPath != nil) {
+          this.log.trace("searchHoverInFile: resolved path -> '" + reqPath + "'");
+          var targetPath = this.resolvePath(fileUri, reqPath);
+
+          if (targetPath != nil) {
+            var targetUri = "file://" + targetPath;
+
+            if (visitedFiles[targetUri] != true) {
+              visitedFiles[targetUri] = true;
+              this.log.trace("searchHoverInFile: loading file " + targetPath);
+
+              var depContent = File.load(targetPath);
+              if (depContent != nil) {
+                var match = this.searchHoverInFile(symbolName, depContent, targetUri, visitedFiles);
+                if (match != nil) return match;
+              } else {
+                this.log.error("searchHoverInFile: File.load returned nil for " + targetPath);
+              }
+            } else {
+              this.log.trace("searchHoverInFile: skipping already visited file " + targetUri);
+            }
+          }
+        }
+      }
+    }
+    this.log.trace("searchHoverInFile: exit (no match) uri=" + fileUri);
+    return nil;
+  }
+
+  searchHoverInDependencies(symbolName, activeContent, activeUri, visitedFiles) {
+    if (visitedFiles == nil) visitedFiles = {};
+    visitedFiles[activeUri] = true;
+
+    this.log.trace("searchHoverInDependencies: starting for symbol '" + symbolName + "'");
+    return this.searchHoverInFile(symbolName, activeContent, activeUri, visitedFiles);
+  }
+
+  handleHover(id, params) {
+    this.log.debug("--> handleHover called");
+
+    this.log.trace("handleHover: params=" + params);
+    var textDoc = params["textDocument"];
+    this.log.trace("handleHover: textDoc=" + textDoc);
+    var pos = params["position"];
+
+    var uri = textDoc["uri"];
+    var line = pos["line"];
+    var character = pos["character"];
+
+    this.log.trace("handleHover: uri=" + uri + "pos=" + line + ":" + character);
+    
+    var text = this.documents[uri];
+    if (text == nil) {
+      this.log.debug("handleHover: document text is nil for uri: " + uri);
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    var word = this.getWordAtPosition(text, line, character);
+    this.log.debug("handleHover: extracted word: '" + word + "'");
+
+    if (word == nil or word == "") {
+      this.log.debug("handleHover: empty word, sending null response");
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    this.log.debug("handleHover: searching in local document...");
+    var markdownContent = this.findSymbolHover(word, text);
+
+    if (markdownContent == nil) {
+      this.log.debug("handleHover: symbol not found locally, searching dependencies...");
+      markdownContent = this.searchHoverInDependencies(word, text, uri, {});
+    }
+
+    if (markdownContent != nil) {
+      this.log.debug("handleHover: found hover content! Sending response.");
+      var response = {
+        "contents": {
+          "kind": "markdown",
+          "value": markdownContent
+        }
+      };
+      this.sendResponse(id, response);
+    } else {
+      this.log.debug("handleHover: no hover content found, sending null response");
       this.sendResponse(id, nil);
     }
   }
