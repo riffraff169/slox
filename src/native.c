@@ -753,10 +753,20 @@ Value requireNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+    ObjString* nameKey = copyString("__name__", 8);
+    push(OBJ_VAL(nameKey));
+
+    Value oldName = NIL_VAL;
+    tableGet(&vm.globals, nameKey, &oldName);
+
+    tableSet(&vm.globals, nameKey, OBJ_VAL(path));
+
     ObjFunction* function = compile(source, path);
     free(source);
 
     if (function == NULL) {
+        tableSet(&vm.globals, nameKey, oldName);
+        pop();
         return NIL_VAL;
     }
 
@@ -764,8 +774,6 @@ Value requireNative(int argCount, Value* args) {
     ObjClosure* closure = newClosure(function);
 
     vm.stackTop[-1] = OBJ_VAL(closure);
-    //pop();
-    //push(OBJ_VAL(closure));
 
     VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
     VM_CALLBACK_ENTER(priorFrameCount);
@@ -786,9 +794,15 @@ Value requireNative(int argCount, Value* args) {
         tableSet(&vm.requires, path, exportResult);
         pop();
 
+        tableSet(&vm.globals, nameKey, oldName);
+        pop();
+
         VM_CALLBACK_EXIT(oldExitDepth);
         return exportResult;
     }
+
+    tableSet(&vm.globals, nameKey, oldName);
+    pop();
 
     pop();
 

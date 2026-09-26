@@ -152,6 +152,11 @@ static void runFile(const char* path) {
     char* source = readFile(path);
     if (source == NULL) return;
 
+    ObjString* string = copyString("__main__", 8);
+    push(OBJ_VAL(string));
+    defineGlobal("__name__", OBJ_VAL(string));
+    pop();
+
     InterpretResult result = interpret(source, path);
     awaitTimers();
     free(source);

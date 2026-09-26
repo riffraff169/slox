@@ -208,6 +208,7 @@ void pushTemp(Value value);
 Value popTemp();
 int saveTempScope();
 void restoreTempScope(int scopeMarker);
+void defineGlobal(const char* name, Value value);
 
 static inline void _autoRestoreGcScope(const int* scopeMarker) {
     restoreTempScope(*scopeMarker);

@@ -769,59 +769,6 @@ class LSPServer {
         });
   }
 
-  handleHover1(id, params) {
-    this.log.debug("--> handleHover called");
-
-    this.log.trace("handleHover: params=" + params);
-    var textDoc = params["textDocument"];
-    this.log.trace("handleHover: textDoc=" + textDoc);
-    var pos = params["position"];
-
-    var uri = textDoc["uri"];
-    var line = pos["line"];
-    var character = pos["character"];
-
-    this.log.trace("handleHover: uri=" + uri + "pos=" + line + ":" + character);
-    
-    var text = this.documents[uri];
-    if (text == nil) {
-      this.log.debug("handleHover: document text is nil for uri: " + uri);
-      this.sendResponse(id, nil);
-      return;
-    }
-
-    var word = this.getWordAtPosition(text, line, character);
-    this.log.debug("handleHover: extracted word: '" + word + "'");
-
-    if (word == nil or word == "") {
-      this.log.debug("handleHover: empty word, sending null response");
-      this.sendResponse(id, nil);
-      return;
-    }
-
-    this.log.debug("handleHover: searching in local document...");
-    var markdownContent = this.findSymbolHover(word, text);
-
-    if (markdownContent == nil) {
-      this.log.debug("handleHover: symbol not found locally, searching dependencies...");
-      markdownContent = this.searchHoverInDependencies(word, text, uri, {});
-    }
-
-    if (markdownContent != nil) {
-      this.log.debug("handleHover: found hover content! Sending response.");
-      var response = {
-        "contents": {
-          "kind": "markdown",
-          "value": markdownContent
-        }
-      };
-      this.sendResponse(id, response);
-    } else {
-      this.log.debug("handleHover: no hover content found, sending null response");
-      this.sendResponse(id, nil);
-    }
-  }
-
   // Handle textDocument/definition
   handleDefinition(id, params) {
     var uri = params["textDocument"]["uri"];
@@ -845,40 +792,6 @@ class LSPServer {
       }
     };
     this.sendResponse(id, res);
-  }
-
-  handleDefinition1(id, params) {
-    this.log.debug("--> handleDefinition called");
-    var uri = params["textDocument"]["uri"];
-    var line = params["position"]["line"];
-    var character = params["position"]["character"];
-
-    var docText = this.documents[uri];
-    if (docText == nil) {
-      this.sendResponse(id, nil);
-      return;
-    }
-
-    var word = this.getWordAtPosition(docText, line, character);
-    this.log.debug("handleDefinition: extracted word: '" + word + "'");
-
-    if (word == nil or word == "") {
-      this.sendResponse(id, nil);
-      return;
-    }
-
-    // stage 1: search local document
-    this.log.debug("handleDefinition: searching in local document...");
-    var location = this.findSymbolDefinition(word, uri);
-
-    // stage 2: fall back to dependencies
-    if (location == nil) {
-      this.log.debug("handleDefinition: symbol not found locally, searching dependencies...");
-      location = this.searchDefinitionInDependencies(word, docText, uri, {});
-    }
-
-    this.log.debug("Definition match: " + location);
-    this.sendResponse(id, location);
   }
 
   // Recursive search for symbol definition
@@ -1075,5 +988,11 @@ class LSPServer {
   }
 }
 
-var server = LSPServer();
-server.start();
+fun main() {
+  var server = LSPServer();
+  server.start();
+}
+
+if (__name__ == "__main__") {
+  main();
+}
