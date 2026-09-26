@@ -409,6 +409,11 @@ class LSPServer {
     }
 
     if (method == "textDocument/definition") {
+      var params = msg["params"];
+      this.handleDefinition(id, params);
+      return;
+    }
+    /*
       this.log.debug("in textDocument/definition");
 
       var params = msg["params"];
@@ -431,6 +436,7 @@ class LSPServer {
       }
       return;
     }
+    */
 
     if (method == "textDocument/hover") {
       var params = msg["params"];
@@ -442,6 +448,123 @@ class LSPServer {
       this.log.warn("Unhandled message with ID " + id + ", sending null result");
       this.sendResponse(id, nil);
     }
+  }
+
+  // Find symbolName in docText
+  findSymbolInText(symbolName, docText, fileUri) {
+    if (symbolName == nil or symbolName == "") return nil;
+
+    var lines = docText.split("\n");
+    var currentClass = nil;
+
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i];
+      var trimmed = line.trim();
+
+      // trace current class context
+      if (trimmed.slice(0, 6) == "class ") {
+        var rest = trimmed.slice(6).trim();
+        var spacePos = rest.find(" ");
+        var bracePos = rest.find("{");
+
+        if (spacePos != nil) {
+          currentClass = rest.slice(0, spacePos);
+        } else if (bracePos != nil) {
+          currentClass = rest.slice(0, bracePos).trim();
+        } else {
+          currentClass = rest;
+        }
+      }
+
+      var pos = trimmed.find(symbolName);
+      if (pos != nil) {
+        var endPos = pos + symbolName.length();
+
+        // check declaration (class, fun, var)
+        var isDecl = (trimmed.slice(0, 6) == "class ") or
+          (trimmed.slice(0, 4) == "fun ") or
+          (trimmed.slice(0, 4) == "var ");
+
+        // check class methods (starts at index 0 of trimmed line and followed by '('
+        var isMethod = false;
+        if (pos == 0 and endPos < trimmed.length()) {
+          var ch = trimmed[endPos];
+          if (ch == '(') {
+            isMethod = true;
+          }
+        }
+
+        var isMatch = false;
+        if (isDecl or isMethod) {
+          if (endPos >= trimmed.length()) {
+            isMatch = true;
+          } else {
+            var nextChar = trimmed[endPos];
+            if (nextChar == ' ' or nextChar == '(' or nextChar == '{' or nextChar == ';' or nextChar == ':') {
+              isMatch = true;
+            }
+          }
+        }
+
+        if (isMatch) {
+          var origPos = line.find(symbolName);
+          if (origPos == nil) origPos = 0;
+
+          var signature = trimmed;
+          if (signature.slice(-1) == "{") {
+            signature = signature.slice(0, -1).trim();
+          }
+
+          if (isMethod and currentClass != nil) {
+            signature = currentClass + "." + signature;
+          }
+
+          var docs = this.extractDocComments(lines, i);
+
+          return {
+            "uri": fileUri,
+            "line": i,
+            "character": origPos,
+            "length": symbolName.length(),
+            "signature": signature,
+            "docs": docs
+          };
+        }
+      }
+    }
+
+    return nil;
+  }
+
+  findSymbolInDependencies(symbolName, fileUri, visited) {
+    if (visited == nil) visited = {};
+    if (visited[fileUri] == true) return nil;
+    visited[fileUri] = true;
+
+    var content = this.getDocOrLoadFile(fileUri);
+    if (content == nil) return nil;
+
+    // 1. check current file
+    var match = this.findSymbolInText(symbolName, content, fileUri);
+    if (match != nil) return match;
+
+    // 2. scan requirements recursively
+    var lines = content.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+      if (line.slice(0, 8) == "require(") {
+        var reqPath = this.extractRequirePath(line);
+        if (reqPath != nil) {
+          var targetPath = this.resolvePath(fileUri, reqPath);
+          if (targetPath != nil) {
+            var targetUri = "file://" + targetPath;
+            var result = this.findSymbolInDependencies(symbolName, targetUri, visited);
+            if (result != nil) return result;
+          }
+        }
+      }
+    }
+    return nil;
   }
 
   extractDocComments(lines, matchLineIndex) {
@@ -620,6 +743,33 @@ class LSPServer {
   }
 
   handleHover(id, params) {
+    var uri = params["textDocument"]["uri"];
+    var docText = this.documents[uri];
+    if (docText == nil) { this.sendResponse(id, nil); return; }
+
+    var word = this.getWordAtPosition(docText, params["position"]["line"], params["position"]["character"]);
+    if (word == nil or word == "") { this.sendResponse(id, nil); return; }
+
+    var symbol = this.findSymbolInDependencies(word, uri, {});
+    if (symbol == nil) {
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    var hoverText = symbol["signature"];
+    if (symbol["docs"] != "") {
+      hoverText = hoverText + "\n---\n" + symbol["docs"];
+    }
+
+    this.sendResponse(id, {
+        "contents": {
+        "kind": "markdown",
+        "value": hoverText
+        }
+        });
+  }
+
+  handleHover1(id, params) {
     this.log.debug("--> handleHover called");
 
     this.log.trace("handleHover: params=" + params);
@@ -670,6 +820,119 @@ class LSPServer {
       this.log.debug("handleHover: no hover content found, sending null response");
       this.sendResponse(id, nil);
     }
+  }
+
+  // Handle textDocument/definition
+  handleDefinition(id, params) {
+    var uri = params["textDocument"]["uri"];
+    var docText = this.documents[uri];
+    if (docText == nil) { this.sendResponse(id, nil); return; }
+
+    var word = this.getWordAtPosition(docText, params["position"]["line"], params["position"]["character"]);
+    if (word == nil or word == "") { this.sendResponse(id, nil); return; }
+
+    var symbol = this.findSymbolInDependencies(word, uri, {});
+    if (symbol == nil) {
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    var res = {
+      "uri": symbol["uri"],
+      "range": {
+        "start": { "line": symbol["line"], "character": symbol["character"] },
+        "end": { "line": symbol["line"], "character": symbol["character"] + symbol["length"] }
+      }
+    };
+    this.sendResponse(id, res);
+  }
+
+  handleDefinition1(id, params) {
+    this.log.debug("--> handleDefinition called");
+    var uri = params["textDocument"]["uri"];
+    var line = params["position"]["line"];
+    var character = params["position"]["character"];
+
+    var docText = this.documents[uri];
+    if (docText == nil) {
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    var word = this.getWordAtPosition(docText, line, character);
+    this.log.debug("handleDefinition: extracted word: '" + word + "'");
+
+    if (word == nil or word == "") {
+      this.sendResponse(id, nil);
+      return;
+    }
+
+    // stage 1: search local document
+    this.log.debug("handleDefinition: searching in local document...");
+    var location = this.findSymbolDefinition(word, uri);
+
+    // stage 2: fall back to dependencies
+    if (location == nil) {
+      this.log.debug("handleDefinition: symbol not found locally, searching dependencies...");
+      location = this.searchDefinitionInDependencies(word, docText, uri, {});
+    }
+
+    this.log.debug("Definition match: " + location);
+    this.sendResponse(id, location);
+  }
+
+  // Recursive search for symbol definition
+  searchDefinitionInFile(symbolName, fileContent, fileUri, visitedFiles) {
+    var loc = this.findSymbolDefinition(symbolName, fileUri);
+    if (loc != nil) return loc;
+
+    var lines = fileContent.split("\n");
+    for (var i = 0; i < lines.length(); i += 1) {
+      var line = lines[i].trim();
+      if (line.slice(0, 8) == "require(") {
+        var reqPath = this.extractRequirePath(line);
+        if (reqPath != nil) {
+          var targetPath = this.resolvePath(fileUri, reqPath);
+          if (targetPath != nil) {
+            var targetUri = "file://" + targetPath;
+            if (visitedFiles[targetUri] != true) {
+              visitedFiles[targetUri] = true;
+              var depContent = File.load(targetPath);
+              if (depContent != nil) {
+                var match = this.searchDefinitionInFile(symbolName, depContent, targetUri, visitedFiles);
+                if (match != nil) return match;
+              }
+            }
+          }
+        }
+      }
+    }
+    return nil;
+  }
+
+  // Start of recursive search for symbol definition
+  searchDefinitionInDependencies(symbolName, activeContent, activeUri, visitedFiles) {
+    if (visitedFiles == nil) visitedFiles = {};
+    visitedFiles[activeUri] = true;
+
+    return this.searchDefinitionInFile(symbolName, activeContent, activeUri, visitedFiles);
+  }
+
+  getDocOrLoadFile(uri) {
+    if (this.documents[uri] != nil) {
+      return this.documents[uri];
+    }
+
+    var filePath = uri;
+    if (filePath.slice(0, 7) == "file://") {
+      filePath = filePath.slice(7);
+    }
+
+    if (File.exists(filePath)) {
+      return File.load(filePath);
+    }
+
+    return nil;
   }
 
   makeCompletionItem(label, kind, detail) {
