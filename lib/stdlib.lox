@@ -512,3 +512,6 @@ class Struct {
   packNet(fmt, values) { return this.pack(fmt, values, true); }
   unpackNet(fmt, buf) { return this.unpack(fmt, buf, true); }
 }
+
+// Shortcut for System.exit()
+var exit = System.exit;

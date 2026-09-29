@@ -5085,7 +5085,7 @@ Value dirIsemptyNative(int argCount, Value* args) {
 
 Value dirBasenameNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.realpath() expects a path string.");
+        runtimeError("Dir.basename() expects a path string.");
         return NIL_VAL;
     }
 
@@ -5113,6 +5113,20 @@ Value dirDirnameNative(int argCount, Value* args) {
     Value ret = OBJ_VAL(copyString(result, (int)strlen(result)));
     free(buffer);
     return ret;
+}
+
+Value dirIsdirNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("Dir.isdir() expects a path string.");
+        return NIL_VAL;
+    }
+    const char* pathStr = AS_CSTRING(args[0]);
+
+    struct stat st;
+    if (stat(pathStr, &st) != 0) {
+        return BOOL_VAL(false);
+    }
+    return BOOL_VAL(S_ISDIR(st.st_mode));
 }
 
 Value dirRealpathNative(int argCount, Value* args) {
@@ -5159,6 +5173,7 @@ void initDirLibrary(){
     defineNativeMethod(dirMeta, "realpath", dirRealpathNative);
     defineNativeMethod(dirMeta, "basename", dirBasenameNative);
     defineNativeMethod(dirMeta, "dirname", dirDirnameNative);
+    defineNativeMethod(dirMeta, "isdir", dirIsdirNative);
 
     /*
     tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
