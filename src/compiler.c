@@ -1065,7 +1065,57 @@ static void string(bool canAssign) {
     free(buffer);
 }
 
+bool isAssignmentToken() {
+    return (check(TOKEN_EQUAL) || check(TOKEN_QQ_EQUAL) ||
+            check(TOKEN_PLUS_EQUAL) || check(TOKEN_MINUS_EQUAL) ||
+            check(TOKEN_STAR_EQUAL) || check(TOKEN_SLASH_EQUAL) ||
+            check(TOKEN_PERCENT_EQUAL));
+}
+
 static void namedVariable(Token name, bool canAssign) {
+    // compile time pseudo-variables: __LINE__, __FUNC__, __FILE__
+    if (name.length == 8) {
+        if (memcmp(name.start, "__LINE__", 8) == 0) {
+            if (canAssign && isAssignmentToken()) {
+                error("Cannot assign to pseudo-variable '__LINE__'.");
+            }
+            emitConstant(INT_VAL(name.line));
+            return;
+        }
+
+        if (memcmp(name.start, "__FUNC__", 8) == 0) {
+            if (canAssign && isAssignmentToken()) {
+                error("Cannot assign to pseudo-variable '__FUNC__'.");
+            }
+
+            ObjString* funcName = NULL;
+            if (current->type == TYPE_SCRIPT) {
+                funcName = copyString("<script>", 8);
+            } else if (current->function != NULL && current->function->name != NULL) {
+                funcName = current->function->name;
+            } else {
+                funcName = copyString("<fn>", 4);
+            }
+            emitConstant(OBJ_VAL(funcName));
+            return;
+        }
+
+        if (memcmp(name.start, "__FILE__", 8) == 0) {
+            if (canAssign && isAssignmentToken()) {
+                error("Cannot assign to pseudo-variable '__FILE__'.");
+            }
+
+            ObjString* fileName = current->function->filename;
+            if (fileName != NULL) {
+                emitConstant(OBJ_VAL(fileName));
+            } else {
+                emitConstant(OBJ_VAL(copyString("<unknown>", 9)));
+            }
+            return;
+        }
+    }
+
+
     uint8_t getOp, setOp;
     int arg = resolveLocal(current, &name);
     bool isConst = false;

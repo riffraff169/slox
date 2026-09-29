@@ -1,0 +1,20 @@
+class A {
+  init() {}
+
+  enableFeature() {
+    class A {
+      dynamicallyAddedMethod() {
+        print "Feature enabled!";
+      }
+    }
+  }
+}
+
+var a = A();
+
+a.enableFeature();
+
+a.dynamicallyAddedMethod();
+
+a.customMethod = fun() { print "Per-instance callback"; };
+a.customMethod();
