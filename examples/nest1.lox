@@ -1,0 +1,55 @@
+print "=== Starting Custom Error Inheritance Test ===";
+
+// 1. Define custom error hierarchy
+class DatabaseError < Error {
+  init(message, code) {
+    this.message = message;
+    this.code = code;
+  }
+
+  getFormattedCode() {
+    return "ERR_DB_" + this.code;
+  }
+}
+
+class ConnectionTimeoutError < DatabaseError {
+  init(message) {
+    super.init(message, 504);
+  }
+}
+
+// 2. Test throwing and catching custom error subclasses
+var custom_passed = false;
+
+try {
+  // Simulate throwing a deeply derived error instance
+  var err = ConnectionTimeoutError("Database server did not respond in 5000ms");
+  
+  // Throwing populates stack trace on custom instance
+  throw err; 
+
+} catch (Error e) {
+  print "Caught error: " + e.message;
+
+  // Test field inheritance and custom methods
+  if (e.code == 504 and e.getFormattedCode() == "ERR_DB_504") {
+    print "  -> Custom fields and methods intact.";
+  } else {
+    print "  FAIL: Custom fields or methods missing/corrupted.";
+  }
+
+  // Ensure stack_trace array is still attached and populated
+  //print e;
+  //print e.fields();
+  //print e.stack_trace;
+  if (e.stack_trace != nil and e.stack_trace.length() > 0) {
+    print "  -> Stack trace preserved on custom error instance (" + e.stack_trace.length() + " frames).";
+    custom_passed = true;
+  } else {
+    print "  FAIL: e.stack_trace missing on custom error instance.";
+  }
+}
+
+if (custom_passed) {
+  print "=== Custom Error Inheritance Test PASSED ===";
+}

@@ -10,6 +10,26 @@ class StdTest {
   }
 }
 
+class System {
+  static stats() {
+    return System.sysstats();
+  }
+
+  static get_times() {
+    var s = System.sysstats();
+    return {
+      "real": s["real"],
+      "user": s["user"],
+      "sys":  s["sys"]
+    };
+  }
+
+  static get_memory_mb() {
+    var s = System.sysstats();
+    return s["maxrss"] / 1024.0;
+  }
+}
+
 class Error {
   init(msg = "Error") {
     this.message = msg;
@@ -236,6 +256,161 @@ fun deserialize(data) {
 }
 
 class PP {
+  init() {
+    this.indentValue = 0;
+    this.visited = Set();
+  }
+
+  static pp(obj) {
+    var printer = PP();
+    return printer.format(obj);
+  }
+
+  getPad() {
+    return " " * this.indentValue;
+  }
+
+  format(obj) {
+    if (obj == nil) return "nil";
+
+    var klass = obj.class();
+
+    if (klass == Bool) return obj ? "true" : "false";
+    if (klass == Integer or klass == Float or klass == Number) return String(obj);
+    if (klass == String) return "\"" + obj + "\"";
+
+    // O(1) circular check
+    if (this.visited.has(obj)) {
+      return "[Circular ...]";
+    }
+    this.visited.add(obj);
+
+    var res = nil;
+    if (klass == Array) {
+      res = this.formatArray(obj);
+    } else if (klass == Set) {
+      res = this.formatSet(obj);
+    } else if (klass == Map) {
+      res = this.formatMap(obj);
+    } else if (klass == Vec3) {
+      res = this.formatVec3(obj);
+    } else {
+      res = this.formatInstance(obj);
+    }
+
+    this.visited.remove(obj);
+    return res;
+  }
+
+  formatArray(arr) {
+    var len = arr.len();
+    if (len == 0) return "[]";
+    this.indentValue += 2;
+    var pad = " " * this.indentValue;
+    var lines = ["[\n"];
+    
+    for (var i = 0; i < len; i += 1) {
+      lines.push(pad);
+      lines.push(this.format(arr[i]));
+      lines.push(i < len - 1 ? ",\n" : "\n");
+    }
+
+    this.indentValue -= 2;
+    lines.push(" " * this.indentValue);
+    lines.push("]");
+    return lines.join("");
+  }
+
+  formatMap(map) {
+    var keys = map.keys();
+    var len = keys.len();
+    if (len == 0) return "{}";
+
+    this.indentValue += 2;
+    var pad = " " * this.indentValue;
+    var lines = ["{\n"];
+
+    for (var i = 0; i < len; i += 1) {
+      var key = keys[i];
+      var addstrings = [pad, "\"", key, "\": ", this.format(map[key])];
+      lines = lines + addstrings;
+
+      if (i < len - 1) {
+        lines.push(",\n");
+      } else {
+        lines.push("\n");
+      }
+    }
+
+    this.indentValue -= 2;
+    lines.push(" " * this.indentValue);
+    lines.push("}");
+
+    return lines.join("");
+  }
+
+  formatSet(set) {
+    var items = set.keys();
+    var len = items.len();
+    if (len == 0) return "Set {}";
+
+    this.indentValue += 2;
+    var pad = " " * this.indentValue;
+    var lines = ["Set {\n"];
+
+    for (var i = 0; i < len; i += 1) {
+      liens.push(pad);
+      lines.push(this.format(items[i]));
+      if (i < len - 1) {
+        lines.push(",\n");
+      } else {
+        lines.push("\n");
+      }
+    }
+
+    this.indentValue -= 2;
+    lines.push(" " * this.indentValue);
+    lines.push("}");
+
+    return lines.join("");
+  }
+
+  formatInstance(instance) {
+    var className = instance.class().name();
+    var keys = instance.fields();
+    var len = keys.len();
+
+    if (len == 0) return className + " {}";
+
+    this.indentValue += 2;
+    var pad = " " * this.indentValue;
+    var lines = [className + " {\n"];
+
+    for (var i = 0; i < len; i += 1) {
+      var fieldName = keys[i];
+      var addstrings = [pad, fieldName, ": ", this.format(instance.get_field(fieldName))];
+      lines = lines + addstrings;
+
+      if (i < len - 1) {
+        lines.push(",\n");
+      } else {
+        lines.push("\n");
+      }
+    }
+
+    this.indentValue -= 2;
+    lines.push(" " * this.indentValue);
+    lines.push("}");
+
+    return lines.join("");
+  }
+
+  formatVec3(vec) {
+    return "Vec3(" + String(vec.x) + ", " + String(vec.y) + ", " + String(vec.z) + ")";
+  }
+}
+
+class PP1 {
   init() {
     this.indentValue = 0;
     this.visited = [];

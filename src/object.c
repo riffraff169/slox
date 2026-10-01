@@ -267,6 +267,14 @@ bool mapSet(ObjMap* map, Value key, Value value) {
     return tableSet2(&map->items, key, value);
 }
 
+void safeMapSetString(ObjMap* map, const char* keyStr, int keyLen, Value value) {
+    ObjString* key = copyString(keyStr, keyLen);
+    push(OBJ_VAL(key));
+
+    mapSet(map, OBJ_VAL(key), value);
+    pop();
+}
+    
 bool mapSetByCStr(ObjMap* map, const char* cstr, Value value) {
     ObjString* key = copyString(cstr, (int)strlen(cstr));
     push(OBJ_VAL(key));

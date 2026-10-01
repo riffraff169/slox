@@ -1,0 +1,682 @@
+var infinity = 1.0 / 0.0;
+var neg_infinity = -1.0 / 0.0;
+
+fun Interval(min, max) {
+  return [min, max];
+}
+
+var interval_universe = Interval(neg_infinity, infinity);
+var interval_empty = Interval(infinity, neg_infinity);
+
+var err = File.stderr();
+
+fun rmm(min, max) {
+  return min + (max - min) * Math.random();
+}
+
+class Vec3 {
+  init(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  add(v) {
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+  
+  __add__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x + v, this.y + v, this.z + v);
+    }
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+
+  __sub__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x - v, this.y - v, this.z - v);
+    }
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  minus(v) {
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  mult(d) {
+    return Vec3(this.x * d, this.y * d, this.z * d);
+  }
+
+  __mul__(d) {
+    if (isnumber(d)) {
+      return Vec3(this.x * d, this.y * d, this.z * d);
+    }
+    return Vec3(this.x * d.x, this.y * d.y, this.z * d.z);
+    //return this;
+  }
+
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  }
+
+  neg() {
+    return Vec3(-this.x, -this.y, -this.z);
+  }
+
+  __neg__() {
+    return Vec3(-this.x, -this.y, -this.z);
+  }
+
+  div(d) {
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  __div__(d) {
+    //return this * 1/d;
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+
+  length() {
+    return Math.sqrt(this.length_squared());
+  }
+
+  length_squared() {
+    return this.x * this.x + this.y * this.y + this.z * this.z;
+  }
+
+  random() {
+    this.x = Math.random();
+    this.y = Math.random();
+    this.z = Math.random();
+    return this;
+  }
+
+  random_m(min, max) {
+    this.x = rmm(min, max);
+    this.y = rmm(min, max);
+    this.z = rmm(min, max);
+    return this;
+  }
+
+  display() {
+    return "Vec3(${this.x}, ${this.y}, ${this.z})";
+  }
+
+  near_zero() {
+    var s = 1e-5;
+    return (Math.abs(this.x) < s) and (Math.abs(this.y) < s) and (Math.abs(this.z) < s);
+  }
+}
+
+fun random_vec() {
+  return Vec3(Math.random(), Math.random(), Math.random());
+}
+
+fun random_vec_m(min, max) {
+  return Vec3(rmm(min, max), rmm(min, max), rmm(min, max));
+}
+
+fun cross(u, v) {
+  return Vec3(u.y * v.z - u.z * v.y,
+              u.z * v.x - u.x * v.z,
+              u.x * v.y - u.y * v.x);
+}
+
+fun unit_vector(v) {
+  return v / v.length();
+}
+
+fun random_in_unit_disk() {
+  while (true) {
+    var p = Vec3(rmm(-1,1), rmm(-1,1), 0);
+    if (p.length_squared() < 1) {
+      return p;
+    }
+  }
+}
+
+// Vec3, Vec3
+fun reflect(v, n) {
+  return v - n * dot(v, n) * 2;
+}
+
+// Vec3, Vec3, Number
+fun refract(uv, n, etai) {
+  //var uvn = uv * -1;
+  var cos_theta = dot(uv * -1.0, n);
+  if (cos_theta > 1.0) {
+    cos_theta = 1.0;
+  } 
+
+  var r_out_perp = (uv + (n * cos_theta)) * etai;
+  var r_out_parallel = n * (-Math.sqrt(Math.abs(1.0 - r_out_perp.length_squared())));
+  //print "square: ", (r_out_perp + r_out_parallel).length_squared();
+  return r_out_perp + r_out_parallel;
+}
+
+var epsilon = 1e-160;
+
+fun random_unit_vector() {
+  while (true) {
+    var p = random_vec_m(-1, 1);
+    var lensq = p.length_squared();
+    if (epsilon < lensq and lensq <= 1) {
+      return p / Math.sqrt(lensq);
+    }
+  }
+}
+
+fun random_on_hemisphere(normal) { // Vec3
+  var on_unit_sphere = random_unit_vector();
+  if (dot(on_unit_sphere, normal) > 0.0) {
+    return on_unit_sphere;
+  } else {
+    return Vec3(-on_unit_sphere.x, -on_unit_sphere.y, -on_unit_sphere.z);
+  }
+}
+
+var intensity = Interval(0.000, 0.999);
+var intensity_low = 0.000;
+var intensity_high = 0.999;
+
+fun linear_to_gamma(d) {
+  if (d > 0) {
+    return Math.sqrt(d);
+  }
+
+  return 0;
+}
+
+fun write_color(out, color) {
+  var r = linear_to_gamma(color.x);
+  var g = linear_to_gamma(color.y);
+  var b = linear_to_gamma(color.z);
+
+  var rbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, r));
+  var gbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, g));
+  var bbyte = Math.floor(256 * interval_clamp_var(intensity_low, intensity_high, b));
+
+  out.write(str(rbyte) + " " + str(gbyte) + " " + str(bbyte) + "\n");
+}
+
+fun dot(u, v) {
+  //print "[DOT] u: ", u;
+  //print "[DOT] v: ", v;
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+class Ray {
+  init(origin, direction) { 
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  set(origin, direction) {
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  at(t) {
+    return this.origin + this.direction * t;
+  }
+
+  display() {
+    //return "Ray(${this.origin}, ${this.direction})";
+    return "Ray()";
+  }
+}
+
+var white = Vec3(1.0, 1.0, 1.0);
+var blue = Vec3(0.5, 0.7, 1.0);
+var red = Vec3(1, 0, 0);
+var black = Vec3(0, 0, 0);
+
+//var sphere = Vec3(0, 0, -1);
+
+class Hittable {
+  init() {
+    this.objects = [];
+  }
+
+  clear()  {
+    this.objects = [];
+  }
+
+  add(object) {
+    this.objects.push(object);
+  }
+
+  hit(r, ray_t_min, ray_t_max) { // Ray, Interval
+    var hit_anything = false;
+    var closest_so_far = ray_t_max;
+    var final_record = nil;
+
+    for (var i = 0; i < this.objects.len(); i = i + 1) {
+      var object = this.objects[i];
+      if (has_method(object, "hit")) {
+          var rec = object.hit(r, ray_t_min, closest_so_far);
+          if (rec != nil and rec != false) {
+            hit_anything = true;
+            closest_so_far = rec.t;
+            final_record = rec;
+          }
+       }
+    }
+
+    return final_record;
+  }
+}
+
+fun degrees_to_radians(degrees) {
+  return degrees * Math.pi() / 180.0;
+}
+
+class Sphere {
+  init(center, radius, mat) {
+    this.center = center;
+    this.radius = radius;
+    if (radius < 0) {
+      this.radius = 0;
+    }
+    this.mat = mat;
+  }
+ 
+  // Takes: Ray, Interval
+  // Returns: HitRecord | false
+  hit(r, ray_t_min, ray_t_max) {
+    var oc = this.center - r.origin;
+    var a = r.direction.length_squared();
+    var h = dot(r.direction, oc);
+    var c = oc.length_squared() - this.radius * this.radius;
+
+    var discriminant = h * h - a * c;
+    if (discriminant < 0) {
+      return false;
+    }
+
+    var sqrtd = Math.sqrt(discriminant);
+
+    var root = (h - sqrtd) / a;
+    if (!interval_surrounds_var(ray_t_min, ray_t_max, root)) {
+      root = (h + sqrtd) / a;
+      if (!interval_surrounds_var(ray_t_min, ray_t_max, root)) {
+        return false;
+      }
+    }
+    
+    var rec = HitRecord();
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    var outward_normal = (rec.p - this.center) / this.radius;
+    rec.set_face_normal(r, outward_normal);
+    rec.mat = this.mat;
+
+    return rec;
+  }
+}
+
+class HitRecord {
+  
+  init() {
+    this.p = Vec3(0, 0, 0);
+    this.t = 0;
+    this.normal = Vec3(0, 0, 0);
+    this.front_face = true;
+    this.mat = nil;
+  }
+
+  set_face_normal(r, outward_normal) {
+    this.front_face = dot(r.direction, outward_normal) < 0;
+    if (this.front_face) {
+      this.normal = outward_normal;
+    } else {
+      this.normal = -outward_normal;
+    }
+  }
+
+  display() {
+    return "HitRecord()";
+    //return "HitRecord(" + this.p.display + ")";
+    //return "HitRecord(" + this.p.display() + ", " + this.t.display() + ", "
+    //  + this.normal.display() + ",  " + this.front_face + ", " + this.mat + ")";
+  }
+
+}
+
+fun interval_size(i) {
+  return i[1] - i[0];
+}
+
+fun interval_contains(i, x) {
+  return i[0] <= x and x <= i[1];
+}
+
+fun interval_surrounds(i, x) {
+  return i[0] < x and x < i[1];
+}
+
+fun interval_surrounds_var(min, max, x) {
+  return min < x and x < max;
+}
+
+fun interval_clamp(i, x) {
+  if (x < i[0]) return i[0];
+  if (x > i[1]) return i[1];
+  return x;
+}
+
+fun interval_clamp_var(min, max, x) {
+  if (x < min) return min;
+  if (x > max) return max;
+  return x;
+}
+
+class Lambertian {
+  init(albedo) {
+    this.albedo = albedo;
+  }
+
+  // Takes: Ray, HitRecord
+  // Returns: [Ray (scattered), Vec3 (attenuation)] | nil
+  scatter(r_in, rec) {
+    var scatter_direction = rec.normal + random_unit_vector();
+    if (scatter_direction.near_zero()) {
+      scatter_direction = rec.normal;
+    }
+    var scattered = Ray(rec.p, scatter_direction);
+    return [scattered, this.albedo];
+  }
+
+  display() {
+    return "Lambertian(" + this.albedo.display() + ")";
+  }
+}
+
+class Metal {
+  // Takes: Vec3, Number
+  init(albedo, fuzz) {
+    this.albedo = albedo;
+    if (fuzz < 1) {
+      this.fuzz = 1;
+    } else {
+      this.fuzz = fuzz;
+    }
+  }
+
+  // Takes: Ray, HitRecord
+  // Returns: [Ray (scattered), Vec3 (attenuation)] | nil
+  scatter(r_in, rec) {
+    var reflected = reflect(r_in.direction, rec.normal);
+    reflected = (random_unit_vector() * this.fuzz) + unit_vector(reflected);
+    var scattered = Ray(rec.p, reflected);
+
+    if (dot(scattered.direction, rec.normal) > 0) {
+      return [scattered, this.albedo];
+    }
+    return nil;
+  }
+
+  display() {
+    return "Metal()";
+  }
+}
+
+class Dielectric {
+  init(ref) {
+    this.ref = ref;
+  }
+
+  scatter(r_in, rec) {
+    var attenuation = Vec3(1.0, 1.0, 1.0);
+    var ri = this.ref;
+    if (rec.front_face) {
+      ri = 1.0 / this.ref;
+    } 
+
+    var uv = unit_vector(r_in.direction);
+    var cos_theta = dot(uv * -1.0, rec.normal);
+    if (cos_theta > 1.0) {
+      cos_theta = 1.0;
+    } 
+    var sin_theta = Math.sqrt(1.0 - cos_theta * cos_theta);
+
+    var cannot_refract = ri * sin_theta > 1.0;
+    var direction = nil;
+
+    if (cannot_refract or this.reflectance(cos_theta, ri) > Math.random()) {
+      direction = reflect(uv, rec.normal);
+    } else {
+      direction = refract(uv, rec.normal, ri);
+    }
+    //var refracted = refract(uv, rec.normal, ri);
+    var scattered = Ray(rec.p, direction);
+
+    return [scattered, attenuation];
+  }
+
+  // Takes: Number, Number
+  // Returns: Number
+  reflectance(cosine, refraction_index) {
+    var r0 = (1 - refraction_index) / (1 + refraction_index);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * ((1 - cosine) ^ 5);
+  }
+}
+
+class Camera {
+  init(out) {
+    this.white = Vec3(1.0, 1.0, 1.0);
+    this.blue = Vec3(0.5, 0.7, 1.0);
+    this.red = Vec3(1, 0, 0);
+    this.black = Vec3(0, 0, 0);
+    this.aspect_ratio = 1.0;
+    this.image_width = 100;
+    this.out = out;
+    this.samples_per_pixel = 10;
+    this.max_depth = 10;
+    this.stats = []; // store times;
+    this.stats.push(0);
+    this.vfov = 90;
+    this.lookfrom = Vec3(0,0,0);
+    this.lookat = Vec3(0,0,1);
+    this.vup = Vec3(0,1,0);
+    this.u = nil;
+    this.v = nil;
+    this.w = nil;
+
+    this.defocus_angle = 0;
+    this.focus_dist = 10;
+    this.defocus_disk_u = nil;
+    this.defocus_disk_v = nil;
+  }
+
+  setup() {
+    this.image_height = Math.floor(this.image_width / this.aspect_ratio);
+    if (this.image_height < 1) {
+      this.image_height = 1;
+    }
+
+    this.pixel_samples_scale = 1.0 / this.samples_per_pixel;
+
+    this.center = this.lookfrom; 
+
+    //this.focal_length = (this.lookfrom - this.lookat).length();
+    var theta = degrees_to_radians(this.vfov);
+    var h = Math.tan(theta / 2);
+    //this.viewport_height = 2.0 * h * this.focal_length;
+    this.viewport_height = 2 * h * this.focus_dist;
+    this.viewport_width = this.viewport_height * (this.image_width / this.image_height);
+
+    this.w = unit_vector(this.lookfrom - this.lookat);
+    this.u = unit_vector(cross(this.vup, this.w));
+    this.v = cross(this.w, this.u);
+
+    //this.viewport_u = Vec3(this.viewport_width, 0, 0);
+    this.viewport_u = this.u * this.viewport_width;
+    //this.viewport_v = Vec3(0, -this.viewport_height, 0);
+    this.viewport_v = (this.v * -1) * this.viewport_height;
+
+    this.pixel_delta_u = this.viewport_u / this.image_width;
+    this.pixel_delta_v = this.viewport_v / this.image_height;
+
+    //this.viewport_upper_left = this.center - Vec3(0, 0, this.focal_length) -
+    //    this.viewport_u / 2 - this.viewport_v / 2;
+    //this.viewport_upper_left = this.center - (this.w * this.focal_length) - 
+    //    this.viewport_u / 2 - this.viewport_v / 2;
+    this.viewport_upper_left = this.center - (this.w * this.focus_dist) -
+        this.viewport_u / 2 - this.viewport_v / 2;
+    this.pixel00_loc = this.viewport_upper_left + (this.pixel_delta_u + this.pixel_delta_v) * 0.5;
+
+    var defocus_radius = this.focus_dist * Math.tan(degrees_to_radians(this.defocus_angle / 2));
+    this.defocus_disk_u = this.u * defocus_radius;
+    this.defocus_disk_v = this.v * defocus_radius;
+  }
+
+  render(out, world) { // Hittable
+    this.setup();
+
+    var err = File.stderr();
+
+    this.out.write("P3\n ${this.image_width} ${this.image_height}\n255\n");
+    var pixel_color = Vec3(0, 0, 0);
+
+    for (var j = 0; j < this.image_height; j = j + 1) {
+      var start = clock();
+      err.write("\rScanlines remaining: ${this.image_height - j}   ");
+      err.flush();
+      for (var i = 0; i < this.image_width; i = i + 1) {
+        //var pixel_center = this.pixel00_loc + (this.pixel_delta_u * i) + (this.pixel_delta_v * j);
+        //var ray_direction = pixel_center - this.center;
+        //var r = Ray(this.center, ray_direction);
+        //r.set(this.center, ray_direction);
+        //pixel_color = this.ray_color(r, world);
+        pixel_color = Vec3(0, 0, 0);
+        for (var sample = 0; sample < this.samples_per_pixel; sample = sample + 1) {
+          var r = this.get_ray(i, j);
+          pixel_color = pixel_color + this.ray_color(r, this.max_depth, world);
+        }
+        write_color(out, pixel_color * this.pixel_samples_scale);
+      }
+      var end = clock();
+      this.stats.push(end - start);
+      err.write("\rScanlines remaining: ${this.image_height -j}  took " + str((end - start)) + "s   ");
+    }
+    err.write("\rDone.                                \n");
+  }
+
+  sample_square() {
+    return Vec3(Math.random() - 0.5, Math.random() - 0.5, 0);
+  }
+
+  get_ray(i, j) {
+    var offset = this.sample_square();
+    var pixel_sample = this.pixel00_loc + (this.pixel_delta_u * (i + offset.x)) + (this.pixel_delta_v * (j + offset.y));
+
+    var ray_origin = this.center;
+    if (this.defocus_angle <= 0) {
+      ray_origin = this.defocus_disk_sample();
+    }
+
+    var ray_direction = pixel_sample - ray_origin;
+    //var r = Ray(ray_origin, ray_direction);
+    //r.set(ray_origin, ray_direction);
+    return Ray(ray_origin, ray_direction);
+  }
+
+  defocus_disk_sample() {
+    var p = random_in_unit_disk();
+    return this.center + (this.defocus_disk_u * p[0]) + (this.defocus_disk_v * p[1]);
+  }
+
+  ray_color(r, depth, world) { // Ray, Hittable
+    if (depth <= 0) {
+      return this.black;
+    }
+
+    var rec = world.hit(r, 0.001, infinity);
+    if (rec) {
+      var res = rec.mat.scatter(r, rec);
+      if (res) {
+        return this.ray_color(res[0], depth - 1, world) * res[1];
+      }
+      return this.black;
+    }
+
+    var unit_direction = unit_vector(r.direction);
+    var a = (unit_direction.y + 1.0) * 0.5;
+    return this.white * (1.0 - a) + this.blue * a;
+  }
+}
+
+var file = "out.ppm";
+if (System.ARGS.len() > 0) {
+  file = System.ARGS[0];
+}
+
+var out = File.open(file, "w");
+
+var world = Hittable();
+
+var ground = Lambertian(Vec3(0.5, 0.5, 0.5));
+world.add(Sphere(Vec3(0, -1000, 0), 1000, ground));
+
+for (var a = -11; a < 11; a = a + 1) {
+  for (var b  = -11; b < 11; b = b + 1) {
+    var choose_mat = Math.random();
+    var center = Vec3(a + 0.9 * Math.random(), 0.2, b + 0.9 * Math.random());
+
+    if ((center - Vec3(4, 0.2, 0)).length() > 0.9) {
+      var sphere_mat = nil;
+
+      if (choose_mat < 0.8) {
+        var albedo = Vec3(Math.random(), Math.random(), Math.random()) *
+            Vec3(Math.random(), Math.random(), Math.random());
+        sphere_mat = Lambertian(albedo);
+        world.add(Sphere(center, 0.2, sphere_mat));
+      } else if (choose_mat < 0.95) {
+        var albedo = Vec3(rmm(0.5,1), rmm(0.5, 1), rmm(0.5,1));
+        var fuzz = rmm(0, 0.5);
+        sphere_mat = Metal(albedo, fuzz);
+        world.add(Sphere(center, 0.2, sphere_mat));
+      } else {
+        sphere_mat = Dielectric(1.5);
+        world.add(Sphere(center, 0.2, sphere_mat));
+      }
+    }
+  }
+}
+
+var mat1 = Dielectric(1.5);
+world.add(Sphere(Vec3(0, 1, 0), 1.0, mat1));
+
+var mat2 = Lambertian(Vec3(0.4, 0.2, 0.1));
+world.add(Sphere(Vec3(-4, 1, 0), 1.0, mat2));
+
+var mat3 = Metal(Vec3(0.7, 0.6, 0.5), 0.0);
+world.add(Sphere(Vec3(4, 1, 0), 1.0, mat3));
+
+var cam = Camera(out);
+
+cam.aspect_ratio = 16.0 / 9.0;
+cam.image_width = 1200;
+cam.samples_per_pixel = 500;
+cam.max_depth = 50;
+
+cam.vfov = 20;
+cam.lookfrom = Vec3(13, 2, 3);
+cam.lookat = Vec3(0, 0, 0);
+cam.vup = Vec3(0,1,0);
+
+cam.defocus_angle = 0.6;
+cam.focus_dist = 10.0;
+
+cam.render(out, world);
+
+print cam.stats;

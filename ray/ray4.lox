@@ -1,0 +1,400 @@
+var infinity = 1.0 / 0.0;
+var neg_infinity = -1.0 / 0.0;
+
+fun Interval(min, max) {
+  return [min, max];
+}
+
+var interval_universe = Interval(neg_infinity, infinity);
+var interval_empty = Interval(infinity, neg_infinity);
+
+var err = File.stderr();
+
+fun rmm(min, max) {
+  return min + (max - min) * Math.random();
+}
+
+class Vec3 {
+  init(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  add(v) {
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+  
+  __add__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x + v, this.y + v, this.z + v);
+    }
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+
+  __sub__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x - v, this.y - v, this.z - v);
+    }
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  minus(v) {
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  mult(d) {
+    return Vec3(this.x * d, this.y * d, this.z * d);
+  }
+
+  __mul__(d) {
+    if (isnumber(d)) {
+      return Vec3(this.x * d, this.y * d, this.z * d);
+    }
+    return this;
+  }
+
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  }
+
+  neg() {
+    return Vec3(-this.x, -this.y, -this.z);
+  }
+
+  div(d) {
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  __div__(d) {
+    //return this * 1/d;
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+
+  length() {
+    return Math.sqrt(this.length_squared());
+  }
+
+  length_squared() {
+    return this.x * this.x + this.y * this.y + this.z * this.z;
+  }
+
+  display() {
+    return "Vec3(${this.x}, ${this.y}, ${this.z})";
+  }
+}
+
+fun cross(u, v) {
+  return Vec3(u.y * v.z - u.z * v.y,
+              u.z * v.x - u.x * v.z,
+              u.x * v.y - u.y * v.x);
+}
+
+fun unit_vector(v) {
+  return v / v.length();
+}
+
+var intensity = Interval(0.000, 0.999);
+
+fun write_color(out, color) {
+  var r = color.x;
+  var g = color.y;
+  var b = color.z;
+
+  //var rbyte = Math.floor(255.999 * r);
+  var rbyte = Math.floor(256 * interval_clamp(intensity, r));
+  var gbyte = Math.floor(256 * interval_clamp(intensity, g));
+  var bbyte = Math.floor(256 * interval_clamp(intensity, b));
+
+  out.write(str(rbyte) + " " + str(gbyte) + " " + str(bbyte) + "\n");
+}
+
+fun dot(u, v) {
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+class Ray {
+  init() { 
+    this.origin = Vec3(0, 0, 0);
+    this.direction = Vec3(0, 0, 0);
+  }
+
+  set(origin, direction) {
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  at(t) {
+    return this.origin + this.direction * t;
+  }
+
+  display() {
+    //return "Ray(${this.origin}, ${this.direction})";
+    return "Ray()";
+  }
+}
+
+var white = Vec3(1.0, 1.0, 1.0);
+var blue = Vec3(0.5, 0.7, 1.0);
+var red = Vec3(1, 0, 0);
+
+var sphere = Vec3(0, 0, -1);
+
+fun hit_sphere(center, radius, r) {
+  var oc = center - r.origin;
+  var a = r.direction.length_squared();
+  var h = dot(r.direction, oc);
+  var c = oc.length_squared() - radius * radius;
+  var discriminant = h * h - a * c;
+
+  if (discriminant < 0) {
+    return -1.0;
+  } else {
+    return (h  - Math.sqrt(discriminant)) / a;
+  }
+}
+
+fun ray_color(r, world) {
+  var i = Interval(0, infinity);
+  var rec = world.hit(r, i);
+  if (rec) {
+    return (rec.normal + white) * 0.5;
+  }
+
+  var unit_direction = unit_vector(r.direction);
+  var a = (unit_direction.y + 1.0) * 0.5;
+  return white * (1.0 - a) + blue * a;
+}
+
+class Hittable {
+  init() {
+    this.objects = [];
+  }
+
+  clear()  {
+    this.objects = [];
+  }
+
+  add(object) {
+    this.objects.push(object);
+  }
+
+  hit(r, ray_t) { // Ray, Interval
+    var hit_anything = false;
+    var closest_so_far = ray_t[1];
+    var final_record = nil;
+
+    for (var i = 0; i < this.objects.len(); i = i + 1) {
+      var object = this.objects[i];
+      if (has_method(object, "hit")) {
+          var rec = object.hit(r, Interval(ray_t[0], closest_so_far));
+          if (rec != nil and rec != false) {
+            hit_anything = true;
+            closest_so_far = rec.t;
+            final_record = rec;
+          }
+       }
+    }
+
+    return final_record;
+  }
+}
+
+fun degrees_to_radians(degrees) {
+  return degrees * Math.pi / 180.0;
+}
+
+class Sphere {
+  init(center, radius) {
+    this.center = center;
+    this.radius = radius;
+  }
+
+  hit(r, ray_t) { // Ray, Interval
+    var oc = this.center - r.origin;
+    var a = r.direction.length_squared();
+    var h = dot(r.direction, oc);
+    var c = oc.length_squared() - this.radius * this.radius;
+
+    var discriminant = h * h - a * c;
+    if (discriminant < 0) {
+      return false;
+    }
+
+    var sqrtd = Math.sqrt(discriminant);
+
+    var root = (h - sqrtd) / a;
+    if (!interval_surrounds(ray_t, root)) {
+      root = (h + sqrtd) / a;
+      if (!interval_surrounds(ray_t, root)) {
+        return false;
+      }
+    }
+    
+    var rec = HitRecord();
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    var outward_normal = (rec.p - this.center) / this.radius;
+    rec.set_face_normal(r, outward_normal);
+
+    return rec;
+  }
+}
+
+class HitRecord {
+  
+  //init(p, normal, t) { //, front_face)
+  //  this.p = p;
+  //  this.normal = normal;
+  //  this.t = t;
+    //this.front_face = front_face;
+  //}
+
+  set_face_normal(r, outward_normal) {
+    this.front_face = dot(r.direction, outward_normal) < 0;
+    if (this.front_face) {
+      this.normal = outward_normal;
+    } else {
+      this.normal = -outward_normal;
+    }
+  }
+
+}
+
+fun interval_size(i) {
+  return i[1] - i[0];
+}
+
+fun interval_contains(i, x) {
+  return i[0] <= x and x <= i[1];
+}
+
+fun interval_surrounds(i, x) {
+  return i[0] < x and x < i[1];
+}
+
+fun interval_clamp(i, x) {
+  if (x < i[0]) return i[0];
+  if (x > i[1]) return i[1];
+  return x;
+}
+
+class Camera {
+  init(out) {
+    this.white = Vec3(1.0, 1.0, 1.0);
+    this.blue = Vec3(0.5, 0.7, 1.0);
+    this.red = Vec3(1, 0, 0);
+    this.aspect_ratio = 1.0;
+    this.image_width = 100;
+    this.out = out;
+    this.samples_per_pixel = 10;
+    this.stats = [];
+    this.stats.push(0);
+  }
+
+  setup() {
+    this.image_height = Math.floor(this.image_width / this.aspect_ratio);
+    if (this.image_height < 1) {
+      this.image_height = 1;
+    }
+
+    this.pixel_samples_scale = 1.0 / this.samples_per_pixel;
+
+    this.center = Vec3(0, 0, 0);
+
+    this.focal_length = 1.0;
+    this.viewport_height = 2.0;
+    this.viewport_width = this.viewport_height * (this.image_width / this.image_height);
+
+    this.viewport_u = Vec3(this.viewport_width, 0, 0);
+    this.viewport_v = Vec3(0, -this.viewport_height, 0);
+
+    this.pixel_delta_u = this.viewport_u / this.image_width;
+    this.pixel_delta_v = this.viewport_v / this.image_height;
+
+    this.viewport_upper_left = this.center - Vec3(0, 0, this.focal_length) -
+        this.viewport_u / 2 - this.viewport_v / 2;
+    this.pixel00_loc = this.viewport_upper_left + (this.pixel_delta_u + this.pixel_delta_v) * 0.5;
+  }
+
+  render(out, world) { // Hittable
+    this.setup();
+
+    var err = File.stderr();
+
+    this.out.write("P3\n ${this.image_width} ${this.image_height}\n255\n");
+    var pixel_color = Vec3(0, 0, 0);
+
+    for (var j = 0; j < this.image_height; j = j + 1) {
+      var start = clock();
+      err.write("\rScanlines remaining: ${this.image_height - j}   ");
+      err.flush();
+      for (var i = 0; i < this.image_width; i = i + 1) {
+        var pixel_center = this.pixel00_loc + (this.pixel_delta_u * i) + (this.pixel_delta_v * j);
+        var ray_direction = pixel_center - this.center;
+        var r = Ray();
+        r.set(this.center, ray_direction);
+        pixel_color = this.ray_color(r, world);
+        for (var sample = 0; sample < this.samples_per_pixel; sample = sample + 1) {
+          r = this.get_ray(i, j);
+          pixel_color = pixel_color + this.ray_color(r, world);
+        }
+        write_color(out, pixel_color * this.pixel_samples_scale);
+      }
+    }
+    err.write("\rDone.                                \n");
+  }
+
+  sample_square() {
+    return Vec3(Math.random() - 0.5, Math.random() - 0.5, 0);
+  }
+
+  get_ray(i, j) {
+    var offset = this.sample_square();
+    var pixel_sample = this.pixel00_loc + (this.pixel_delta_u * (i + offset.x)) + (this.pixel_delta_v * (j + offset.y));
+    var ray_origin = this.center;
+    var ray_direction = pixel_sample - ray_origin;
+    var r = Ray();
+    r.set(ray_origin, ray_direction);
+    return r;
+  }
+
+  ray_color(r, world) { // Ray, Hittable
+    var i = Interval(0, infinity);
+    var rec = world.hit(r, i);
+    if (rec) {
+      return (rec.normal + this.white) * 0.5;
+    }
+
+    var unit_direction = unit_vector(r.direction);
+    var a = (unit_direction.y + 1.0) * 0.5;
+    return this.white * (1.0 - a) + this.blue * a;
+  }
+}
+
+var file = "out.ppm";
+if (System.ARGS.len() > 0) {
+  file = System.ARGS[0];
+}
+
+var out = File.open(file, "w");
+
+var world = Hittable();
+world.add(Sphere(Vec3(0,0,-1), 0.5));
+world.add(Sphere(Vec3(0, -100.5, -1), 100));
+
+var cam = Camera(out);
+
+cam.aspect_ratio = 16.0 / 9.0;
+cam.image_width = 400;
+cam.samples_per_pixel = 100;
+
+cam.render(out, world);
+

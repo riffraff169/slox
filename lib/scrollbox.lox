@@ -1,0 +1,167 @@
+require("notcurses.lox");
+
+class Scrollbox {
+  init(nc, parentPlane, y, x, width, height, items) {
+    this.nc = nc;
+    this.parentPlane = parentPlane;
+    this.y = y;
+    this.x = x;
+    this.width = width;
+    this.height = height;
+
+    this.plane = this.parentPlane.create_child(y, x, height, width);
+
+    this.items = items;
+    this.selections = {};
+
+    this.cursor = 0;
+    this.scrollOffset = 0;
+    this.focused = true;
+    this.enableCheckboxes = true;
+    this.keyCallbacks = {};
+  }
+
+  onKey(key, fn) {
+    this.keyCallbacks[key] = fn;
+    return this;
+  }
+
+  destroy() {
+    if (this.plane != nil) {
+      this.plane.destroy();
+      this.plane = nil;
+    }
+  }
+
+  setFocus(isFocused) {
+    this.focused = isFocused;
+  }
+
+  selectAll(state) {
+    this.items.each(fun(w) { this.selections[w] = state; });
+  }
+
+  getSelectedItems() {
+    var selected = [];
+    this.items.each(fun(w) {
+        if (this.selections[w])
+          selected.push(w);
+          });
+    return selected;
+  }
+
+  render() {
+    if (this.plane == nil) return;
+
+    this.plane.erase();
+
+    var totalItems = this.items.length();
+    var visibleRows = this.height;
+
+    for (var i = 0; i < visibleRows; i += 1) {
+      var idx = this.scrollOffset + i;
+      if (idx >= totalItems) break;
+
+      var prefix = "  ";
+      if (this.focused and idx == this.cursor) {
+        prefix = "> ";
+      }
+
+      var mark = "";
+      if (this.enableCheckboxes) {
+        var item = this.items[idx];
+        mark = this.selections[item] ? "[X] " : "[ ] ";
+      }
+
+      var label = this.items[idx];
+      var maxLabelLen = this.width - prefix.length() - mark.length();
+      if (label.length() > maxLabelLen) {
+        label = label.slice(0, maxLabelLen - 3) + "...";
+      }
+
+      this.plane.put_str(i, 0, prefix + mark + label);
+    }
+  }
+
+  update_scroll() {
+    var visible_rows = this.height;
+    if (this.items.length() == 0) return;
+
+    if (this.cursor < this.scrollOffset) {
+      this.scrollOffset = this.cursor;
+    } else if (this.cursor >= this.scrollOffset + visible_rows) {
+      this.scrollOffset = this.cursor - visible_rows + 1;
+    }
+  }
+
+  handleInput(key) {
+    if (!this.focused) return false;
+
+    var totalItems = this.items.length();
+    if (totalItems == 0) return false;
+
+    if (this.keyCallbacks.has(key)) {
+      this.keyCallbacks[key](this);
+      return true;
+    }
+
+    if (key == "Up" or key == "k") {
+      if (this.cursor > 0) {
+        this.cursor = this.cursor - 1;
+        this.update_scroll();
+      }
+      return true;
+    }
+
+    if (key == "Down" or key == "j") {
+      if (this.cursor < totalItems - 1) {
+        this.cursor = this.cursor + 1;
+        this.update_scroll();
+      }
+      return true;
+    }
+
+    if (key == "PageUp") {
+      this.cursor = this.cursor - this.height;
+      if (this.cursor < 0) this.cursor = 0;
+      this.update_scroll();
+      return true;
+    }
+
+    if (key == "PageDown") {
+      this.cursor = this.cursor + this.height;
+      if (this.cursor >= totalItems) this.cursor = totalItems - 1;
+      this.update_scroll();
+      return true;
+    }
+
+    if (key == "Home") {
+      this.cursor = 0;
+      this.update_scroll();
+      return true;
+    }
+
+    if (key == "End") {
+      this.cursor = totalItems - 1;
+      this.update_scroll();
+      return true;
+    }
+
+    if (key == " " or key == "Space") {
+      if (this.enableCheckboxes) {
+        var item = this.items[this.cursor];
+        this.selections[item] = !this.selections[item];
+      }
+      return true;
+    }
+
+    if (key == "a" or key == "A") {
+      var selectedCount = this.getSelectedItems().length();
+      var allSelected = (selectedCount == totalItems);
+      this.selectAll(!allSelected);
+      return true;
+    }
+
+    return false;
+  }
+}

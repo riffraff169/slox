@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <sys/sendfile.h>
 #include <libgen.h>
+#include <sys/resource.h>
 
 #include "native.h"
 #include "common.h"
@@ -7198,6 +7199,35 @@ Value systemTimeNative(int argCount, Value* args) {
     return INT_VAL((int64_t)time(NULL));
 }
 
+Value systemSysStatsNative(int argCount, Value* args) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    double real_sec = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+
+    double user_sec = (double)usage.ru_utime.tv_sec + ((double)usage.ru_utime.tv_usec / 1e6);
+    double sys_sec = (double)usage.ru_stime.tv_sec + ((double)usage.ru_stime.tv_usec / 1e6);
+
+    ObjMap* map = newMap();
+    push(OBJ_VAL(map));
+    
+    safeMapSetString(map, "real", 4, FLOAT_VAL(real_sec));
+    safeMapSetString(map, "user", 4, FLOAT_VAL(user_sec));
+    safeMapSetString(map, "sys", 3, FLOAT_VAL(sys_sec));
+    safeMapSetString(map, "maxrss", 6, FLOAT_VAL(usage.ru_maxrss));
+    safeMapSetString(map, "minflt", 6, FLOAT_VAL(usage.ru_minflt));
+    safeMapSetString(map, "majflt", 6, FLOAT_VAL(usage.ru_majflt));
+    safeMapSetString(map, "inblock", 7, FLOAT_VAL(usage.ru_inblock));
+    safeMapSetString(map, "oublock", 7, FLOAT_VAL(usage.ru_oublock));
+    safeMapSetString(map, "nvcsw", 5, FLOAT_VAL(usage.ru_nvcsw));
+    safeMapSetString(map, "nivcsw", 6, FLOAT_VAL(usage.ru_nivcsw));
+
+    pop();
+    return OBJ_VAL(map);
+}
+
 Value systemExitNative(int argCount, Value* args) {
     int code = 0;
     if (argCount > 0) {
@@ -7557,6 +7587,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjClass* systemMeta = systemClass->obj.klass;
 
     defineNativeMethod(systemMeta, "time", systemTimeNative);
+    defineNativeMethod(systemMeta, "sysstats", systemSysStatsNative);
     defineNativeMethod(systemMeta, "exit", systemExitNative);
     defineNativeMethod(systemMeta, "gc", systemGCNative);
     defineNativeMethod(systemMeta, "mem", systemMemNative);

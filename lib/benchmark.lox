@@ -1,0 +1,28 @@
+fun benchmark(fn) {
+  var start = System.sysstats();
+  fn();
+  var end = System.sysstats();
+
+  return {
+    "real": end["real"] - start["real"],
+    "user": end["user"] - start["user"],
+    "sys":  end["sys"]  - start["sys"],
+    "maxrss": end["maxrss"], // peak stays absolute
+    "minflt": end["minflt"] - start["minflt"],
+    "majflt": end["majflt"] - start["majflt"],
+    "nvcsw": end["nvcsw"] - start["nvcsw"]
+  };
+}
+
+fun printBenchmark(name, stats) {
+  print "========================================";
+  print " Benchmark: " + name;
+  print "----------------------------------------";
+  print " Real Time : " + String(stats["real"]) + "s";
+  print " User Time : " + String(stats["user"]) + "s";
+  print " Sys Time  : " + String(stats["sys"])  + "s";
+  print " Peak RAM  : " + String(stats["maxrss"] / 1024.0) + " MB";
+  print " Soft Faults: " + String(stats["minflt"]);
+  print " Ctx Switches: " + (stats["nvcsw"] + (stats["nivcsw"] ?? 0.0));
+  print "========================================\n";
+}

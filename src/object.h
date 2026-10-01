@@ -249,6 +249,7 @@ static inline bool isObjType(Value value, ObjType type) {
 bool mapGet(ObjMap* map, Value key, Value* value);
 bool mapSet(ObjMap* map, Value key, Value value);
 bool mapSetByCStr(ObjMap* map, const char* cstr, Value value);
+void safeMapSetString(ObjMap* map, const char* keyStr, int keyLen, Value value);
 
 #define mapGetByValue(map, valKey, outVal) mapGet((map), (valKey), (outVal))
 #define mapSetByValue(map, valKey, value) mapSet((map), (valKey), (value))

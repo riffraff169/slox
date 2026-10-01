@@ -1,0 +1,52 @@
+class Vec {
+  init(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  __add__(other) {
+    return Vec(this.x + other.x, this.y + other.y);
+  }
+
+  __sub__(other) {
+    return Vec(this.x - other.x, this.y - other.y);
+  }
+
+  __mul__(scalar) {
+    return Vec(this.x * scalar, this.y * scalar);
+  }
+
+  __div__(scalar) {
+    return Vec(this.x / scalar, this.y / scalar);
+  }
+
+  __neg__() {
+    return Vec(-this.x, -this.y);
+  }
+
+  show(label) {
+    print label + ": (" + str(this.x) + ", " + str(this.y) + ")";
+  }
+}
+
+var v1 = Vec(10, 20);
+var v2 = Vec(2, 4);
+
+// 1. Addition (+) -> expect (12, 24)
+(v1 + v2).show("v1 + v2");
+
+// 2. Subtraction (-) -> expect (8, 16)
+(v1 - v2).show("v1 - v2");
+
+// 3. Multiplication (*) -> expect (30, 60)
+(v1 * 3).show("v1 * 3");
+
+// 4. Division (/) -> expect (5, 10)
+(v1 / 2).show("v1 / 2");
+
+// 5. Unary Negation (-) -> expect (-10, -20)
+(-v1).show("-v1");
+
+// 6. Chained expression -> (-10, -20) + (10, 20) = (0, 0)
+var res = -v1 + v2 * 5;
+res.show("-v1 + v2 * 5");

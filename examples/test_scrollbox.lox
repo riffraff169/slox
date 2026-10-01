@@ -1,0 +1,81 @@
+// test_scrollbox.lox
+import "ffi";
+require("notcurses.lox");
+
+var nc = Notcurses();
+var stdplane = nc.get_stdplane();
+var dim = stdplane.get_dim(); // { rows, cols }
+
+// Sample test data
+var testItems = [];
+var genres = ["Rock", "Synthwave", "Jazz", "Ambient", "Metal", "Lo-Fi", "Classical", "Prog"];
+var exts = [".mp3", ".flac", ".ogg", ".wav", ".opus"];
+
+for (var i = 1; i <= 50; i += 1) {
+  var trackNum = i < 10 ? "0" + i : String(i);
+  var genre = genres[(i - 1) % genres.length()];
+  var ext = exts[(i - 1) % exts.length()];
+  testItems.push("Track " + trackNum + " - " + genre + " Mix " + ext);
+}
+
+  /*
+  "Track 01 - Intro.mp3",
+  "Track 02 - First Song.flac",
+  "Track 03 - Deep Cut.wav",
+  "Track 04 - Interlude.ogg",
+  "Track 05 - Acoustic Version.m4a",
+  "Track 06 - Live Performance.mkv",
+  "Track 07 - Solo Section.mp3",
+  "Track 08 - Instrumental.flac",
+  "Track 09 - Outro.wav",
+  "Track 10 - Bonus Track.opus"
+];
+*/
+
+// Instantiating Scrollbox child plane on stdplane
+// Placed at Y=3, X=2, Width=cols-4, Height=rows-6
+var boxHeight = dim[0] - 6;
+var boxWidth = dim[1] - 4;
+var box = Scrollbox(nc, stdplane, 3, 2, boxWidth, boxHeight, testItems);
+
+var running = true;
+var lastKey = "None";
+
+while (running) {
+  stdplane.erase();
+
+  // Draw Header info directly on Parent Plane
+  stdplane.put_str(0, 2, "=== Scrollbox Stress & Scroll Test ===");
+  stdplane.put_str(1, 2, "Controls: UP/DOWN (Scroll) | SPACE (Toggle) | A (Toggle All) | Q (Quit)");
+
+  // Sync and Render Child Plane
+  box.render();
+
+  // Draw Footer info on Parent Plane below the child plane
+  var footerY = dim[0] - 2;
+  var selectedItems = box.getSelectedItems();
+  var stats = "Pos: " + (box.cursor + 1) + "/" + testItems.length() +
+    " | Offset: " + box.scrollOffset +
+    " | Selected: " + selectedItems.length() +
+    " | Last Key: " + lastKey;
+
+  var statusText = "Last Key: " + lastKey + " | Selected: " + selectedItems.length() + "/" + testItems.length();
+  stdplane.put_str(footerY, 2, stats);
+
+  nc.render();
+
+  var key = nc.get_key();
+  lastKey = key;
+
+  if (key == "q" or key == "Q") {
+    running = false;
+  } else {
+    box.handleInput(key);
+  }
+}
+
+var si = box.getSelectedItems();
+
+box.destroy();
+nc.stop();
+print si;

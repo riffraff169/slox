@@ -1,0 +1,366 @@
+var infinity = 1.0 / 0.0;
+var neg_infinity = -1.0 / 0.0;
+fun Interval(min, max) {
+  return [min, max];
+}
+var interval_universe = Interval(neg_infinity, infinity);
+var interval_empty = Interval(infinity, neg_infinity);
+
+var err = File.stderr();
+
+class Vec3 {
+  init(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  add(v) {
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+  
+  __add__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x + v, this.y + v, this.z + v);
+    }
+    return Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+  }
+
+  __sub__(v) {
+    if (isnumber(v)) {
+      return Vec3(this.x - v, this.y - v, this.z - v);
+    }
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  minus(v) {
+    return Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+  }
+
+  mult(d) {
+    return Vec3(this.x * d, this.y * d, this.z * d);
+  }
+
+  __mul__(d) {
+    if (isnumber(d)) {
+      return Vec3(this.x * d, this.y * d, this.z * d);
+    }
+    return this;
+  }
+
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  }
+
+  neg() {
+    return Vec3(-this.x, -this.y, -this.z);
+  }
+
+  div(d) {
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  __div__(d) {
+    //return this * 1/d;
+    return Vec3(this.x / d, this.y / d, this.z / d);
+  }
+
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+
+  length() {
+    return Math.sqrt(this.length_squared());
+  }
+
+  length_squared() {
+    return this.x * this.x + this.y * this.y + this.z * this.z;
+  }
+
+  display() {
+    return "Vec3(${this.x}, ${this.y}, ${this.z})";
+  }
+}
+
+fun cross(u, v) {
+  return Vec3(u.y * v.z - u.z * v.y,
+              u.z * v.x - u.x * v.z,
+              u.x * v.y - u.y * v.x);
+}
+
+fun unit_vector(v) {
+  return v / v.length();
+  //return v.div(v.length());
+}
+
+fun write_color(out, color) {
+  var r = color.x;
+  var g = color.y;
+  var b = color.z;
+
+  var rbyte = Math.floor(255.999 * r);
+  var gbyte = Math.floor(255.999 * g);
+  var bbyte = Math.floor(255.999 * b);
+
+  out.write("${rbyte} ${gbyte} ${bbyte}\n");
+}
+
+fun dot(u, v) {
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+class Ray {
+  init() { 
+    this.origin = Vec3(0, 0, 0);
+    this.direction = Vec3(0, 0, 0);
+  }
+
+  set(origin, direction) {
+    this.origin = origin;
+    this.direction = direction;
+  }
+
+  at(t) {
+    return this.origin + this.direction * t;
+  }
+
+  display() {
+    //return "Ray(${this.origin}, ${this.direction})";
+    return "Ray()";
+  }
+}
+
+var white = Vec3(1.0, 1.0, 1.0);
+var blue = Vec3(0.5, 0.7, 1.0);
+var red = Vec3(1, 0, 0);
+
+var sphere = Vec3(0, 0, -1);
+
+fun hit_sphere(center, radius, r) {
+  var oc = center - r.origin;
+  var a = r.direction.length_squared();
+  var h = dot(r.direction, oc);
+  var c = oc.length_squared() - radius * radius;
+  var discriminant = h * h - a * c;
+
+  if (discriminant < 0) {
+    return -1.0;
+  } else {
+    return (h  - Math.sqrt(discriminant)) / a;
+  }
+}
+
+fun ray_color(r, world) {
+  //var rec = world.hit(r, 0, infinity);
+
+  var rec = world.hit(r, Interval(0, infinity));
+  if (rec) {
+    return (rec.normal + white) * 0.5;
+  }
+
+  //var t = hit_sphere(sphere, 0.5, r);
+  //if (t > 0.0) {
+  //  var N = unit_vector(r.at(t) - sphere);
+  //  return Vec3(N.x + 1, N.y + 1, N.z + 1)*0.5;
+  //}
+
+  var unit_direction = unit_vector(r.direction);
+  var a = (unit_direction.y + 1.0) * 0.5;
+  return white * (1.0 - a) + blue * a;
+}
+
+class Hittable {
+  init() {
+    this.objects = [];
+  }
+
+  clear()  {
+    this.objects = [];
+  }
+
+  add(object) {
+    this.objects.push(object);
+  }
+
+  //hit(r, ray_tmin, ray_tmax) {
+  hit(r, ray_t) { // Ray, Interval
+    //err.write(typeof(ray_t) + "\n");
+    var hit_anything = false;
+    //var closest_so_far = ray_tmax;
+    if (typeof(ray_t) != "ARRAY") {
+      err.write("NOT AN ARRAY\n");
+      err.write(typeof(ray_t) + "\n");
+    }
+    var closest_so_far = ray_t[1];
+    var final_record = nil;
+
+    for (var i = 0; i < this.objects.len(); i = i + 1) {
+      var object = this.objects[i];
+      if (has_method(object, "hit")) {
+          //var rec = object.hit(r, ray_tmin, closest_so_far);
+          var rec = object.hit(r, Interval(ray_t[0], closest_so_far));
+          if (rec != nil and rec != false) {
+            //print "---";
+            //print rec;
+            //print "---";
+            hit_anything = true;
+            closest_so_far = rec.t;
+            final_record = rec;
+          }
+       }
+    }
+
+    return final_record;
+  }
+}
+
+fun degrees_to_radians(degrees) {
+  return degrees * Math.pi / 180.0;
+}
+
+class Sphere {
+  init(center, radius) {
+    this.center = center;
+    this.radius = radius;
+  }
+
+  //hit(r, ray_tmin, ray_tmax) {
+  hit(r, ray_t) { // Ray, Interval
+    //err.write(typeof(ray_t) + "\n");
+    var oc = this.center - r.origin;
+    var a = r.direction.length_squared();
+    var h = dot(r.direction, oc);
+    var c = oc.length_squared() - this.radius * this.radius;
+
+    var discriminant = h * h - a * c;
+    if (discriminant < 0) {
+      return false;
+    }
+
+    var sqrtd = Math.sqrt(discriminant);
+
+    var root = (h - sqrtd) / a;
+    //if (root <= ray_tmin or ray_tmax <= root) {
+    //err.write(typeof(ray_t) + "\n");
+    if (typeof(ray_t) != "ARRAY") {
+      //err.write("NOT AN ARRAY\n");
+    }
+    //err.write("ray_t: ${ray_t[0]}, ${ray_t[1]}\n");
+    if (!interval_surrounds(ray_t, root)) {
+      root = (h + sqrtd) / a;
+      //if (root <= ray_tmin or ray_tmax <= root) {
+      if (!interval_surrounds(ray_t, root)) {
+        return false;
+      }
+    }
+    
+    var rec = HitRecord();
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    var outward_normal = (rec.p - this.center) / this.radius;
+    rec.set_face_normal(r, outward_normal);
+
+    return rec;
+  }
+}
+
+class HitRecord {
+  
+  //init(p, normal, t) { //, front_face) {
+  //  this.p = p;
+  //  this.normal = normal;
+  //  this.t = t;
+    //this.front_face = front_face;
+  //}
+
+  set_face_normal(r, outward_normal) {
+    this.front_face = dot(r.direction, outward_normal) < 0;
+    if (this.front_face) {
+      this.normal = outward_normal;
+    } else {
+      this.normal = -outward_normal;
+    }
+  }
+
+}
+
+
+fun interval_size(i) {
+  return i[1] - i[0];
+}
+
+fun interval_contains(i, x) {
+  return i[0] <= x and x <= i[1];
+}
+
+fun interval_surrounds(i, x) {
+  if (typeof(i) != "ARRAY") {
+    print "NOT AN ARRAY";
+    print i;
+    err.write("NOT AN ARRAY\n");
+  }
+  return i[0] < x and x < i[1];
+}
+
+fun interval_clamp(i, x) {
+  if (x < i[0]) return i[0];
+  if (x > i[1]) return i[1];
+  return x;
+}
+
+var interval_empty = Interval(infinity, neg_infinity);
+var interval_universe = Interval(neg_infinity, infinity);
+
+var file = "out.ppm";
+if (System.ARGS.len() > 0) {
+  file = System.ARGS[0];
+}
+
+var out = File.open(file, "w");
+
+var aspect_ratio = 16.0 / 9.0;
+
+var image_width = 400;
+var image_height = Math.floor(image_width / aspect_ratio);
+if (image_height < 1) {
+  image_height = 1;
+}
+
+var world = Hittable();
+world.add(Sphere(Vec3(0,0,-1), 0.5));
+world.add(Sphere(Vec3(0, -100.5, -1), 100));
+
+var focal_length = 1.0;
+var viewport_height = 2.0;
+var viewport_width = viewport_height * (image_width/image_height);
+var camera_center = Vec3(0,0,0);
+
+var viewport_u = Vec3(viewport_width, 0, 0);
+var viewport_v = Vec3(0, -viewport_height, 0);
+
+var pixel_delta_u = viewport_u / image_width;
+var pixel_delta_v = viewport_v / image_height;
+
+var viewport_upper_left = camera_center - Vec3(0, 0, focal_length) - viewport_u / 2 - viewport_v / 2;
+var pixel00_loc = viewport_upper_left + (pixel_delta_u + pixel_delta_v) * 0.5;
+
+out.write("P3\n ${image_width} ${image_height}\n255\n");
+var pixel_color = Vec3(0, 0, 0);
+
+for (var j = 0; j < image_height; j = j + 1) {
+  err.write("\rScanlines remaining: ${image_height - j}  ");
+  err.flush();
+  for (var i = 0; i < image_width; i = i + 1) {
+    var pixel_center = pixel00_loc + (pixel_delta_u * i) + (pixel_delta_v * j);
+    var ray_direction = pixel_center - camera_center;
+    var r = Ray();
+    r.set(camera_center, ray_direction);
+    pixel_color = ray_color(r, world);
+    write_color(out, pixel_color);
+  }
+}
+
+
