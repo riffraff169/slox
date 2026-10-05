@@ -1,0 +1,46 @@
+// test_markdown_printer.lox
+require("markdown.lox");
+
+// Mock Color class if needed for standalone testing
+if (Color == nil) {
+    class Color {
+        static format(text) {
+            // Simplified fallback if test is run without full Color class loaded
+            return text;
+        }
+    }
+}
+
+var printer = MarkdownPrinter(60);
+
+var testMarkdown = 
+"```lox\n" +
+"var name = \"slox\";\n" +
+"print \"Hello, \" + name;\n" +
+"```\n" +
+"\n" +
+"# Header Level 1\n" +
+"## Header Level 2\n" +
+"### Header Level 3\n" +
+"\n" +
+"---" + "\n" +
+"\n" +
+"This is standard paragraph text with **bold text**, *italic text*, and `inline_code()`.\n" +
+"\n" +
+"- Bullet item one with `code`\n" +
+"- Bullet item two with **bold**\n" +
+"* Asterisk bullet item\n" +
+"\n" +
+"> This is a blockquote line with **bold** content.\n" +
+"\n" +
+"Arguments:\n" +
+"- `val`: The input number\n" +
+"\n" +
+"===";
+
+print "=== TESTING MARKDOWN PRINTER OUTPUT ===";
+print "";
+var output = printer.render(testMarkdown);
+print output;
+print "";
+print "=== TEST COMPLETE ===";

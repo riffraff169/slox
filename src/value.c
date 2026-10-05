@@ -128,10 +128,17 @@ void printValueSafe(FILE* stream, Value value) {
                 fprintf(stream, "%" PRId64, AS_INT(value));
                 break;
             case VAL_FLOAT:
-                if (vm.numNotation == 1) {
-                    fprintf(stream, "%.*g", vm.numPrecision, AS_FLOAT(value));
-                } else {
-                    fprintf(stream, "%.*f", vm.numPrecision, AS_FLOAT(value));
+                switch (vm.numNotation) {
+                    case 1:
+                        fprintf(stream, "%.*e", vm.numPrecision, AS_FLOAT(value));
+                        break;
+                    case 2:
+                        fprintf(stream, "%.*f", vm.numPrecision, AS_FLOAT(value));
+                        break;
+                    case 0:
+                    default:
+                        fprintf(stream, "%.*g", vm.numPrecision, AS_FLOAT(value));
+                        break;
                 }
                 break;
             case VAL_OBJ:

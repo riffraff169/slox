@@ -864,7 +864,7 @@ static void character(bool canAssign) {
         }
     }
 
-    emitConstant(FLOAT_VAL((double)value));
+    emitConstant(INT_VAL((double)value));
 }
 
 static void integer(bool canAssign) {

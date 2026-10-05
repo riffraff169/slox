@@ -84,24 +84,24 @@ Value clockNative(int argCount, Value* args) {
     return FLOAT_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
-//= str(val)
+//= str
 // Converts current value to its string representation
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   String
+//   String: string value
 Value strNative(int argCount, Value* args) {
     if (argCount != 1) return OBJ_VAL(copyString("", 0));
 
     return valueToString(args[0]);
 }
 
-//= typeof(val)
+//= typeof
 // Gets class type of val
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   String
+//   String: class name
 Value typeofNative(int argCount, Value* args) {
     if (argCount < 1) return OBJ_VAL(vm.nilClass->name);
     ObjClass* klass = getClassForValue(args[0]);
@@ -113,12 +113,12 @@ Value typeofNative(int argCount, Value* args) {
     return OBJ_VAL(copyString("UNKNOWN", 7));
 }
 
-//= chr(val)
+//= chr
 // Turns a number into a character
 // Requires:
-//   val: Number
+//   Integer: val
 // Returns
-//   String
+//   String: string value
 Value chrNative(int argCount, Value* args) {
     if (argCount != 1) {
         return NIL_VAL;
@@ -145,10 +145,10 @@ Value chrNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(c_str, 1));
 }
 
-//= eval(str)
+//= eval
 // Evaluates a string as slox code.
 // Requires:
-//   str: String
+//   String: str
 Value evalNative(int argCount, Value* args) {
     if (argCount != 1) {
         runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
@@ -197,13 +197,13 @@ Value evalNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
-//= create_instance(class)
+//= create_instance
 // Creates a new instance from a class name.
 // Does not run init()
 // Requires:
-//   class: String
+//   String: class
 // Returns
-//   Instance
+//   Instance: instance of class
 Value createInstanceNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("create_instance() expects a string argument.");
@@ -224,12 +224,12 @@ Value createInstanceNative(int argCount, Value* args) {
 }
 
 //= program(filename)
-// Creates a new class based off the name of the file.
+// Creates a new class based off the name of the file. Not totally working.
 // Then an instance can be created with class_name().
 // Requires:
-//   filename: String
+//   String: filename
 // Returns:
-//   Class
+//   Class: class value
 Value programNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("program() expects a string filename argument.");
@@ -284,119 +284,125 @@ static inline Value getCheckTarget(int argCount, Value* args) {
     return args[-1];
 }
 
-//= isnumber(val)
-// Checks if a value is a number.
+//= isfloat
+// Checks if a value is a float.
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if float
 
 //@ Object
-//: isnumber
-// Checks if a value is a number
+//: isfloat
+// Checks if a value is a float
 // Returns:
-//   Bool
+//   Bool: true if float
 Value isFloatNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_FLOAT(target));
 }
 
+//= isnumber
+// Checks if a value is a number (either float or integer).
+// Requires:
+//   Value: val
+// Returns:
+//   Bool: true if number
 Value isNumberNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_FLOAT(target) || IS_INT(target));
 }
 
-//= isint(val)
+//= isint
 // Checks if a value is an integer.
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if int
 Value isIntNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_INT(target));
 }
 
-//= isstring(val)
+//= isstring
 // Checks if a value is a string.
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if string
 
 //@ Object
 //: isstring
 // Checks if a value is a string
 // Returns:
-//   Bool
+//   Bool: true if string
 Value isStringNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_STRING(target));
 }
 
-//= isbool(val)
+//= isbool
 // Checks if a value is a bool (boolean)
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if bool
 
 //@ Object
 //: isbool
 // Checks if a value is a bool
 // Returns:
-//   Bool
+//   Bool: true if bool
 Value isBoolNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_BOOL(target));
 }
 
-//= isnil(val)
+//= isnil
 // Checks if a value is nil
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if nil
 
 //@ Object
 //: isnil
 // Checks if a value is nil
 // Returns:
-//   Bool
+//   Bool: true if nil
 Value isNilNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_NIL(target));
 }
 
-//= isclass(val)
+//= isclass
 // Checks if a value is a class
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if class
 
 //@ Object
 //: isclass
 //  Checks if a value is a class
 // Returns:
-//   Bool
+//   Bool: true if class
 Value isClassNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_CLASS(target));
 }
 
-//= isinstance(val)
+//= isinstance
 // Checks if a value is an instance
 // Requires:
-//   val: Value
+//   Value: val
 // Returns:
-//   Bool
+//   Bool: true if instance
 
 //@ Object
 //: isinstance
 // Checks if a value is an instance
 // Returns:
-//   Bool
+//   Bool: true if instance
 Value isInstanceNative(int argCount, Value* args) {
     Value target = getCheckTarget(argCount, args);
     return BOOL_VAL(IS_INSTANCE(target));
@@ -484,7 +490,7 @@ Value getFieldNative(int argCount, Value* args) {
 //: set_field
 // Set a field to a value
 // Requires:
-//   String: key
+//   String: field
 //   Value: val
 Value setFieldNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0])) {
@@ -519,6 +525,8 @@ Value setFieldNative(int argCount, Value* args) {
 //@ Object
 //: get_methods
 // Get list of methods available on this object.
+// Optional:
+//   Bool: recurse
 // Returns:
 //   Array
 Value getMethodsNative(int argCount, Value* args) {
@@ -576,7 +584,7 @@ Value getMethodsNative(int argCount, Value* args) {
 //@ Object
 //: has_method
 // Check whether this object has a method.
-// Alias: responds_to()
+// Alias: responds_to
 // Requires:
 //   String: method
 // Returns:
@@ -615,7 +623,7 @@ Value hasMethodNative(int argCount, Value* args) {
 //@ Object
 //: superclass
 // Get the superclass of this object.
-// Alias: get_superclass().
+// Alias: get_superclass
 // Returns:
 //   Class
 Value getSuperclassNative(int argCount, Value* args) {
@@ -673,7 +681,7 @@ Value objectClassMethod(int argCount, Value* args) {
 
 //@ Object
 //: class_name
-// Get the class of this object as a String. Shortcut for String(x.class());
+// Get the class of this object as a String. Shortcut for String(x.class())
 // Returns:
 //   String
 Value objectClassNameMethod(int argCount, Value* args) {
@@ -811,6 +819,10 @@ Value requireNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//= inspect
+// Debugging aid only, prints directly to stdout the value of val
+// Requires:
+//   Value: val
 Value inspectNative(int argCount, Value* args) {
     for (int i = 0; i < argCount; i++) {
         printValueSafe(stdout, args[i]);
@@ -875,6 +887,7 @@ void initCoreLibrary() {
     X("trim", stringTrimNative) \
     X("contains", stringContainsNative) \
     X("find", stringFindNative) \
+    X("rfind", stringRfindNative) \
     X("to_upper", stringToUpperNative) \
     X("to_lower", stringToLowerNative) \
     X("len", stringLenNative) \
@@ -915,6 +928,8 @@ Value stringTrimNative(int argCount, Value* args) {
 //: contains
 // Checks if a string contains another string.
 // If actual position is needed, use find().
+// Requires:
+//   String: needle
 // Returns:
 //   Bool: true if it does
 Value stringContainsNative(int argCount, Value* args) {
@@ -930,20 +945,96 @@ Value stringContainsNative(int argCount, Value* args) {
 
 //@ String
 //: find
-// Checks if a string contains another string.
+// Checks if a string contains another string, or a character.
+// Requires:
+//   String or Integer: needle
 // Returns:
-//   Number: index of first position of string
+//   Integer: index of first position of string
 Value stringFindNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return NIL_VAL;
     }
 
     ObjString* haystack = AS_STRING(args[-1]);
-    ObjString* needle = AS_STRING(args[0]);
+    
+    if (IS_INT(args[0])) {
+        int targetByte = AS_INT(args[0]);
+        char* match = (char*)memchr(haystack->chars, targetByte, haystack->length);
+        return match ? INT_VAL((int)(match - haystack->chars)) : INT_VAL(-1);
+    }
 
-    char* location = strstr(haystack->chars, needle->chars);
-    if (location != NULL) {
-        return INT_VAL(location - haystack->chars);
+    if (IS_STRING(args[0])) {
+        ObjString* needle = AS_STRING(args[0]);
+        char* location = strstr(haystack->chars, needle->chars);
+        if (location != NULL) {
+            return INT_VAL(location - haystack->chars);
+        }
+        return INT_VAL(-1);
+    }
+    return INT_VAL(-1);
+}
+
+//@ String
+//: rfind
+// Checks if a string contains another string, searching from max index, default end
+// Requires:
+//   String or Integer: needle
+// Optional:
+//   Integer: index
+// Returns:
+//   Integer: index of last position in string
+Value stringRfindNative(int argCount, Value* args) {
+    ObjString* haystack = AS_STRING(args[-1]);
+
+    if (argCount < 1) {
+        runtimeError("rfind() requiress a string to search for.");
+        return NIL_VAL;
+    }
+
+    int hLen = haystack->length;
+    const char* hStr = haystack->chars;
+
+    int maxIdx = hLen - 1;
+    if (argCount >= 2 && IS_INT(args[1])) {
+        int customIdx = AS_INT(args[1]);
+        if (customIdx < maxIdx) maxIdx = customIdx;
+    }
+
+    if (maxIdx < 0 || hLen == 0) return INT_VAL(-1);
+
+    int targetByte = -1;
+
+    if (IS_INT(args[0])) {
+        int targetByte = AS_INT(args[0]);
+        char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
+        return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
+    }
+
+    if (IS_STRING(args[0])) {
+        ObjString* needle = AS_STRING(args[0]);
+        int nLen = needle->length;
+        const char* nStr = needle->chars;
+
+        if (nLen == 1) {
+            int targetByte = (unsigned char)nStr[0];
+            char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
+            return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
+        }
+
+        if (nLen == 0) return INT_VAL(maxIdx);
+        if (nLen > hLen) return INT_VAL(-1);
+
+        int start = maxIdx;
+        if (start + nLen > hLen) {
+            start = hLen - nLen;
+        }
+
+        for (int i = start; i >= 0; i--) {
+            if (memcmp(hStr + i, nStr, nLen) == 0) {
+                return INT_VAL(i);
+            }
+        }
+        return INT_VAL(-1);
     }
     return NIL_VAL;
 }
@@ -997,15 +1088,34 @@ Value stringToLowerNative(int argCount, Value* args) {
 // Get length of string.
 // Aliases: len
 // Returns:
-//   Number: length of string
+//   Integer: length of string
 Value stringLenNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
     return INT_VAL((double)str->length);
 }
 
+int count_utf8_codepoints(const char* s, int byte_len) {
+    int count = 0;
+    for (int i = 0; i < byte_len; i++) {
+        if ((s[i] & 0xc0) != 0x80) {
+            count++;
+        }
+    }
+    return count;
+}
+
+//@ String
+//: length_utf8
+// Get length of utf8 string.
+// If is plain ascii, will be the same as .length().
+// Returns:
+//   Integer: length of string
+Value stringLenUTF8Native(int argCount, Value* args) {
+}
+
 //@ String
 //: split
-// Split a string by another string
+// Split a string by another string, splitting by "" splits into characters
 // Requires:
 //   String: sep
 // Returns:
@@ -1104,7 +1214,7 @@ Value stringSplitNative(int argCount, Value* args) {
 // Optional:
 //   Value: end
 // Returns:
-//   String - section of string
+//   String: section of string
 Value stringSliceNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("slice() expects at least a start index.");
@@ -1154,7 +1264,7 @@ Value stringSliceNative(int argCount, Value* args) {
 
 //@ String
 //: to_array
-// Convert string to array of integerrs, ascii values of characters.
+// Convert string to array of integers, ascii values of characters.
 // Returns:
 //   Array
 Value stringToarrayNative(int argCount, Value* args) {
@@ -1173,6 +1283,7 @@ Value stringToarrayNative(int argCount, Value* args) {
 //@ String
 //: tokens
 // Splits a string on whitespace. 
+// Only splits on whitespace, not on different character types. "function(" would be one token still.
 // Returns:
 //   Array
 Value stringTokensNative(int argCount, Value* args) {
@@ -1606,6 +1717,7 @@ void initStringClass() {
     X("remove", mapRemoveNative) \
     X("delete", mapRemoveNative) \
     X("len", mapLenNative) \
+    X("length", mapLenNative) \
     X("each", mapEachNative)
 
 //@ Map
@@ -1613,7 +1725,7 @@ void initStringClass() {
 // Constructor can take a list of values that are converted to key/value pairs. Must be an
 // even number.
 // Optional:
-//   List: vals
+//   Array: vals
 Value mapNativeConstructor(int argCount, Value* args) {
     if (argCount % 2 != 0) {
         runtimeError("Map constructor requires an even number of key-value arguments.");
@@ -1638,6 +1750,11 @@ Value mapNativeConstructor(int argCount, Value* args) {
     return pop();
 }
 
+//@ Map
+//: keys
+// Get list of keys
+// Returns:
+//   Array: list of keys
 Value mapKeysNative(int argCount, Value* args) {
     ObjMap* map = AS_MAP(args[-1]);
     ObjArray* valuesArray = newArray();
@@ -1652,6 +1769,10 @@ Value mapKeysNative(int argCount, Value* args) {
     return pop();
 }
 
+//: values
+// Get list of values
+// Returns:
+//   Array: list of values
 Value mapValuesNative(int argCount, Value* args) {
     ObjMap* map = AS_MAP(args[-1]);
     ObjArray* valuesArray = newArray();
@@ -1666,6 +1787,10 @@ Value mapValuesNative(int argCount, Value* args) {
     return pop();
 }
 
+//: has
+// Check if map has a key
+// Returns:
+//   Bool: true if key exists
 Value mapHasNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
@@ -1676,6 +1801,12 @@ Value mapHasNative(int argCount, Value* args) {
     return BOOL_VAL(mapGetByValue(map, args[0], &dummy));
 }
 
+//: remove
+// Remove keys from a map. Takes at least one argument.
+// Requires:
+//   Value: key
+// Returns:
+//   Map: removed keys
 Value mapRemoveNative(int argCount, Value* args) {
     ObjMap* sourceMap = AS_MAP(args[-1]);
     ObjMap* deletedMap = newMap();
@@ -1707,10 +1838,18 @@ Value mapRemoveNative(int argCount, Value* args) {
     return pop();
 }
 
+//: length
+// Returns:
+//   Integer: number of items
 Value mapLenNative(int argCount, Value* args) {
     return INT_VAL(AS_MAP(args[-1])->items.count);
 }
 
+//: each
+// Executes a callback on each key/value pair.
+// Works on a copy of the map, so the map won't be modified by the callback.
+// Returns:
+//   Nil
 Value mapEachNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Map.each() expects a closure argument.");
@@ -1761,6 +1900,8 @@ Value mapEachNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Map
+// Map/Dictionary/Hash table of key/value entries.
 void initMapClass() {
     /*
     ObjString* string = NULL;
@@ -1779,6 +1920,9 @@ void initMapClass() {
     //pop();
 }
 
+//@ Set
+// Special case of Map. Values are ignored, can keep a count of number
+// of times key has been added.
 Value setNativeConstructor(int argCount, Value* args) {
     ObjSet* set = newSet();
     push(OBJ_VAL(set));
@@ -1797,6 +1941,10 @@ Value setNativeConstructor(int argCount, Value* args) {
     return pop();
 }
 
+//: add
+// Add a key to the set. If a multiset, adds or increments count.
+// Returns:
+//   Set
 Value setAddNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     Value key = args[0];
@@ -1820,6 +1968,7 @@ Value setAddNative(int argCount, Value* args) {
     return args[-1];
 }
 
+/*
 void setRemove(ObjSet* set, Value val) {
     Value count;
     if (!tableGet2(&set->items, val, &count)) return;
@@ -1835,7 +1984,12 @@ void setRemove(ObjSet* set, Value val) {
         tableDelete2(&set->items, val);
     }
 }
+*/
 
+//: count
+// Gets count of a key, 1 if not a multiset
+// Returns:
+//   Integer: count
 Value setCountNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     Value key = args[0];
@@ -1852,6 +2006,10 @@ Value setCountNative(int argCount, Value* args) {
     return set->isMultiset ? count : INT_VAL(1);
 }
 
+//: remove
+// Removes a key from a set, regardless of whether it is a multiset or not
+// Returns:
+//   Value: removed key
 Value setRemoveNative(int argCount, Value* args) {
     if (argCount != 1) {
         runtimeError("Expected 1 argument, but got %d.", argCount);
@@ -1871,6 +2029,10 @@ Value setRemoveNative(int argCount, Value* args) {
     return BOOL_VAL(removed);
 }
 
+//: has
+// Checks if key is present
+// Returns:
+//   Bool
 Value setHasNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     Value key = args[0];
@@ -1881,22 +2043,34 @@ Value setHasNative(int argCount, Value* args) {
     return BOOL_VAL(found);
 }
 
+//: length
+// Gets length of set
+// Returns:
+//   Integer: length
 Value setLengthNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     return INT_VAL(set->items.count);
 }
 
+//: set_multiset
+// Designates this set as multiset. Can only be changed if there are no items in set.
+// Returns:
+//   Bool: whether setting to multiset was successful
 Value setMultisetNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     if (set->items.count > 0)  {
         runtimeError("Cannot change a non-empty set to multiset.");
-        return NIL_VAL;
+        return BOOL_VAL(false);
     }
 
     set->isMultiset = true;
     return BOOL_VAL(true);
 }
 
+//: keys
+// Gets list of keys from set
+// Returns:
+//   Array: list of keys
 Value setKeysNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
     ObjArray* array = newArray();
@@ -1913,6 +2087,11 @@ Value setKeysNative(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+//: to_map
+// Converts set to a regular map. Returns a new map.
+// Values are either count for a multiset, or 1 for a plain set.
+// Returns:
+//   Map: from original set
 Value setToMapNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
 
@@ -2016,11 +2195,47 @@ void initSetClass() {
         return NIL_VAL; \
     }
 
+//@ Math
+// Math class encompassing many math functions
+
+//@ Integer
+// Integer class for oop methods on Integers
+
+//@ Float
+// Float class for oop methods on Floats
+
+//@ Number
+// Number class for oop methods on any Number type, Integers or Floats
+
+//= sqrt
+// Get sqrt of value
+// Requires:
+//   Number: val
+// Returns:
+//   Float: sqrt of value
+
+//@ Number
+//: sqrt
+// Get sqrt of number
+// Returns:
+//   Float: sqrt of value
 Value mathSqrtNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "sqrt");
     return FLOAT_VAL(sqrt(val));
 }
 
+//= abs
+// Get absolute value of number
+// Requires:
+//   Number: val
+// Returns:
+//   Number
+
+//@ Number
+//: abs
+// Get absolute value
+// Returns:
+//   Number
 Value mathAbsNative(int argCount, Value* args) {
     //EXTRACT_MATH_OP(val, "abs");
     Value target = IS_NUMERIC(args[-1]) ? args[-1] :
@@ -7357,6 +7572,21 @@ Value systemShowStackNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ System
+//: get_precision
+// Get the floating point precision
+// Returns:
+//   Integer: current precision
+Value systemGetPrecisionNative(int argCount, Value* args) {
+}
+
+//@ System
+//: set_precision
+// Set the floating point precision
+// Requires:
+//   Integer: precision
+// Returns:
+//   Integer: precision
 Value systemSetPrecisionNative(int argCount, Value* args) {
     if (argCount > 0) {
         int64_t precisionVal;
@@ -7379,6 +7609,13 @@ Value systemSetPrecisionNative(int argCount, Value* args) {
     return INT_VAL(vm.numPrecision);
 }
 
+//@ System
+//: set_notation
+// Set notation style: 0 = %g, 1 = %e, 2 = %f
+// Requires:
+//   Integer: type
+// Returns:
+//   Integer: type
 Value systemSetNotationNative(int argCount, Value* args) {
     if (argCount > 0) {
         int64_t styleVal;
@@ -7403,6 +7640,13 @@ Value systemSetNotationNative(int argCount, Value* args) {
     return INT_VAL(vm.numNotation);
 }
 
+//@ System
+//: debug_print
+// Set debug print mode, print code generation
+// Requires:
+//   Bool: mode
+// Returns;
+//   Bool: mode
 Value systemDebugPrintNative(int argCount, Value* args) {
     if (argCount < 0) {
         if (!IS_BOOL(args[0])) {
@@ -7414,6 +7658,13 @@ Value systemDebugPrintNative(int argCount, Value* args) {
     return BOOL_VAL(vm.debugPrintCode);
 }
 
+//@ System
+//: trace
+// Set trace mode
+// Requires:
+//   Bool: mode
+// Returns:
+//   Bool: mode
 Value systemTraceNative(int argCount, Value* args) {
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
@@ -7446,6 +7697,12 @@ Value systemWarnNative(int argCount, Value* args) {
     return BOOL_VAL(vm.warnMode);
 }
 
+//@ System
+//: sleep
+// Pause for some time, can be Int or Float
+// Requires:
+//   Number: duration
+// Returns
 Value systemSleepNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("System.sleep() requires a numeric duration in seconds.");
@@ -7486,10 +7743,25 @@ Value systemSleepNative(int argCount, Value* args) {
     }
 }
 
+//@ System
+//: get_includes
+// Get include path list
+// Returns:
+//   Array: list of include paths
 Value systemGetIncludesNative(int argCount, Value* args) {
-    return OBJ_VAL(vm.includePaths);
+    if (vm.includePaths == NULL) return NIL_VAL;
+
+    ObjArray* copy = duplicateArray(vm.includePaths);
+    return OBJ_VAL(copy);
 }
 
+//@ System
+//: add_include
+// Add aa path to include list
+// Requires:
+//   String: path
+// Returns:
+//   Bool: true if successful
 Value systemAddIncludeNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
@@ -7499,14 +7771,21 @@ Value systemAddIncludeNative(int argCount, Value* args) {
     return BOOL_VAL(true);
 }
 
+//@ System
+//: remove_include
+// Remove path from include list
+// Requires:
+//   String: path
+// Returns:
+//   Array: current include path list
 Value systemRemoveIncludeNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        return BOOL_VAL(false);
+        return NIL_VAL;
     }
 
     ObjString* target = AS_STRING(args[0]);
     ObjArray* currentPaths = vm.includePaths;
-    if (currentPaths == NULL) return BOOL_VAL(false);
+    if (currentPaths == NULL) return NIL_VAL;
 
     ObjArray* filteredPaths = newArray();
     push(OBJ_VAL(filteredPaths));
@@ -7516,10 +7795,10 @@ Value systemRemoveIncludeNative(int argCount, Value* args) {
         Value val = currentPaths->values[i];
         if (IS_STRING(val)) {
             ObjString* str = AS_STRING(val);
-            if (str->length == target->length &&
-                    memcmp(str->chars, target->chars, target->length) == 0) {
+            if (str == target || (str->length == target->length &&
+                    memcmp(str->chars, target->chars, target->length) == 0)) {
                 removed = true;
-                break;
+                continue;
             }
         }
         arrayAppend(filteredPaths, val);
@@ -7528,10 +7807,9 @@ Value systemRemoveIncludeNative(int argCount, Value* args) {
     pop();
     if (removed) {
         vm.includePaths = filteredPaths;
-        return BOOL_VAL(true);
     }
-
-    return BOOL_VAL(false);
+    ObjArray* copy = duplicateArray(vm.includePaths);
+    return OBJ_VAL(copy);
 }
 
 void defineSignalConstants(ObjClass* sg) {
@@ -7595,6 +7873,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineNativeMethod(systemMeta, "reset_stack", systemResetStackNative);
     defineNativeMethod(systemMeta, "show_stack", systemShowStackNative);
     defineNativeMethod(systemMeta, "set_notation", systemSetNotationNative);
+    defineNativeMethod(systemMeta, "get_precision", systemGetPrecisionNative);
     defineNativeMethod(systemMeta, "set_precision", systemSetPrecisionNative);
     defineNativeMethod(systemMeta, "debug_print", systemDebugPrintNative);
     defineNativeMethod(systemMeta, "trace", systemTraceNative);
@@ -7721,6 +8000,13 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+//@ Base64
+//: encode
+// Encodes text into base64 code
+// Requires:
+//   String: input
+// Returns:
+//   String: encoded text
 Value base64EncodeNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Base64.encode() expects a string argument.");
@@ -7776,6 +8062,13 @@ static const int b64_decode_table[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 };
 
+//@ Base64
+//: decode
+// Decode a String into original text
+// Requires:
+//   String: input
+// Returns:
+//   String: decoded text
 Value base64DecodeNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Base64.decode() expects a string argument.");
@@ -7873,6 +8166,13 @@ void initBase64Class() {
     //tableSet(&vm.globals, base64Name, OBJ_VAL(base64Class));
 }
 
+//@ Buffer
+//: alloc
+// Allocate a Buffer of size bytes
+// Requires:
+//   Integer: size
+// Returns:
+//   Buffer: a buffer
 Value bufferAllocNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("Buffer.alloc() expects a numeric size argument.");
@@ -7906,15 +8206,30 @@ Value bufferAllocNative(int argCount, Value* args) {
     return OBJ_VAL(buffer);
 }
 
+//@ Buffer
+//: size
+// Get size of Buffer
+// Returns:
+//   Integer: size of buffer
 Value bufferSizeNative(int argCount, Value* args) {
     return INT_VAL(AS_BUFFER(args[-1])->size);
 }
 
+//@ Buffer
+//: to_string
+// Converts a Buffer into a String
+// Returns:
+//   String: Buffers as a string
 Value bufferToStringNative(int argCount, Value* args) {
     ObjBuffer* self = AS_BUFFER(args[-1]);
     return OBJ_VAL(copyString((char*)self->bytes, self->size));
 }
 
+//@ Buffer
+//: to_array
+// Converts a Buffer into an array of bytes
+// Returns:
+//   Array: byte list
 Value bufferToArrayNative(int argCount, Value* args) {
     ObjBuffer* self = AS_BUFFER(args[-1]);
     ObjArray* array = newArray();
@@ -7927,6 +8242,11 @@ Value bufferToArrayNative(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+//@ Buffer
+//: slice
+// Get a slice of bytes as a new buffer
+// Returns:
+//  Buffer: new buffer
 Value bufferSliceNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Buffer.slice() expects an offset and a length.");
@@ -7967,6 +8287,9 @@ Value bufferSliceNative(int argCount, Value* args) {
     //return OBJ_VAL(str);
 }
 
+//@ Buffer
+//: fill
+// Fill buffer with a value
 Value bufferFillNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("Buffer.fill() expects an integer byte value.");
@@ -7993,6 +8316,11 @@ Value bufferFillNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Buffer
+//: write_uint64
+// Write a uint64 value to offset
+// Returns:
+//   Integer: next offset
 Value bufferWriteUint64Native(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Buffer.writeUint64() expands an offset and a uint64 value.");
@@ -8036,6 +8364,11 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     return INT_VAL((int64_t)(offset + sizeof(uint64_t)));
 }
 
+//@ Buffer
+//: write_uint8
+// Write uint8 value to offset
+// Returns:
+//   Integer: next offset
 Value bufferWriteUint8Native(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Buffer.writeUint8() expects an offset and a byte value.");
@@ -8085,6 +8418,11 @@ Value bufferWriteUint8Native(int argCount, Value* args) {
     return INT_VAL((int64_t)(offset + 1));
 }
 
+//@ Buffer
+//: get_ptr
+// Return ptr value as String
+// Returns:
+//   String: pointer value
 Value bufferWriteGetPtrNative(int argCount, Value* args) {
     ObjBuffer* buf = AS_BUFFER(args[-1]);
     void* ptr = buf->bytes;

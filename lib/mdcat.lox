@@ -1,0 +1,24 @@
+require("markdown.lox");
+require("argparser.lox");
+
+/*
+var parser = ArgParser("slox script.lox", "Processes input files into binary output.");
+
+parser.addFlag("verbose", "v", "Enable debug logging");
+parser.addOption("output", "o", "default.bin", "Path to output file");
+parser.addOption("count", "c", "10", "Number of iterations");
+
+var args = parser.parse(ARGV);
+*/
+
+if (System.ARGS.length() == 0) {
+  print "No file.";
+  exit(0);
+}
+
+var filename = System.ARGS[0];
+ 
+var printer = MarkdownPrinter();
+
+var output = printer.render(File.load(filename));
+print output;

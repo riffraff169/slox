@@ -1433,7 +1433,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.stress_mode = 0; // 0 = normal, 1 = always, 2 = never
     vm.gctype = 1;
     vm.gcCount = 0;
-    vm.numNotation = 1; // 1 = sci, 0 = %.0f
+    vm.numNotation = 0; // 1 = sci, 0 = %.0f
     vm.numPrecision = 6;
     vm.strictMode = false;
     vm.warnMode = true;

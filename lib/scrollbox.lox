@@ -1,5 +1,7 @@
 require("notcurses.lox");
 
+// Scrollbox class
+// Creates a box for scrolling lists
 class Scrollbox {
   init(nc, parentPlane, y, x, width, height, items) {
     this.nc = nc;
@@ -18,14 +20,17 @@ class Scrollbox {
     this.scrollOffset = 0;
     this.focused = true;
     this.enableCheckboxes = true;
+    this.showSelected = false;
     this.keyCallbacks = {};
   }
 
+  // Set callback for specific keys
   onKey(key, fn) {
     this.keyCallbacks[key] = fn;
     return this;
   }
 
+  // Destroy scrollbox
   destroy() {
     if (this.plane != nil) {
       this.plane.destroy();
@@ -33,23 +38,48 @@ class Scrollbox {
     }
   }
 
+  // Get list of items that have been selected
+  getVisibleItems() {
+    if (this.showSelected) {
+      return this.items;
+    }
+    return this.items.filter(fun(item) {
+        return !this.selections.has(item);
+    });
+  }
+
+  // Select an item
+  selectItem(item) {
+    this.selections[item] = true;
+  }
+
+  // Unselect an item
+  deselectItem(item) {
+    //this.selected.delete(item);
+    this.selections[item] = false;
+  }
+
+  // Clear selection list
+  clearSelection() {
+    this.selections = {};
+  }
+
+  // Change focus status of this scrollbox
   setFocus(isFocused) {
     this.focused = isFocused;
   }
 
+  // Select all items
   selectAll(state) {
     this.items.each(fun(w) { this.selections[w] = state; });
   }
 
+  // Get list of items that have been selected
   getSelectedItems() {
-    var selected = [];
-    this.items.each(fun(w) {
-        if (this.selections[w])
-          selected.push(w);
-          });
-    return selected;
+    getVisibleItems();
   }
 
+  // Render this box
   render() {
     if (this.plane == nil) return;
 
@@ -83,6 +113,7 @@ class Scrollbox {
     }
   }
 
+  // Update scroll list
   update_scroll() {
     var visible_rows = this.height;
     if (this.items.length() == 0) return;
@@ -94,6 +125,8 @@ class Scrollbox {
     }
   }
 
+  // Handle input
+  // Dispatch callbacks on keys
   handleInput(key) {
     if (!this.focused) return false;
 
@@ -101,7 +134,20 @@ class Scrollbox {
     if (totalItems == 0) return false;
 
     if (this.keyCallbacks.has(key)) {
-      this.keyCallbacks[key](this);
+      var visible = this.getVisibleItems();
+      var current = visible[this.cursor];
+
+      var ctx = {
+        "box": this,
+        "key": key,
+        "item": current,
+        "index": this.cursor,
+        "selections": this.getSelectedItems(),
+        "visible": visible,
+        "items": this.items
+      };
+          
+      this.keyCallbacks[key](ctx);
       return true;
     }
 

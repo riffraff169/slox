@@ -1,0 +1,193 @@
+// MarkdownPrinter class refactored to use the Color helper class for terminal output.
+var use_color = true;
+try {
+  require("color.lox");
+} catch (e) {
+  use_color = false;
+}
+
+class MarkdownPrinter {
+  init(width = 80) {
+    this.width = width;
+    this.reset();
+  }
+
+  reset() {
+    this.lines = [];
+    this.inCodeBlock = false;
+    this.codeLanguage = "";
+    this.inList = false;
+  }
+
+  // --- Output Buffer Helper ---
+  emit(template) {
+    // Run template through Color.format to resolve tags like {bold}, {green}, {reset}
+    this.lines.push(Color.format(template));
+  }
+
+  // Utility to build character strings (borders, horizontal rules)
+  repeatChar(ch, count) {
+    return ch * count;
+    /*
+    var out = "";
+    for (var i = 0; i < count; i += 1) {
+      out = out + ch;
+    }
+    return out;
+    */
+  }
+
+  // --- Inline Formatting Engine ---
+  // Wraps Markdown syntax (**bold**, *italic*, `code`) into Color format tags
+  formatInline(text) {
+    var result = "";
+    var i = 0;
+    var len = text.length();
+
+    while (i < len) {
+      // Check for Inline Code: `code`
+      if (text[i] == '`') {
+        var relIdx = text.slice(i + 1).find("`");
+        if (relIdx != nil) {
+          var end = i + 1 + relIdx;
+          var codeContent = text.slice(i + 1, end);
+          result = result + "{yellow}" + codeContent + "{reset}";
+          i = end + 1;
+          continue;
+        }
+      }
+
+      // Check for Bold: **bold**
+      if (i + 1 < len and text.slice(i, i + 2) == "**") {
+        var relIdx = text.slice(i + 2).find("**");
+        if (relIdx != nil) {
+          var end = i + 2 + relIdx;
+          var boldContent = text.slice(i + 2, end);
+          result = result + "{bold}" + boldContent + "{reset}";
+          i = end + 2;
+          continue;
+        }
+      }
+
+      // Check for Italic: *italic*
+      if (text[i] == '*') {
+        var relIdx = text.slice(i + 1).find("*");
+        if (relIdx != nil) {
+          var end = i + 1 + relIdx;
+          var italicContent = text.substring(i + 1, end);
+          result = result + "{dim}" + italicContent + "{reset}";
+          i = end + 1;
+          continue;
+        }
+      }
+
+      // Standard character
+      result = result + text.slice(i, i + 1);
+      i += 1;
+    }
+
+    return result;
+  }
+
+  // --- Line Processing ---
+  processLine(rawLine) {
+    if (typeof(rawLine) != "String") {
+      return;
+    }
+
+    if (rawLine.length() == 0) {
+      this.emit("");
+      return;
+    }
+
+    // 1. Code Block Fence Handling (```lang)
+    if (rawLine.slice(0, 3) == "```") {
+      if (!this.inCodeBlock) {
+        this.inCodeBlock = true;
+        this.codeLanguage = rawLine.slice(3).trim();
+        var langLabel = this.codeLanguage != "" ? this.codeLanguage : "code";
+        var header = "─── " + langLabel + " ───";
+        this.emit("{dim}" + header + "{reset}");
+      } else {
+        this.inCodeBlock = false;
+        this.emit("{dim}─────────────────{reset}");
+      }
+      return;
+    }
+
+    // Inside verbatim code block
+    if (this.inCodeBlock) {
+      this.emit("  {cyan}" + rawLine + "{reset}");
+      return;
+    }
+
+    // 2. Horizontal Rules (---, ***, ===)
+    if (rawLine == "---" or rawLine == "***" or rawLine == "===") {
+      this.emit("{green}" + "=" * this.width + "{reset}");
+      return;
+    }
+
+    // 3. Headers (# Header, ## Header, etc.)
+    if (rawLine[0] == '#') {
+      var level = 0;
+      while (level < rawLine.length() and rawLine[level] == '#') {
+        level += 1;
+      }
+
+      var title = rawLine.slice(level).trim();
+      var formattedTitle = this.formatInline(title);
+
+      if (level == 1) {
+        var rule = "=" * this.width;
+        this.emit("{green}" + rule + "{reset}");
+        this.emit("{bold}{blue}  " + formattedTitle + "{reset}");
+        this.emit("{green}" + rule + "{reset}");
+      } else if (level == 2) {
+        this.emit("{bold}{blue}┄┄ {reset}{bold}{yellow}" + formattedTitle + "{reset}");
+      } else {
+        var hashes = "#" * level;
+        this.emit("{bold}{cyan}" + hashes + " " + formattedTitle + "{reset}");
+      }
+      return;
+    }
+
+    // 4. Bullet Lists (- item, * item)
+    if (rawLine.slice(0, 2) == "- " or rawLine.slice(0, 2) == "* ") {
+      var itemText = rawLine.slice(2);
+      this.emit("  • " + this.formatInline(itemText));
+      return;
+    }
+
+    // 5. Blockquotes (> text)
+    if (rawLine.slice(0, 2) == "> ") {
+      var quoteText = rawLine.slice(2);
+      this.emit("{dim}│ {reset}" + this.formatInline(quoteText));
+      return;
+    }
+
+    // 6. Key-Value Headers / Category Labels (e.g., "Required Arguments:")
+    if (rawLine[rawLine.length() - 1] == ':' and !rawLine.contains(" ")) {
+      this.emit("{bold}" + rawLine + "{reset}");
+      return;
+    }
+
+    // 7. Standard Paragraph Text
+    if (rawLine.trim() == "") {
+      this.emit("");
+    } else {
+      this.emit(this.formatInline(rawLine));
+    }
+  }
+
+  // --- Main Entry Point ---
+  render(markdownText) {
+    this.reset();
+
+    var rawLines = markdownText.split("\n");
+    for (var i = 0; i < rawLines.length(); i += 1) {
+      this.processLine(rawLines[i]);
+    }
+
+    return this.lines.join("\n");
+  }
+}
