@@ -8,9 +8,9 @@ class MultiFFI {
         this.handles.push(FFI(paths[i]));
         //print "MultiFFI: Added " + paths[i];
       } catch (e) {
-        //print "MultiFFI: Skipped " + paths[i];
+        print "MultiFFI: Skipped " + paths[i];
         // skip libraries that fail to load
-      }
+      } 
     }
   }
 

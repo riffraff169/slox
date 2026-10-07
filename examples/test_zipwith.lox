@@ -1,0 +1,67 @@
+class ZipWithTest {
+  static assert(condition, message) {
+    if (!condition) {
+      print "❌ FAIL: " + message;
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static assertArrayEqual(actual, expected, message) {
+    if (actual.length() != expected.length()) {
+      print "❌ FAIL: " + message + " (Length mismatch: got " + actual.length() + ", expected " + expected.length() + ")";
+      return;
+    }
+
+    for (var i = 0; i < actual.length(); i = i + 1) {
+      if (actual[i] != expected[i]) {
+        print "❌ FAIL: " + message + " (Mismatch at index " + i + ": got " + actual[i] + ", expected " + expected[i] + ")";
+        return;
+      }
+    }
+
+    print "✅ PASS: " + message;
+  }
+
+  static run() {
+    print "--- Running Array.zipWith() Test Suite ---";
+
+    var a = [1, 2, 3, 4];
+    var b = [10, 20, 30, 40];
+
+    // 1. Basic Addition & Multiplication
+    var sums = a.zipWith(b, fun(x, y) { return x + y; });
+    ZipWithTest.assertArrayEqual(sums, [11, 22, 33, 44], "Basic element-wise addition");
+
+    var prods = a.zipWith(b, fun(x, y) { return x * y; });
+    ZipWithTest.assertArrayEqual(prods, [10, 40, 90, 160], "Basic element-wise multiplication");
+
+    // 2. Mismatched Array Lengths (Should terminate at shorter length)
+    var shortArray = [100, 200];
+    var zipShortFirst = shortArray.zipWith(a, fun(x, y) { return x + y; });
+    ZipWithTest.assertArrayEqual(zipShortFirst, [101, 202], "Short self array paired with longer target");
+
+    var zipShortSecond = a.zipWith(shortArray, fun(x, y) { return x + y; });
+    ZipWithTest.assertArrayEqual(zipShortSecond, [101, 202], "Long self array paired with shorter target");
+
+    // 3. String & Complex Data Transformations
+    var words = ["cat", "dog", "bird"];
+    var sounds = ["meow", "bark", "tweet"];
+    var formatted = words.zipWith(sounds, fun(w, s) { return w + " says " + s; });
+    ZipWithTest.assertArrayEqual(
+      formatted, 
+      ["cat says meow", "dog says bark", "bird says tweet"], 
+      "String formatting with zipWith"
+    );
+
+    // 4. Edge Cases: Empty Arrays
+    var empty = [];
+    ZipWithTest.assertArrayEqual(empty.zipWith(a, fun(x, y) { return x + y; }), [], "Self array is empty");
+    ZipWithTest.assertArrayEqual(a.zipWith(empty, fun(x, y) { return x + y; }), [], "Target array is empty");
+    ZipWithTest.assertArrayEqual(empty.zipWith(empty, fun(x, y) { return x + y; }), [], "Both arrays empty");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+ZipWithTest.run();

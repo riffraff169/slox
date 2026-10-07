@@ -1,6 +1,10 @@
 class PriorityQueue {
-  init() {
+  init(comparator = nil) {
     this.heap = [];
+    this.comparator = comparator;
+    if (this.comparator == nil) {
+      this.comparator = fun(a, b) { return a < b; };
+    }
   }
 
   _floor(n) {
@@ -15,6 +19,10 @@ class PriorityQueue {
     return this.heap.length() == 0;
   }
 
+  size() {
+    return this.heap.length();
+  }
+
   peek() {
     if (this.isEmpty()) return nil;
     return this.heap[0];
@@ -27,10 +35,12 @@ class PriorityQueue {
 
   pop() {
     if (this.isEmpty()) return nil;
-    var root = this.heap[0];
-    var last = this.heap[this.heap.length() - 1];
 
-    this.heap.delete_at(this.heap.length() - 1);
+    var len = this.heap.length();
+    var root = this.heap[0];
+    var last = this.heap[len - 1];
+
+    this.heap.delete_at(len - 1);
 
     if (!this.isEmpty()) {
       this.heap[0] = last;
@@ -43,7 +53,8 @@ class PriorityQueue {
   _siftUp(i) {
     while (i > 0) {
       var p = this._parent(i);
-      if (this.heap[i] < this.heap[p]) {
+      // use comparator: returns true if child higher priority than parent
+      if ((this.comparator)(this.heap[i], this.heap[p])) {
         var temp = this.heap[i];
         this.heap[i] = this.heap[p];
         this.heap[p] = temp;
@@ -57,22 +68,22 @@ class PriorityQueue {
   _siftDown(i) {
     var size = this.heap.length();
     while (true) {
-      var minIndex = i;
+      var target = i;
       var left = this._leftChild(i);
       var right = this._rightChild(i);
 
-      if (left < size and this.heap[left] < this.heap[minIndex]) {
-        minIndex = left;
+      if (left < size and (this.comparator)(this.heap[left], this.heap[target])) {
+        target = left;
       }
-      if (right < size and this.heap[right] < this.heap[minIndex]) {
-        minIndex = right;
+      if (right < size and (this.comparator)(this.heap[right], this.heap[target])) {
+        target = right;
       }
 
-      if (i != minIndex) {
+      if (i != target) {
         var temp = this.heap[i];
-        this.heap[i] = this.heap[minIndex];
-        this.heap[minIndex] = temp;
-        i = minIndex;
+        this.heap[i] = this.heap[target];
+        this.heap[target] = temp;
+        i = target;
       } else {
         break;
       }

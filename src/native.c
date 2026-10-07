@@ -902,6 +902,9 @@ void initCoreLibrary() {
     X("pad_right", stringPadRightNative) \
     X("pad_left", stringPadLeftNative) \
     X("format", stringFormatNative) \
+    X("parse", mathParseNative) \
+    X("from_hex", fromHexNative) \
+    X("from_bin", fromBinNative) \
     X("tr", stringTrNative)
 
 //@ String
@@ -2147,18 +2150,18 @@ void initSetClass() {
     X("cos", mathCosNative) \
     X("acos", mathAcosNative) \
     X("round", mathRoundNative) \
+    X("random", mathRandomNative) \
+    X("min", mathMinNative) \
+    X("max", mathMaxNative) \
     X("to_fixed", numberToFixedNative)
 
 #define MATH_INT_ONLY_METHOD_LIST(X) \
+    X("bit_test", bitTestNative) \
     X("hex", hexNative) \
     X("oct", octNative) \
     X("bin", binNative) 
 
 #define MATH_STATIC_ONLY_METHOD_LIST(X) \
-    X("random", mathRandomNative) \
-    X("bit_test", bitTestNative) \
-    X("min", mathMinNative) \
-    X("max", mathMaxNative) \
     X("parse", mathParseNative) \
     X("from_hex", fromHexNative) \
     X("from_bin", fromBinNative) \
@@ -2207,7 +2210,8 @@ void initSetClass() {
 //@ Number
 // Number class for oop methods on any Number type, Integers or Floats
 
-//= sqrt
+//@ Math
+//: sqrt
 // Get sqrt of value
 // Requires:
 //   Number: val
@@ -2224,7 +2228,8 @@ Value mathSqrtNative(int argCount, Value* args) {
     return FLOAT_VAL(sqrt(val));
 }
 
-//= abs
+//@ Math
+//: abs
 // Get absolute value of number
 // Requires:
 //   Number: val
@@ -2253,6 +2258,21 @@ Value mathAbsNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Math
+//: floor
+// Get whole number less than current value. Returns int if it fits in int64,
+// otherwise float.
+// Requires:
+//   Number: val
+// Returns:
+//   Integer or Float
+
+//@ Number
+//: floor
+// Get whole number less than current value. Returns int if it fits in int64,
+// otherwise float.
+// Returns:
+//   Integer or Float
 Value mathFloorNative(int argCount, Value* args) {
     if (IS_INT(args[-1])) {
         return args[-1];
@@ -2282,6 +2302,21 @@ Value mathFloorNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Math
+//: ceil
+// Get whole number greater than current value. Returns int if it fits in int64,
+// otherwise float.
+// Requires:
+//   Number: val
+// Returns:
+//   Integer or Float
+
+//@ Number
+//: ceil
+// Get whole number greater than current value. Returns int if it fits in int64,
+// otherwise float.
+// Returns:
+//   Integer or Float
 Value mathCeilNative(int argCount, Value* args) {
     if (IS_INT(args[-1])) {
         return args[-1];
@@ -2311,6 +2346,22 @@ Value mathCeilNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Math
+//: random
+// Gets a random number between [0, 1), or between [0, max), or between [min, max)
+// Optional:
+//   Number: min
+//   Number: max
+// Returns:
+//   Float or Integer
+
+//@ Number
+//: random
+// Gets a random number between [0, 1), or between [0, max), or between [min, max)
+// Optional:
+//   Number: max
+// Returns:
+//   Float or Integer
 Value mathRandomNative(int argCount, Value* args) {
     // variant 1: zero arguments / static Math.random() -> float [0, 1)
     if (argCount == 0 && !IS_INT(args[-1]) && !IS_FLOAT(args[-1])) {
@@ -2319,7 +2370,7 @@ Value mathRandomNative(int argCount, Value* args) {
         return FLOAT_VAL(r / (m + 1.0));
     }
 
-    // variant 2: single argument or instance method x.randm()
+    // variant 2: single argument or instance method x.random()
     if (argCount == 1 || (argCount == 0 && (IS_INT(args[-1]) || IS_FLOAT(args[-1])))) {
         Value bound = (argCount > 0) ? args[0] : args[-1];
 
@@ -2385,11 +2436,37 @@ Value mathRandomNative(int argCount, Value* args) {
     return FLOAT_VAL(min + r * (max - min));
 }
 
+//@ Math
+//: exp
+// Get exp of number
+// Requires:
+//   Number: val
+// Returns:
+//   Float
+
+//@ Number
+//: exp
+// Get exp of number
+// Returns:
+//   Float
 Value mathExpNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "exp");
     return FLOAT_VAL(exp(val));
 }
 
+//@ Math
+//: hex
+// Get hex string value of number.  Number must be integer, or float that is an exact integer value.
+// Requires:
+//   Number: val
+// Returns:
+//   String: hex value
+
+//@ Integer
+//: hex
+// Get hex string value of an integer.
+// Returns:
+//   String: hex value
 Value hexNative(int argCount, Value* args) {
     uint64_t num;
     int precision = 1;
@@ -2453,6 +2530,19 @@ Value hexNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(buffer, len));
 }
 
+//@ Math
+//: oct
+// Get octal string value of number.  Number must be integer, or float that is an exact integer value.
+// Requires:
+//   Number: val
+// Returns:
+//   String: octal string
+
+//@ Integer
+//: oct
+// Get octal string value of number.
+// Returns:
+//   String: octal string
 Value octNative(int argCount, Value* args) {
     uint64_t num;
     int precision = 1;
@@ -2507,6 +2597,19 @@ Value octNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(buffer, len));
 }
 
+//@ Math
+//: bin
+// Get octal string value of number.  Number must be integer, or float that is an exact integer value.
+// Requires:
+//   Number: val
+// Returns:
+//   String: binary string
+
+//@ Integer
+//: bin
+// Get octal string value of integer.
+// Returns:
+//   String: binary string
 Value binNative(int argCount, Value* args) {
     uint64_t num;
     int min_bits = 1;
@@ -2575,6 +2678,22 @@ Value binNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(buffer, (int)(p - buffer)));
 }
 
+//@ Math
+//: bit_test
+// Test bit x (from right) in value. Returns true if set, false if not.
+// Requires:
+//   Integer: val
+//   Integer: bit
+// Returns:
+//   Bool: true if set
+
+//@ Integer
+//: bit_test
+// Test bit x (from right) in value. Returns true if set, false if not.
+// Requires:
+//   Integer: bit
+// Returns:
+//   Bool: true if set
 Value bitTestNative(int argCount, Value* args) {
     uint64_t num;
     int bit;
@@ -2585,10 +2704,12 @@ Value bitTestNative(int argCount, Value* args) {
     } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
         outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
+        runtimeError("Expected an integer number argument."); \
         return NIL_VAL; \
     }
 
     if (IS_NUMERIC(args[-1])) {
+        // instance / method call context: x.bit_test(bit)
         if (argCount < 1) {
             runtimeError("bit_test requires a bit position argument.");
             return NIL_VAL;
@@ -2599,7 +2720,7 @@ Value bitTestNative(int argCount, Value* args) {
         EXTRACT_INT_VAL(args[0], rawBit);
         bit = (int)rawBit;
     } else {
-        // static call
+        // static call: Math.bit_test(num, bit)
         if (argCount < 2) {
             runtimeError("bit_test requires a target number and a bit position argument.");
             return NIL_VAL;
@@ -2615,9 +2736,25 @@ Value bitTestNative(int argCount, Value* args) {
 
     if (bit < 0 || bit > 63) return BOOL_VAL(false);
 
-    return BOOL_VAL((num >> bit) != 0);
+    return BOOL_VAL(((num >> bit) & 1U) != 0);
 }
 
+//@ Math
+//: min
+// Gets min value between two values
+// Requires:
+//   Number: a
+//   Number: b
+// Returns:
+//   Number: smallest number
+
+//@ Number
+//: min
+// Gets min value between two values
+// Requires:
+//   Number: b
+// Returns:
+//   Number: smallest number
 Value mathMinNative(int argCount, Value* args) {
     Value a, b;
 
@@ -2654,6 +2791,22 @@ Value mathMinNative(int argCount, Value* args) {
     return FLOAT_VAL(fmin(da, db));
 }
 
+//@ Math
+//: max
+// Gets max value between two values
+// Requires:
+//   Number: a
+//   Number: b
+// Returns:
+//   Number: largest number
+
+//@ Number
+//: max
+// Gets max value between two values
+// Requires:
+//   Number: b
+// Returns:
+//   Number: largest number
 Value mathMaxNative(int argCount, Value* args) {
     Value a, b;
 
@@ -2690,6 +2843,23 @@ Value mathMaxNative(int argCount, Value* args) {
     return FLOAT_VAL(fmax(da, db));
 }
 
+//@ Math
+//: parse
+// Parse a string into a Integer or Float, in a specific base (default 10)
+// Requires:
+//   String: str
+// Optional:
+//   Integer: base
+// Returns:
+//   Number
+
+//@ String
+//: parse
+// Parse a string into a Integer or Float, in a specific base (default 10)
+// Optional:
+//   Integer: base
+// Returns:
+//   Number
 Value mathParseNative(int argCount, Value* args) {
     ObjString* strObj = NULL;
     int base = 10;
@@ -2758,6 +2928,19 @@ Value mathParseNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Math
+//: from_hex
+// Converts a hex string to an Integer
+// Requires:
+//   String: val
+// Returns:
+//   Integer
+
+//@ String
+//: from_hex
+// Converts a hex string to an Integer
+// Returns:
+//   Integer
 Value fromHexNative(int argCount, Value* args) {
     ObjString* strObj = NULL;
 
@@ -2785,6 +2968,19 @@ Value fromHexNative(int argCount, Value* args) {
     return FLOAT_VAL((double)result);
 }
 
+//@ Math
+//: from_bin
+// Converts a hex string to an Integer
+// Requires:
+//   String: val
+// Returns:
+//   Integer
+
+//@ String
+//: from_bin
+// Converts a hex string to an Integer
+// Returns:
+//   Integer
 Value fromBinNative(int argCount, Value* args) {
     ObjString* strObj = NULL;
 
@@ -2798,7 +2994,7 @@ Value fromBinNative(int argCount, Value* args) {
         strObj = AS_STRING(args[0]);
     }
 
-    const char* str = AS_CSTRING(args[0]);
+    const char* str = strObj->chars;
 
     // skip "0b" or "0B" prefix if present
     if (str[0] == '0' && (str[1] == 'b' || str[1] == 'B')) {
@@ -2806,7 +3002,7 @@ Value fromBinNative(int argCount, Value* args) {
     }
 
     char* endptr;
-    unsigned long long result = strtoul(str, NULL, 2);
+    unsigned long long result = strtoull(str, &endptr, 2);
 
     if (str == endptr) return NIL_VAL;
 
@@ -2817,6 +3013,23 @@ Value fromBinNative(int argCount, Value* args) {
     return FLOAT_VAL((double)result);
 }
 
+//@ Math
+//: round
+// Round value to specific decimal places, default 0
+// Requires:
+//   Number: val
+// Optional:
+//   Integer: places
+// Returns:
+//   Number: rounded number
+
+//@ Number
+//: round
+// Round value to specific decimal places, default 0
+// Optional:
+//   Integer: places
+// Returns:
+//   Number: rounded number
 Value mathRoundNative(int argCount, Value* args) {
     double val;
     int decimals = 0;
@@ -2835,6 +3048,9 @@ Value mathRoundNative(int argCount, Value* args) {
     }
 
     if (IS_NUMERIC(args[-1])) {
+        if (argCount == 0 && IS_INT(args[-1])) {
+            return args[-1];
+        }
         val = AS_NUMERIC(args[-1]);
         if (argCount >= 1) {
             EXTRACT_DECIMALS(args[0]);
@@ -2851,6 +3067,8 @@ Value mathRoundNative(int argCount, Value* args) {
     }
 #undef EXTRACT_DECIMALS
 
+    if (!isfinite(val)) return FLOAT_VAL(val);
+
     // case 1: no decimal places requested (eg val.round())
     // returns integer if within 64-bit bounds to keep whole numbers typed as integer
     if (!hasDecimals || decimals == 0) {
@@ -2861,12 +3079,20 @@ Value mathRoundNative(int argCount, Value* args) {
         return FLOAT_VAL(rounded);
     }
 
+    if (decimals < 0) {
+        double factor = pow(10.0, -decimals);
+        double rounded = round(val / factor) * factor;
+        return FLOAT_VAL(rounded);
+    }
+
     // case 2: rounding to specific decimal places (eg val.round(2))
-    if (decimals < 0) decimals = 0;
-    if (decimals > 20) decimals = 20;
+    //if (decimals < 0) decimals = 0;
+    //if (decimals > 20) decimals = 20;
+    if (decimals > 15) decimals = 15; // cap at max precision for double
     
-    double factor = pow(10.0, decimals);
-    double rounded = round(val * factor) / factor;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.*f", decimals, val);
+    double rounded = strtod(buf, NULL);
 
     return FLOAT_VAL(rounded);
 }
@@ -2905,6 +3131,8 @@ Value toNumberNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Float
+// Float class, pseudo class for floats, handles IEEE 754 double
 Value toFloatNative(int argCount, Value* args) {
     Value target = NIL_VAL;
 
@@ -2946,16 +3174,58 @@ Value toFloatNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Math
+//: sin
+// Get sin of value
+// Requires:
+//   Number: val
+// Returns:
+//   Float
+
+//@ Number
+//: sin
+// Get sin of value
+// Returns:
+//   Float
 Value mathSinNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "sin");
     return FLOAT_VAL(sin(val));
 }
 
+//@ Math
+//: tan
+// Get tan of value
+// Requires:
+//   Number: val
+// Returns:
+//   Float
+
+//@ Number
+//: tan
+// Get tan of value
+// Returns:
+//   Float
 Value mathTanNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "tan");
     return FLOAT_VAL(tan(val));
 }
 
+//@ Math
+//: atan2
+// Get atan2 of two values
+// Requires:
+//   Number: x
+//   Number: y
+// Returns:
+//   Float
+
+//@ Number
+//: atan2
+// Get atan2 of two values
+// Requires:
+//   Number: x
+// Returns:
+//   Float
 Value mathAtan2Native(int argCount, Value* args) {
     double y, x;
 
@@ -2987,16 +3257,48 @@ Value mathAtan2Native(int argCount, Value* args) {
     return FLOAT_VAL(atan2(y, x));
 }
 
+//@ Math
+//: cos
+// Get cos of value
+// Requires:
+//   Number: val
+// Returns:
+//   Float
+
+//@ Number
+//: cos
+// Get cos of value
+// Returns:
+//   Float
 Value mathCosNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "cos");
     return FLOAT_VAL(cos(val));
 }
 
+//@ Math
+//: acos
+// Get acos of value
+// Requires:
+//   Number: val
+// Returns:
+//   Float
+
+//@ Number
+//: acos
+// Get acos of value
+// Returns:
+//   Float
 Value mathAcosNative(int argCount, Value* args) {
     EXTRACT_MATH_OP(val, "acos");
     return FLOAT_VAL(acos(val));
 }
 
+//@ Number
+//: to_int
+// Converts a number to an integer. Integers stay the same, floats will
+// be converted to ints, with possible truncation.
+// Returns:
+//   Integer
 Value numberToIntNative(int argCount, Value* args) {
     if (IS_INT(args[-1])) return args[-1];
     if (argCount > 0 && IS_INT(args[0])) return args[0];
@@ -3009,6 +3311,22 @@ Value numberToIntNative(int argCount, Value* args) {
     return INT_VAL((int64_t)trunc(val));
 }
 
+//@ Math
+//: to_fixed
+// Get value as a string, rounded to some decimal places
+// Requires:
+//   Number: val
+//   Integer: decimals
+// Returns:
+//   String
+
+//@ Number
+//: to_fixed
+// Get value as a string, rounded to some decimal places
+// Requires:
+//   Integer: decimals
+// Returns:
+//   String
 Value numberToFixedNative(int argCount, Value* args) {
     double val;
     int decimals = 0;
@@ -3062,6 +3380,11 @@ Value numberToFixedNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(buffer, len));
 }
 
+//@ Number
+//: to_string
+// Converts a number to a string
+// Returns:
+//   String
 Value numberToStringNative(int argCount, Value* args) {
     Value target = NIL_VAL;
     bool isInstanceCall = false;
@@ -3175,6 +3498,13 @@ void initMathLibrary() {
     X("swap_delete_at", arraySwapDeleteNative) \
     X("split", arraySplitNative)
 
+//@ Array
+//: push
+// Add value to end of array
+// Requires:
+//   Value: val
+// Returns:
+//   Array
 Value arrayPushNative(int argCount, Value* args) {
     if (argCount < 1) return NIL_VAL;
 
@@ -3185,6 +3515,11 @@ Value arrayPushNative(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+//@ Array
+//: pop
+// Remove value from end of array
+// Returns:
+//   Value: removed value
 Value arrayPopNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
 
@@ -8317,8 +8652,63 @@ Value bufferFillNative(int argCount, Value* args) {
 }
 
 //@ Buffer
+//: write_uint32
+// Write a uint32 value to offset
+// Requires:
+//   Integer: offset
+//   Integer: value
+// Returns:
+//   Integer: next offset
+//
+Value bufferWriteUint32Native(int argCount, Value* args) {
+    if (argCount < 2) {
+        runtimeError("Buffer.writeUint32() expands an offset and a uint32 value.");
+        return NIL_VAL;
+    }
+
+    int64_t offsetVal;
+    if (IS_INT(args[0])) {
+        offsetVal = AS_INT(args[0]);
+    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
+        offsetVal = (int64_t)AS_FLOAT(args[0]);
+    } else {
+        runtimeError("Buffer.writeUint64() expects an integer offset as the first argument.");
+        return NIL_VAL;
+    }
+
+    if (offsetVal < 0) {
+        runtimeError("Buffer offset cannot be negative.");
+        return NIL_VAL;
+    }
+
+    uint64_t val;
+    if (IS_INT(args[1])) {
+        val = AS_INT(args[1]);
+    } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        val = (int64_t)AS_FLOAT(args[1]);
+    } else {
+        runtimeError("Buffer.writeUint64() expects an integer value as the second argument.");
+        return NIL_VAL;
+    }
+
+    ObjBuffer* buf = AS_BUFFER(args[-1]);
+    size_t offset = (size_t)offsetVal;
+
+    if (offset + sizeof(uint32_t) > buf->size) {
+        runtimeError("Buffer write out of bounds.");
+        return NIL_VAL;
+    }
+
+    memcpy(buf->bytes + offset, &val, sizeof(uint32_t));
+    return INT_VAL((int64_t)(offset + sizeof(uint64_t)));
+}
+
+//@ Buffer
 //: write_uint64
 // Write a uint64 value to offset
+// Requires:
+//   Integer: offset
+//   Integer: value
 // Returns:
 //   Integer: next offset
 Value bufferWriteUint64Native(int argCount, Value* args) {
@@ -8447,6 +8837,7 @@ void initBufferClass() {
     defineNativeMethod(vm.bufferClass, "to_string", bufferToStringNative);
     defineNativeMethod(vm.bufferClass, "to_array", bufferToArrayNative);
     defineNativeMethod(vm.bufferClass, "write_uint64", bufferWriteUint64Native);
+    defineNativeMethod(vm.bufferClass, "write_uint32", bufferWriteUint32Native);
     defineNativeMethod(vm.bufferClass, "write_uint8", bufferWriteUint8Native);
     defineNativeMethod(vm.bufferClass, "get_ptr", bufferWriteGetPtrNative);
 }

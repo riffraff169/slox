@@ -1,0 +1,70 @@
+require("stats.lox");
+
+class StatsTest {
+  static assert(condition, message) {
+    if (!condition) {
+      print "❌ FAIL: " + message;
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static assertAlmostEqual(actual, expected, tolerance, message) {
+    var diff = actual - expected;
+    if (diff < 0) diff = -diff;
+    if (diff > tolerance) {
+      print "❌ FAIL: " + message + " (Expected ~" + expected + ", got " + actual + ")";
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static run() {
+    print "--- Running Stats Test Suite ---";
+
+    var data = [10, 12, 23, 23, 16, 23, 21, 16];
+    // Sum: 144
+    // Count: 8
+    // Mean: 18.0
+    // Sample Variance: 24.0
+    // Sample StdDev: ~4.898979
+
+    // 1. Basic Reductions & Aggregations
+    StatsTest.assert(Stats.sum(data) == 144, "Stats.sum()");
+    StatsTest.assert(Stats.mean(data) == 18.0, "Stats.mean()");
+    StatsTest.assert(Stats.min(data) == 10, "Stats.min()");
+    StatsTest.assert(Stats.max(data) == 23, "Stats.max()");
+
+    // 2. Dispersion Tests (Sample vs Population)
+    StatsTest.assertAlmostEqual(Stats.variance(data, true), 27.4286, 0.0001, "Stats.variance(sample)");
+    StatsTest.assertAlmostEqual(Stats.variance(data, false), 24.0, 0.0001, "Stats.variance(population)");
+    StatsTest.assertAlmostEqual(Stats.stdDev(data, true), 5.23723, 0.0001, "Stats.stdDev()");
+
+    // 3. Standardization (Z-score transformed array should have mean ~0 and stdDev ~1)
+    var zScores = Stats.standardize(data);
+    StatsTest.assertAlmostEqual(Stats.mean(zScores), 0.0, 0.0001, "Stats.standardize() mean is 0");
+    StatsTest.assertAlmostEqual(Stats.stdDev(zScores, true), 1.0, 0.0001, "Stats.standardize() stdDev is 1");
+
+    // 4. Two-Array Operations (Dot Product & Correlation)
+    var x = [1, 2, 3, 4, 5];
+    var y = [2, 4, 6, 8, 10]; // Perfect positive linear relationship (r = 1.0)
+    var z = [5, 4, 3, 2, 1];  // Perfect negative linear relationship (r = -1.0)
+
+    // Dot product: 1*2 + 2*4 + 3*6 + 4*8 + 5*10 = 2 + 8 + 18 + 32 + 50 = 110
+    StatsTest.assert(Stats.dotProduct(x, y) == 110, "Stats.dotProduct()");
+
+    // Pearson Correlation (r)
+    StatsTest.assertAlmostEqual(Stats.correlation(x, y), 1.0, 0.0001, "Stats.correlation() positive linear");
+    StatsTest.assertAlmostEqual(Stats.correlation(x, z), -1.0, 0.0001, "Stats.correlation() negative linear");
+
+    // 5. Edge Cases
+    StatsTest.assert(Stats.sum([]) == 0, "Empty array sum");
+    StatsTest.assert(Stats.mean([]) == 0, "Empty array mean");
+    StatsTest.assert(Stats.min([]) == nil, "Empty array min");
+    StatsTest.assert(Stats.dotProduct([1, 2], [1, 2, 3]) == nil, "Mismatched length dotProduct handling");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+StatsTest.run();

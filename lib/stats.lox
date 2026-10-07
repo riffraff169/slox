@@ -1,0 +1,87 @@
+class Stats {
+  static sum(arr) {
+    return arr.reduce(0, fun(acc, val) { return acc + val; } );
+  }
+
+  static mean(arr) {
+    if (arr.length() == 0) return 0;
+    return Stats.sum(arr) / arr.length();
+  }
+
+  static variance(arr, isSample) {
+    if (arr.length() < 2) return 0;
+    var avg = Stats.mean(arr);
+
+    var sqDiffSum = arr
+      .map(fun(x) { var d = x - avg; return d * d; })
+      .reduce(0, fun(acc, v) { return acc + v; });
+
+    var divisor = isSample ? (arr.length() - 1) : arr.length();
+    return sqDiffSum / divisor;
+  }
+
+  static stdDev(arr, isSample) {
+    return Math.sqrt(Stats.variance(arr, isSample));
+  }
+
+  static min(arr) {
+    if (arr.length() == 0) return nil;
+    return arr.reduce(arr[0], fun(min, val) { return val < min ? val : min; });
+  }
+
+  static max(arr) {
+    if (arr.length() == 0) return nil;
+    return arr.reduce(arr[0], fun(max, val) { return val > max ? val : max; });
+  }
+
+  // z-score
+  static standardize(arr) {
+    var avg = Stats.mean(arr);
+    var sd = Stats.stdDev(arr, true);
+    if (sd == 0) return arr;
+
+    return arr.map(fun(x) { return (x - avg) / sd; });
+  }
+
+  static dotProduct(a, b) {
+    if (a.length() != b.length()) return nil;
+
+    return a
+      .zipWith(b, fun(x, y) { return x * y; })
+      .reduce(0, fun(acc, v) { return acc + v; });
+  }
+
+  static covariance(a, b) {
+    if (a.length() != b.length() or a.length() < 2) return 0;
+
+    var meanA = Stats.mean(a);
+    var meanB = Stats.mean(b);
+
+    var diffProdSum = a
+      .zipWith(b, fun(x, y) { return (x - meanA) * (y - meanB); })
+      .reduce(0, fun(acc, v) { return acc + v; });
+
+    return diffProdSum / (a.length() - 1);
+  }
+
+  static correlation(a, b) {
+    if (a.length() != b.length() or a.length() < 2) return 0;
+
+    var sdA = Stats.stdDev(a, true);
+    var sdB = Stats.stdDev(b, true);
+    
+    if (sdA == 0 or sdB == 0) return 0;
+
+    return Stats.covariance(a, b) / (sdA * sdB);
+  }
+}
+
+class Array {
+  sum() { return Stats.sum(this); }
+  mean() { return Stats.mean(this); }
+  variance(sample) { return Stats.variance(this, sample); }
+  stdDev(sample) { return Stats.stdDev(this, sample); }
+  standardize() { return Stats.standardize(this); }
+  dotProduct(other) { return Stats.dotProduct(this, other); }
+  correlation(other) { return Stats.correlation(this, other); }
+}

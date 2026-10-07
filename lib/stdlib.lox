@@ -690,3 +690,17 @@ class Struct {
 
 // Shortcut for System.exit()
 var exit = System.exit;
+
+class Array {
+  zipWith(other, transformFn) {
+    var result = [];
+    var limit = this.length();
+    if (other.length() < limit) limit = other.length();
+
+    for (var i = 0; i < limit; i += 1) {
+      result.push(transformFn(this[i], other[i]));
+    }
+
+    return result;
+  }
+}
