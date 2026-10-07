@@ -1,0 +1,39 @@
+require("stats.lox");
+
+class FreqAndModeTest {
+  static assert(condition, message) {
+    if (!condition) {
+      print "❌ FAIL: " + message;
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static run() {
+    print "--- Running Frequency & Mode Test Suite ---";
+
+    // 1. Unimodal Test
+    var data1 = [1, 2, 2, 3, 3, 3, 4];
+    var mode1 = data1.mode();
+    FreqAndModeTest.assert(mode1.length() == 1, "Single mode count");
+    FreqAndModeTest.assert(mode1[0] == 3, "Correct single mode value");
+
+    // 2. Multimodal Test (Bimodal)
+    var data2 = [1, 1, 2, 2, 3];
+    var mode2 = data2.mode();
+    FreqAndModeTest.assert(mode2.length() == 2, "Bimodal count");
+
+    // 3. No Mode Test (all distinct)
+    var data3 = [1, 2, 3, 4, 5];
+    var mode3 = data3.mode();
+    FreqAndModeTest.assert(mode3.length() == 0, "No mode detected for distinct array");
+
+    // 4. Frequency Map Test
+    var freq = data1.frequency();
+    FreqAndModeTest.assert(freq[3] == 3, "Frequency count for key '3'");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+FreqAndModeTest.run();

@@ -1,0 +1,66 @@
+// benchmark_test.lox
+require("benchmark.lox");
+
+/*
+fun benchmark(fn) {
+  var start = System.systime();
+  fn();
+  var end = System.systime();
+
+  return {
+    "real": end["real"] - start["real"],
+    "user": end["user"] - start["user"],
+    "sys":  end["sys"]  - start["sys"]
+  };
+}
+*/
+
+/*
+fun printResults(name, stats) {
+  print "========================================";
+  print " Test: " + name;
+  print "----------------------------------------";
+  print "  Real: " + String(stats["real"]) + "s";
+  print "  User: " + String(stats["user"]) + "s";
+  print "  Sys:  " + String(stats["sys"])  + "s";
+  print "========================================\n";
+}
+*/
+
+// -----------------------------------------------------------------------------
+// Test 1: High CPU Usage (User time heavy)
+// Array allocation and string conversions in a tight loop.
+// -----------------------------------------------------------------------------
+var cpuStats = benchmark(fun() {
+  var list = [];
+  for (var i = 0; i < 500000; i += 1) {
+    list.push(String(i));
+  }
+});
+printBenchmark("CPU / Allocation Workload", cpuStats);
+
+// -----------------------------------------------------------------------------
+// Test 2: I/O Intensive Workload (Sys time heavy)
+// Rapidly writing and flushing to disk to trigger kernel context switches.
+// -----------------------------------------------------------------------------
+var ioStats = benchmark(fun() {
+  var testPath = "/tmp/slox_bench_test.tmp";
+  var lines = [];
+  for (var i = 0; i < 5000; i += 1) {
+    lines.push("Line " + String(i) + ": testing kernel sys time overhead\n");
+  }
+  
+  // Write out to disk via file helper
+  File.save(testPath, lines.join(""));
+});
+printBenchmark("Disk I/O Workload", ioStats);
+
+// -----------------------------------------------------------------------------
+// Test 3: Synthetic Sleep (Real time heavy, minimal CPU)
+// Real time ticks forward while User/Sys remain near zero.
+// -----------------------------------------------------------------------------
+var sleepStats = benchmark(fun() {
+  // If System.sleep is available:
+  System.sleep(0.5); // Sleep 500ms
+});
+printBenchmark("System Sleep (0.5s)", sleepStats);

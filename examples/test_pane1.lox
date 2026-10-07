@@ -1,0 +1,38 @@
+import "ffi";
+require("notcurses.lox");
+require("scrollbox.lox");
+
+fun drawMainFrame(nc, plane, title = "") {
+  var dim = plane.get_dim();
+  var h = dim[0];
+  var w = dim[1];
+
+  plane.erase();
+  plane.box();
+
+  if (title.length() > 0) {
+    var titleText = " " + title + " ";
+    var startX = (w - titleText.length()) / 2;
+    plane.put_str(0, startX, titleText);
+  }
+  nc.render();
+}
+
+var nc = Notcurses();
+var stdplane = nc.get_stdplane();
+drawMainFrame(nc, stdplane, " SMPlayer Playlist Manager ");
+
+var dim = stdplane.get_dim();
+var leftWidth = (dim[1] / 2) - 2;
+var rightWidth = (dim[1] / 2) - 2;
+var paneHeight = dim[0] - 6;
+
+var libraryBox = Scrollbox(nc, stdplane, 3, 2, leftWidth, paneHeight, ["a", "b", "c"]);
+libraryBox.render();
+
+nc.render();
+at_exit(fun() { nc.stop(); });
+//nc.render();
+System.sleep(5);
+
+//nc.stop();

@@ -1,0 +1,40 @@
+require("stats.lox");
+
+class OutlierTest {
+  static assert(condition, message) {
+    if (!condition) {
+      print "❌ FAIL: " + message;
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static run() {
+    print "--- Running Outlier Detection Test Suite ---";
+
+    // Dataset with clear extreme outliers at -100 and 1000
+    var data = [10, 12, 11, 14, 13, 15, 12, 11, 13, -100, 1000];
+
+    // 1. IQR Outlier Filtering
+    var iqrOutliers = data.outliersIQR(1.5);
+    OutlierTest.assert(iqrOutliers.length() == 2, "IQR outlier count (k=1.5)");
+    OutlierTest.assert(iqrOutliers[0] == -100, "IQR detected low outlier");
+    OutlierTest.assert(iqrOutliers[1] == 1000, "IQR detected high outlier");
+
+    // 2. Z-Score Outlier Filtering
+    var zOutliers = data.outliersZScore(2.0);
+    OutlierTest.assert(zOutliers.length() == 1, "Z-Score outlier count (threshold=2.0)");
+    OutlierTest.assert(zOutliers[0] == 1000, "Z-Score detected high outlier");
+
+    // 3. Boolean Outlier Mask
+    var mask = data.isOutlier(1.5);
+    OutlierTest.assert(mask.length() == data.length(), "Outlier mask length matches input");
+    OutlierTest.assert(mask[9] == true, "Outlier mask flags index 9 (-100)");
+    OutlierTest.assert(mask[10] == true, "Outlier mask flags index 10 (1000)");
+    OutlierTest.assert(mask[0] == false, "Outlier mask clears normal value (index 0)");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+OutlierTest.run();

@@ -1,0 +1,20 @@
+// test_sysstats.lox
+require("benchmark.lox");
+
+var res = benchmark(fun() {
+  var data = [];
+  for (var i = 0; i < 300000; i += 1) {
+    data.push(String(i));
+  }
+});
+
+print "========================================";
+print " Benchmark Results";
+print "----------------------------------------";
+print " Real Time : " + String(res["real"]) + "s";
+print " User Time : " + String(res["user"]) + "s";
+print " Sys Time  : " + String(res["sys"])  + "s";
+print " Peak RAM  : " + String(res["maxrss"] / 1024.0) + " MB";
+print " Soft Faults: " + String(res["minflt"]);
+print " Ctx Switch: " + String(res["nvcsw"]);
+print "========================================";

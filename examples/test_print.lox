@@ -1,0 +1,35 @@
+// [Test 1] Control characters: newlines, tabs, and carriage returns
+var str1 = "Line 1\nLine 2\tIndented\rDone";
+print "[1] Control characters:";
+print str1;
+
+// [Test 2] Escaped quotes and backslashes
+var str2 = "Say \"hello\" \\ path";
+print "[2] Quotes and backslashes:";
+print str2;
+
+// [Test 3] String containing embedded null bytes evaluated dynamically
+// If print uses strlen() or standard %s, this truncates at "foo"
+var str3 = eval("\"foo\\0bar\"");
+print "[3] Embedded null byte string:";
+print str3;
+
+// [Test 4] Binary / Non-printable bytes evaluated via hex/octal escapes
+var bytes = [0x01, 0x1f, 0x7f, 0xff];
+var rawStr = bytes.to_string();
+print "[1] String length check:";
+print rawStr.length(); // expect: 4
+
+print "[2] Indexed byte values:";
+print rawStr[0]; // expect: 1
+print rawStr[1]; // expect: 31
+print rawStr[2]; // expect: 127
+print rawStr[3]; // expect: 255
+
+// [Test 3] Strings with embedded null bytes via array conversion
+var nullBytes = [102, 111, 111, 0, 98, 97, 114]; // "foo\0bar"
+var nullStr = nullBytes.to_string();
+
+print "[3] Embedded null string length:";
+print nullStr.length(); // expect: 7
+print nullStr;

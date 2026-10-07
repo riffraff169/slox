@@ -1,0 +1,52 @@
+require("stats.lox");
+
+class NewFeaturesTest {
+  static assert(condition, message) {
+    if (!condition) {
+      print "❌ FAIL: " + message;
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static assertAlmostEqual(actual, expected, tolerance, message) {
+    var diff = actual - expected;
+    if (diff < 0) diff = -diff;
+    if (diff > tolerance) {
+      print "❌ FAIL: " + message + " (Expected ~" + expected + ", got " + actual + ")";
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static run() {
+    print "--- Running New Methods Test Suite ---";
+
+    // 1. Array.chunk()
+    var nums = [1, 2, 3, 4, 5, 6, 7];
+    var chunks = nums.chunk(3); // Expect [[1,2,3], [4,5,6], [7]]
+    NewFeaturesTest.assert(chunks.length() == 3, "chunk() output group count");
+    NewFeaturesTest.assert(chunks[0].length() == 3, "chunk() full group 1 size");
+    NewFeaturesTest.assert(chunks[2].length() == 1, "chunk() remainder group size");
+    NewFeaturesTest.assert(chunks[2][0] == 7, "chunk() remainder element value");
+
+    // 2. Array.partition()
+    var parts = nums.partition(fun(x) { return x % 2 == 0; });
+    // Expect parts[0] = [2, 4, 6] (evens), parts[1] = [1, 3, 5, 7] (odds)
+    NewFeaturesTest.assert(parts[0].length() == 3, "partition() true group count");
+    NewFeaturesTest.assert(parts[1].length() == 4, "partition() false group count");
+    NewFeaturesTest.assert(parts[0][0] == 2, "partition() true values match");
+
+    // 3. Linear Regression (y = 2x + 3)
+    var x = [1, 2, 3, 4, 5];
+    var y = [5, 7, 9, 11, 13];
+
+    NewFeaturesTest.assertAlmostEqual(x.slope(y), 2.0, 0.0001, "Array.slope()");
+    NewFeaturesTest.assertAlmostEqual(x.intercept(y), 3.0, 0.0001, "Array.intercept()");
+    NewFeaturesTest.assertAlmostEqual(x.predict(y, 10), 23.0, 0.0001, "Array.predict() x=10");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+NewFeaturesTest.run();

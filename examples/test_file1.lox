@@ -1,0 +1,5 @@
+fun test() {
+  print __FILE__ + ":" + __LINE__ + " in " + __FUNC__;
+}
+
+test();

@@ -703,4 +703,50 @@ class Array {
 
     return result;
   }
+
+  chunk(size) {
+    if (size <= 0) return [];
+    var result = [];
+    var current = [];
+    var len = this.length();
+
+    for (var i = 0; i < len; i += 1) {
+      current.push(this[i]);
+      if (current.length() == size) {
+        result.push(current);
+        current = [];
+      }
+    }
+
+    if (current.length() > 0) {
+      result.push(current);
+    }
+
+    return result;
+  }
+
+  partition(predicate) {
+    var pass = [];
+    var fail = [];
+    var len = this.length();
+
+    for (var i = 0; i < len; i += 1) {
+      var item = this[i];
+      if (predicate(item)) {
+        pass.push(item);
+      } else {
+        fail.push(item);
+      }
+    }
+
+    return [pass, fail];
+  }
+}
+
+class Set {
+  static multiset() {
+    var s = Set();
+    s.set_multiset();
+    return s;
+  }
 }

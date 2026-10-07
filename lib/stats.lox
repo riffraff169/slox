@@ -74,14 +74,210 @@ class Stats {
 
     return Stats.covariance(a, b) / (sdA * sdB);
   }
+
+  // Linear Regression Slope (m in y = mx + b)
+  static slope(x, y) {
+    var varX = Stats.variance(x, true);
+    if (varX == 0) return 0;
+
+    return Stats.covariance(x, y) / varX;
+  }
+
+  // Linear Regression Y-Intercept (b in y = mx + b)
+  static intercept(x, y) {
+    var m = Stats.slope(x, y);
+    return Stats.mean(y) - (m * Stats.mean(x));
+  }
+
+  // Predicts y value for a given x using simple linear regression
+  static predict(x, y, targetX) {
+    var m = Stats.slope(x, y);
+    var b = Stats.intercept(x, y);
+    return (m * targetX) + b;
+  }
+
+  // Simple Moving Average with window size k
+  static sma(arr, k) {
+    if (k <= 0 or k > arr.length() or arr.length == 0) return [];
+    var result = [];
+    var windowSum = arr.slice(0, k).sum();
+    result.push(windowSum / k);
+
+    var len = arr.length();
+    for (var i = k; i < len; i += 1) {
+      windowSum = windowSum - arr[i - k] + arr[i];
+      result.push(windowSum / k);
+    }
+
+    return result;
+  }
+
+  // Exponential Moving Average with smooting multiplier alpha (0 < alpha <= 1)
+  // If alpha is nil/omitted, defaults to standard formula: 2 / (k + 1)
+  static ema(arr, k, alpha = nil) {
+    if (k <= 0 or k > arr.length() or arr.length() == 0) return [];
+    if (alpha == nil) alpha = 2.0 / (k + 1.0);
+
+    // Initial seed is the sma of the first k elements
+    var seedSMA = Stats.mean(arr.slice(0, k));
+    var result = [seedSMA];
+
+    var currentEMA = seedSMA;
+    var len = arr.length();
+    for (var i = k; i < len; i += 1) {
+      currentEMA = (arr[i] * alpha) + (currentEMA * (1.0 - alpha));
+      result.push(currentEMA);
+    }
+
+    return result;
+  }
+
+  // Linear interpolation percentile (p from 0 to 100)
+  static percentile(arr, p = 50) {
+    if (arr.length() == 0) return nil;
+    if (p <= 0) return Stats.min(arr);
+    if (p >= 100) return Stats.max(arr);
+
+    var sorted = arr.dup().sort();
+    var rank = (p / 100.0) * (sorted.length() - 1);
+    var index = Math.floor(rank);
+    var fraction = rank - index;
+
+    if (index >= sorted.length() - 1) return sorted[sorted.length() - 1];
+
+    return sorted[index] + fraction * (sorted[index + 1] - sorted[index]);
+  }
+
+  static p90(arr) { return Stats.percentile(arr, 90); }
+  static p95(arr) { return Stats.percentile(arr, 95); }
+  static p99(arr) { return Stats.percentile(arr, 99); }
+
+  // Interquartile Range (Q3 - Q1)
+  static iqr(arr) {
+    if (arr.length() < 2) return 0;
+    var q1 = Stats.percentile(arr, 25);
+    var q3 = Stats.percentile(arr, 75);
+    return q3 - q1;
+  }
+
+  // Detect outliers using IQR (Tukey's Fences)
+  // Returns array of outlier values. k defaults to 1.5
+  static outliersIQR(arr, k = 1.5) {
+    if (arr.length() < 4) return [];
+
+    var q1 = Stats.percentile(arr, 25);
+    var q3 = Stats.percentile(arr, 75);
+    var iqr = q3 - q1;
+
+    var lowerBound = q1 - (k * iqr);
+    var upperBound = q3 + (k * iqr);
+
+    return arr.filter(fun(val) {
+        return val < lowerBound or val > upperBound;
+        });
+  }
+
+  // Detect outliers using Z-Score threshold
+  // Returns array of outlier values. threshold defaults to 3.0
+  static outliersZScore(arr, threshold = 3.0) {
+    if (arr.length() < 2) return [];
+
+    var avg = Stats.mean(arr);
+    var sd = Stats.stdDev(arr, true);
+    if (sd == 0) return [];
+
+    //var outliers = [];
+    //var len = arr.length();
+    return arr.filter(fun(val) {
+        var z = (val - avg) / sd;
+        if (z < 0) z = -z;
+        return z > threshold;
+        });
+  }
+
+  // Returns array of booleans [true, false, ...] matching input array indices
+  static isOutlier(arr, k = 1.5) {
+    if (arr.length() < 4) return [];
+    
+    var q1 = Stats.percentile(arr, 25);
+    var q3 = Stats.percentile(arr, 75);
+    var iqr = q3 - q1;
+
+    var lowerBound = q1 - (k * iqr);
+    var upperBound = q3 + (k * iqr);
+
+    return arr.map(fun(val) {
+        return val < lowerBound or val > upperBound;
+        });
+  }
+
+  // Counts occurrences of each distinct element
+  static frequency(arr) {
+    var freqs = Set.multiset();
+    var len = arr.length();
+
+    for (var i = 0; i < len; i += 1) {
+      freqs.add(arr[i]);
+    }
+    return freqs;
+  }
+
+  // Returns array of modes (handles unimodal, multimodal, or no mode)
+  static mode(arr) {
+    if (arr.length() == 0) return [];
+
+    var maxCount = 0;
+    var counts = Set.multiset();
+    var len = arr.length();
+
+    // 1. Caluclate frequencies and trax max count
+    for (var i = 0; i < len; i += 1) {
+      counts.add(arr[i]);
+
+      if (counts[arr[i]] > maxCount)
+        maxCount = counts[arr[i]];
+    }
+
+    // If max count is 1, no value repeats (no mode)
+    if (maxCount == 1) return [];
+
+    // 2. Extract keys that hit max frequency
+    var modes = [];
+    var keys = counts.keys();
+    var numKeys = keys.length();
+
+    for (var i = 0; i < numKeys; i += 1) {
+      var k = keys[i];
+      if (counts[k] == maxCount) {
+        modes.push(k);
+      }
+    }
+
+    return modes;
+  }
 }
 
 class Array {
-  sum() { return Stats.sum(this); }
-  mean() { return Stats.mean(this); }
-  variance(sample) { return Stats.variance(this, sample); }
-  stdDev(sample) { return Stats.stdDev(this, sample); }
-  standardize() { return Stats.standardize(this); }
-  dotProduct(other) { return Stats.dotProduct(this, other); }
-  correlation(other) { return Stats.correlation(this, other); }
+  sum()                   { return Stats.sum(this); }
+  mean()                  { return Stats.mean(this); }
+  variance(sample)        { return Stats.variance(this, sample); }
+  stdDev(sample)          { return Stats.stdDev(this, sample); }
+  standardize()           { return Stats.standardize(this); }
+  dotProduct(other)       { return Stats.dotProduct(this, other); }
+  correlation(other)      { return Stats.correlation(this, other); }
+  slope(other)            { return Stats.slope(this, other); }
+  intercept(other)        { return Stats.intercept(this, other); }
+  predict(other, targetX) { return Stats.predict(this, other, targetX); }
+  sma(k)                  { return Stats.sma(this, k); }
+  ema(k, alpha = nil)     { return Stats.ema(this, k, alpha); }
+  percentile(p)           { return Stats.percentile(this, p); }
+  p90()                   { return Stats.p90(this); }
+  p95()                   { return Stats.p95(this); }
+  p99()                   { return Stats.p99(this); }
+  iqr()                   { return Stats.iqr(this); }
+  outliersIQR(k = 1.5)    { return Stats.outliersIQR(this, k); }
+  outliersZScore(thresh = 3.0) { return Stats.outliersZScore(this, thresh); }
+  isOutlier(k = 1.5)      { return Stats.isOutlier(this, k); }
+  frequency()             { return Stats.frequency(this); }
+  mode()                  { return Stats.mode(this); }
 }

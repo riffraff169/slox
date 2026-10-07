@@ -1,0 +1,66 @@
+require("stats.lox");
+
+class MovingAvgAndPercentileTest {
+  static assertAlmostEqual(actual, expected, tolerance, message) {
+    var diff = actual - expected;
+    if (diff < 0) diff = -diff;
+    if (diff > tolerance) {
+      print "❌ FAIL: " + message + " (Expected ~" + expected + ", got " + actual + ")";
+    } else {
+      print "✅ PASS: " + message;
+    }
+  }
+
+  static assertArrayAlmostEqual(actual, expected, tolerance, message) {
+    if (actual.length() != expected.length()) {
+      print "❌ FAIL: " + message + " (Length mismatch: got " + actual.length() + ", expected " + expected.length() + ")";
+      return;
+    }
+    for (var i = 0; i < actual.length(); i = i + 1) {
+      var diff = actual[i] - expected[i];
+      if (diff < 0) diff = -diff;
+      if (diff > tolerance) {
+        print "❌ FAIL: " + message + " (Mismatch at index " + i + ": got " + actual[i] + ", expected " + expected[i] + ")";
+        return;
+      }
+    }
+    print "✅ PASS: " + message;
+  }
+
+  static run() {
+    print "--- Running Moving Averages & Percentiles Test Suite ---";
+
+    var series = [10, 20, 30, 40, 50, 60];
+
+    // 1. Simple Moving Average (window = 3)
+    // [ (10+20+30)/3, (20+30+40)/3, (30+40+50)/3, (40+50+60)/3 ] = [20, 30, 40, 50]
+    MovingAvgAndPercentileTest.assertArrayAlmostEqual(series.sma(3), [20, 30, 40, 50], 0.0001, "Array.sma(3)");
+
+    // 2. Exponential Moving Average (window = 3, alpha = 0.5)
+    // Seed = mean(10,20,30) = 20
+    // Next (40): (40 * 0.5) + (20 * 0.5) = 30
+    // Next (50): (50 * 0.5) + (30 * 0.5) = 40
+    // Next (60): (60 * 0.5) + (40 * 0.5) = 50
+    MovingAvgAndPercentileTest.assertArrayAlmostEqual(series.ema(3, 0.5), [20, 30, 40, 50], 0.0001, "Array.ema(3, 0.5)");
+
+    // 3. Percentiles & Interpolation
+    // Dataset 1..100
+    var data = [];
+    for (var i = 1; i <= 100; i = i + 1) {
+      data.push(i);
+    }
+
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.percentile(25), 25.75, 0.0001, "Percentile 25 (Q1)");
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.percentile(50), 50.5, 0.0001, "Percentile 50 (Median)");
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.percentile(75), 75.25, 0.0001, "Percentile 75 (Q3)");
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.iqr(), 49.5, 0.0001, "Interquartile Range (IQR)");
+
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.p90(), 90.1, 0.0001, "Array.p90()");
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.p95(), 95.05, 0.0001, "Array.p95()");
+    MovingAvgAndPercentileTest.assertAlmostEqual(data.p99(), 99.01, 0.0001, "Array.p99()");
+
+    print "--- Test Suite Complete ---";
+  }
+}
+
+MovingAvgAndPercentileTest.run();
