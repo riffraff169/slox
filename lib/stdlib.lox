@@ -744,7 +744,7 @@ class Array {
 }
 
 class Set {
-  static multiset() {
+  static multiset(arr = nil) {
     var s = Set();
     s.set_multiset();
     return s;

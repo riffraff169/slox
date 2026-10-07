@@ -8,7 +8,7 @@ class Stats {
     return Stats.sum(arr) / arr.length();
   }
 
-  static variance(arr, isSample) {
+  static variance(arr, isSample = true) {
     if (arr.length() < 2) return 0;
     var avg = Stats.mean(arr);
 
@@ -20,7 +20,7 @@ class Stats {
     return sqDiffSum / divisor;
   }
 
-  static stdDev(arr, isSample) {
+  static stdDev(arr, isSample = true) {
     return Math.sqrt(Stats.variance(arr, isSample));
   }
 
@@ -255,6 +255,87 @@ class Stats {
 
     return modes;
   }
+
+  static linearRegression(xArr, yArr) {
+    if (xArr.length() != yArr.length() or xArr.length() < 2) return nil;
+
+    var cov =  Stats.covariance(xArr, yArr);
+    var varX = Stats.variance(xArr, true);
+
+    // Vertical line or no variance in X
+    if (varX == 0) return nil;
+
+    var slope = cov / varX;
+    var intercept = Stats.mean(yArr) - (slope * Stats.mean(xArr));
+
+    // Pearson r and R-squared
+    var r = 0;
+    var stdX = Stats.stdDev(xArr, true);
+    var stdY = Stats.stdDev(yArr, true);
+    if (stdX > 0 and stdY > 0) {
+      r = cov / (stdX * stdY);
+    }
+
+    var res = {};
+    res["slope"] = slope;
+    res["intercept"] = intercept;
+    res["r"] = r;
+    res["r2"] = r * r;
+
+    return res;
+  }
+
+  static predictY(x, regResult) {
+    if (regResult == nil) return nil;
+    return (regResult["slope"] * x) + regResult["intercept"];
+  }
+
+  // Private helper to convert an array of numbers to an array of ranks
+  // Handles tied ranks by averaging them
+  static _rankArray(arr) {
+    var len = arr.length();
+    var indexed = [];
+    for (var i = 0; i < len; i += 1) {
+      var item = {};
+      item["val"] = arr[i];
+      item["idx"] = i;
+      indexed.push(item);
+    }
+
+    indexed.sort(fun(a, b) { return a["val"] - b["val"]; });
+
+    var ranks = [0; len];
+
+    var i = 0;
+    while (i < len) {
+      var j = i;
+      var sumRanks = 0;
+
+      while (j < len and indexed[j]["val"] == indexed[i]["val"]) {
+        sumRanks += (j + 1);
+        j += 1;
+      }
+
+      var avgRank = sumRanks / (j - i);
+      for (var k = i; k < j; k += 1) {
+        ranks[indexed[k]["idx"]] = avgRank;
+      }
+
+      i = j;
+    }
+
+    return ranks;
+  }
+
+
+  static spearman(xArr, yArr) {
+    if (xArr.length() != yArr.length() or xArr.length() <  2) return 0;
+
+    var xRanks = Stats._rankArray(xArr);
+    var yRanks = Stats._rankArray(yArr);
+
+    return Stats.correlation(xRanks, yRanks);
+  }
 }
 
 class Array {
@@ -265,6 +346,7 @@ class Array {
   standardize()           { return Stats.standardize(this); }
   dotProduct(other)       { return Stats.dotProduct(this, other); }
   correlation(other)      { return Stats.correlation(this, other); }
+  covariance(other)       { return Stats.covariance(this, other); }
   slope(other)            { return Stats.slope(this, other); }
   intercept(other)        { return Stats.intercept(this, other); }
   predict(other, targetX) { return Stats.predict(this, other, targetX); }
@@ -280,4 +362,6 @@ class Array {
   isOutlier(k = 1.5)      { return Stats.isOutlier(this, k); }
   frequency()             { return Stats.frequency(this); }
   mode()                  { return Stats.mode(this); }
+  linearRegression(yArr)  { return Stats.linearRegression(this, yArr); }
+  spearman(other)         { return Stats.spearman(this, other); }
 }

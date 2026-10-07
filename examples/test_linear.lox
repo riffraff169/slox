@@ -1,0 +1,20 @@
+require("stats.lox");
+
+// Test Linear Regression
+var x = [1, 2, 3, 4, 5];
+var y = [2, 4, 5, 4, 5];
+
+var reg = Stats.linearRegression(x, y);
+print "Slope: " + reg["slope"];         // Expect ~0.6
+print "Intercept: " + reg["intercept"]; // Expect ~2.2
+print "R2: " + reg["r2"];               // Expect ~0.6
+
+var yHat = Stats.predictY(6, reg);
+print "Predicted Y for X=6: " + yHat;   // Expect ~5.8
+
+// Test Spearman Rank Correlation
+var xRank = [10, 20, 30, 40, 50];
+var yMonotonic = [1, 10, 100, 1000, 10000]; // Non-linear, perfectly monotonic
+
+print "Pearson: " + Stats.correlation(xRank, yMonotonic); // Lower due to exponential curve
+print "Spearman: " + Stats.spearman(xRank, yMonotonic);   // Expect 1.0 (perfect rank match)

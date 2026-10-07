@@ -4051,20 +4051,38 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
     push(valA);
     push(valB);
 
-    Value* stackStart = vm.stackTop;
+    //Value* stackStart = vm.stackTop;
     int oldExitDepth = vm.nativeExitDepth;
     vm.nativeExitDepth = vm.frameCount;
 
+    int resultCmp = 0;
+
     if (vmCall(callback, 2)) {
         InterpretResult state = run();
+        if (state == INTERPRET_OK) {
+
+            /*
         if (state == INTERPRET_RUNTIME_ERROR) {
             vm.stackTop = comparisonStackBase;
             vm.nativeExitDepth = oldExitDepth;
             return 0;
         }
+        */
 
-        Value result = pop();
+            Value result = pop();
 
+            if (IS_INT(result)) {
+                int64_t val = AS_INT(result);
+                resultCmp = (val > 0) - (val < 0);
+            } else if (IS_FLOAT(result)) {
+                double val = AS_FLOAT(result);
+                resultCmp = (val > 0) - (val < 0);
+            } else if (IS_BOOL(result)) {
+                resultCmp = AS_BOOL(result) ? -1 : 1;
+            }
+        }
+
+        /*
         vm.stackTop = comparisonStackBase;
 
         if (IS_INT(result)) {
@@ -4078,16 +4096,19 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
         if (IS_BOOL(result)) {
             return AS_BOOL(result) ? -1 : 1;
         }
+        */
     }
     vm.stackTop = comparisonStackBase;
-    return 0;
+    vm.nativeExitDepth = oldExitDepth;
+    return resultCmp;
+    //return 0;
 }
 
 Value arraySortNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     if (array->count < 2) return args[-1];
 
-    if (argCount >= 2 && IS_CLOSURE(args[0])) {
+    if (argCount >= 1 && IS_CLOSURE(args[0])) {
         qsort_r(array->values, array->count, sizeof(Value),
                 loxSortComparator, AS_CLOSURE(args[0]));
     } else {

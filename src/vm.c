@@ -2072,7 +2072,7 @@ bool invoke(ObjString* name, int argCount) {
                     argCount++;
                 } else {
                     if (argCount != closure->function->arity) {
-                        runtimeError("Expected %d arguments, but got %s.", closure->function->arity, argCount);
+                        runtimeError("Expected %d arguments, but got %d.", closure->function->arity, argCount);
                         return false;
                     }
                 }
