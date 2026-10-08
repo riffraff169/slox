@@ -1,0 +1,494 @@
+require("qrppm.lox");
+require("kittycanvas.lox");
+
+class QRVersion {
+  static getSpec(textLength) {
+    // total data bits needed for byte mode
+    // 4 bits (mode) + 8/16 bits (char count) + (8 * length)
+    var bitsNeeded = 4 + 8 + (textLength * 8);
+    var bytesNeeded = Math.ceil(bitsNeeded / 8.0);
+
+    // [version, data capacity bytes, ec bytes per block]
+    var specs = [
+      [1, 16, 7],     // V1-M: 21x21 grid
+      [2, 28, 10],    // V2-M: 25x25 grid
+      [3, 44, 15],    // V3-M: 29x29 grid
+      [4, 64, 20]     // V4-M: 33x33 grid
+    ];
+
+    for (var i = 0; i < specs.length(); i += 1) {
+      if (specs[i][1] >= bytesNeeded) {
+        return {
+          "version": specs[i][0],
+          "size": 17 + (specs[i][0] * 4),
+          "dataCapacity": specs[i][1],
+          "ecCount": specs[i][2]
+        };
+      }
+    }
+    return nil; // exceeds version 4 capacity
+  }
+}
+
+class GF256 {
+  init() {
+    this.exp = [0; 256];
+    this.log = [0; 256];
+
+    var x = 1;
+    for (var i = 0; i < 255; i += 1) {
+      this.exp[i] = x;
+      this.log[x] = i;
+      x = x * 2;
+      if (x >= 256) {
+        x = x ^ 285;
+      }
+    }
+    this.exp[255] = this.exp[0];
+  }
+
+  mul(a, b) {
+    if (a == 0 or b == 0) return 0;
+    return this.exp[(this.log[a] + this.log[b]) % 255];
+  }
+
+  div(a, b) {
+    if (b == 0) return nil;
+    if (a == 0) return 0;
+    return this.exp[(this.log[a] - this.log[b] + 255) % 255];
+  }
+}
+
+class ReedSolomon {
+  init() {
+    this.gf256 = GF256();
+  }
+
+  buildGenerator(ecCount) {
+    var g = [1];
+
+    for (var i = 0; i < ecCount; i += 1) {
+      var nextG = [0; g.length() + 1];
+      var root = this.gf256.exp[i];
+
+      for (var j = 0; j < g.length(); j += 1) {
+        // multiply by (x - root) -> bitwise xor in gf(256)
+        nextG[j] = nextG[j] ^ this.gf256.mul(g[j], root);
+        nextG[j + 1] = nextG[j + 1] ^ g[j];
+      }
+      g = nextG;
+    }
+    return g;
+  }
+
+  // compute reed-solomon error correction codewords
+  encode(dataBytes, ecCount) {
+    var gen = this.buildGenerator(ecCount);
+
+    // remainder register initialized to zero, sized for ec codewords
+    var res = [0; ecCount];
+
+    // synthetic polynomial division step
+    for (var i = 0; i < dataBytes.length(); i += 1) {
+      var coef = dataBytes[i] ^ res[0];
+
+      // s hift remainder polynomial left
+      for (var j = 0; j < ecCount - 1; j += 1) {
+        res[j] = res[j + 1];
+      }
+      res[ecCount - 1] = 0;
+
+      // multiply generator polynomial by lead coeeficient and xor into remainder
+      if (coef != 0) {
+        for (var j = 0; j < ecCount; j += 1) {
+          res[j] = res[j] ^ this.gf256.mul(gen[j], coef);
+        }
+      }
+    }
+
+    return res;
+  }
+}
+
+class QRRenderer {
+  static renderToKitty(qrMatrix, modulePixelSize = 8, quietZone = 4) {
+    var matrixLen = qrMatrix.length();
+    var totalModules = matrixLen + (quietZone * 2);
+    var canvasDim = totalModules * modulePixelSize;
+
+    var canvas = KittyCanvas(canvasDim, canvasDim);
+
+
+    canvas.fillRect(0, 0, canvasDim, canvasDim, 255, 255, 255);
+
+    for (var r = 0; r < matrixLen; r += 1) {
+      for (var c = 0; c < matrixLen; c += 1) {
+        if (qrMatrix[r][c] == 1) {
+          // x is comun, y is row
+          var px = (c + quietZone) * modulePixelSize;
+          var py = (r + quietZone) * modulePixelSize;
+          canvas.fillRect(px, py, modulePixelSize, modulePixelSize, 0, 0, 0);
+        }
+      }
+    }
+
+    canvas.render();
+  }
+
+  static streamP3(qrMatrix, modulePixelSize = 1, quietZone = 4) {
+    var matrixLen = qrMatrix.length();
+    var totalModules = matrixLen + (quietZone * 2);
+    var canvasDim = totalModules * modulePixelSize;
+
+    print "P3";
+    print canvasDim + " " + canvasDim;
+    print "255";
+
+    for (var y = 0; y < canvasDim; y += 1) {
+      var modY = Math.floor(y / modulePixelSize) - quietZone;
+      for (var x = 0; x < canvasDim; x += 1) {
+        var modX = Math.floor(x / modulePixelSize) - quietZone;
+
+        var isDark = false;
+        if (modY >= 0 and modY < matrixLen and modX >= 0 and modX < matrixLen) {
+          if (qrMatrix[modY][modX] == 1) isDark = true;
+        }
+
+        if (isDark) {
+          print "0 0 0";
+        } else {
+          print "255 255 255";
+        }
+      }
+    }
+  }
+}
+
+class BitBuffer {
+  init() {
+    this.bits = [];
+  }
+
+  // append 'val' using 'bitcount' bits (msb first)
+  append(val, bitCount) {
+    for (var i = bitCount - 1; i >= 0; i = i - 1) {
+      var bit = (val >> i) & 1;
+      this.bits.push(bit);
+    }
+  }
+
+  length() {
+    return this.bits.length();
+  }
+
+  // convert bit sequence into packed 8 bit byte array
+  toCodewords() {
+    var bytes = [];
+    var currentByte = 0;
+    var bitPos = 0;
+
+    for (var i = 0; i < this.bits.length(); i += 1) {
+      currentByte = (currentByte << 1) | this.bits[i];
+      bitPos = bitPos + 1;
+
+      if (bitPos == 8) {
+        bytes.push(currentByte);
+        currentByte = 0;
+        bitPos = 0;
+      }
+    }
+
+    // left-shift remaining bits if not byte aligned
+    if (bitPos > 0) {
+      currentByte = cyrrentByte << (8 - bitPos);
+      bytes.push(currentByte);
+    }
+
+    return bytes;
+  }
+}
+
+class QREncoder {
+  init() {
+    this.rs = ReedSolomon();
+  }
+
+  // encodes string text to final combined data + error correction codewords
+  // defaulting to version 1 (16 data bytes, 7 ec bytres for level M)
+  encodeText(text, targetDataCapacity = 16, ecCount = 7) {
+    var buffer = BitBuffer();
+
+    // 1. mode indicator: byte mode (0b0100 = 4)
+    buffer.append(4, 4);
+
+    // 2. character count indicator (8 bits for version 1-9)
+    buffer.append(text.length(), 8);
+
+    // 3. append ascii character bytes
+    for (var i = 0; i < text.length(); i += 1) {
+      buffer.append(text[i], 8);
+    }
+
+    // 4. append terminator (up to 4 zero bits)
+    var totalDataBits = targetDataCapacity * 8;
+    var bitsNeeded = totalDataBits - buffer.length();
+    var terminatorLen = bitsNeeded < 4 ? bitsNeeded : 4;
+    if (terminatorLen > 0) {
+      buffer.append(0, terminatorLen);
+    }
+
+    // convert bits to bytes
+    var dataBytes = buffer.toCodewords();
+
+    // 5. pad with alternating 236 (0xec) and 17 (0x11) until target capacity
+    var padByte = 236;
+    while (dataBytes.length() < targetDataCapacity) {
+      dataBytes.push(padByte);
+      padByte = (padByte == 236) ? 17 : 236;
+    }
+
+    // 6. compute reed-solomon error correction bytes
+    var ecBytes = this.rs.encode(dataBytes, ecCount);
+
+    // combine data + ec bytes into final stream
+    var finalCodewords = [];
+    for (var i = 0; i < dataBytes.length(); i += 1) {
+      finalCodewords.push(dataBytes[i]);
+    }
+    for (var i = 0; i < ecBytes.length(); i += 1) {
+      finalCodewords.push(ecBytes[i]);
+    }
+
+    return finalCodewords;
+  }
+}
+
+class QRMatrix {
+  init(spec) {
+    this.version = spec["version"];
+    this.size = spec["size"];
+    this.grid = [];
+    this.isReserved = [];
+
+    // allocate nxn matrix initialized to nil / false
+    for (var r = 0; r < this.size; r += 1) {
+      var row = [0; this.size];
+      var resRow = [false; this.size];
+      this.grid.push(row);
+      this.isReserved.push(resRow);
+    }
+
+    this.placeFunctionalPatterns();
+  }
+
+  setModule(r, c, val, reserved = true) {
+    this.grid[r][c] = (val == true or val == 1) ? 1 : 0;
+    if (reserved) this.isReserved[r][c] = true;
+  }
+
+  placeFinder(topR, topC) {
+    // 1. clear a 9x9 area around the finder (including 1-module separator)
+    for (var r = -1; r <= 7; r += 1) {
+      for (var c = -1; c <=7; c += 1) {
+        var mr = topR + r;
+        var mc = topC + c;
+
+        if (mr >= 0 and mr <this.size and mc >= 0 and mc < this.size) {
+          this.setModule(mr, mc, 0, true);
+        }
+      }
+    }
+
+    // 2. draw the 7x7 finder pattern rings
+    for (var r = 0; r < 7; r += 1) {
+      for (var c = 0; c < 7; c += 1) {
+        var isDark = false;
+        // outer 7x7 ring
+        if (r == 0 or r == 6 or c == 0 or c == 6) isDark = true;
+        // inner 3x3 core
+        else if (r >= 2 and r <= 4 and c >= 2 and c <= 4) isDark = true;
+
+        this.setModule(topR + r, topC + c, isDark ? 1 : 0, true);
+      }
+    }
+  }
+
+  placeFunctionalPatterns() {
+    // 1. finder patterns + separators
+    this.placeFinder(0, 0);
+    this.placeFinder(0, this.size - 7);
+    this.placeFinder(this.size - 7, 0);
+
+    // 2. timing lines
+    for (var i = 8; i < this.size - 8; i += 1) {
+      var val = (i % 2 == 0) ? true : false;
+      //var val = (i % 2 == 0) ? 1 : 0;
+      if (!this.isReserved[6][i]) this.setModule(6, i, val, true);
+      if (!this.isReserved[i][6]) this.setModule(i, 6, val, true);
+    }
+
+    // 3. dark module
+    this.setModule(4 * this.version + 9, 8, 1, true);
+
+    // 4. reserve format information regions
+    for (var i = 0; i < 9; i += 1) {
+      this.isReserved[8][i] = true;
+      this.isReserved[i][8] = true;
+    }
+    for (var i = this.size - 8; i < this.size; i = i + 1) {
+      this.isReserved[8][i] = true;
+      this.isReserved[i][8] = true;
+    }
+
+    // 5. alignment patterns (for version 2 and above)
+    if (this.version >= 2) {
+      var alignCenters = [];
+      if (this.version == 2) alignCenters = [6, 18];
+      else if (this.version == 3) alignCenters = [6, 22];
+      else if (this.version == 4) alignCenters = [6, 26];
+
+      for (var ri = 0; ri < alignCenters.length(); ri += 1) {
+        for (var ci = 0; ci < alignCenters.length(); ci += 1) {
+          var ar = alignCenters[ri];
+          var ac = alignCenters[ci];
+
+          // skip if overlapping finder patterns
+          if (!this.isReserved[ar][ac]) {
+            for (var r = -2; r <= 2; r += 1) {
+              for (var c = -2; c <= 2; c += 1) {
+                var isDark = (Math.abs(r) == 2 or Math.abs(c) == 2 or (r == 0 and c == 0));
+                this.setModule(ar + r, ac + c, isDark ? 1 : 0, true);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+class QRPlacer {
+  static embedDataBits(matrix, codewords, totalCapacityBytes) {
+    // 1. combine data + error correction
+    var fullCodewords = codewords.dup();
+
+    // 1. pad codewords array to capacity if short
+
+    var padBytes = [236, 17]; // standard qr pad bytes 0xec, 0x11
+    var padIdx = 0;
+    while (fullCodewords.length() < totalCapacityBytes) {
+      fullCodewords.push(padBytes[padIdx % x]);
+      padIdx += 1;
+    }
+
+    // 2. convert codewords to flat bit array
+    var bitStream = [];
+    for (var i = 0; i < fullCodewords.length(); i += 1) {
+      var byteVal = fullCodewords[i];
+      for (var b = 7; b >= 0; b -= 1) {
+        bitStream.push((byteVal >> b) & 1);
+      }
+    }
+
+    // 3. zig-zag placement from bottom-right moving left in 2-column tracks
+    var bitIdx = 0;
+    var size = matrix.size;
+    var directionUp = true;
+
+    var right = size - 1;
+    while (right > 0) {
+      if (right == 6) right = 5; // skip timing column 6
+
+      var rStart = directionUp ? (size - 1) : 0;
+      var rEnd = directionUp ? -1 : size;
+      var rStep = directionUp ? -1 : 1;
+
+      for (var r = rStart; r != rEnd; r += rStep) {
+        for (var colOffset = 0; colOffset < 2; colOffset += 1) {
+          var c = right - colOffset;
+
+          if (!matrix.isReserved[r][c]) {
+            var bit = (bitIdx < bitStream.length()) ? bitStream[bitIdx] : 0;
+            matrix.grid[r][c] = bit;
+            bitIdx = bitIdx + 1;
+          }
+        }
+      }
+
+      directionUp = !directionUp;
+      right -= 2;
+    }
+  }
+}
+
+class QRMask {
+  // apply mask pattern 0: (row + col) % 2 == 0
+  static applyMask0(matrix) {
+    for (var r = 0; r < matrix.size; r += 1) {
+      for (var c = 0; c < matrix.size; c += 1) {
+        if (!matrix.isReserved[r][c]) {
+          if ((r + c) % 2 == 0) {
+            matrix.grid[r][c] = matrix.grid[r][c] ^ 1; // flip bit
+          }
+        }
+      }
+    }
+  }
+
+  // writes 15-bit bch format code for level m, mask 0
+  static embedFormatInfo(matrix) {
+    // pre-calculated 15-bit bch sequence for ec level m(00) & mask 0 (000)
+    var formatBits = [1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0];
+    var size = matrix.size;
+
+    // top-left corner format placement
+    var tlCoords = [
+      [8,0], [8,1], [8,2], [8,3], [8,4], [8,5], [8,7], [8,8],
+      [7,8], [5,8], [4,8], [3,8], [2,8], [1,8], [0,8]
+    ];
+
+    for (var i = 0; i < 15; i += 1) {
+      var bit = formatBits[i];
+      var r = tlCoords[i][0];
+      var c = tlCoords[i][1];
+      matrix.setModule(r, c, bit, false);
+    }
+
+    // split format placement along outer borders
+    // bottom-left (first 7 bits)
+    for (var i = 0; i < 7; i += 1) {
+      matrix.setModule(size - 1 - i, 8, formatBits[i], false);
+    }
+    // top-right (remaining 8 bits)
+    for (var i = 0; i < 8; i += 1) {
+      matrix.setModule(8, size - 8 + i, formatBits[7 + i], false);
+    }
+  }
+}
+
+class QRCode {
+  static generate(text) {
+    // 1. auto-select optimal qr version based on length
+    var spec = QRVersion.getSpec(text.length());
+    if (spec == nil) {
+      print "Error: Text too long for supported versions (V1-V4).";
+      return nil;
+    }
+
+    // 2. codeword & rs error correction generation
+    var encoder = QREncoder();
+    var codewords = encoder.encodeText(text, spec["dataCapacity"], spec["ecCount"]);
+
+    // 3. initialize matrix & place functional patterns
+    var matrix = QRMatrix(spec);
+
+    // 4. zig-zag data module placement
+    QRPlacer.embedDataBits(matrix, codewords, spec["dataCapacity"] + spec["ecCount"]);
+
+    // 5. apply masking pattern & write format info
+    QRMask.applyMask0(matrix);
+    QRMask.embedFormatInfo(matrix);
+
+    return matrix.grid; // returns 2d 0/1 integer array ready for kittycanvas / ppm
+  }
+}
