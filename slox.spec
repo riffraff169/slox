@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.7.14
+Version: 1.8.0
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -241,6 +241,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Thu  Oct 08 2026 Lance Dillon <riffraff169@yahoo.com> - 1.8.0-1-1
+- experimental qrcode generator
+
 * Mon  Oct 05 2026 Lance Dillon <riffraff169@yahoo.com> - 1.7.14-1-1
 - added markdown generator, markdown terminal printer, some code fixes
 
