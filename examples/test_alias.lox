@@ -1,0 +1,33 @@
+// 1. Alias 'abs' to '_origAbs' on Integer
+Integer.alias("abs", "_origAbs");
+
+// 2. Override 'abs' strictly on Integer
+class Integer {
+  abs() {
+    print "[LOG] Custom Integer.abs() triggered!";
+    if (this < 0) {
+      return this._origAbs() * 10; // Modified logic for testing
+    }
+    return this;
+  }
+}
+
+// 3. Test Instances
+var myInt = -5;
+var myFloat = -5.5;
+
+print "--- Testing Integer ---";
+print "myInt.abs():";
+print myInt.abs(); // Should trigger custom log and return 50
+
+print "myInt._origAbs():";
+print myInt._origAbs(); // Should run original logic and return 5
+
+print "\n--- Testing Float ---";
+print "myFloat.abs():";
+print myFloat.abs(); // Should run pristine Number/Float logic and return 5.5
+
+// Verify _origAbs does NOT exist on Float
+print "\n--- Testing Isolation ---";
+// Expecting a runtime error since _origAbs was never aliased onto Float/Number:
+print myFloat._origAbs();

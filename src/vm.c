@@ -317,7 +317,7 @@ static inline ObjClass* getEffectiveClass(ObjClass* klass) {
     return (klass->mixinsource !=  NULL) ? klass->mixinsource : klass;
 }
 
-static bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
+bool findMethod(ObjClass* klass, ObjString* name, Value* method) {
     ObjClass* current = klass;
     while (current != NULL) {
         if (tableGet(&current->methods, name, method)) {

@@ -523,6 +523,33 @@ Value setFieldNative(int argCount, Value* args) {
 }
 
 //@ Object
+//: alias
+// Alias a method name to another method
+Value aliasNative(int argCount, Value* args) {
+    ObjClass* targetKlass = IS_CLASS(args[-1])
+        ? AS_CLASS(args[-1])
+        : getClassForValue(args[-1]);
+
+    if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("alias() must have 2 string arguments.");
+        return NIL_VAL;
+    }
+
+    ObjString* oldName = AS_STRING(args[0]);
+    ObjString* newName = AS_STRING(args[1]);
+
+    Value originalMethod;
+    if (!findMethod(targetKlass, oldName, &originalMethod)) {
+        runtimeError("Method '%s' not found on class '%s'.",
+                oldName->chars, targetKlass->name->chars);
+        return NIL_VAL;
+    }
+
+    tableSet(&targetKlass->methods, AS_STRING(args[1]), originalMethod);
+    return NIL_VAL;
+}
+
+//@ Object
 //: get_methods
 // Get list of methods available on this object.
 // Optional:
@@ -857,6 +884,7 @@ Value inspectNative(int argCount, Value* args) {
     X("get_field", getFieldNative) \
     X("set_field", setFieldNative) \
     X("get_methods", getMethodsNative) \
+    X("alias", aliasNative) \
     X("has_method", hasMethodNative) \
     X("responds_to", hasMethodNative) \
     X("get_superclass", getSuperclassNative) \
