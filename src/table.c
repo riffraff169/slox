@@ -57,7 +57,12 @@ static Entry2* findEntry2(Entry2* entries, int capacity, Value key) {
     uint32_t index = hash & (capacity - 1);
     Entry2* tombstone = NULL;
 
-    for (;;) {
+    int probes = 0;
+    for (;; probes++) {
+        if (probes >= capacity) {
+            fprintf(stderr, "FATAL: Hash table probe limit exceeded! Table is saturated (capacity: %d).\n", capacity);
+            abort();
+        }
         Entry2* entry = &entries[index];
 
         if (IS_NIL(entry->key)) {
@@ -157,7 +162,6 @@ bool tableSet(Table* table, ObjString* key, Value value) {
 }
 
 bool tableSet2(Table2* table, Value key, Value value) {
-
     if (IS_NIL(key)) {
         return false;
     }
@@ -201,7 +205,6 @@ bool tableDelete2(Table2* table, Value key) {
 
     entry->key = NIL_VAL;
     entry->value = BOOL_VAL(true);
-    table->count--;
     return true;
 }
 
