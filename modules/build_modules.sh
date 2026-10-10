@@ -101,7 +101,8 @@ fi
 # -------------------------------------------------------------------
 # 3. GTK4 / GObject Introspection Module
 # -------------------------------------------------------------------
-GI_PKGS="gobject-introspection-1.0 gtk4 gdk"
+#GI_PKGS="gobject-introspection-1.0 gtk4 gdk"
+GI_PKGS="gobject-introspection-1.0 gtk4"
 if pkg-config --exists $GI_PKGS 2>/dev/null; then
     GI_CFLAGS=$(pkg-config --cflags $GI_PKGS)
     GI_LIBS=$(pkg-config --libs $GI_PKGS)

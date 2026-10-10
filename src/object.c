@@ -11,10 +11,12 @@
 #define ALLOCATE_OBJ(type, objectType) \
     (type*)allocateObject(sizeof(type), objectType)
 
+static uint64_t GLOBAL_OBJECT_ID = 1;
 static Obj* allocateObject(size_t size, ObjType type) {
     Obj* object = (Obj*)reallocate(NULL, 0, size);
     object->type = type;
     object->isMarked = false;
+    object->id = GLOBAL_OBJECT_ID++;
 
     object->next = vm.objects;
     vm.objects = object;
@@ -185,7 +187,8 @@ uint32_t hashValue(Value value) {
                     return AS_STRING(value)->hash;
                 }
                 Obj* obj = AS_OBJ(value);
-                return hashBytes((const uint8_t*)&obj, sizeof(void*));
+                uint64_t id = obj->id;
+                return hashBytes((const uint8_t*)&id, sizeof(uint64_t));
             }
         case VAL_VEC3:
             {
