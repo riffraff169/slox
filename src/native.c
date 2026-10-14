@@ -3561,11 +3561,24 @@ Value arrayPopNative(int argCount, Value* args) {
     return lastValue;
 }
 
+//@ Array
+//: length
+// Get length of string. This is the internal string length, not necessarily the printable string length.
+// Returns:
+//   Value
 Value arrayLenNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     return INT_VAL(array->count);
 }
 
+//@ Array
+//: map
+// Run a callback on each element. The function should return a new value. The final result
+// is a new array with new items. Callback should accept one value, which would be the current item.
+// Requires:
+//   Value: callback
+// Returns:
+//   Array
 Value arrayMapNative(int argCount, Value* args) {
     if (argCount < 1 || !isCallable(args[0])) {
         runtimeError("Expected a closure callback argument for map().");
@@ -3605,6 +3618,11 @@ Value arrayMapNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Array
+//: dup
+// Get a new copy of this array. This is a shallow copy, it only duplicates the first level elements of the array.
+// Returns:
+//   Array
 Value arrayDupNative(int argCount, Value* args) {
     if (!IS_ARRAY(args[-1])) return NIL_VAL;
 
@@ -3614,10 +3632,24 @@ Value arrayDupNative(int argCount, Value* args) {
     return OBJ_VAL(copy);
 }
 
+//@ Array
+//: is_empty
+// Check if array is empty.
+// Returns:
+//   Bool
 Value arrayIsEmptyNative(int argCount, Value* args) {
     return BOOL_VAL(AS_ARRAY(args[-1])->count == 0);
 }
 
+//@ Array
+//: filter
+// Run a callback on each element. The function should return true or false. If true, the item will
+// be included in the new array. If false, item will be excluded. Callback should accept one value,
+// which would be the current item.
+// Requires:
+//   Value: callback
+// Returns:
+//   Array
 Value arrayFilterNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Expected a callback function argument for filter().");
@@ -3657,6 +3689,15 @@ Value arrayFilterNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Array
+//: reduce
+// Run a callback on each element. The function should return a new value, dependent on current
+// value of acc and the current element.
+// Requires:
+//   Value: acc
+//   Value: callback
+// Returns:
+//   Value
 Value arrayReduceNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     Value callback = NIL_VAL;
@@ -3721,6 +3762,14 @@ Value arrayReduceNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Array
+//: join
+// Combine array elements into a string. Array elements should be either a string, or something
+// that could be converted to a string. Items will be joined with sep between them.
+// Requires:
+//   String: sep
+// Returns:
+//   String
 Value arrayJoinNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("join() expects 1 string argument (separator).");
@@ -3770,6 +3819,14 @@ Value arrayJoinNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
+//@ Array
+//: each
+// Runs callback on each element of array. Returns current array so operations can be chained.
+// Mainly used for side effects.
+// Requires:
+//   Value: callback
+// Returns:
+//   Array
 Value arrayEachNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) return NIL_VAL;
 
@@ -3839,6 +3896,13 @@ Value arraySwapDeleteNative(int argCount, Value* args) {
     return removed;
 }
 
+//@ Array
+//: delete_at
+// Delete an array item at index. Moves everything after up one item.
+// Requires:
+//   Integer: pos
+// Returns:
+//   Array
 Value arrayDeleteAtNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("Expected an index number to delete.");
@@ -3876,6 +3940,13 @@ Value arrayDeleteAtNative(int argCount, Value* args) {
     return removed;
 }
 
+//@ Array
+//: index_of
+// Gets index of an element of array.
+// Requires:
+//   Value: target
+// Returns:
+//   Integer
 Value arrayIndexOfNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("Expected a value to search for.");
@@ -3894,6 +3965,14 @@ Value arrayIndexOfNative(int argCount, Value* args) {
     return INT_VAL(-1);
 }
 
+//@ Array
+//: find_index
+// Find the index of an item satisfying a predicate. Callback should return true or false
+// based on whether the item satisfies it.  Returns index of first entry that matches.
+// Requires:
+//   Value: callback
+// Returns:
+//   Integer: index
 Value arrayFindIndexNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Expected a closure callback argument for find_index().");
@@ -3932,6 +4011,14 @@ Value arrayFindIndexNative(int argCount, Value* args) {
     return INT_VAL(-1);
 }
 
+//@ Array
+//: find
+// Find the first item satisfying a predicate. Callback should return true or false
+// based on whether the item satisfies it.
+// Requires:
+//   Value: callback
+// Returns:
+//   Value
 Value arrayFindNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Expected a closure callback argument for find().");
@@ -3970,6 +4057,13 @@ Value arrayFindNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Array
+//: has
+// Checks if array has a value.
+// Requires:
+//   Value: val
+// Returns:
+//   Bool
 Value arrayHasNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("Expected 1 argument for has().");
@@ -3987,6 +4081,14 @@ Value arrayHasNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ Array
+//: slice
+// Gets a substring of a string.
+// Requires:
+//   Integer: startoffset
+//   Integer: endoffset
+// Returns:
+//   String
 Value arraySliceNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     int64_t count = (int64_t)array->count;
@@ -4000,7 +4102,7 @@ Value arraySliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
         outIdx = (int64_t)AS_FLOAT(val); \
     } else { \
-        runtimeError("slic() index must be an integer."); \
+        runtimeError("slice() index must be an integer."); \
         return NIL_VAL; \
     }
 
@@ -4132,6 +4234,16 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
     //return 0;
 }
 
+//@ Array
+//: sort
+// Sort array. If a callback is provided, will sort based on the callback.
+// Callback requires two arguments that are compared to each other, returning
+// -1, 0, -1 for less than, equal, or more than. This sorts in place. To get a new
+// array, duplicate it first.
+// Requires:
+//   Value: callback
+// Returns:
+//   Array
 Value arraySortNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     if (array->count < 2) return args[-1];
@@ -4147,6 +4259,17 @@ Value arraySortNative(int argCount, Value* args) {
     return args[-1];
 }
 
+//@ Array
+//: sort_slice
+// Sorts a slice of an array. This is not the same as slice(x,y).sort(), as that
+// would create a new array.  This sorts a portion of the current array. Same
+// requirements as sort().
+// Requires:
+//   Integer: startoffset
+//   Integer: endoffset
+//   Value: callback
+// Returns:
+//   Array
 Value arraySortSliceNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("sort_slice() expects start and end index arguments.");
@@ -4192,6 +4315,11 @@ Value arraySortSliceNative(int argCount, Value* args) {
     return args[-1];
 }
 
+//@ Array
+//: reverse
+// Reverses an array in place.
+// Returns:
+//   Array
 Value arrayReverseNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     if (array->count < 2) return args[-1];
@@ -4221,6 +4349,11 @@ static void flattenDeepHelper(ObjArray* result, ObjArray* current) {
     }
 }
 
+//@ Array
+//: flatten
+// Recursively flattens an array to make it 1-dimensional
+// Returns:
+//   Array
 Value arrayFlattenNative(int argCount, Value* args) {
     ObjArray* source = AS_ARRAY(args[-1]);
     ObjArray* result = newArray();
@@ -4230,6 +4363,12 @@ Value arrayFlattenNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Array
+//: to_string
+// Convert an array to string of bytes. All items must be an integer. Floats must be an exact integer.
+// Integers more than 255 will be truncated.
+// Returns:
+//   String
 Value arrayStringNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     int count = array->count;
@@ -4274,6 +4413,11 @@ Value arrayStringNative(int argCount, Value* args) {
     return OBJ_VAL(string);
 }
 
+//@ Array
+//: first
+// Get first item of an array
+// Returns:
+//   Value
 Value arrayFirstNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
 
@@ -4283,6 +4427,11 @@ Value arrayFirstNative(int argCount, Value* args) {
     return array->values[0];
 }
 
+//@ Array
+//: rest
+// Gets all items after the first as a new array
+// Returns:
+//   Array
 Value arrayRestNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
     ObjArray* rest = newArray();
@@ -4297,6 +4446,11 @@ Value arrayRestNative(int argCount, Value* args) {
     return OBJ_VAL(rest);
 }
 
+//@ Array
+//: split
+// Divide an array into first and rest. Combination of .first and .rest.
+// Returns:
+//   Array
 Value arraySplitNative(int argCount, Value* args) {
     ObjArray* array = AS_ARRAY(args[-1]);
 
@@ -4329,6 +4483,12 @@ void debugPrintArrayMethods() {
 #undef X
 }
 
+//@ Array
+// Array native type. An array holds a list of values. Can be created with [] or
+// Array(). Can be initialized with a values in the initializer: [1,2,3,4] or
+// Array(1,2,3,4). Also can be filled with a specific value: [0; 256].
+// An array is a specific size; you can't access an index that doesn't exist.
+// You can extend an array using .push().
 Value arrayNativeConstructor(int argCount, Value* args) {
     ObjArray* array = newArray();
 
@@ -4368,28 +4528,22 @@ Value arrayClassCallHandler(int argCount, Value* args) {
 }
 
 void initArrayClass() {
-    /*
-    ObjString* string = copyString("Array", 5);
-    push(OBJ_VAL(string));
-    vm.arrayClass = newClass(string);
-    vm.arrayClass->superclass = vm.objectClass;
-    vm.arrayClass->callHandler = arrayNativeConstructor;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.arrayClass));
-    push(OBJ_VAL(vm.arrayClass));
-    */
     vm.arrayClass = defineBuiltinClass("Array", vm.objectClass, &vm.arrayMetaClass, true);
     vm.arrayClass->callHandler = arrayClassCallHandler;
 
 #define X(name, func) defineNativeMethod(vm.arrayClass, name, func);
     ARRAY_METHOD_LIST(X)
 #undef X
-
-    /*
-    pop();
-    pop();
-    */
 }
 
+//@ Result
+// Result type.  Evaluates to true if ok. If true, value can be accessed with .val, or .unwrap().
+// If false, error message can be accessed with .err.
+// Requires:
+//   Bool: ok
+// Optional:
+//   Value: okval
+//   Value: errval
 Value resultNativeConstructor(int argCount, Value* args) {
     if (argCount < 1 || argCount > 3) {
         runtimeError("Result() rexpects 1 to 3 arguments, got %d.", argCount);
@@ -4408,23 +4562,13 @@ Value resultNativeConstructor(int argCount, Value* args) {
     }
 
     return createResult(val, err, isOk);
-    /*
-    ObjInstance* instance = newInstance(vm.resultClass);
-    push(OBJ_VAL(instance));
-
-    Value ok = (argCount > 0) ? args[0] : BOOL_VAL(false);
-    Value val = (argCount > 1) ? args[1] : NIL_VAL;
-    Value err = (argCount > 2) ? args[2] : NIL_VAL;
-
-    tableSet(&instance->fields, vm.okString, ok);
-    tableSet(&instance->fields, vm.valString, val);
-    tableSet(&instance->fields, vm.errString, err);
-
-    pop();
-    return OBJ_VAL(instance);
-    */
 }
 
+//@ Result
+//: unwrap
+// Get ok value of result. If not ok, causes a runtime error.
+// Returns:
+//   Value: okval
 Value resultUnwrapNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     if (instance->obj.klass != vm.resultClass) {
@@ -4455,12 +4599,16 @@ Value resultUnwrapNative(int argCount, Value* args) {
     return successVal;
 }
 
+//@ Array
+//: unwrap_or
+// If ok, get okval, otherwise return default value.
+// Requires:
+//   Value: default
 Value resultUnwrapOrNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     if (instance->obj.klass != vm.resultClass) {
         runtimeError("Method unwrap_or() expected a Result instance.");
         return NIL_VAL;
-        //return errorResult("Method unwrap_or() expected a Result instance.");
     }
 
     Value okVal = NIL_VAL;
@@ -4475,29 +4623,36 @@ Value resultUnwrapOrNative(int argCount, Value* args) {
     return args[0];
 }
 
+//@ Option
+// Option type. Variant of Result type. is_some() means a value is present,
+// otherwise nil.
+// Optional:
+//   Value: val
 Value optionNativeConstructor(int argCount, Value* args) {
-    /*
-    if (argCount < 1 || argCount > 2) {
-        runtimeError("Option() expects 1 or 2 arguments, got %d", argCount);
+    if (argCount > 1) {
+        runtimeError("Option() expects at most 1 argument, got %d", argCount);
         return NIL_VAL;
     }
-    */
 
     ObjInstance* instance = newInstance(vm.optionClass);
     push(OBJ_VAL(instance));
 
-    Value is_some = (argCount > 0) ? args[0] : BOOL_VAL(false);
-    Value val = (argCount > 1) ? args[1] : NIL_VAL;
-    Value err = (argCount > 2) ? args[2] : NIL_VAL;
+    // If an argument is provided and is not nil, it's Some(val), otherwise None.
+    Value rawVal = (argCount == 1) ? args[0] : NIL_VAL;
+    bool isSome = !IS_NIL(rawVal);
 
-    tableSet(&instance->fields, vm.isSomeString, is_some);
-    tableSet(&instance->fields, vm.valString, val);
-    tableSet(&instance->fields, vm.errString, err);
+    tableSet(&instance->fields, vm.isSomeString, BOOL_VAL(isSome));
+    tableSet(&instance->fields, vm.valString, isSome ? rawVal : NIL_VAL);
 
     pop();
     return OBJ_VAL(instance);
 }
 
+//@ Option
+//: unwrap
+// Get ok value, or error.
+// Returns:
+//   Value
 Value optionUnwrapNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
@@ -4514,6 +4669,13 @@ Value optionUnwrapNative(int argCount, Value* args) {
     return val;
 }
 
+//@ Option
+//: unwrap_or
+// Get ok value, or return default.
+// Requires:
+//   Value: default
+// Returns:
+//   Value
 Value optionUnwrapOrNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
@@ -4526,6 +4688,36 @@ Value optionUnwrapOrNative(int argCount, Value* args) {
         return val;
     }
     return args[0];
+}
+
+//@ Option
+//: is_some
+// Check if is Some
+// Returns:
+//   Bool
+Value optionIssomeNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    Value is_some = NIL_VAL;
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+    
+    if (isTruthy(is_some))
+        return BOOL_VAL(true);
+}
+
+//@ Option
+//: is_none
+// Check if is None
+// Returns:
+//   Bool
+Value optionIsnoneNative(int argCount, Value* args) {
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+
+    Value is_some = NIL_VAL;
+    tableGet(&instance->fields, vm.isSomeString, &is_some);
+
+    if (isFalsey(is_some))
+        return BOOL_VAL(true);
 }
 
 void initResultAndOptionClass() {
@@ -4544,8 +4736,16 @@ void initResultAndOptionClass() {
     //tableSet(&vm.globals, optionName, OBJ_VAL(vm.optionClass));
     defineNativeMethod(vm.optionClass, "unwrap", optionUnwrapNative);
     defineNativeMethod(vm.optionClass, "unwrap_or", optionUnwrapOrNative);
+    defineNativeMethod(vm.optionClass, "is_some", optionIssomeNative);
+    defineNativeMethod(vm.optionClass, "is_none", optionIsnoneNative);
 }
 
+//@ Regex
+// Class to implement regex operations. Create with a regex pattern:
+// var r = Regex("^\\d+");
+// Can use raw string r"" to pass escape sequences.
+// Requires:
+//   String: pattern
 Value regexNativeConstructor(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Regex constructor expects a pattern string.");
@@ -4581,6 +4781,13 @@ Value regexNativeConstructor(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+//@ Regex
+//: test
+// Test if a string matches.
+// Requires:
+//   String: string
+// Returns:
+//   Bool
 Value regexTestNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[1])) {
         runtimeError("test() expects 1 string argument.");
@@ -4605,6 +4812,13 @@ Value regexTestNative(int argCount, Value* args) {
     return BOOL_VAL(rc >= 0);
 }
 
+//@ Regex
+//: match
+// Check string against regex. Get match groups
+// Requires:
+//   String: string
+// Returns:
+//   Array
 Value regexMatchNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("match() expects 1 string argument.");
@@ -4653,8 +4867,13 @@ Value regexMatchNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ Regex
+//: get_pattern
+// Get the pattern stored in this regex.
+// Returns:
+//   String
 Value regexGetPatternNative(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     if (instance->foreignPtr == NULL) {
         runtimeError("Regex instance not initialized.");
@@ -4675,13 +4894,6 @@ void regexDestructor(ObjInstance* inst) {
 }
 
 void initRegexClass() {
-    /*
-    ObjString* string = copyString("Regex", 5);
-    push(OBJ_VAL(string));
-    vm.regexClass = newClass(string);
-    vm.regexClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(vm.regexClass));
-    */
     vm.regexClass = defineBuiltinClass("Regex", vm.objectClass, &vm.regexMetaClass, true);
 
     vm.regexClass->callHandler = regexNativeConstructor;
@@ -4690,8 +4902,6 @@ void initRegexClass() {
     defineNativeMethod(vm.regexClass, "test", regexTestNative);
     defineNativeMethod(vm.regexClass, "match", regexMatchNative);
     defineNativeMethod(vm.regexClass, "get_pattern", regexGetPatternNative);
-
-    //pop();
 }
 
 int closeFileInternal(ObjInstance* inst) {
@@ -4722,6 +4932,13 @@ void fileDestructor(ObjInstance* inst) {
     (void)closeFileInternal(inst);
 }
 
+//@ File
+//: load
+// Load a file as bytes into a string value.
+// Requires:
+//   String: filename
+// Returns:
+//   Result: String
 Value fileLoadNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("File.load() expects a string path.");
@@ -4784,6 +5001,14 @@ Value fileLoadNative(int argCount, Value* args) {
     return result;
 }
 
+//@ File
+//: save
+// Save string buffer to a file. Overwrites any previous content.
+// Requires:
+//   String: pathname
+//   String: contents
+// Returns:
+//   Result: Bool
 Value fileSaveNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         runtimeError("File.save() expects (path, content).");
@@ -4806,6 +5031,13 @@ Value fileSaveNative(int argCount, Value* args) {
     return okResult(BOOL_VAL(true));
 }
 
+//@ File
+//: exists
+// Checks if a path exists
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value fileExistsNative(int argCount, Value* args) {
     if (argCount < 1) return BOOL_VAL(false);
 
@@ -4825,7 +5057,16 @@ Value fileExistsNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
-
+//@ File
+//: open
+// Opens a file for reading or writing. STDOUT, STDERR, STDIN are special case names
+// for stdout, stderr, stdin.
+// Requires:
+//   String: pathname
+// Optional:
+//   String: mode
+// Returns:
+//   Result: handle
 Value fileOpenNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
         runtimeError("File.open() must be called as a class method.");
@@ -4878,6 +5119,13 @@ Value fileOpenNative(int argCount, Value* args) {
     return result;
 }
 
+//@ File
+//: read
+// Read data from a file
+// Optional:
+//   Integer: len
+// Returns:
+//   Result: bytes
 Value fileReadNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
@@ -4950,6 +5198,9 @@ Value fileReadNative(int argCount, Value* args) {
     return finalResult;
 }
 
+//@ File
+//: readline
+// Read a line
 Value fileReadlineNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
