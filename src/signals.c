@@ -210,6 +210,8 @@ void processTimers(void) {
     }
 }
 
+//@ Timer
+// Timer class base
 void initTimerClass(void) {
     ObjClass* timerClass = defineBuiltinClass("Timer", NULL, NULL, true);
 

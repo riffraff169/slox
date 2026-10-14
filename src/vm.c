@@ -1427,7 +1427,8 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.bytesAllocated = 0;
     vm.isGC = false;
     vm.heap_growth_factor = 2.0;
-    vm.init_threshold = 0;
+    vm.gc_enabled = true;
+    vm.log_gc = false;
     vm.nextGC = 1024 * 1024;
     vm.bump_size = 1024 * 1024 * 64;
     vm.stress_mode = 0; // 0 = normal, 1 = always, 2 = never

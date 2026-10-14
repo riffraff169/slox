@@ -1,0 +1,16 @@
+print "=== Testing Process.popen ===";
+
+// Open a command for reading
+var pipe = Process.popen("echo 'Hello from sloppy subshell!'", "r");
+
+if (pipe == nil) {
+    print "[!] Failed to open popen stream.";
+} else {
+    var line = pipe.readline();
+    print "Read from pipe: " + line.unwrap();
+    
+    // Clean up
+    pipe.close();
+}
+
+print "=== Test Complete ===";

@@ -1607,6 +1607,8 @@ specify endianness with < or > at the beginning, or optional argument.
 ---
 
 ## Class: GC
+GC interface. Control various aspeccts of the garbage collector.
+
 ### Methods
 
 #### `GC.heap_growth_factor(val)`
@@ -1621,10 +1623,208 @@ Get the current growth factor
 **Returns:**
   - `Float`
 
+#### `GC.set_log(enable)`
+Toggle whether to log gc events.
+
+**Required Arguments:**
+  - `Bool: enable`
+
+**Returns:**
+  - `Bool: previous`
+
+#### `GC.get_log()`
+Get current gc log value.
+
+**Returns:**
+  - `Bool`
+
+#### `GC.bump_size(bumpsize)`
+Set bump size
+
+**Required Arguments:**
+  - `Integer: bumpsize`
+
+**Returns:**
+  - `Integer: bumpsize`
+
+#### `GC.get_bumpsize()`
+Get the current bumpsize
+
+**Returns:**
+  - `Integer`
+
+#### `GC.stress_mode(mode)`
+Set stress mode. Valid values are GC.NormalMode, GC.StressMode, GC.DisableMode
+
+**Required Arguments:**
+  - `Integer: mode`
+
+**Returns:**
+  - `Integer`
+
+#### `GC.get_stressmode()`
+Gets current stress mode
+
+**Returns:**
+  - `Integer`
+
+#### `GC.type(type)`
+Set the gc type. GC.TypeLinear = Linear/Bump, GC.TypeMult = Multiplier
+
+**Required Arguments:**
+  - `Integer: type`
+
+**Returns:**
+  - `Integer: type`
+
+#### `GC.get_gctype()`
+Get the current gc type
+
+**Returns:**
+  - `Integer`
+
+#### `GC.gc()`
+Run the GC. Also available under System.gc()
+
+#### `GC.stats()`
+Get gc stats
+
+**Returns:**
+  - `Map`
+
+---
+
+## Class: IO
+Base class for TCP and UDP.
+Should not be called directly.  Should use IO.tcp() or IO.udp() to get the specific type.
+
+### Methods
+
+#### `IO.inspect()`
+Low level function to print io internal information. Prints directly to stdout.
+
+#### `IO.connect(ip, port)`
+Connect to a remote endpoint. All data is internal to the class.
+
+**Required Arguments:**
+  - `String: ip`
+  - `Integer: port`
+
+**Returns:**
+  - `Bool`
+
+#### `IO.send(data)`
+Send data through a connection. Should be connected firsst.
+
+**Required Arguments:**
+  - `String: data`
+
+**Returns:**
+  - `Result: bytessent`
+
+#### `IO.recv(buffersize)`
+Receive data from remote. Requires size of buffer for max amount of data to receive.
+Result is data, length is amount of data received, which could be less than max size.
+
+**Required Arguments:**
+  - `Integer: buffersize`
+
+**Returns:**
+  - `Result: data`
+
+#### `IO.listen(port)`
+Listen on a port
+
+**Required Arguments:**
+  - `Integer: port`
+
+**Returns:**
+  - `Result`
+
+#### `IO.accept()`
+Accept a connection
+
+**Returns:**
+  - `TCP: instance`
+
+#### `IO.bind(ip, port)`
+Bind to an ip and port
+
+**Required Arguments:**
+  - `String: ip`
+  - `Integer: port`
+
+**Returns:**
+  - `Result`
+
+#### `IO.readable()`
+Checks if there is data to be read.
+
+**Returns:**
+  - `Result: readable`
+
+#### `IO.close()`
+Close an io connection. Resets it completely, it cannot be reused. Should be discarded
+and a new instance created.
+
+**Returns:**
+  - `Result`
+
+#### `IO.poll(instances)`
+Checks socket instances to see which ones have active events.
+
+**Required Arguments:**
+  - `Array: instances`
+
+**Returns:**
+  - `Array`
+
+#### `IO.set_recv_timeout()`
+Set receive timeout
+
 ---
 
 ## Class: System
+Various system methods.
+Also initializes ARGS and ENV, and sets include paths
+
 ### Methods
+
+#### `System.time()`
+Get the current value of time()
+
+**Returns:**
+  - `Integer`
+
+#### `System.sysstats()`
+Gets system stats, mostly from rusage
+
+**Returns:**
+  - `Map`
+
+#### `System.exit()`
+Exit from program
+
+**Returns:**
+  - `Integer`
+
+#### `System.mem()`
+Get memory stats from statm
+
+**Returns:**
+  - `Map`
+
+#### `System.backtrace()`
+Get the current backtrace
+
+**Returns:**
+  - `Array`
+
+#### `System.reset_stack()`
+Clears from top of stack to end, for diagnostic purposes only.
+
+#### `System.show_stack()`
+Prints out the size of the stack
 
 #### `System.get_precision()`
 Get the floating point precision

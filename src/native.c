@@ -5201,58 +5201,46 @@ Value fileReadNative(int argCount, Value* args) {
 //@ File
 //: readline
 // Read a line
+// Returns:
+//   Result: line
 Value fileReadlineNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
     if (!handle) return errorResult("%s", "No open file handle found.");
 
-    size_t capacity = 512;
+    size_t capacity = 128;
     size_t length = 0;
     char* buffer = (char*)malloc(capacity);
 
     if (buffer == NULL) {
         return errorResult("%s", "Could not allocate readline buffer.");
     }
-    bool readAny = false;
 
-    while (true) {
-        char* writePtr = buffer + length;
-        size_t remainingSpace = capacity - length;
-
-        if (fgets(writePtr, (int)remainingSpace, handle) == NULL) {
-            if (ferror(handle)) {
-                free(buffer);
-                return errorResult("%s", "Error reading data from file stream.");
-            }
-            break;
-        }
-
-        readAny = true;
-        size_t segmentLength = strlen(writePtr);
-        length += segmentLength;
-
-        if (length > 0 && buffer[length - 1] == '\n') {
-            break;
-        }
-
-        if (length >= capacity - 1) {
-            size_t oldCapacity = capacity;
-            capacity = oldCapacity * 2;
-            char* newBuff = (char*)realloc(buffer, capacity);
-
+    int c;
+    while ((c = fgetc(handle)) != EOF) {
+        // grow b uffer if needed (leaving room for null terminator)
+        if (length + 1 >= capacity) {
+            capacity = capacity < 1024 ? capacity * 2: capacity + 1024;
+            char *newBuff = (char*)realloc(buffer, capacity);
             if (newBuff == NULL) {
                 free(buffer);
                 return errorResult("%s", "Out of memory while reading line.");
             }
             buffer = newBuff;
         }
+
+        buffer[length++] = (char)c;
+        if (c == '\n') {
+            break;
+        }
     }
 
-    if (!readAny) {
+    if (length == 0 && c == EOF) {
         free(buffer);
-        Value finalResult = errorResult("EOF");
-        return finalResult;
+        return errorResult("EOF");
     }
+
+    buffer[length] = '\0';
 
     ObjString* lineString = copyString(buffer, (int)length);
     free(buffer);
@@ -5264,6 +5252,15 @@ Value fileReadlineNative(int argCount, Value* args) {
     return finalResult;
 }
 
+//@ File
+//: write
+// Writes data to a file. Takes a string, and writes the length of the string. The
+// string is a byte buffer, not a printable string, so everything is written, it does
+// not stop at \0.
+// Requires:
+//   String: content
+// Returns:
+//   Result: byteswritten
 Value fileWriteNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
@@ -5292,15 +5289,27 @@ Value fileWriteNative(int argCount, Value* args) {
                 written, str->length, strerror(errsv));
     }
 
-    return okResult(FLOAT_VAL((double)written));
+    return okResult(INT_VAL(written));
 }
 
+//@ File
+//: close
+// Close a file handle
+// Returns:
+//   Result: closeresult
 Value fileCloseNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     int res = closeFileInternal(inst);
     return okResult(INT_VAL(res));
 }
 
+//@ File
+//: seek
+// Seek to a location in a file.
+// Requires:
+//   Integer: offset
+// Returns:
+//   Result: seekresult
 Value fileSeekNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
@@ -5346,6 +5355,11 @@ Value fileSeekNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ File
+//: tell
+// Get current position in file.
+// Returns:
+//   Result: position
 Value fileTellNative(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     FILE* handle = (FILE*)inst->foreignPtr;
@@ -5364,6 +5378,11 @@ Value fileTellNative(int argCount, Value* args) {
     return okResult(INT_VAL((int64_t)position));
 }
 
+//@ File
+//: stderr
+// Gets stderr file handle
+// Returns:
+//   File: stderr
 Value fileStderrNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
         runtimeError("File.stderr() must be called as a class method.");
@@ -5375,6 +5394,11 @@ Value fileStderrNative(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+//@ File
+//: flush
+// Flushes buffered data to disk.
+// Returns:
+//   Result
 Value fileFlushNative(int argCount, Value* args) {
     if (!IS_INSTANCE(args[-1])) {
         runtimeError("File.flush() must be called on a File instance.");
@@ -5397,6 +5421,14 @@ Value fileFlushNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ File
+//: copy
+// Copy file from src to dest
+// Requires:
+//   String: src
+//   String: dest
+// Returns:
+//   Result: byteswritten
 Value fileCopyNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         runtimeError("File.copy() requires source and destination path strings.");
@@ -5460,6 +5492,14 @@ Value fileCopyNative(int argCount, Value* args) {
     return okResult(INT_VAL((int64_t)totalSent));
 }
 
+//@ File
+//: chmod
+// Change mode of file
+// Requires:
+//   String: pathname
+//   String: mode
+// Returns:
+//   Result
 Value fileChmodNative(int argCount, Value* args) {
     if (argCount < 2) {
         return errorResult("%s", "File.chmod() requires 2 arguments: (path, mode).");
@@ -5490,6 +5530,15 @@ Value fileChmodNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ File
+//: chown
+// Change owner/group of file.
+// Requires:
+//   String: pathname
+//   Integer: uid
+//   Integer: gid
+// Returns:
+//   Result
 Value fileChownNative(int argCount, Value* args) {
     if (argCount < 3) {
         return errorResult("%s", "File.chown() requires 3 arguments: (path, uid, gid).");
@@ -5526,6 +5575,13 @@ Value fileChownNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ File
+//: unlink
+// Remove a file link. If it is the last link, the file is deleted.
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value fileUnlinkNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         return BOOL_VAL(false);
@@ -5539,6 +5595,13 @@ Value fileUnlinkNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ File
+//: rename
+// Rename a file.
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value fileRenameNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         return BOOL_VAL(false);
@@ -5554,6 +5617,10 @@ Value fileRenameNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ File
+// File library. Set of functions for reading, writing, and managing files.
+// Most return a Result instance, which evaluates to true if the result is ok,
+// or false if it had an error.
 void initFileLibrary() {
     /*
     ObjString* fileName = copyString("File", 4);
@@ -5603,6 +5670,15 @@ void initFileLibrary() {
 #include <sys/stat.h>
 #endif
 
+//@ Dir
+//: mkdir
+// Standard mkdir method. Default mode is 0755 if not specified.
+// Requires:
+//   String: path
+// Optional:
+//   Integer: mode
+// Returns:
+//   Bool
 Value dirMkdirNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
         runtimeError("Dir.mkdir() must be called as a class method.");
@@ -5639,6 +5715,13 @@ Value dirMkdirNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ Dir
+//: list
+// Get list of files in directory. Default "." (current directory) if omitted.
+// Optional:
+//   String: directory
+// Returns:
+//   Result: filelist
 Value dirListNative(int argCount, Value* args) {
     const char* path = ".";
 
@@ -5683,6 +5766,16 @@ Value dirListNative(int argCount, Value* args) {
     return result;
 }
 
+//@ Dir
+//: chdir
+// Changes current directory. If passed a callback, will change the directory,
+// execute the callback, then return to previous directory.
+// Requires:
+//   String: pathname
+// Optional:
+//   Value: callback
+// Returns:
+//   Bool
 Value dirChdirNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.chdir() expects a path string.");
@@ -5739,6 +5832,12 @@ Value dirChdirNative(int argCount, Value* args) {
 #define PATH_MAX 4096
 #endif
 
+//@ Dir
+//: getcwd
+// Get the current directory.
+// Alias: pwd
+// Returns:
+//   String
 Value dirGetcwdNative(int argCount, Value* args) {
     char buffer[PATH_MAX];
 
@@ -5751,6 +5850,14 @@ Value dirGetcwdNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Dir
+//: rmdir
+// Attempts to remove a directory. Will fail if directory is not empty. Sets global variable
+// errno to error code.
+// Requires:
+//   String: pathname
+// Returns:
+//   Nil
 Value dirRmdirNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.rmdir() expects a path string.");
@@ -5765,6 +5872,13 @@ Value dirRmdirNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Dir
+//: exists
+// Checks if path exists and is a directory
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value dirExistsNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.exists() expects a path string.");
@@ -5778,6 +5892,11 @@ Value dirExistsNative(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ Dir
+//: home
+// Gets home directory of current user. Returns $HOME if set, otherwise /.
+// Returns:
+//   String
 Value dirHomeNative(int argCount, Value* args) {
     const char* home = getenv("HOME");
 #ifdef _WIN32
@@ -5787,6 +5906,13 @@ Value dirHomeNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(home, (int)strlen(home)));
 } 
 
+//@ Dir
+//: tempdir
+// Gets the currently set temp directory, where files created by mktemp would
+// be created. Returns the first environment variable set in the following
+// order: TMPDIR, TMP, TEMP, or /tmp if none set.
+// Returns:
+//   String
 Value dirTmpdirNative(int argCount, Value* args) {
     const char* tmp = getenv("TMPDIR");
     if (!tmp) tmp = getenv("TMP");
@@ -5795,7 +5921,13 @@ Value dirTmpdirNative(int argCount, Value* args) {
     return OBJ_VAL(copyString(tmp, (int)strlen(tmp)));
 }
 
-
+//@ Dir
+//: mktemp
+// Creates a temp directory based on a template.
+// Requires:
+//   String: template
+// Returns:
+//   Result: String
 Value dirMkdtempNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.mkdtemp() expects a template path string ending in 'XXXXXX'.");
@@ -5820,6 +5952,15 @@ Value dirMkdtempNative(int argCount, Value* args) {
     return okResult(result);
 }
 
+//@ Dir
+//: each
+// Run a callback on each file in a directory. Returns nothing as the callback
+// is run for its side effects.
+// Requires:
+//   String: pathname
+//   Value: callback
+// Returns:
+//   Nil
 Value dirEachNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_CLOSURE(args[1])) {
         runtimeError("Dir.each() expects (path, callback).");
@@ -5870,6 +6011,11 @@ Value dirEachNative(int argCount, Value* args) {
 
 #include <glob.h>
 
+//@ Dir
+//: glob
+// Get files in the current directory matching a shell glob.
+// Requires:
+//   String: pattern
 Value dirGlobNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.glob() expects a pattern string.");
@@ -5903,6 +6049,13 @@ Value dirGlobNative(int argCount, Value* args) {
     return OBJ_VAL(array);
 }
 
+//@ Dir
+//: isempty
+// Check if a directory is empty
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value dirIsemptyNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.isempty() expects a path string.");
@@ -5934,6 +6087,14 @@ Value dirIsemptyNative(int argCount, Value* args) {
     return BOOL_VAL(empty);
 }
 
+//@ Dir
+//: basename
+// Get the basename of a path, that is the far right portion of a path string, the last
+// component. Could be a file or a directory.
+// Requires:
+//   String: pathname
+// Returns:
+//   String
 Value dirBasenameNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.basename() expects a path string.");
@@ -5950,6 +6111,14 @@ Value dirBasenameNative(int argCount, Value* args) {
     return ret;
 }
 
+//@ Dir
+//: dirname
+// Get the dirname of a path. Nearly always a directory, will be the second to last
+// component of a path string.
+// Requires:
+//   String: pathname
+// Returns:
+//   String
 Value dirDirnameNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.dirname() expects a path string.");
@@ -5966,6 +6135,13 @@ Value dirDirnameNative(int argCount, Value* args) {
     return ret;
 }
 
+//@ Dir
+//: isdir
+// Checks if a path is a directory.
+// Requires:
+//   String: pathname
+// Returns:
+//   Bool
 Value dirIsdirNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.isdir() expects a path string.");
@@ -5980,6 +6156,14 @@ Value dirIsdirNative(int argCount, Value* args) {
     return BOOL_VAL(S_ISDIR(st.st_mode));
 }
 
+//@ Dir
+//: realpath
+// Gets the canonicalized real path name, expanding all symbolic links and resolves references
+// like ./../..
+// Requires:
+//   String: pathname
+// Returns:
+//   String
 Value dirRealpathNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("Dir.realpath() expects a path string.");
@@ -5996,14 +6180,9 @@ Value dirRealpathNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Dir
+// Collection of methods dealing with directories.
 void initDirLibrary(){
-    /*
-    ObjString* dirName = copyString("Dir", 3);
-    push(OBJ_VAL(dirName));
-    ObjClass* dirClass = newClass(dirName);
-    push(OBJ_VAL(dirClass));
-    //dirClass->destructor = dirDestructor;
-    */
     ObjClass* dirClass = defineBuiltinClass("Dir", vm.objectClass, NULL, true);
     ObjClass* dirMeta = dirClass->obj.klass;
 
@@ -6025,14 +6204,17 @@ void initDirLibrary(){
     defineNativeMethod(dirMeta, "basename", dirBasenameNative);
     defineNativeMethod(dirMeta, "dirname", dirDirnameNative);
     defineNativeMethod(dirMeta, "isdir", dirIsdirNative);
-
-    /*
-    tableSet(&vm.globals, dirName, OBJ_VAL(dirClass));
-
-    popn(2);
-    */
 }
 
+//@ Process
+//: run
+// Run a process, waiting for it to finish. Only captures exit code. Any output
+// is lost unless redirected to a file. If output is needed to process, capture()
+// may be better.
+// Requires:
+//   String: command
+// Returns:
+//   Integer
 Value processRunStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Process.run() requires a string command argument.");
@@ -6062,6 +6244,13 @@ Value processRunStatic(int argCount, Value* args) {
     return okResult(INT_VAL(0));
 }
 
+//@ Process
+//: capture
+// Run a process from a shell, capturing stdout.
+// Requires:
+//   String: command
+// Returns:
+//   Result: String
 Value processCaptureStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Process.execute() requires a string command argument.");
@@ -6107,6 +6296,13 @@ Value processCaptureStatic(int argCount, Value* args) {
     return okResult(OBJ_VAL(outputString));
 }
 
+//@ Process
+//: fork
+// Spawn a new process, returns pid as a result.
+// Requires:
+//   String: processname
+// Returns:
+//   Result: pid
 Value processForkStatic(int argCount, Value* args) {
     fflush(NULL);
 
@@ -6141,6 +6337,16 @@ char* valueToCString(Value val) {
     return strdup("object");
 }
 
+//@ Process
+//: exec
+// Replace current process with a new one, passing arguments. Only returns if it failed.
+// Requires:
+//   String: processname
+// Optional:
+//   Array: args
+//   Map: env
+// Returns:
+//   Nil
 Value processExecStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("exec() expects a string path as the first argument.");
@@ -6212,10 +6418,22 @@ Value processExecStatic(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ Process:
+//: pid
+// Get current pid
+// Returns:
+//   Integer
 Value processPidStatic(int argCount, Value* args) {
     return INT_VAL((int64_t)getpid());
 }
 
+//@ Process
+//: wait
+// Wait on a process to exit
+// Requires:
+//   Integer: pid
+// Returns:
+//   Result: exitcode
 Value processWaitStatic(int argCount, Value* args) {
     pid_t targetPid = -1;
 
@@ -6250,6 +6468,11 @@ Value processWaitStatic(int argCount, Value* args) {
     return okResult(INT_VAL((int64_t)exitCode));
 }
 
+//@ Process
+//: pipe
+// Create a pipe for communication between processes. Returns a map, {"read": fd, "write": fd}.
+// Returns:
+//   Result: pipemap
 Value processPipeStatic(int argCount, Value* args) {
     int fds[2];
     if (pipe(fds) < 0) {
@@ -6275,6 +6498,13 @@ Value processPipeStatic(int argCount, Value* args) {
     return okResult(OBJ_VAL(pipeMap));
 }
 
+//@ Process
+//: read
+// Read from a file descriptor. Mainly used for reading from pipes.
+// Requires:
+//   Integer: fd
+// Returns:
+//   Result: bytes
 Value processReadStatic(int argCount, Value* args) {
     if (argCount < 1) {
         return errorResult("%s", "Process.read() requires a file descriptor argument.");
@@ -6323,6 +6553,13 @@ Value processReadStatic(int argCount, Value* args) {
     return okResult(OBJ_VAL(outString));
 }
 
+//@ Process
+//: close
+// Close a process descriptor. Mainly used for pipes.
+// Requires:
+//   Integer: fd
+// Returns:
+//   Result
 Value processCloseStatic(int argCount, Value* args) {
     if (argCount < 1) {
         return errorResult("%s", "Process.close() requires a numeric descriptor.");
@@ -6348,6 +6585,13 @@ Value processCloseStatic(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ Process
+//: signal
+// Send a signal to a process
+// Requires:
+//   Integer: fd
+// Returns:
+//   Bool
 Value processSignalStatic(int argCount, Value* args) {
     int offset = (IS_INT(args[0]) || IS_FLOAT(args[0])) ? 0 : 1;
 
@@ -6388,6 +6632,14 @@ Value processSignalStatic(int argCount, Value* args) {
     return BOOL_VAL(false);
 }
 
+//@ Process
+//: write
+// Send data to a file descriptor. Mainly used for pipes.
+// Requires:
+//   Integer: fd
+//   String: message
+// Returns:
+//   Result: byteswritten
 Value processWriteStatic(int argCount, Value* args) {
     if (argCount < 2 || (!IS_INT(args[0]) && !IS_FLOAT(args[0])) || !IS_STRING(args[1])) {
         runtimeError("Process.write() requires a numeric descriptor and a string message.");
@@ -6418,6 +6670,14 @@ Value processWriteStatic(int argCount, Value* args) {
     return okResult(INT_VAL((int64_t)bytesWritten));
 }
 
+//@ Process
+//: popen
+// Open a process with a pipe. The pipe is one-way, either reading from process, or writing to process,
+// specified by second argument, either "r" or "w", default read. Returns a File instance
+// Requires:
+//   String: command
+// Returns:
+//   File
 Value processPopenStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("Process.popen() requires a command.");
@@ -6446,23 +6706,15 @@ Value processPopenStatic(int argCount, Value* args) {
     push(OBJ_VAL(fileInstance));
     fileInstance->foreignPtr = (void*)fp;
 
-    ObjString* ispipe = copyString("__is_pipe", 9);
-    push(OBJ_VAL(ispipe));
-    tableSet(&fileInstance->fields, ispipe, BOOL_VAL(true));
-    pop();
+    tableSet(&fileInstance->fields, vm.isPipeString, BOOL_VAL(true));
     pop();
 
     return OBJ_VAL(fileInstance);
 }
 
+//@ Process
+// Class for managing processes.  Includes pipes, fork/exec, system.
 void initProcessClass() {
-    /*
-    ObjString* processName = copyString("Process", 7);
-    push(OBJ_VAL(processName));
-    ObjClass* processClass = newClass(processName);
-    push(OBJ_VAL(processClass));
-    tableSet(&vm.globals, processName, OBJ_VAL(processClass));
-    */
     ObjClass* processClass = defineBuiltinClass("Process", vm.objectClass, NULL, true);
     ObjClass* processMeta = processClass->obj.klass;
 
@@ -6480,11 +6732,6 @@ void initProcessClass() {
     defineNativeMethod(processMeta, "signal", processSignalStatic);
 
     processClass->isFrozen = true;
-
-    /*
-    pop();
-    pop();
-    */
 }
 
 typedef struct {
@@ -6519,6 +6766,17 @@ static void bufWriteBytes(ByteBuffer* buf, const uint8_t* src, int len) {
 }
 
 #define IS_INT_OR_FLOAT(v) (IS_INT(v) || IS_FLOAT(v))
+//@ Struct
+//: pack
+// Packs a bunch of data types into a String according to a format string. Default is
+// little endian mode.
+// Requires:
+//   String: format
+//   Array: values
+// Optional:
+//   Bool: bigendian
+// Returns:
+//   String
 Value structPackNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_ARRAY(args[1])) {
         runtimeError("pack() expects format string and value array.");
@@ -6564,7 +6822,7 @@ Value structPackNative(int argCount, Value* args) {
         if (type == '\0') break;
         p++;
 
-        if (type == 'x') {
+        if (type == 'x' || type == 'X') {
             int padLen = hasWidth ? width : 1;
             for (int i = 0; i < padLen; i++) {
                 bufWriteByte(&buf, 0x00);
@@ -6572,7 +6830,7 @@ Value structPackNative(int argCount, Value* args) {
             continue;
         }
 
-        if (type == 's') {
+        if (type == 's' || type == 'S') {
             if (valIndex >= array->count) {
                 free(buf.bytes);
                 runtimeError("Format string rqeuires more values than provided.");
@@ -6696,6 +6954,18 @@ Value structPackNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
+//@ Struct
+//: unpack
+// Unpacks a string into an array based on format. x = null, s = string, b = byte,
+// h = 2 bytes, i = 4 bytes, q = 8 bytes. Optional width specifier at beginning. Also can
+// specify endianness with < or > at the beginning, or optional argument.
+// Requires:
+//   String: format
+//   Array: values
+// Optional:
+//   Bool: bigendian
+// Returns:
+//   String
 Value structUnpackNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
@@ -6883,193 +7153,21 @@ Value structUnpackNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
-/*
-Value structUnpackNative(int argCount, Value* args) {
-    if (argCount < 2) {
-        runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
-        return NIL_VAL;
-    }
-
-    if (!IS_STRING(args[0])) {
-        runtimeError("First argument to Struct.unpack() must be a format string.");
-        return NIL_VAL;
-    }
-
-    if (!IS_STRING(args[1]) && !IS_BUFFER(args[1])) {
-        runtimeError("Second argument to Struct.unpack() must be a data string or buffer.");
-        return NIL_VAL;
-    }
-
-    const char* format = AS_CSTRING(args[0]);
-    const uint8_t* buffer;
-    int bufferlen;
-
-    if (IS_STRING(args[1])) {
-        ObjString* data = AS_STRING(args[1]);
-        buffer = (const uint8_t*)data->chars;
-        bufferlen = data->length;
-    } else {
-        buffer = AS_BUFFER(args[1])->bytes;
-        bufferlen = AS_BUFFER(args[1])->size;
-    }
-
-    bool bigend = (argCount >= 3) ? AS_BOOL(args[2]) : false;
-
-    ObjArray* result = newArray();
-    push(OBJ_VAL(result));
-
-    const char* f = format;
-    int offset = 0;
-
-    while (*f != '\0') {
-        if (isspace(*f)) {
-            f++;
-            continue;
-        }
-
-        int width = 0;
-        bool hasWidth = false;
-        while (isdigit(*f)) {
-            width = width * 10 + (*f - '0');
-            hasWidth = true;
-            f++;
-        }
-
-        const char type = *f;
-        if (type == '\0') {
-            runtimeError("Format string ended unexpectedly after width specifier.");
-            return NIL_VAL;
-        }
-
-        int count = (hasWidth && type != 's' && type != 'x') ? width : 1;
-        int elemSize = 0;
-        //int requiredSize = 0;
-
-        switch (type) {
-            case 'x': elemSize = 1; break;
-            case 'b': case 'B': elemSize = 1; break;
-            case 'h': case 'H': elemSize = 2; break;
-            case 'i': case 'I': elemSize = 4; break;
-            case 'q': case 'Q': elemSize = 8; break;
-            case 's': elemSize = hasWidth ? width : (bufferlen - offset); break;
-            default:
-                      runtimeError("Unknown format specifier '%c'.", type);
-                      return NIL_VAL;
-        }
-
-        int requiredTotal = (type == 's' || type == 'x') ? (hasWidth ? width : elemSize) : (elemSize * count);
-
-        if (offset + requiredTotal > bufferlen) {
-            runtimeError("Buffer underflow: Data string is too short o unpack the specified format.");
-            return NIL_VAL;
-        }
-
-        if (type == 'x') {
-            offset += requiredTotal;
-        } else if (type == 's') {
-            ObjString* str = copyString((const char*)buffer + offset, requiredTotal);
-            push(OBJ_VAL(str));
-            arrayAppend(result, OBJ_VAL(str));
-            pop();
-            offset += requiredTotal;
-        } else {
-            for (int c = 0; c < count; c++) {
-                int64_t val = 0;
-
-                switch (type) {
-                    case 'b':
-                        val = (int8_t)buffer[offset];
-                        offset += 1;
-                        break;
-                    case 'B':
-                        val = (uint8_t)buffer[offset];
-                        offset += 1;
-                        break;
-                    case 'h':
-                    case 'H':
-                        {
-                            uint16_t u16;
-                            if (bigend) {
-                                u16 = (uint16_t)(buffer[offset] << 8) | buffer[offset + 1];
-                            } else {
-                                u16 = (uint16_t)buffer[offset] | (buffer[offset + 1] << 8);
-                            }
-                            val = (type == 'h') ? (int16_t)u16 : u16;
-                            offset += 2;
-                        }
-                        break;
-                        case 'i':
-                        case 'I':
-                            {
-                                uint32_t u32;
-                                if (bigend) {
-                                    u32 = ((uint32_t)buffer[offset] << 24) |
-                                        ((uint32_t)buffer[offset + 1] << 16) |
-                                        ((uint32_t)buffer[offset + 2] << 8) |
-                                        (uint32_t)buffer[offset + 3];
-                                } else {
-                                    u32 = (uint32_t)buffer[offset] |
-                                        ((uint32_t)buffer[offset + 1] << 8) |
-                                        ((uint32_t)buffer[offset + 2] << 16) |
-                                        ((uint32_t)buffer[offset + 3] << 24);
-                                }
-                                val = (type == 'i') ? (int32_t)u32 : u32;
-                                offset += 4;
-                            }
-                            break;
-                        case 'q':
-                        case 'Q':
-                            {
-                                uint64_t u64 = 0;
-                                if (bigend) {
-                                    for (int i = 0; i < 8; i++) {
-                                        u64 = (u64 << 8) | (uint64_t)buffer[offset + i];
-                                    }
-                                } else {
-                                    for (int i = 7; i >= 0; i--) {
-                                        u64 |= ((uint64_t)buffer[offset + i]) << (i * 8);
-                                    }
-                                }
-                                val = (int64_t)u64;
-                                //val = (type == 'q') ? (int64_t)u64 : u64;
-                                offset += 8;
-                            }
-                            break;
-                }
-                arrayAppend(result, INT_VAL(val));
-            }
-        }
-        f++;
-    }
-
-    pop();
-    return OBJ_VAL(result);
-}
-*/
-
+//@ Struct
+// Provides two methods, pack and unpack, for creating and splitting data.
 void initStructClass() {
-    /*
-    ObjString* string = NULL;
-
-    string = copyString("Struct", 6);
-    push(OBJ_VAL(string));
-    ObjClass* structClass = newClass(string);
-    push(OBJ_VAL(structClass));
-    structClass->superclass = vm.objectClass;
-    tableSet(&vm.globals, string, OBJ_VAL(structClass));
-    */
     ObjClass* structClass = defineBuiltinClass("Struct", vm.objectClass, NULL, true);
     ObjClass* structMeta = structClass->obj.klass;
 
     defineNativeMethod(structMeta, "pack", structPackNative);
     defineNativeMethod(structMeta, "unpack", structUnpackNative);
-
-    /*
-    pop();
-    pop();
-    */
 }
 
+//@ GC
+//: heap_growth_factor
+// Set the heap growth factor. Default is 2.0. Must be 1.1 or greater.
+// Requires:
+//   Number: val
 Value hgfGCNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("heap_growth_Factor() expects a numeric multiplier.");
@@ -7096,6 +7194,11 @@ Value hgfGCNative(int argCount, Value* args) {
     return args[0];
 }
 
+//@ GC
+//: get_growth_factor
+// Get the current growth factor
+// Returns:
+//   Float
 Value get_hgfGCNative(int argCount, Value* args) {
     if (argCount > 1) {
         runtimeError("get_growth_factor() takes 0 arguments.");
@@ -7105,41 +7208,42 @@ Value get_hgfGCNative(int argCount, Value* args) {
     return FLOAT_VAL(vm.heap_growth_factor);
 }
 
-Value thresholdGCNative(int argCount, Value* args) {
-    if (argCount < 1) {
-        runtimeError("init_threshold() expects a numeric byte size.");
-        return NIL_VAL;
+//@ GC
+//: set_log
+// Toggle whether to log gc events.
+// Requires:
+//   Bool: enable
+// Returns:
+//   Bool: previous
+Value gcSetlogNative(int argCount, Value* args) {
+    if (argCount < 1 || !IS_BOOL(args[0])) {
+        runtimeError("set_log() takes a boolean.");
+        return BOOL_VAL(vm.log_gc);
     }
 
-    int64_t thresholdBytes;
+    bool val = AS_BOOL(args[0]);
+    bool prev = vm.log_gc;
 
-    if (IS_INT(args[0])) {
-        thresholdBytes = AS_INT(args[0]);
-    } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
-        thresholdBytes = (int64_t)AS_FLOAT(args[0]);
-    } else {
-        runtimeError("init_threshold() expects a numeric bytes size.");
-        return NIL_VAL;
-    }
-
-    if (thresholdBytes  < 0) {
-        runtimeError("Initial GC threshold cannot be negative.");
-        return NIL_VAL;
-    }
-
-    vm.init_threshold = (size_t)thresholdBytes;
-    return args[0];
+    vm.log_gc = val;
+    return BOOL_VAL(prev);
 }
 
-Value get_thresholdGCNative(int argCount, Value* args) {
-    if (argCount > 1) {
-        runtimeError("get_threshold() takes 0 arguments.");
-        return NIL_VAL;
-    }
-
-    return INT_VAL(vm.init_threshold);
+//@ GC
+//: get_log
+// Get current gc log value.
+// Returns:
+//   Bool
+Value gcGetlogNative(int argCount, Value* args) {
+    return BOOL_VAL(vm.log_gc);
 }
 
+//@ GC
+//: bump_size
+// Set bump size
+// Requires:
+//   Integer: bumpsize
+// Returns:
+//   Integer: bumpsize
 Value bumpsizeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("bump_size() expects a numeric byte size.");
@@ -7172,6 +7276,11 @@ Value bumpsizeGCNative(int argCount, Value* args) {
     return args[0];
 }
 
+//@ GC
+//: get_bumpsize
+// Get the current bumpsize
+// Returns:
+//   Integer
 Value get_bumpsizeGCNative(int argCount, Value* args) {
     if (argCount > 1) {
         runtimeError("get_bumpsize() takes 0 arguments.");
@@ -7181,6 +7290,13 @@ Value get_bumpsizeGCNative(int argCount, Value* args) {
     return INT_VAL((int64_t)vm.bump_size);
 }
 
+//@ GC
+//: stress_mode
+// Set stress mode. Valid values are GC.NormalMode, GC.StressMode, GC.DisableMode
+// Requires:
+//   Integer: mode
+// Returns:
+//   Integer
 Value stressmodeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
@@ -7208,6 +7324,11 @@ Value stressmodeGCNative(int argCount, Value* args) {
     return args[0];
 }
 
+//@ GC
+//: get_stressmode
+// Gets current stress mode
+// Returns:
+//   Integer
 Value get_stressmodeGCNative(int argCount, Value* args) {
     if (argCount > 1) {
         runtimeError("get_stressmode() takes 0 arguments.");
@@ -7217,9 +7338,16 @@ Value get_stressmodeGCNative(int argCount, Value* args) {
     return INT_VAL(vm.stress_mode);
 }
 
+//@ GC
+//: type
+// Set the gc type. GC.TypeLinear = Linear/Bump, GC.TypeMult = Multiplier
+// Requires:
+//   Integer: type
+// Returns:
+//   Integer: type
 Value typeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
+        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult = Multipler.");
         return NIL_VAL;
     }
 
@@ -7243,6 +7371,11 @@ Value typeGCNative(int argCount, Value* args) {
     return args[0];
 }
 
+//@ GC
+//: get_gctype
+// Get the current gc type
+// Returns:
+//   Integer
 Value get_typeGCNative(int argCount, Value* args) {
     if (argCount > 0) {
         runtimeError("get_gctype() expects 0 arguments.");
@@ -7251,14 +7384,21 @@ Value get_typeGCNative(int argCount, Value* args) {
     return INT_VAL(vm.gctype);
 }
 
+//@ GC
+//: gc
+// Run the GC. Also available under System.gc()
 Value systemGCNative(int argCount, Value* args) {
     collectGarbage();
     return NIL_VAL;
 }
 
+//@ GC
+//: stats
+// Get gc stats
+// Returns:
+//   Map
 Value gcStatsNative(int argCount, Value* args) {
     GC_SCOPE;
-    //int gcscope = saveTempScope();
 
     ObjMap* stats = newMap();
     pushTemp(OBJ_VAL(stats));
@@ -7283,36 +7423,28 @@ Value gcStatsNative(int argCount, Value* args) {
     pushTemp(OBJ_VAL(keyStr));
     mapSet(stats, OBJ_VAL(keyStr), INT_VAL((int64_t)vm.globalRoots.count));
 
-    //restoreTempScope(gcscope);
-
     return OBJ_VAL(stats);
 }
 
+//@ GC
+// GC interface. Control various aspeccts of the garbage collector.
 void initGCLibrary() {
     ObjClass* gcClass = defineBuiltinClass("GC", vm.objectClass, NULL, true);
     ObjClass* gcMeta = gcClass->obj.klass;
-    /*
-    ObjString* gcName = copyString("GC", 2);
-    push(OBJ_VAL(gcName));
-    ObjClass* gcClass = newClass(gcName);
-    push(OBJ_VAL(gcClass));
-    */
 
     defineNativeMethod(gcMeta, "heap_growth_factor", hgfGCNative);
     defineNativeMethod(gcMeta, "get_growth_factor", get_hgfGCNative);
-    defineNativeMethod(gcMeta, "init_threshold", thresholdGCNative);
-    defineNativeMethod(gcMeta, "get_threshold", get_thresholdGCNative);
     defineNativeMethod(gcMeta, "bump_size", bumpsizeGCNative);
     defineNativeMethod(gcMeta, "get_bumpsize", get_bumpsizeGCNative);
     defineNativeMethod(gcMeta, "stress_mode", stressmodeGCNative);
     defineNativeMethod(gcMeta, "get_stress_mode", get_stressmodeGCNative);
     defineNativeMethod(gcMeta, "type", typeGCNative);
     defineNativeMethod(gcMeta, "get_gctype", get_typeGCNative);
+    defineNativeMethod(gcMeta, "set_log", gcSetlogNative);
     // same as System.gc()
     defineNativeMethod(gcMeta, "gc", systemGCNative);
     defineNativeMethod(gcMeta, "stats", gcStatsNative);
 
-    //tableSet(&vm.globals, gcName, OBJ_VAL(gcClass));
 
     defineClassConstant(gcClass, "NormalMode", INT_VAL(0));
     defineClassConstant(gcClass, "StressMode", INT_VAL(1));
@@ -7320,11 +7452,6 @@ void initGCLibrary() {
 
     defineClassConstant(gcClass, "TypeLinear", INT_VAL(0));
     defineClassConstant(gcClass, "TypeMult", INT_VAL(1));
-
-    /*
-    pop();
-    pop();
-    */
 }
 
 void ioDestructor(ObjInstance* inst) {
@@ -7338,6 +7465,9 @@ void ioDestructor(ObjInstance* inst) {
     }
 }
 
+//@ IO
+// Base class for TCP and UDP.
+// Should not be called directly.  Should use IO.tcp() or IO.udp() to get the specific type.
 Value ioCallHandler(int argCount, Value* args) {
     ObjClass* klass = AS_CLASS(args[-1]);
 
@@ -7373,12 +7503,17 @@ Value ioCallHandler(int argCount, Value* args) {
     return OBJ_VAL(instance);
 }
 
+/*
 Value ioTcpNative(int argCount, Value* args) {
     Value tcpClassVal;
     if (!tableGet(&vm.globals, copyString("Tcp", 3), &tcpClassVal)) {
     }
 }
+*/
 
+//@ IO
+//: inspect
+// Low level function to print io internal information. Prints directly to stdout.
 Value ioInspectNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     if (instance->foreignPtr != NULL) {
@@ -7395,6 +7530,14 @@ Value ioInspectNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ IO
+//: connect
+// Connect to a remote endpoint. All data is internal to the class.
+// Requires:
+//   String: ip
+//   Integer: port
+// Returns:
+//   Bool
 Value ioConnectNative(int argCount, Value* args) {
     clearLastError();
 
@@ -7527,6 +7670,13 @@ Value ioConnectNative(int argCount, Value* args) {
 #define MSG_NOSIGNAL 0
 #endif
 
+//@ IO
+//: send
+// Send data through a connection. Should be connected firsst.
+// Requires:
+//   String: data
+// Returns:
+//   Result: bytessent
 Value ioSendNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("send() expects a string as the first argument.");
@@ -7554,6 +7704,14 @@ Value ioSendNative(int argCount, Value* args) {
     return okResult(FLOAT_VAL((double)bytesSent));
 }
 
+//@ IO
+//: recv
+// Receive data from remote. Requires size of buffer for max amount of data to receive.
+// Result is data, length is amount of data received, which could be less than max size.
+// Requires:
+//   Integer: buffersize
+// Returns:
+//   Result: data
 Value ioRecvNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("recv() expects a buffer size number as the first argument.");
@@ -7625,6 +7783,13 @@ Value ioRecvNative(int argCount, Value* args) {
     return resultVal;
 }
 
+//@ IO
+//: listen
+// Listen on a port
+// Requires:
+//   Integer: port
+// Returns:
+//   Result
 Value ioListenNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("listen() expects a port number as the first argument.");
@@ -7678,6 +7843,11 @@ Value ioListenNative(int argCount, Value* args) {
     return okResult(args[-1]);
 }
 
+//@ IO
+//: accept
+// Accept a connection
+// Returns:
+//   TCP: instance
 Value ioAcceptNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -7718,6 +7888,14 @@ Value ioAcceptNative(int argCount, Value* args) {
     return resultVal;
 }
 
+//@ IO
+//: bind
+// Bind to an ip and port
+// Requires:
+//   String: ip
+//   Integer: port
+// Returns:
+//   Result
 Value ioBindNative(int argCount, Value* args) {
     if (argCount < 2) {
         runtimeError("bind() expects an IP address string and a port number.");
@@ -7777,6 +7955,11 @@ Value ioBindNative(int argCount, Value* args) {
     return okResult(args[-1]);
 }
 
+//@ IO
+//: readable
+// Checks if there is data to be read.
+// Returns:
+//   Result: readable
 Value ioReadableNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -7801,6 +7984,12 @@ Value ioReadableNative(int argCount, Value* args) {
     return okResult(BOOL_VAL(isReadable));
 }
 
+//@ IO
+//: close
+// Close an io connection. Resets it completely, it cannot be reused. Should be discarded
+// and a new instance created.
+// Returns:
+//   Result
 Value ioCloseNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     SocketInternal* so = (SocketInternal*)instance->foreignPtr;
@@ -7821,6 +8010,13 @@ Value ioCloseNative(int argCount, Value* args) {
     return okResult(NIL_VAL);
 }
 
+//@ IO
+//: poll
+// Checks socket instances to see which ones have active events.
+// Requires:
+//   Array: instances
+// Returns:
+//   Array
 Value ioPollNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
         return errorResult("poll() must be called on the IO.class.");
@@ -7855,7 +8051,11 @@ Value ioPollNative(int argCount, Value* args) {
     ObjArray* socket_array = AS_ARRAY(args[0]);
 
     int max_fds = socket_array->count > 0 ? socket_array->count : 1;
-    struct pollfd fds[max_fds];
+    struct pollfd* fds = malloc(max_fds * sizeof(struct pollfd));
+    if (fds == NULL) {
+        return errorResult("Out of memory.");
+    }
+
     int valid_fd_count = 0;
 
     for (int i = 0; i < socket_array->count; i++) {
@@ -7876,6 +8076,7 @@ Value ioPollNative(int argCount, Value* args) {
     int pollResult = poll(fds, valid_fd_count, timeout);
 
     if (pollResult < 0) {
+        free(fds);
         return errorResult("Poll failed: %s", strerror(errno));
     }
 
@@ -7902,11 +8103,17 @@ Value ioPollNative(int argCount, Value* args) {
             }
         }
     }
+
+    free(fds);
+
     Value resultVal = okResult(OBJ_VAL(array));
     pop();
     return resultVal;
 }
 
+//@ IO
+//: set_recv_timeout
+// Set receive timeout
 Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     if (argCount < 1) {
         runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
@@ -7950,30 +8157,12 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
 
 void initIOClass() {
     ObjClass* ioClass = defineBuiltinClass("IO", vm.objectClass, NULL, true);
-    /*
-    ObjString* ioName = copyString("IO", 2);
-    push(OBJ_VAL(ioName));
 
-    ObjClass* ioClass = newClass(ioName);
-    push(OBJ_VAL(ioClass));
-    */
-
-    //ioClass->superclass = vm.objectClass;
     ioClass->callHandler = ioCallHandler;
     ioClass->destructor = ioDestructor;
 
-    //tableSet(&vm.globals, ioName, OBJ_VAL(ioClass));
-
-    /*
-    ObjString* tcpName = copyString("tcp", 3);
-    push(OBJ_VAL(tcpName));
-
-    ObjClass* tcpClass = newClass(tcpName);
-    push(OBJ_VAL(tcpClass));
-    */
     ObjClass* tcpClass = defineBuiltinClass("tcp", ioClass, NULL, false);
 
-    //tcpClass->superclass = ioClass;
     tcpClass->callHandler = ioCallHandler;
     tcpClass->destructor = ioDestructor;
 
@@ -7985,23 +8174,8 @@ void initIOClass() {
     pop();
     pop();
 
-    //defineClassConstant(ioClass, "tcp", OBJ_VAL(tcpClass));
-
-    /*
-    pop(); // tcpClass
-    pop(); // tcpName
-    */
-
-    /*
-    ObjString* udpName = copyString("udp", 3);
-    push(OBJ_VAL(udpName));
-
-    ObjClass* udpClass = newClass(udpName);
-    push(OBJ_VAL(udpClass));
-    */
     ObjClass* udpClass = defineBuiltinClass("udp", ioClass, NULL, false);
 
-    //udpClass->superclass = ioClass;
     udpClass->callHandler = ioCallHandler;
     udpClass->destructor = ioDestructor;
 
@@ -8012,12 +8186,6 @@ void initIOClass() {
 
     pop();
     pop();
-    //defineClassConstant(ioClass, "udp", OBJ_VAL(udpClass));
-
-    /*
-    pop(); // udpClass
-    pop(); // udpName
-    */
 
     defineNativeMethod(ioClass, "inspect", ioInspectNative);
     defineNativeMethod(ioClass, "connect", ioConnectNative);
@@ -8035,11 +8203,13 @@ void initIOClass() {
     defineClassConstant(ioClass, "PollOut", INT_VAL(POLLOUT));
     defineClassConstant(ioClass, "PollErr", INT_VAL(POLLERR));
     defineClassConstant(ioClass, "PollHup", INT_VAL(POLLHUP));
-
-    //pop(); // ioClass
-    //pop(); // ioName
 }
 
+//@ System
+//: time
+// Get the current value of time()
+// Returns:
+//   Integer
 Value systemTimeNative(int argCount, Value* args) {
     if (argCount > 0) {
         runtimeError("time() takes 0 arguments.");
@@ -8049,6 +8219,11 @@ Value systemTimeNative(int argCount, Value* args) {
     return INT_VAL((int64_t)time(NULL));
 }
 
+//@ System
+//: sysstats
+// Gets system stats, mostly from rusage
+// Returns:
+//   Map
 Value systemSysStatsNative(int argCount, Value* args) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -8078,6 +8253,11 @@ Value systemSysStatsNative(int argCount, Value* args) {
     return OBJ_VAL(map);
 }
 
+//@ System
+//: exit
+// Exit from program
+// Returns:
+//   Integer
 Value systemExitNative(int argCount, Value* args) {
     int code = 0;
     if (argCount > 0) {
@@ -8124,6 +8304,11 @@ typedef struct {
     unsigned long size, resident, share, text, lib, data, dt;
 } statm_t;
 
+//@ System
+//: mem
+// Get memory stats from statm
+// Returns:
+//   Map
 Value systemMemNative(int argCount, Value* args) {
     ObjMap* memmap = newMap();
     push(OBJ_VAL(memmap));
@@ -8165,6 +8350,11 @@ Value systemMemNative(int argCount, Value* args) {
     return pop();
 }
 
+//@ System
+//: backtrace
+// Get the current backtrace
+// Returns:
+//   Array
 Value systemBacktraceNative(int argCount, Value* args) {
     (void)argCount;
     (void)args;
@@ -8195,6 +8385,9 @@ Value systemBacktraceNative(int argCount, Value* args) {
     return OBJ_VAL(stackTrace);
 }
 
+//@ System
+//: reset_stack
+// Clears from top of stack to end, for diagnostic purposes only.
 Value systemResetStackNative(int argCount, Value* args) {
     for (Value* slot = vm.stackTop; slot < vm.stack + STACK_MAX; slot++) {
         *slot = NIL_VAL;
@@ -8202,6 +8395,9 @@ Value systemResetStackNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+//@ System
+//: show_stack
+// Prints out the size of the stack
 Value systemShowStackNative(int argCount, Value* args) {
     printf("[SHOW_STACK]: stack: %d\n", (int)(vm.stackTop - vm.stack));
     return NIL_VAL;
@@ -8489,6 +8685,9 @@ void defineSignalConstants(ObjClass* sg) {
 #endif
 }
 
+//@ System
+// Various system methods.
+// Also initializes ARGS and ENV, and sets include paths
 void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     /*
     ObjString* systemName = copyString("System", 6);

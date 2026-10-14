@@ -1,0 +1,57 @@
+print "=== Testing IO.poll() ===";
+
+// 1. Create a server socket and listen on port 8080 directly
+var server = IO.tcp();
+var listenRes = server.listen(8080); // This handles bind + listen internally in your C code
+if (!listenRes) {
+    print "Listen failed: " + listenRes.err;
+    exit(0);
+}
+
+var client = IO.tcp();
+var connectRes = client.connect("127.0.0.1", 8080);
+if (!connectRes) {
+    print "Connect failed: " + connectRes.err;
+    exit(0);
+}
+
+// Accept the incoming connection on the server side
+var connectionres = server.accept();
+if (!connectionres) {
+    print "Accept failed: " + connectionres.err;
+    exit(0);
+}
+var connection = connectionres.unwrap();
+
+// 2. Build the array of sockets to monitor
+var sockets = [client, connection];
+
+print "[*] Polling before sending data (expecting timeout/empty)...";
+var readyBefore = IO.poll(sockets, 100).unwrap();
+print "Ready sockets count (should be 0): " + readyBefore.length();
+
+// 3. Send data from the client to trigger readability on the connection side
+print "[*] Sending data from client...";
+client.send("ping from client");
+
+print "[*] Polling after sending data (expecting connection to be ready)...";
+var readyAfter = IO.poll(sockets, 1000).unwrap();
+print "Ready sockets count (should be 1): " + readyAfter.length();
+
+// Verify that the connection socket is the one that woke up
+if (readyAfter.length() > 0) {
+    print "[+] Success: Socket is readable!";
+    
+    // Read the data off the connection
+    var data = connection.recv(1024);
+    print "Received data: " + data.unwrap();
+} else {
+    print "[-] Error: Expected socket to be ready, but got nothing.";
+}
+
+// 4. Clean up resources
+client.close();
+connection.close();
+server.close();
+
+print "=== IO.poll() Test Complete ===";

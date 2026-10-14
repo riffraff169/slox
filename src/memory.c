@@ -7,10 +7,8 @@
 #include "vm.h"
 #include "signals.h"
 
-#ifdef DEBUG_LOG_GC
 #include <stdio.h>
 #include "debug.h"
-#endif
 
 #define GC_HEAP_GROW_FACTOR 2
 
@@ -21,12 +19,10 @@ void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
             collectGarbage();
         }
 
-#ifndef DEBUG_DISABLE_GC
-        if (!vm.isGC && vm.bytesAllocated > vm.nextGC && vm.init_threshold < vm.bytesAllocated) {
+        if (vm.gc_enabled && !vm.isGC && vm.bytesAllocated > vm.nextGC) {
             if (vm.stress_mode != 2) // run never
                 collectGarbage();
         }
-#endif
     }
 
     if (newSize == 0) {
@@ -43,11 +39,11 @@ void markObject(Obj* object) {
     if (object == NULL) return;
     if (object->isMarked) return;
 
-#ifdef DEBUG_LOG_GC
-    printf("%p mark ", (void*)object);
-    printValue(stdout, OBJ_VAL(object));
-    printf("\n");
-#endif
+    if (vm.log_gc) {
+        printf("%p mark ", (void*)object);
+        printValue(stdout, OBJ_VAL(object));
+        printf("\n");
+    }
 
     object->isMarked = true;
 
@@ -73,11 +69,11 @@ static void markArray(ValueArray* array) {
 }
 
 static void blackenObject(Obj* object) {
-#ifdef DEBUG_LOG_GC
-    printf("%p blacken ", (void*)object);
-    printValue(stdout, OBJ_VAL(object));
-    printf("\n");
-#endif
+    if (vm.log_gc) {
+        printf("%p blacken ", (void*)object);
+        printValue(stdout, OBJ_VAL(object));
+        printf("\n");
+    }
 
     switch (object->type) {
         case OBJ_REGEX:
@@ -184,9 +180,9 @@ static void blackenObject(Obj* object) {
 }
 
 static void freeObject(Obj* object) {
-#ifdef DEBUG_LOG_GC
-    printf("%p free type %d\n", (void*)object, object->type);
-#endif
+    if (vm.log_gc) {
+        printf("%p free type %d\n", (void*)object, object->type);
+    }
 
     switch (object->type) {
         case OBJ_FOREIGN:
@@ -194,16 +190,6 @@ static void freeObject(Obj* object) {
                 FREE(ObjForeign, object);
             }
             break;
-            /*
-        case OBJ_BOX:
-            {
-                ObjBox* box = (ObjBox*)object;
-                if (box->isManaged) {
-                    free(box->ptr);
-                }
-            }
-            break;
-            */
         case OBJ_REGEX:
             {
                 ObjRegex* re = (ObjRegex*)object;
@@ -375,10 +361,11 @@ static void sweep() {
 void collectGarbage() {
     vm.isGC = true;
     vm.gcCount++;
-#ifdef DEBUG_LOG_GC
-    printf("-- gc begin\n");
     size_t before = vm.bytesAllocated;
-#endif
+
+    if (vm.log_gc) {
+        printf("-- gc begin\n");
+    }
 
     markRoots();
     traceReferences();
@@ -407,12 +394,12 @@ void collectGarbage() {
     printf("[GC] Total Objects remaining in heap: %d\n", count);
     */
 
-#ifdef DEBUG_LOG_GC
-    printf("-- gc end\n");
-    printf("   collected %zu bytes (from %zu to %zu) next at %z\n",
-            before - vm.bytesAllocated, before, vm.bytesAllocated,
-            vm.nextGC);
-#endif
+    if (vm.log_gc) {
+        printf("-- gc end\n");
+        printf("   collected %zu bytes (from %zu to %zu) next at %z\n",
+                before - vm.bytesAllocated, before, vm.bytesAllocated,
+                vm.nextGC);
+    }
     vm.isGC = false;
 }
 

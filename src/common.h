@@ -6,13 +6,6 @@
 #include <stdint.h>
 #include <math.h>
 
-#undef DEBUG_PRINT_CODE
-#undef DEBUG_TRACE_EXECUTION
-
-#undef DEBUG_STRESS_GD
-#undef DEBUG_LOG_GC
-#undef DEBUG_DISABLE_GC
-
 #define UINT8_COUNT (UINT8_MAX + 1)
 
 char* locateAndReadLoxFile(const char* name);

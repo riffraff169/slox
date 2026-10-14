@@ -73,7 +73,8 @@ typedef struct {
     size_t nextGC;
     int heap_growth_factor;
     int gcCount;
-    size_t init_threshold;
+    bool gc_enabled;
+    bool log_gc;
     size_t bump_size;
     int stress_mode;
     int gctype; // 1: multiplier, 0: linear
