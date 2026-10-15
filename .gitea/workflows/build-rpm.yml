@@ -28,6 +28,6 @@ jobs:
 
       - name: Publish and Update Repository
         run: |
-          find ~/rpmbuild/RPMS/ -name "*.rpm" -exec cp -v {} /src/rpm/
+          find ~/rpmbuild/RPMS/ -name "*.rpm" -exec cp -v {} /src/rpm/ \;
           cd /src/rpm
           createrepo_c --update .
