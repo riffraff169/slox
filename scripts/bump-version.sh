@@ -38,6 +38,7 @@ git commit -m "Bump version to $NEW_VER-$NEW_REL"
 
 git tag -a "$TAG_NAME" -m "Version $NEW_VER"
 
+git push origin $TAG_NAME
 #echo "Version bumped to $NEW_VER in Makefile and slox.spec!"
 echo "Successfully bumped to Version: $NEW_VER, Release: $NEW_REL%{?dist}!"
 
