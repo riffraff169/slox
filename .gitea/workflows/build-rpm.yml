@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: rpmbuild-env:latest
+      volumes:
+        - /opt/docker/repo/data:/src/rpm
 
     steps:
       - name: Install Git and Dependencies
