@@ -1,0 +1,44 @@
+name: Build RPM and Update Repo
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Packaging Tools
+        run: dnf install -y \
+          rpm-build \
+          rpmdevtools \
+          createrepo_c \
+          gobject-introspection-devel \
+          glib2-devel \
+          gtk4-devel \
+          notcurses-devel \
+          pcre2-devel \
+          postgresql-devel \
+          readline-devel \
+          sqlite-devel \
+          make \
+          gcc
+
+      - name: Build RPM
+        run: |
+          rpmdev-setuptree
+          make dist
+          rpmbuild -ba slox.spec
+
+      - name: Publish and Update Repository
+        run: |
+          find ~/rpmbuild/RPMS/ -name "*.rpm" -exec cp -v {} /src/rpm/
+          cd /src/rpm
+          createrepo_c --update .

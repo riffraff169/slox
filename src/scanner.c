@@ -523,7 +523,7 @@ Token scanToken() {
                 case 'n': val = '\n'; break;
                 case 't': val = '\t'; break;
                 case 'r': val = '\r'; break;
-                case '0': val = '\0'; break;
+                case '0': val = 0; break;
                 case '\'': val = '\''; break;
                 case '\\': val = '\\'; break;
                 default: val = escape;

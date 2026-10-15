@@ -1051,6 +1051,7 @@ static void string(bool canAssign) {
                 case 'n': buffer[j++] = '\n'; break;
                 case 'r': buffer[j++] = '\r'; break;
                 case 't': buffer[j++] = '\t'; break;
+                case '0': buffer[j++] = '\0'; break;
                 case '\\': buffer[j++] = '\\'; break;
                 case '"': buffer[j++] = '"'; break;
                 default: buffer[j++] = source[i]; break;

@@ -1,5 +1,7 @@
 clox implementation from https://craftinginterpreters.com
 
+See docs/api_docs.md for class api.
+
 Several features have been added:
 #### `has_method()`
 See if a class has a method
@@ -12,7 +14,7 @@ See if a class has a method
 class A { 
  init() { this.a = 1; }
   __add__(a) { this.a = this.a + a.a; return this; }
-  display() { return "A(${this.a})"; }
+  to_string() { return "A(${this.a})"; }
 }
 
 var a1 = A();
@@ -25,7 +27,8 @@ print a3;
 ```
 
 #### Lambdas (anonymous functions)
-Demonstrated later
+var a = [1,2,3,4,5];
+print a.each(fun(item) { return item * 3; } );
 
 #### Arrays
 ```
@@ -79,10 +82,10 @@ var x = res.unwrap_or(default_value);
 
 #### Option type:
 ```
-var o = Option(true, [1, 2, 3]);
+var o = Option([1, 2, 3]);
 if (o) print o.unwrap();
-var b = Option(false, "nothing here");
-print b.wrap_or(25);
+var b = Option(nil);
+print b.unwrap_or(25);
 ```
 #### GI Module
 GTK4 through gi module.  I refactored dynamic loading and broke this, so I have to fix it.
