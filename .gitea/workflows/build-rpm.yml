@@ -12,10 +12,7 @@ jobs:
       image: fedora:latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install Packaging Tools
+      - name: Install Git and Dependencies
         run: dnf install -y \
           rpm-build \
           rpmdevtools \
@@ -30,6 +27,9 @@ jobs:
           sqlite-devel \
           make \
           gcc
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Build RPM
         run: |
