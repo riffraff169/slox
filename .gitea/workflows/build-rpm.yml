@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: local/rpmbuild-env:latest
+      image: rpmbuild-env:latest
 
     steps:
       - name: Install Git and Dependencies
