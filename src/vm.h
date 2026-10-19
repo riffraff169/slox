@@ -17,6 +17,8 @@ typedef struct {
     bool isGetter;
     bool isSetter;
     bool isTimer;
+
+    ValueArray deferHooks;
 } CallFrame;
 
 typedef struct {

@@ -101,6 +101,8 @@ typedef enum {
     OP_SUPER_INVOKE_SPLAT,
     OP_SUPER_INVOKE_SPLAT_LONG, // 100
     OP_UNPACK,
+    OP_DEFER,
+    OP_DEFER_LONG,
     OP_END_FINALLY
 } OpCode;
 

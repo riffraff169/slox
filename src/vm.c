@@ -2394,23 +2394,6 @@ static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
 }
 
-/*
-void processPendingTimers(void) {
-    for (int i = 0; i < MAX_TIMERS; i++) {
-        if (timer_pool[i].active && timer_pool[i].fired > 0) {
-            timer_pool[i].fired--;
-
-            if (!timer_pool[i].periodic) {
-                timer_delete(timer_pool[i].timerid);
-                timer_pool[i].active = false;
-            }
-
-            callValue(timer_pool[i].callback, 0);
-        }
-    }
-}
-*/
-
 InterpretResult run() {
     int initialFrameCount = vm.frameCount;
 
@@ -3746,9 +3729,11 @@ InterpretResult run() {
                 break;
             case OP_CLOSURE:
             case OP_CLOSURE_LONG:
+            case OP_DEFER:
+            case OP_DEFER_LONG:
                 {
                     ObjFunction* function = NULL;
-                    if (instruction == OP_CLOSURE) {
+                    if (instruction == OP_CLOSURE || instruction == OP_DEFER) {
                         function = AS_FUNCTION(READ_CONSTANT());
                     } else {
                         function = AS_FUNCTION(READ_CONSTANT_LONG());
@@ -3765,6 +3750,11 @@ InterpretResult run() {
                         } else {
                             closure->upvalues[i] = frame->closure->upvalues[index];
                         }
+                    }
+
+                    if (instruction == OP_DEFER || instruction == OP_DEFER_LONG) {
+                        Value closureVal = pop();
+                        writeValueArray(&frame->deferHooks, closureVal);
                     }
                 }
                 break;
@@ -3906,6 +3896,15 @@ InterpretResult run() {
                 break;
             case OP_RETURN:
                 {
+                    if (frame->deferHooks.count > 0) {
+                        Value deferVal = frame->deferHooks.values[--frame->deferHooks.count];
+                        push(deferVal);
+                        frame->ip--;
+                        vmCall(AS_CLOSURE(deferVal), 0);
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+
                     Value result = pop();
 
                     bool divertedToFinally = false;
@@ -3925,6 +3924,8 @@ InterpretResult run() {
                     if (divertedToFinally) {
                         break;
                     }
+
+                    freeValueArray(&frame->deferHooks);
 
                     closeUpvalues(frame->slots);
 

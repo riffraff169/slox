@@ -76,6 +76,7 @@ typedef struct Compiler {
     int localCount;
     Upvalue upvalues[8192];
     int scopeDepth;
+    bool isDefer;
 } Compiler;
 
 typedef struct ClassCompiler {
@@ -340,6 +341,8 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
+    compiler->isDefer = false;
+    //initValueArray(&compiler->deferHooks);
 
     if (current != NULL) {
         compiler->function->filename = current->function->filename;
@@ -2206,6 +2209,50 @@ static void forStatement() {
     endScope();
 }
 
+static void deferStatement() {
+    if (current->isDefer) {
+        error("Cannot use 'defer' inside a deferred statement.");
+        return;
+    }
+    Compiler compiler;
+    initCompiler(&compiler, TYPE_FUNCTION);
+    compiler.isDefer = true;
+    beginScope();
+
+    if (match(TOKEN_LEFT_BRACE)) {
+        block();
+    } else {
+        statement();
+    }
+
+    emitByte(OP_NIL);
+    emitByte(OP_RETURN);
+
+    ObjFunction* function = endCompiler();
+
+    int constant = makeConstant(OBJ_VAL(function));
+
+    // emit constant code
+
+    // add to defer hooks for current function
+
+    if (constant < 256) {
+        emitByte(OP_DEFER);
+        emitByte((uint8_t)constant);
+    } else {
+        emitByte(OP_DEFER_LONG);
+        emitByte((uint8_t)((constant >> 16) & 0xff));
+        emitByte((uint8_t)((constant >> 8) & 0xff));
+        emitByte((uint8_t)(constant & 0xff));
+    }
+
+    for (int i = 0; i < function->upvalueCount; i++) {
+        emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+        emitByte((uint8_t)((compiler.upvalues[i].index >> 8) & 0xff));
+        emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
+    }
+}
+
 static void switchStatement() {
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'switch'.");
     expression();
@@ -2448,6 +2495,8 @@ static void statement() {
         forStatement();
     } else if (match(TOKEN_FOREACH)) {
         foreachStatement();
+    } else if (match(TOKEN_DEFER)) {
+        deferStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
     } else if (match(TOKEN_RETURN)) {

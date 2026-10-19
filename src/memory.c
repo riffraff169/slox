@@ -301,6 +301,9 @@ static void markRoots() {
 
     for (int i = 0; i < vm.frameCount; i++) {
         markObject((Obj*)vm.frames[i].closure);
+        for (int j = 0; j < vm.frames[i].deferHooks.count; j++) {
+            markValue(vm.frames[i].deferHooks.values[j]);
+        }
     }
 
     for (ObjUpvalue* upvalue = vm.openUpvalues;
