@@ -49,8 +49,17 @@
     vm.nativeExitDepth = vm.frameCount
 
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
-#define VM_CALLBACK_CHECK_ERROR(resultState) \
+#define VM_CALLBACK_CHECK_ERROR(resultState, _priorFrameCount) \
     if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
+        while (vm.frameCount > (_priorFrameCount)) { \
+            CallFrame* frame = &vm.frames[vm.frameCount - 1]; \
+            while (frame->deferHooks.count > 0) { \
+                Value deferVal = frame->deferHooks.values[--frame->deferHooks.count]; \
+                vmCall(AS_CLOSURE(deferVal), 0); \
+            } \
+            freeValueArray(&frame->deferHooks); \
+            vm.frameCount--; \
+        } \
         vm.stackTop = _callbackStackStart; \
         vm.nativeExitDepth = _oldExitDepth; \
         return NIL_VAL; \
@@ -68,6 +77,7 @@
 #define RUNTIME_ERROR(...) \
     do { \
         if (runtimeError(__VA_ARGS__)) { \
+            unwindFramesForError(); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
         frame = &vm.frames[vm.frameCount - 1]; \
@@ -87,6 +97,21 @@ typedef enum {
     PROP_GETTER,
     PROP_SETTER
 } PropertyResult;
+
+void unwindFramesForError() {
+    while (vm.frameCount > 0) {
+        CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
+        while (frame->deferHooks.count > 0) {
+            Value deferVal = frame->deferHooks.values[--frame->deferHooks.count];
+            push(deferVal);
+            frame->ip--;
+            vmCall(AS_CLOSURE(deferVal), 0);
+        }
+        freeValueArray(&frame->deferHooks);
+        vm.frameCount--;
+    }
+}
 
 void pushTemp(Value value) {
     if (vm.tempCount >= TEMP_STACK_MAX) {

@@ -1,0 +1,18 @@
+fun testDeferOrder() {
+    print "--- Start of function ---";
+    
+    defer print "-> Defer 3: Cleanup file / lock";
+    defer print "-> Defer 2: Reset state";
+    defer print "-> Defer 1: First defined, runs last? Wait, LIFO check!";
+
+    print "--- Doing actual work ---";
+    
+    if (true) {
+        return;
+    }
+    
+    print "This should never print";
+}
+
+testDeferOrder();
+print "--- Back in global scope ---";

@@ -1,0 +1,39 @@
+print "=== TEST 1: Basic LIFO & Early Return ===";
+fun testEarlyReturn() {
+    print "-> Start of function";
+    
+    defer print "   [Defer 3] Clean up A (Defined 1st, Runs Last)";
+    defer print "   [Defer 2] Clean up B (Defined 2nd, Runs Middle)";
+    defer print "   [Defer 1] Clean up C (Defined 3rd, Runs First)";
+
+    print "-> Doing work...";
+    
+    if (true) {
+        print "-> Returning early!";
+        return;
+    }
+    
+    print "-> ERROR: This should never print!";
+}
+
+testEarlyReturn();
+print "=== END TEST 1 ===\n";
+
+
+print "=== TEST 2: State Modification & Closures in Defer ===";
+fun testStateCapture() {
+    var resourceState = "acquired";
+    
+    defer {
+        print "   [Defer Cleanup] Resource state was: " + resourceState;
+        resourceState = "released";
+        print "   [Defer Cleanup] Resource state is now: " + resourceState;
+    }
+
+    print "-> Working with resource...";
+    resourceState = "modified during work";
+    print "-> Work finished, exiting function normally.";
+}
+
+testStateCapture();
+print "=== END TEST 2 ===";

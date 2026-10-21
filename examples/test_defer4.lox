@@ -1,0 +1,31 @@
+print "=== TEST 4: (Broken) Defers Inside a Loop ===";
+
+fun testLoopDefers() {
+    print "-> Entering function loop";
+    
+    for (var i = 1; i <= 3; i = i + 1) {
+        // Each iteration adds a defer hook
+        defer print "   [Loop Defer] Executing cleanup for iteration: " + i;
+    }
+
+    print "-> Loop completed, exiting function.";
+}
+
+testLoopDefers();
+print "=== END TEST 4 ===\n";
+
+print "=== TEST 4 (Fixed Scope): Defers Inside a Loop ===";
+
+fun testLoopDefersFixed() {
+    print "-> Entering function loop";
+
+    for (var i = 1; i <= 3; i = i + 1) {
+        var iterationValue = i; // Capture a fresh local copy for this iteration's scope
+        defer print "   [Loop Defer] Executing cleanup for iteration: " + iterationValue;
+    }
+
+    print "-> Loop completed, exiting function.";
+}
+
+testLoopDefersFixed();
+print "=== END TEST 4 ===\n";

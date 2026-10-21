@@ -1,0 +1,18 @@
+print "=== TEST 5: Defers with Try/Catch ===";
+
+fun testTryCatchDefer() {
+    defer print "   [Defer] Guaranteed function cleanup ran!";
+
+    try {
+        print "-> Inside try block, throwing error...";
+        throw "forced exception";
+        print "-> This should not print.";
+    } catch (err) {
+        print "-> Caught error successfully: " + err;
+    }
+
+    print "-> Continuing execution after try/catch, exiting normally.";
+}
+
+testTryCatchDefer();
+print "=== END TEST 5 ===";

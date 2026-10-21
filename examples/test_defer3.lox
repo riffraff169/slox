@@ -1,0 +1,22 @@
+print "=== TEST 3: External State & Upvalue Persistence ===";
+
+var globalTracker = "initial_global";
+
+fun testStatePersistence() {
+    var localTracker = "initial_local";
+    
+    defer {
+        globalTracker = "modified_by_defer";
+        localTracker = "local_modified_by_defer";
+        print "   [Defer block] Updated both trackers.";
+    }
+
+    print "-> Inside function. Global: " + globalTracker;
+    print "-> Inside function. Local: " + localTracker;
+    print "-> Exiting function now...";
+}
+
+print "Before call -> Global: " + globalTracker;
+testStatePersistence();
+print "After call  -> Global: " + globalTracker;
+print "=== END TEST 3 ===";

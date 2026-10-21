@@ -213,6 +213,7 @@ int saveTempScope();
 void restoreTempScope(int scopeMarker);
 void defineGlobal(const char* name, Value value);
 bool findMethod(ObjClass* klass, ObjString* name, Value* method);
+void unwindFramesForError();
 
 static inline void _autoRestoreGcScope(const int* scopeMarker) {
     restoreTempScope(*scopeMarker);

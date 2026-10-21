@@ -47,8 +47,17 @@
     vm.nativeExitDepth = vm.frameCount
 
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
-#define VM_CALLBACK_CHECK_ERROR(resultState, oldDepth, stackStart) \
+#define VM_CALLBACK_CHECK_ERROR(resultState, oldDepth, stackStart, priorFrame) \
     if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
+        while (vm.frameCount > (priorFrame)) { \
+            CallFrame* frame = &vm.frames[vm.frameCount - 1]; \
+            while (frame->deferHooks.count > 0) { \
+                Value deferVal = frame->deferHooks.values[--frame->deferHooks.count]; \
+                vmCall(AS_CLOSURE(deferVal), 0); \
+            } \
+            freeValueArray(&frame->deferHooks); \
+            vm.frameCount--; \
+        } \
         vm.stackTop = stackStart; \
         vm.nativeExitDepth = oldDepth; \
         return NIL_VAL; \
@@ -65,6 +74,7 @@
 #define RUNTIME_ERROR(...) \
     do { \
         if (runtimeError(__VA_ARGS__)) { \
+            unwindFramesForError(); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
         frame = &vm.frames[vm.frameCount - 1]; \
@@ -180,7 +190,7 @@ Value evalNative(int argCount, Value* args) {
     if (callValue(OBJ_VAL(closure), 0)) {
         if (vm.frameCount > priorFrameCount) {
             InterpretResult result = run();
-            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart);
+            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart, priorFrameCount);
         }
 
         if (vm.tryCount < priorTryCount) {
@@ -817,7 +827,7 @@ Value requireNative(int argCount, Value* args) {
     if (callValue(OBJ_VAL(closure), 0)) {
         if (vm.frameCount > priorFrameCount) {
             InterpretResult result = run();
-            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart);
+            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart, priorFrameCount);
         }
 
         Value exportResult = pop();
@@ -1915,7 +1925,7 @@ Value mapEachNative(int argCount, Value* args) {
                 InterpretResult res = run();
                 if (res != INTERPRET_OK) {
                     free(snapshotEntries);
-                    VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                    VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
                 }
             }
 
@@ -3603,7 +3613,7 @@ Value arrayMapNative(int argCount, Value* args) {
         if (callValue(callback, 1)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             Value testResult = peek(0);
@@ -3673,7 +3683,7 @@ Value arrayFilterNative(int argCount, Value* args) {
         if (callValue(callback, 1)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             if (isTruthy(pop())) {
@@ -3748,7 +3758,7 @@ Value arrayReduceNative(int argCount, Value* args) {
         if (callValue(callback, 2)) {
             if (vm.frameCount > priorFrameCount ) {
                 InterpretResult res = run();
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             callbackStackStart[-1] = peek(0);
@@ -3845,7 +3855,7 @@ Value arrayEachNative(int argCount, Value* args) {
         if (vmCall(callback, 1)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult state = run();
-                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart, priorFrameCount);
             }
         }
 
@@ -3993,7 +4003,7 @@ Value arrayFindIndexNative(int argCount, Value* args) {
         if (vmCall(callback, 1)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult state = run();
-                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             Value result = pop();
@@ -4039,7 +4049,7 @@ Value arrayFindNative(int argCount, Value* args) {
         if (vmCall(callback, 1)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult state = run();
-                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(state, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             Value result = pop();
@@ -5811,7 +5821,7 @@ Value dirChdirNative(int argCount, Value* args) {
 
             if (res != INTERPRET_OK) {
                 chdir(oldCwd);
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
         }
     }
@@ -5997,7 +6007,7 @@ Value dirEachNative(int argCount, Value* args) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
 
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart);
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
 
             }
         }
