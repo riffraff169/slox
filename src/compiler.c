@@ -1054,9 +1054,47 @@ static void string(bool canAssign) {
                 case 'n': buffer[j++] = '\n'; break;
                 case 'r': buffer[j++] = '\r'; break;
                 case 't': buffer[j++] = '\t'; break;
-                case '0': buffer[j++] = '\0'; break;
+                case '0': case '1': case '2': case '3':
+                case '4': case '5': case '6': case '7':
+                    {
+                        int value = source[i] - '0';
+                        int count = 1;
+                        while (count < 3 && i + 1 < length) {
+                            char c = source[i + 1];
+                            if (c >= '0' && c <= '7') {
+                                value = (value * 8) + (c - '0');
+                                i++;
+                                count++;
+                            } else {
+                                break;
+                            }
+                        }
+                        buffer[j++] = (char)value;
+                    }
+                    break;
                 case '\\': buffer[j++] = '\\'; break;
                 case '"': buffer[j++] = '"'; break;
+                case 'x': 
+                    {
+                        // parse up to 2 hex digits
+                        int value = 0;
+                        int count = 0;
+                        while (count < 2 && i + 1 < length) {
+                            char c = source[i + 1];
+                            int digit = -1;
+                            if (c >= '0' && c <= '9') digit = c - '0';
+                            else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+                            else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+
+                            if (digit == -1) break;
+
+                            value = (value * 16) + digit;
+                            i++;
+                            count++;
+                        }
+                        buffer[j++] = (char)value;
+                    }
+                    break;
                 default: buffer[j++] = source[i]; break;
             }
         } else {
@@ -1805,8 +1843,6 @@ static void funDeclaration() {
 static void varDeclaration() {
     bool isConst = (parser.previous.type == TOKEN_CONST);
 
-    //int global = parseVariable("Expect variable name.");
-
     int globals[64];
     int varCount = 0;
 
@@ -2071,8 +2107,6 @@ static void tryStatement() {
         addLocal(exceptionVar);
         markInitialized();
 
-        //current->localCount = tryLocalCount;
-
         if (hasTypeCheck) {
             emitByte(OP_DUP);
             namedVariable(typeName, false);
@@ -2080,26 +2114,7 @@ static void tryStatement() {
 
             lastMismatchJump = emitJump(OP_JUMP_IF_FALSE);
             emitByte(OP_POP);
-
-            /*
-            beginScope();
-            addLocal(exceptionVar);
-            markInitialized();
-            block();
-            endScope();
-
-            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
-            */
-        } /*else {
-            beginScope();
-            addLocal(exceptionVar);
-            markInitialized();
-            block();
-            current->localCount--;
-            endScope();
-
-            catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
-        } */
+        }
         block();
         endScope();
         catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
@@ -2119,8 +2134,6 @@ static void tryStatement() {
         finallyTarget = currentChunk()->count;
         consume(TOKEN_LEFT_BRACE, "Expect '{' before finally body.");
 
-        //current->localCount = tryLocalCount;
-
         beginScope();
         block();
         endScope();
@@ -2130,11 +2143,6 @@ static void tryStatement() {
 
     int finalDestination = currentChunk()->count;
 
-    /*
-    if (catchTarget == 0) {
-        catchTarget = hasFinally ? finallyTarget : finalDestination;
-    }
-    */
     int successTarget = hasFinally ? finallyTarget : finalDestination;
 
     patchTryOffset(endTryJump, successTarget, 2);
@@ -2231,10 +2239,6 @@ static void deferStatement() {
     ObjFunction* function = endCompiler();
 
     int constant = makeConstant(OBJ_VAL(function));
-
-    // emit constant code
-
-    // add to defer hooks for current function
 
     if (constant < 256) {
         emitByte(OP_DEFER);
@@ -2381,12 +2385,6 @@ static void breakStatement() {
 
     consume(TOKEN_SEMICOLON, "Expect ';' after 'break'.");
 
-    /*
-    int locals = current->localCount - currentLoop->firstLocalSlot;
-    if (locals > 0) {
-        emitBytes(OP_POPN, locals);
-    }
-    */
     for (int i = current->localCount - 1; i >= currentLoop->firstLocalSlot; i--) {
         if (current->locals[i].isCaptured) {
             emitByte(OP_CLOSE_UPVALUE);
@@ -2465,7 +2463,6 @@ static void declaration() {
             funDeclaration();
         } else {
             parseFunction(TYPE_FUNCTION);
-            //parsePrecedence(PREC_CALL);
 
             while (match(TOKEN_LEFT_PAREN)) {
                 call(false);
@@ -2650,7 +2647,6 @@ bool compileClassModule(const char* source, ObjClass* klass) {
     classCompiler.hasSuperclass = false;
     classCompiler.enclosing = currentClass;
     currentClass = &classCompiler;
-    //initCompiler(&compiler, TYPE_SCRIPT);
 
     while (!check(TOKEN_EOF)) {
         compileModuleMethod(klass);
@@ -2673,16 +2669,6 @@ ObjFunction* compile(const char* source, ObjString* filename) {
     parser.panicMode = false;
 
     advance();
-
-    // 1. include phase
-    // the compiler ensure includes only happen at the top, but assumes the host
-    // environment already ran them
-    /*
-    while (match(TOKEN_INCLUDE)) {
-        consume(TOKEN_STRING, "Expect string after 'include'.");
-        consume(TOKEN_SEMICOLON, "Expect ';' after include path.");
-    }
-    */
 
     // 2. main compilation phase
     while (!match(TOKEN_EOF)) {

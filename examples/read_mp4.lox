@@ -1,0 +1,446 @@
+require("argparser.lox");
+
+class Track {
+  init(trackId) {
+    this.trackId = trackId;
+    this.type = "unknown"; // "video" (vmhd), "audio" (smhd), "text"
+    this.handlerType = ""; // from hdlr box ("vide", "soun", "text")
+
+    //this.timescale = 0; // from mdhd
+    //this.duration = 0; // from mdhd
+
+    // the core atom tables we need to index
+    //this.sampleCount = 0; // total samples (from stsz)
+    //this.sample_sizes = []; // raw or uniform size (from stsz)
+    this.stsc_entries = []; // run length mapping (from stsc)
+    this.chunk_offsets = []; // file offsets for each chunk (from stco/co64)
+    //this.timeToSample = []; // duractions (from stts)
+    //this.syncSamples = []; // keyframes / idrs (from stss)
+    this.sample_sizes = [];
+    //this.compositionOffsets = []; // pts - dts (from ctts)
+    this.uniform_sample_size = 0;
+    this.chunk_samples = [];
+  }
+
+  build_chunk_samples() {
+    this.chunk_samples = [];
+    var total_chunks = this.chunk_offsets.length();
+    if (total_chunks == 0 or this.stsc_entries.length() == 0) return;
+
+    var entry_idx = 0;
+    var current_entry = this.stsc_entries[entry_idx];
+    var samples_per_chunk = current_entry[1];
+
+    var next_entry_first_chunk = 999999999;
+    if (entry_idx + 1 < this.stsc_entries.length()) {
+      next_entry_first_chunk = this.stsc_entries[entry_idx + 1][0];
+    }
+
+    var c = 1;
+    while (c <= total_chunks) {
+      if (c >= next_entry_first_chunk) {
+        entry_idx += 1;
+        current_entry = this.stsc_entries[entry_idx];
+        samples_per_chunk = current_entry[1];
+        if (entry_idx + 1 < this.stsc_entries.length()) {
+          next_entry_first_chunk = this.stsc_entries[entry_idx + 1][0];
+        } else {
+          next_entry_first_chunk = 999999999;
+        }
+      }
+      this.chunk_samples.push(samples_per_chunk);
+      c += 1;
+    }
+  }
+
+  /*
+  find_nearest_ifram(target_frame) {
+    var nearest = this.sync_samples[0];
+
+    var i = 0;
+    while (i < this.sync_samples.length()) {
+      var kf = this.sync_samples[i];
+      if (kf <= target_frame) {
+        nearest = kf;
+      } else {
+        break;
+      }
+      i += 1;
+    }
+    return nearest;
+  }
+  */
+
+  /*
+  extract_gop_to_file(target_frame, output_filename) {
+    var start_frame = this.find_nearest_iframe(target_frame);
+    print "Extracting GOP from keyframe " + start_frame + " to target " + target_frame;
+
+    var out_file = File.open(output_filename, "w").unwrap();
+
+    out_file.write(this.avc_config_sps_pps_bytes);
+
+    var curr = start_frame;
+    while (curr <= target_frame) {
+      var loc = this.get_sample_location(curr);
+      var offset = loc[0];
+      var size = loc[1];
+
+      this.fp.seek(offset);
+      var sample_data = this.fp.read(size).unwrap();
+
+      var annex_b_data = this.convert_length_to_start_code(sample_data);
+
+      out_file.write(annex_b_data);
+      curr += 1;
+    }
+
+    out_file.close();
+    print "Saved successfully to " + output_filename;
+  }
+  */
+
+  get_sample_size(index) {
+    if (this.uniform_sample_size > 0) {
+      return this.uniform_sample_size;
+    }
+    return this.sample_sizes[index];
+  }
+
+  get_sample_location(sample_index) {
+    var chunk_count = this.chunk_offsets.length();
+    var current_sample = 1;
+    var target_chunk = 1;
+    var sample_in_chunk = 0;
+
+    var c = 0;
+    while (c < chunk_count) {
+      var spc = this.chunk_samples[c];
+      if (sample_index < current_sample + spc) {
+        target_chunk = c + 1;
+        sample_in_chunk = sample_index - current_sample;
+        break;
+      }
+      current_sample += spc;
+      c += 1;
+    }
+
+    var chunk_offset = this.chunk_offsets[target_chunk - 1];
+    var intra_chunk_offset = 0;
+    var i = 0;
+    while (i < sample_in_chunk) {
+      var global_sample_idx = (current_sample - 1) + i;
+      intra_chunk_offset = intra_chunk_offset + this.get_sample_size(global_sample_idx);
+      i += 1;
+    }
+
+    var target_size = this.get_sample_size(sample_index - 1);
+    var absolute_offset = chunk_offset + intra_chunk_offset;
+
+    return [absolute_offset, target_size];
+  }
+}
+
+class MP4 {
+  init(filename) {
+    this.filename = filename;
+    this.fp = File.open(this.filename).unwrap();
+    this.debug = false;
+    this.depth = 0;
+    this.tracks = [];
+    this.current_track = nil;
+  }
+
+  set_debug() {
+    this.debug = true;
+  }
+
+  getboxinfo() {
+    var sizeBytes;
+    var sizeres = this.fp.read(4);
+    if (sizeres) {
+      sizeBytes = sizeres.unwrap();
+    } else {
+      if (this.debug)
+        print sizeres.err;
+      return nil;
+    }
+
+    //var sizeBytes = this.fp.read(4).unwrap();
+    if (sizeBytes == nil or sizeBytes.length() < 4) return nil;
+
+    var typeBytes = this.fp.read(4).unwrap();
+    if (typeBytes == nil or typeBytes.length() < 4) return nil;
+
+    var size = Struct.unpack(">I", sizeBytes)[0];
+    var boxType = typeBytes;
+    return [size, boxType];
+  }
+
+  parse() {
+    var cur = this.fp.tell().unwrap();
+    var box = this.getboxinfo();
+    if (box == nil) return nil; // eof check
+
+    var size = box[0];
+    var boxType = box[1];
+
+    if (this.debug) {
+      print "Box Type: " + boxType + ", Size: " + size + " at offset " + cur;
+    }
+
+    if (boxType == "ftyp" or boxType == "mdat" or boxType == "free" or boxType == "skip") {
+      this.fp.seek(cur + size);
+    }
+
+    return box;
+  }
+
+  parse_container(container_end) {
+    this.depth += 2;
+    while (this.fp.tell().unwrap() < container_end) {
+      var cur = this.fp.tell().unwrap();
+      var box = this.getboxinfo();
+      if (box == nil) break;
+
+      var size = box[0];
+      var boxType = box[1];
+
+      if (this.debug) print " " * this.depth + "-> Sub-box: " + boxType + ", Size: " + size + " at offset " + cur;
+
+      if (boxType == "trak") {
+        this.current_track = Track(this.tracks.length() + 1);
+        this.tracks.push(this.current_track);
+
+        var sub_end = cur + size;
+        this.parse_container(sub_end);
+
+        // once trak is full parsed, build its chunk sample index
+        if (this.current_track != nil) {
+          this.current_track.build_chunk_samples();
+        }
+        this.depth -= 2;
+      } else if (boxType == "mdia" or boxType == "minf" or boxType == "stbl") {
+        var sub_end = cur + size;
+        this.parse_container(sub_end);
+        this.depth -= 2;
+      } else if (boxType == "stsd") {
+        // fullbox header: 1 byte version, 3 bytes flags
+        var versionFlags = this.fp.read(4).unwrap();
+
+        // number of sample descriptions
+        var countBytes = this.fp.read(4).unwrap();
+        var entryCount = Struct.unpack(">I", countBytes)[0];
+
+        if (this.debug) print " " * (this.depth + 2) + "Entry Count: " + entryCount;
+
+        // read the first sample entry header
+        var entrySizeBytes = this.fp.read(4).unwrap();
+        var entrySize = Struct.unpack(">I", entrySizeBytes)[0];
+        var codecBytes = this.fp.read(4).unwrap();
+        // codecBytes is a string or bytes representing the FourCC lilke "avc1" or "mp4a"
+
+        if (this.debug) print " " * (this.depth + 2) + "Codec: " + codecBytes + " (Entry Size: " + entrySize + ")";
+        // skip the rest of the stsd payload safely to current position + total size
+        this.fp.seek(cur + size);
+      } else if (boxType == "stts") {
+        // fullbox header: 1 byte version, 3 bytes flags
+        this.fp.read(4).unwrap();
+
+        var countBytes = this.fp.read(4).unwrap();
+        var entryCount = Struct.unpack(">I", countBytes)[0];
+
+        if (this.debug) print " " * (this.depth + 2) + "STTS Entry Count: " + entryCount;
+
+        // loop through the entries, 8 bytes each: 4 bytes count, 4 bytes delta
+        var totalSamples = 0;
+        var i = 0;
+        while (i < entryCount) {
+          var entryBytes = this.fp.read(8).unwrap();
+          var entry = Struct.unpack(">II", entryBytes);
+          var sampleCount = entry[0];
+          var sampleDelta = entry[1];
+
+          totalSamples = totalSamples + sampleCount;
+          i += 1;
+        }
+
+        if (this.debug) print " " * (this.depth + 2) + "Total Samples Accounted For: " + totalSamples;
+        this.fp.seek(cur + size);
+      } else if (boxType == "stss") {
+        this.fp.read(4).unwrap(); // version & flags
+
+        var countBytes = this.fp.read(4).unwrap();
+        var entryCount = Struct.unpack(">I", countBytes)[0];
+
+        if (this.debug) print " " * (this.depth + 2) + "STSS Sync Samples (Keyframes): " + entryCount;
+
+        // loop through the keyframe indices (4 bytes each)
+        var i = 0;
+        while (i < entryCount) {
+          var sampleIndexBytes = this.fp.read(4).unwrap();
+          var frameNum = Struct.unpack(">I", sampleIndexBytes)[0];
+          i += 1;
+        }
+
+        this.fp.seek(cur + size);
+      } else if (boxType == "ctts") {
+        var vfBytes = this.fp.read(4).unwrap();
+        var vf = Struct.unpack(">I", vfBytes)[0];
+        var version = (vf >> 24) & 0xff;
+
+        var countBytes = this.fp.read(4).unwrap();
+        var entryCount = Struct.unpack(">I", countBytes)[0];
+
+        if (this.debug) print " " * (this.depth + 2) + "CTTS Entry Count: " + entryCount + " (Version: " + version + ")";
+
+        var i = 0;
+        while (i < entryCount) {
+          var entryBytes = this.fp.read(8).unwrap();
+          var entry = Struct.unpack(">II", entryBytes);
+          var sampleCount = entry[0];
+          var sampleOffset = entry[0];
+          i += 1;
+        }
+
+        this.fp.seek(cur + size);
+      } else if (boxType == "stsc") {
+        this.fp.read(4).unwrap(); // version & flags
+        var countBytes = this.fp.read(4).unwrap();
+        var entryCount = Struct.unpack(">I", countBytes)[0];
+
+        if (this.debug) print " " * (this.depth + 2) + "STSC Entry Count: " + entryCount;
+
+        this.current_track.stsc_entries = [];
+        var i = 0;
+        while (i < entryCount) {
+          var entryBytes = this.fp.read(12).unwrap();
+          var entry = Struct.unpack(">III", entryBytes);
+          //var firstChunk = entry[0];
+          //var samplesPerChunk = entry[1];
+          //var sampleDescIndex = entry[2];
+          this.current_track.stsc_entries.push([entry[0], entry[1], entry[2]]);
+          //var firstChunk, samplesPerChunk, sampleDescIndex = entry;
+
+          i += 1;
+        }
+
+        if (this.debug) print " " * (this.depth + 2) + "STSC Entries Saved: " + this.current_track.stsc_entries.length();
+        this.fp.seek(cur + size);
+      } else if (boxType == "stsz") {
+        this.fp.read(4).unwrap(); // version & flags
+
+        var uniformBytes = this.fp.read(4).unwrap();
+        this.current_track.uniform_sample_size = Struct.unpack(">I", uniformBytes)[0];
+
+        var countBytes = this.fp.read(4).unwrap();
+        var sampleCount = Struct.unpack(">I", countBytes)[0];
+
+        var totalBytes = 0;
+        var maxSize = 0;
+
+        this.current_track.sample_sizes = [];
+        /*
+        if (uniformSize > 0) {
+          totalBytes = uniformSize * sampleCount;
+          maxSize = uniformSize;
+        } else {
+        */
+        if (this.current_track.uniform_sample_size == 0) {
+          var i = 0;
+          while (i < sampleCount) {
+            var szBytes = this.fp.read(4).unwrap();
+            var sz = Struct.unpack(">I", szBytes)[0];
+            totalBytes += sz;
+            this.current_track.sample_sizes.push(sz);
+            if (sz > maxSize) maxSize = sz;
+            i += 1;
+          }
+        }
+
+        //print " " * (this.depth + 2) + "STSZ Samples: " + sampleCount + " | Total Payload: " + totalBytes + " bytes (Max Frame: " + maxSize + "b)";
+
+        if (this.debug) print " " * (this.depth + 2) + "STSZ Data Saved (Uniform: " + this.current_track.uniform_sample_size + ", Array Size: " + this.current_track.sample_sizes.length();
+        this.fp.seek(cur + size);
+      } else if (boxType == "stco") {
+        this.fp.read(4).unwrap(); // version & flags
+
+        var countBytes = this.fp.read(4).unwrap();
+        var chunkCount = Struct.unpack(">I", countBytes)[0];
+
+        var firstOffset = 0;
+        var lastOffset = 0;
+
+        this.current_track.chunk_offsets = [];
+        var i = 0;
+        while (i < chunkCount) {
+          var offsetBytes = this.fp.read(4).unwrap();
+          var offset = Struct.unpack(">I", offsetBytes)[0];
+          if (i == 0) firstOffset = offset;
+          if (i == chunkCount - 1) lastOffset = offset;
+          this.current_track.chunk_offsets.push(offset);
+          i += 1;
+        }
+
+        if (this.debug) print " " * (this.depth + 2) + "STCO Chunks: " + chunkCount + " | First Offset: " + firstOffset + " | Last Offset (~mdat region)";
+        if (this.debug) print " " * (this.depth + 2) + "STCO Offsets Saved: " + this.current_track.chunk_offsets.length();
+
+        this.fp.seek(cur + size);
+      } else {
+        this.fp.seek(cur + size);
+      }
+
+    }
+  }
+
+  run() {
+    print "Starting MP4 scan for " + this.filename + "...";
+
+    while (true) {
+      var box = this.parse();
+      if (box == nil) {
+        print "Reached end of file without finding moov.";
+        break;
+      }
+
+      var size = box[0];
+      var boxType = box[1];
+
+      if (boxType == "moov") {
+        if (this.debug) print "-> Found MOOV box! Ready to parse sub-boxes.";
+        this.parse_container(this.fp.tell().unwrap() + size);
+        break;
+      }
+    }
+
+  }
+}
+
+var parser = ArgParser("read_mp4.lox", "Parse mp4 chunks");
+
+var args = parser.parse(System.ARGS);
+
+if (args.args.length() == 0) {
+  print "No file provided.";
+  exit(1);
+}
+
+print "File: " + args.args[0];
+var filename = args.args[0];
+var mp4 = MP4(filename);
+
+/*
+var box1 = mp4.getboxinfo();
+print "Box Type: " + box1[1] + ", Size: " + box1[0];
+var box2 = mp4.getboxinfo();
+print "Box Type: " + box2[1] + ", Size: " + box2[0];
+var box3 = mp4.getboxinfo();
+print "Box Type: " + box3[1] + ", Size: " + box3[0];
+*/
+mp4.set_debug();
+mp4.run();
+var vt = mp4.tracks[0];
+var loc = vt.get_sample_location(1);
+print "Video Frame 1 Location -> Offset: " + loc[0] + ", Size: " + loc[1] + " bytes";
+var l2 = vt.get_sample_location(256);
+print "Video Frame 256 Location -> Offset: " + l2[0] + ", Size: " + l2[1] + " bytes";

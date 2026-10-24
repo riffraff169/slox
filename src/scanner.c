@@ -320,23 +320,6 @@ static Token number() {
         while (isDigit(peek())) advance();
     }
 
-    /*
-    if (peek() == 'e' || peek() == 'E') {
-        isFloat = true;
-        char next = peekNext();
-        if (isDigit(next) || ((next == '+' || next == '-'))) {
-            advance();
-            if (peek() == '+' || peek() == '-') advance();
-            if (!isDigit(peek())) {
-                return errorToken("Unterminated exponent.");
-            }
-
-            while (isDigit(peek())) advance();
-        } else {
-            return errorToken("Unterminated exponent.");
-        }
-    }
-    */
     if (peek() == 'e' || peek() == 'E') {
         isFloat = true;
         advance();
@@ -406,9 +389,7 @@ static Token heredocToken() {
 
             if (strncmp(scanner.current, tagStart, tagLength) == 0) {
                 char nextChar = scanner.current[tagLength];
-                //if (nextChar == ';' || nextChar == '\n' || nextChar == '\r' || nextChar == ' ' || nextChar == '\0') {
                 if (!isAlpha(nextChar) && !isDigit(nextChar) && nextChar != '_') {
-                    //int bodyLength = (int)((scanner.current - 1) - bodyStart);
                     for (int i = 0; i < tagLength; i++) advance();
 
                     return makeToken(TOKEN_HEREDOC);
