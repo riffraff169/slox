@@ -1,0 +1,59 @@
+require("sfmt.lox");
+
+# Test script for SloxFormatter round-trip validation
+
+var sampleCode = "
+  fun calculate(x,y){
+    var result=x+y;
+    return result;
+  }
+";
+
+// 1. Scan original tokens (filtering out whitespace)
+var lexer1 = SloxLexer(sampleCode);
+var rawTokens1 = lexer1.scanTokens();
+var cleanTokens1 = [];
+for (var i = 0; i < rawTokens1.length(); i += 1) {
+  if (rawTokens1[i].type != "WHITESPACE") {
+    cleanTokens1.push(rawTokens1[i]);
+  }
+}
+
+// 2. Format the code
+var formatter = SloxFormatter();
+var formattedCode = formatter.format(sampleCode);
+
+print "--- FORMATTED OUTPUT ---";
+print formattedCode;
+print "------------------------";
+
+// 3. Scan formatted tokens (filtering out whitespace)
+var lexer2 = SloxLexer(formattedCode);
+var rawTokens2 = lexer2.scanTokens();
+var cleanTokens2 = [];
+for (var i = 0; i < rawTokens2.length(); i += 1) {
+  if (rawTokens2[i].type != "WHITESPACE") {
+    cleanTokens2.push(rawTokens2[i]);
+  }
+}
+
+// 4. Validate equality
+var passed = true;
+if (cleanTokens1.length() != cleanTokens2.length()) {
+  print "TEST FAILED: Token count mismatch! Original: " + cleanTokens1.length() + ", Formatted: " + cleanTokens2.length();
+  passed = false;
+} else {
+  for (var j = 0; j < cleanTokens1.length(); j += 1) {
+    var t1 = cleanTokens1[j];
+    var t2 = cleanTokens2[j];
+    if (t1.type != t2.type or t1.text != t2.text) {
+      print "TEST FAILED at token index " + j + ": Expected (" + t1.type + ": " + t1.text + ") but got (" + t2.type + ": " + t2.text + ")";
+      passed = false;
+      break;
+    }
+  }
+}
+
+if (passed) {
+  print "TEST PASSED: Round-trip token invariance verified successfully!";
+}

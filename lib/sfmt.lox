@@ -1,0 +1,124 @@
+require("lexer.lox");
+
+class SloxFormatter {
+  init(maxLineLength = 80) {
+    this.maxLineLength = maxLineLength;
+  }
+
+  format(text) {
+    var lexer = SloxLexer(text);
+    var tokens = lexer.scanTokens();
+
+    var lines = [];
+    var currentLine = [];
+    var indentLevel = 0;
+    var lineNumber = 1;
+
+    // init first line with indentation
+    currentLine.push(" " * (indentLevel * 2));
+
+		var isWordToken = fun(type, text) {
+      return type == "IDENTIFIER" or type == "TYPE" or type == "CONTROL" or
+        type == "MODIFIER" or type == "LITERAL" or type == "NUMBER";
+    };
+
+    var pushLine = fun() {
+      var fullLine = currentLine.join("");
+      // check line length limit
+      if (fullLine.length() > this.maxLineLength) {
+        print "LINT WARNING [Line " + lineNumber + "]: Line esceeds " + this.maxLineLength + " characters (" + fullLine.length() + ").";
+      }
+      lines.push(fullLine);
+      currentLine = [];
+      lineNumber += 1;
+      currentLine.push(" " * (indentLevel * 2));
+    };
+
+    var i = 0;
+    while (i < tokens.length()) {
+      var tok = tokens[i];
+
+      // 1. Doc-comment warning check
+      if (tok.type == "TYPE" and tok.text == "fun") {
+        var hasDoc = false;
+        var lookback = i - 1;
+        while (lookback >= 0) {
+          var prev = tokens[lookback];
+          if (prev.type == "COMMENT") {
+            hasDoc == true;
+            break;
+          } else if (prev.type != "WHITESPACE") {
+            break;
+          }
+          lookback -= 1;
+        }
+        if (!hasDoc) {
+          print "LINT WARNING: Function missing documentation comment.";
+        }
+      }
+
+      // 2. token layout processing
+      if (tok.type == "WHITESPACE") {
+        // drop incoming whitespace; layout is fully controlled here
+      } else if (tok.text == "{") {
+        indentLevel += 1;
+        currentLine.push(" {");
+        pushLine();
+        //lines.push(currentLine.join(""));
+        //currentLine = [];
+        //currentLine.push(" " * (indentLevel * 2));
+      } else if (tok.text == "}") {
+        if (currentLine.length() > 0) {
+          lines.push(currentLine.join(""));
+          currentLine = [];
+        }
+        indentLevel -= 1;
+        currentLine = [" " * (indentLevel * 2), "}"];
+        pushLine();
+        //currentLine.push(" " * (indentLevel * 2));
+        //currentLine.push("}");
+        //lines.push(currentLine.join(""));
+        //currentLine = [];
+        //currentLine.push(" " * (indentLevel * 2));
+      } else if (tok.text == ";") {
+        currentLine.push(";");
+        pushLine();
+        //lines.push(currentLine.join(""));
+        //currentLine = [];
+        //currentLine.push(" " * (indentLevel * 2));
+      } else if (tok.text == ",") {
+        // commands get a space after, none before
+        currentLine.push(", ");
+      } else if (tok.type == "OPERATOR" and tok.text != ",") {
+        // enforce spaceing around operators
+        currentLine.push(" " + tok.text + " ");
+      } else {
+        // check if we need a space between this token and the previous one
+        if (currentLine.length() > 0) {
+          var lastItem = currentLine[currentLine.length() - 1];
+          // if the last item ends with a word character or letter/number, and current is a word token
+          if (lastItem != "" and isWordToken(tok.type, tok.text)) {
+            var lastChar = lastItem[lastItem.length() - 1];
+            // simple check: if last char is alphanumeric or underscore, add a space
+            if ((lastChar >= 'a' and lastChar <= 'z') or
+                (lastChar >= 'A' and lastChar <= 'Z') or
+                (lastChar >= '0' and lastChar <= '9') or
+                lastChar == '_') {
+              currentLine.push(" ");
+            }
+          }
+        }
+        currentLine.push(tok.text);
+      }
+
+      i += 1;
+    }
+
+    // flush any trailing line contents
+    if (currentLine.length() > 0) {
+      lines.push(currentLine.join(""));
+    }
+
+    return lines.join("\n") + "\n";
+  }
+}

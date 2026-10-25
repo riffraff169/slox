@@ -99,6 +99,7 @@ class SloxLexer {
       while (!this.isAtEnd() and this.peek() != '\n') {
         this.advance();
       }
+      return Token("COMMENT", this.source.slice(this.start, this.current));
     } else if (c == '/') {
       if (this.peek() == '/') {
         // line comment
