@@ -1620,6 +1620,10 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vmAnchor(vm.str_ge);
     vm.str_eq = copyString("__eq__", 6);
     vmAnchor(vm.str_eq);
+    vm.str_geti = copyString("__geti__", 8);
+    vmAnchor(vm.str_geti);
+    vm.str_seti = copyString("__seti__", 8);
+    vmAnchor(vm.str_seti);
     vm.xString = copyString("x", 1);
     vmAnchor(vm.xString);
     vm.yString = copyString("y", 1);
@@ -4253,7 +4257,20 @@ InterpretResult run() {
                         break;
                     }
 
-                    RUNTIME_ERROR("Only vec3s, maps and arrays support subscripting.");
+                    if (IS_INSTANCE(targetValue)) {
+                        ObjInstance* instance = AS_INSTANCE(targetValue);
+                        Value method;
+
+                        // look up __geti__ up the class hierarchy
+                        push(targetValue);
+                        push(indexValue);
+                        if (!invoke(vm.str_geti, 1)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        break;
+                    }
+
+                    RUNTIME_ERROR("Invalid index target.");
                 }
                 break;
             case OP_SET_INDEX:
@@ -4326,6 +4343,23 @@ InterpretResult run() {
                         vm.stackTop[-3] = newValue;
                         popn(2);
                         break;
+                    }
+
+                    if (IS_INSTANCE(targetValue)) {
+                        ObjInstance* instance = AS_INSTANCE(targetValue);
+                        Value method;
+
+                        // look up __seti__ up the class hierarchy
+                        /*
+                        push(targetValue);
+                        push(indexValue);
+                        push(newValue);
+                        */
+                        if (!invoke(vm.str_seti, 2)) {
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        //vm.stackTop[-3] = newValue;
+                        //popn(2);
                     }
                 }
                 break;
