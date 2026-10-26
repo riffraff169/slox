@@ -434,6 +434,39 @@ Value isInstanceNative(int argCount, Value* args) {
 // Returns:
 //   Array
 
+ObjArray* collectMethodsForClass(ObjClass* targetClass, bool recurse) {
+    ObjArray* list = newArray();
+    push(OBJ_VAL(list));
+
+    Table seen;
+    initTable(&seen);
+
+    ObjClass* current = targetClass;
+    while (current != NULL) {
+        Table* table = &current->methods;
+        for (int i = 0; i < table->capacity; i++) {
+            Entry* entry = &table->entries[i];
+            if (entry->key != NULL) {
+                Value dummy;
+                if (!tableGet(&seen, entry->key, &dummy)) {
+                    tableSet(&seen, entry->key, BOOL_VAL(true));
+                    arrayAppend(list, OBJ_VAL(entry->key));
+                }
+            }
+        }
+
+        if (!recurse) break;
+        current = current->superclass;
+
+        if (current == NULL && targetClass != vm.objectClass && targetClass->superclass == NULL) {
+            current = vm.objectClass;
+        }
+    }
+
+    freeTable(&seen);
+    return (ObjArray*)AS_OBJ(pop());
+}
+
 //@ Object
 // Base class for all objects
 
@@ -569,7 +602,7 @@ Value aliasNative(int argCount, Value* args) {
 Value getMethodsNative(int argCount, Value* args) {
     Value receiver = args[-1];
 
-    bool recurse = false;
+    bool recurse = true;
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
             runtimeError("Recurse argument must be a boolean.");
@@ -590,6 +623,7 @@ Value getMethodsNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+    /*
     ObjArray* list = newArray();
     push(OBJ_VAL(list));
 
@@ -616,6 +650,9 @@ Value getMethodsNative(int argCount, Value* args) {
 
     freeTable(&seen);
     return pop();
+    */
+    ObjArray* methods = collectMethodsForClass(targetClass, recurse);
+    return OBJ_VAL(methods);
 }
 
 //@ Object
@@ -857,16 +894,77 @@ Value requireNative(int argCount, Value* args) {
 }
 
 //= inspect
-// Debugging aid only, prints directly to stdout the value of val
+// Get list of classes, methods, and fields on this instance/class
 // Requires:
-//   Value: val
+//   Value: object
 Value inspectNative(int argCount, Value* args) {
-    for (int i = 0; i < argCount; i++) {
-        printValueSafe(stdout, args[i]);
-        if (i < argCount - 1) printf(" ");
+    Value receiver = args[-1];
+
+    ObjClass* targetClass = NULL;
+    ObjInstance* instance = NULL;
+
+    if (IS_INSTANCE(receiver)) {
+        instance = AS_INSTANCE(receiver);
+        targetClass = instance->obj.klass;
+    } else if (IS_CLASS(receiver)) {
+        targetClass = AS_CLASS(receiver);
+    } else {
+        targetClass = getClassForValue(receiver);
     }
-    printf("\n");
-    return NIL_VAL;
+
+    if (targetClass == NULL) {
+        runtimeError("Cannot inspect non-object/non-class.");
+        return NIL_VAL;
+    }
+
+    // main hierarchy array [0, 1, 2, ...]
+    ObjArray* hierarchyArray = newArray();
+    push(OBJ_VAL(hierarchyArray));
+
+    ObjClass* current = targetClass;
+    bool isFirst = true;
+
+    while (current != NULL) {
+        // map for this specific class tier
+        ObjMap* levelMap = newMap();
+        push(OBJ_VAL(levelMap));
+
+        // 1. add the class name to the mape
+        if (current->name != NULL) {
+            mapSetByCStr(levelMap, "name", OBJ_VAL(current->name));
+        }
+
+        // 2. get methods for this specific class level only (recurse = false)
+        ObjArray* methodsArray = collectMethodsForClass(current, false);
+        mapSetByCStr(levelMap, "methods", OBJ_VAL(methodsArray));
+
+        // 3. get fields only for the instance at index [0]
+        if (isFirst && instance != NULL) {
+            ObjArray* fieldsArray = newArray();
+            push(OBJ_VAL(fieldsArray));
+
+            for (int i = 0; i < instance->fields.capacity; i++) {
+                Entry* entry = &instance->fields.entries[i];
+                if (entry->key != NULL) {
+                    arrayAppend(fieldsArray, OBJ_VAL(entry->key));
+                }
+            }
+            mapSetByCStr(levelMap, "fields", OBJ_VAL(fieldsArray));
+            pop();
+        }
+
+        arrayAppend(hierarchyArray, OBJ_VAL(levelMap));
+        pop();
+
+        isFirst = false;
+        current = current->superclass;
+
+        if (current == NULL && targetClass != vm.objectClass && targetClass->superclass == NULL) {
+            current = vm.objectClass;
+        }
+    }
+
+    return pop();
 }
 
 #define CORE_GLOBAL_LIST(X) \
@@ -877,7 +975,6 @@ Value inspectNative(int argCount, Value* args) {
     X("eval", evalNative) \
     X("create_instance", createInstanceNative) \
     X("program", programNative) \
-    X("inspect", inspectNative) \
     X("require", requireNative)
 
 #define CORE_DUAL_LIST(X) \
@@ -894,6 +991,7 @@ Value inspectNative(int argCount, Value* args) {
     X("get_field", getFieldNative) \
     X("set_field", setFieldNative) \
     X("get_methods", getMethodsNative) \
+    X("inspect", inspectNative) \
     X("alias", aliasNative) \
     X("has_method", hasMethodNative) \
     X("responds_to", hasMethodNative) \
