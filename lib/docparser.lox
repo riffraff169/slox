@@ -40,6 +40,7 @@ class DocParser {
     this.currentClass = nil;
     this.currentTarget = nil; // ClassDoc, MethodDoc, or FunctionDoc
     this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "ALIASES", "RETURNS"
+    this.inCodeBlock = false;
   }
 
   addAliases(rawStr) {
@@ -158,7 +159,37 @@ class DocParser {
     if (line.slice(0, 2) == "//") {
       if (this.currentTarget == nil) return;
 
-      var content = line.slice(2).trim();
+      var raw = line.slice(2);
+      if (raw.length() > 0 and raw[0] == ' ') {
+        raw = raw.slice(1);
+      }
+
+      var trimmedRaw = raw.trim();
+
+      //var content = line.slice(2).trim();
+
+      // check for code fence ```
+      if (trimmedRaw == "```") {
+        if (this.inCodeBlock) {
+          this.inCodeBlock = false;
+        } else {
+          this.inCodeBlock = true;
+        }
+        if (this.section == "DESC") {
+          this.currentTarget.description.push("```");
+        }
+        return;
+      }
+
+      // if we are in a code block, preserve indention and treat as description content
+      if (this.inCodeBlock) {
+        if (this.section == "DESC") {
+          this.currentTarget.description.push(raw);
+        }
+        return;
+      }
+
+      var content = trimmedRaw;
 
       // Section transitions
       if (content == "Required args:" or content == "Required args" or
@@ -255,6 +286,13 @@ class DocParser {
   }
 
   closeTarget() {
+    if (this.inCodeBlock) {
+      print("Warning: unclosed code block, adding closing ```");
+      if (this.currentTarget != nil) {
+        this.currentTarget.description.push("```");
+      }
+      this.inCodeBlock = false;
+    }
     this.currentTarget = nil;
     this.section = "NONE";
   }

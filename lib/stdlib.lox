@@ -96,6 +96,36 @@ class MapIterator {
   }
 }
 
+//@ FieldIndex
+// Mixin (include) that adds custom __geti__ and __seti__ implementations.
+// With this, you can access fields of an instance with [], and set with []=.
+// Example:
+// ```
+// class User {
+//   include FieldIndex;
+//
+//   init(name, role) {
+//     this.name = name;
+//     this.role = role;
+//   }
+// }
+// var u = User("Fred", "Architect");
+// print u.name;
+// print u["role"];
+// u["role"] = "Principal Architect";
+// print u["role"];
+// ```
+class FieldIndex {
+  __geti__(key) {
+    return this.get_field(key);
+  }
+
+  __seti__(key, value) {
+    this.set_field(key, value);
+    return this;
+  }
+}
+
 class Serializable {
   serialize() {
     fun writeValue(val) {
@@ -407,148 +437,6 @@ class PP {
 
   formatVec3(vec) {
     return "Vec3(" + String(vec.x) + ", " + String(vec.y) + ", " + String(vec.z) + ")";
-  }
-}
-
-class PP1 {
-  init() {
-    this.indentValue = 0;
-    this.visited = [];
-  }
-
-  pp(obj) {
-    var printer = PP();
-    return printer.format(obj);
-  }
-
-  format(obj) {
-    // 1. Handle Primitives
-    if (obj == nil) return "nil";
-
-    var klass = obj.class();
-
-    if (obj.class() == Bool) {
-      if (obj) return "true";
-      return "false";
-    }
-
-    if (klass == Integer or klass == Float or klass == Number) {
-      return String(obj);
-    }
-
-    //if (obj.class() == Number) return String(obj);
-    if (klass == String) return "\"" + obj + "\"";
-
-    if (this.visited.find(fun(a) { return a == obj; }) != nil) {
-      return "[Circular ...]";
-    }
-    this.visited.push(obj);
-
-    var res = nil;
-
-    if (obj.class() == Array) {
-      res = this.formatArray(obj);
-    } else if (klass == Set) {
-      res = this.formatSet(obj);
-    } else if (obj.class() == Map) {
-      res = this.formatMap(obj);
-    } else if (obj.class() == Vec3) {
-      res = this.formatVec3(obj);
-    } else {
-      res = this.formatInstance(obj);
-    }
-    this.visited.pop();
-
-    return res;
-  }
-
-  formatSet(set) {
-    var items = set.keys();
-    if (items.len() == 0) return "Set {}";
-
-    this.indentValue += 2;
-    var pad = this.getPad();
-    var result = "Set {\n";
-
-    for (var i = 0; i < items.length(); i += 1) {
-      result = result + pad + this.format(items[i]);
-      if (i < items.length() - 1) result = result + ",\n";
-    }
-
-    this.indentValue -= 2;
-    return result + "\n" + this.getPad() + "}";
-  }
-
-  formatMap(map) {
-    var keys = map.keys();
-    if (keys.len() == 0) return "{}";
-
-    this.indentValue += 2;
-    var pad = this.getPad();
-    var result = "{\n";
-
-    for (var i = 0; i < keys.len(); i += 1) {
-      var key = keys[i];
-      var val = map[key];
-
-      result = result + pad + "\"" + key + "\": " + this.format(val);
-
-      if (i < keys.len() - 1) result = result + ",\n";
-    }
-
-    this.indentValue -= 2;
-    return result + "\n" + this.getPad() + "}";
-  }
-
-  formatVec3(vec) {
-    return "Vec3(" + String(vec.x) + ", " + String(vec.y) + ", " + String(vec.z) + ")";
-  }
-
-  formatInstance(instance) {
-    var className = instance.class().name();
-    var keys = instance.fields();
-
-    if (keys.len() == 0) return className + " {}";
-
-    this.indentValue += 2;
-    var pad = this.getPad();
-    var result = className + " {\n";
-
-    for (var i = 0; i < keys.len(); i += 1) {
-      var fieldName = keys[i];
-      var val = instance.get_field(fieldName);
-
-      result = result + pad + fieldName + ": " + this.format(val);
-
-      if (i < keys.len() - 1) result = result + ",\n";
-    }
-
-    this.indentValue -= 2;
-    return result + "\n" + this.getPad() + "}";
-  }
-
-  formatArray(arr) {
-    if (arr.len() == 0) return "[]";
-
-    this.indentValue = this.indentValue + 2;
-    var pad = this.getPad();
-    var result = "[\n";
-
-    for (var i = 0; i < arr.len(); i += 1) {
-      result = result + pad + this.format(arr[i]);
-      if (i < arr.len() - 1) result = result + ",\n";
-    }
-
-    this.indentValue = this.indentValue - 2;
-    return result + "\n" + this.getPad() + "]";
-  }
-
-  getPad() {
-    var s = "";
-    for (var i = 0; i < this.indentValue; i += 1) {
-      s = s + " ";
-    }
-    return s;
   }
 }
 
