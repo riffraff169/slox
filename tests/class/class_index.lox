@@ -1,0 +1,20 @@
+class IndexableContainer {
+  init(a, b, c) {
+    this.data = [a, b, c];
+  }
+
+  __geti__(index) {
+    return this.data[index];
+  }
+
+  __seti__(index, value) {
+    this.data[index] = value * 10;
+    return this.data[index];
+  }
+}
+
+var c = IndexableContainer(1, 2, 3);
+print c[0]; // expect: 1
+c[1] = 5;
+print c[1]; // expect: 50
+print c[2]; // expect: 3
