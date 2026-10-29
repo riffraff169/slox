@@ -2180,11 +2180,11 @@ Load/require lox code from a file
 
 ---
 
-## `inspect(val)`
-Debugging aid only, prints directly to stdout the value of val
+## `inspect(object)`
+Get list of classes, methods, and fields on this instance/class
 
 **Required Arguments:**
-  - `Value: val`
+  - `Value: object`
 
 ---
 

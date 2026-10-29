@@ -102,10 +102,24 @@ class DocParser {
   }
 
   processLine(line) {
-    // 1. Class Header: //@ ClassName
-    if (line.slice(0, 3) == "//@") {
+    // check if line is a comment line, allowing optional leading indentation
+    var parts = line.split("//");
+    if (parts.length() <= 1 or parts[0].trim().length() > 0) {
       this.closeTarget();
-      var className = line.slice(3).trim();
+      return;
+    }
+
+    var commentContent = parts[1];
+    var firstChar = nil;
+
+    if (commentContent.length() > 0) {
+      firstChar = commentContent[0];
+    }
+
+    // 1. Class Header: //@ ClassName
+    if (firstChar == '@') {
+      this.closeTarget();
+      var className = commentContent.slice(1).trim();
 
       var existing = this.findClass(className);
       if (existing) {
@@ -121,14 +135,14 @@ class DocParser {
     }
 
     // 2. Method Header: //: methodName or //: Class.methodName
-    if (line.slice(0, 3) == "//:") {
+    if (firstChar == ':') {
       this.closeTarget();
-      var methodName = line.slice(3).trim();
+      var methodName = commentContent.slice(1).trim();
 
       // Strip class prefix if written as Class.method
-      var parts = methodName.split(".");
-      if (parts.length() > 1) {
-        methodName = parts[1];
+      var partsMethod = methodName.split(".");
+      if (partsMethod.length() > 1) {
+        methodName = partsMethod[1];
       }
 
       var method = MethodDoc(methodName);
@@ -141,9 +155,9 @@ class DocParser {
     }
 
     // 3. Global Function Header: //= functionName(args)
-    if (line.slice(0, 3) == "//=") {
+    if (firstChar == '=') {
       this.closeTarget();
-      var funcName = line.slice(3).trim();
+      var funcName = commentContent.slice(1).trim();
       // Strip optional paretheses if included in line header
       if (funcName.split("(").length() > 1) {
         funcName = funcName.split("(")[0].trim();
@@ -155,131 +169,129 @@ class DocParser {
       return;
     }
 
+    if (this.currentTarget == nil) return;
     // 4. Content Line: // Content
-    if (line.slice(0, 2) == "//") {
-      if (this.currentTarget == nil) return;
 
-      var raw = line.slice(2);
-      if (raw.length() > 0 and raw[0] == ' ') {
-        raw = raw.slice(1);
-      }
+    var raw = commentContent;
+    if (raw.length() > 0 and raw[0] == ' ') {
+      raw = raw.slice(1);
+    }
 
-      var trimmedRaw = raw.trim();
+    var trimmedRaw = raw.trim();
 
-      //var content = line.slice(2).trim();
+    //var content = line.slice(2).trim();
 
-      // check for code fence ```
-      if (trimmedRaw == "```") {
-        if (this.inCodeBlock) {
-          this.inCodeBlock = false;
-        } else {
-          this.inCodeBlock = true;
-        }
-        if (this.section == "DESC") {
-          this.currentTarget.description.push("```");
-        }
-        return;
-      }
-
-      // if we are in a code block, preserve indention and treat as description content
+    // check for code fence ```
+    if (trimmedRaw == "```") {
       if (this.inCodeBlock) {
-        if (this.section == "DESC") {
-          this.currentTarget.description.push(raw);
-        }
-        return;
+        this.inCodeBlock = false;
+      } else {
+        this.inCodeBlock = true;
       }
-
-      var content = trimmedRaw;
-
-      // Section transitions
-      if (content == "Required args:" or content == "Required args" or
-          content == "Requires:" or content == "Requires") {
-        this.section = "REQUIRED";
-        return;
-      }
-
-      if (content.slice(0, 9) == "Requires:") {
-        this.section = "REQUIRED";
-        var val = content.slice(9).trim();
-        if (val.length() > 0) {
-          this.currentTarget.requiredArgs.push(val);
-        }
-        return;
-      }
-
-      if (content == "Optional args:" or content == "Option args:" or
-          content == "Optional args" or content == "Optional:" or content == "Optional") {
-        this.section = "OPTIONAL";
-        return;
-      }
-
-      if (content.slice(0, 9) == "Optional:") {
-        this.section = "OPTIONAL";
-        var val = content.slice(9).trim();
-        if (val.length() > 0) {
-          this.currentTarget.optionalArgs.push(val);
-        }
-        return;
-      }
-
-      // aliases
-      if (content == "Aliases:" or content == "Aliases" or
-          content == "Alias:" or content == "Alias") {
-        this.section = "ALIASES";
-        return;
-      }
-
-      if (content.slice(0, 8) == "Aliases:") {
-        this.section = "ALIASES";
-        var val = content.slice(8).trim();
-        if (val.length() > 0) {
-          this.addAliases(val);
-        }
-        return;
-      }
-
-      if (content.slice(0, 6) == "Alias:") {
-        this.section = "ALIASES";
-        var val = content.slice(6).trim();
-        if (val.length() > 0) {
-          this.addAliases(val);
-        }
-        return;
-      }
-
-      // Exact match section header: // Returns:
-      if (content == "Returns:" or content == "Returns" or content == "Return:" or
-          content == "Return") {
-        this.section = "RETURNS";
-        return;
-      }
-
-      // Inline match: // Returns: Type
-      if (content.slice(0, 8) == "Returns:") {
-        this.section = "RETURNS";
-        var retVal = content.slice(8).trim();
-        if (retVal.length() > 0) {
-          this.currentTarget.returns.push(retVal);
-        }
-        return;
-      }
-
-      // Append content to active section
-      if (content.length() > 0) {
-        if (this.section == "DESC") {
-          this.currentTarget.description.push(content);
-        } else if (this.section == "REQUIRED") {
-          this.currentTarget.requiredArgs.push(content);
-        } else if (this.section == "OPTIONAL") {
-          this.currentTarget.optionalArgs.push(content);
-        } else if (this.section == "ALIASES") {
-          this.addAliases(content);
-        } else if (this.section == "RETURNS") {
-          this.currentTarget.returns.push(content);
-        }
+      if (this.section == "DESC") {
+        this.currentTarget.description.push("```");
       }
       return;
     }
+
+    // if we are in a code block, preserve indention and treat as description content
+    if (this.inCodeBlock) {
+      if (this.section == "DESC") {
+        this.currentTarget.description.push(raw);
+      }
+      return;
+    }
+
+    var content = trimmedRaw;
+
+    // Section transitions
+    if (content == "Required args:" or content == "Required args" or
+        content == "Requires:" or content == "Requires") {
+      this.section = "REQUIRED";
+      return;
+    }
+
+    if (content.slice(0, 9) == "Requires:") {
+      this.section = "REQUIRED";
+      var val = content.slice(9).trim();
+      if (val.length() > 0) {
+        this.currentTarget.requiredArgs.push(val);
+      }
+      return;
+    }
+
+    if (content == "Optional args:" or content == "Option args:" or
+        content == "Optional args" or content == "Optional:" or content == "Optional") {
+      this.section = "OPTIONAL";
+      return;
+    }
+
+    if (content.slice(0, 9) == "Optional:") {
+      this.section = "OPTIONAL";
+      var val = content.slice(9).trim();
+      if (val.length() > 0) {
+        this.currentTarget.optionalArgs.push(val);
+      }
+      return;
+    }
+
+    // aliases
+    if (content == "Aliases:" or content == "Aliases" or
+        content == "Alias:" or content == "Alias") {
+      this.section = "ALIASES";
+      return;
+    }
+
+    if (content.slice(0, 8) == "Aliases:") {
+      this.section = "ALIASES";
+      var val = content.slice(8).trim();
+      if (val.length() > 0) {
+        this.addAliases(val);
+      }
+      return;
+    }
+
+    if (content.slice(0, 6) == "Alias:") {
+      this.section = "ALIASES";
+      var val = content.slice(6).trim();
+      if (val.length() > 0) {
+        this.addAliases(val);
+      }
+      return;
+    }
+
+    // Exact match section header: // Returns:
+    if (content == "Returns:" or content == "Returns" or content == "Return:" or
+        content == "Return") {
+      this.section = "RETURNS";
+      return;
+    }
+
+    // Inline match: // Returns: Type
+    if (content.slice(0, 8) == "Returns:") {
+      this.section = "RETURNS";
+      var retVal = content.slice(8).trim();
+      if (retVal.length() > 0) {
+        this.currentTarget.returns.push(retVal);
+      }
+      return;
+    }
+
+    // Append content to active section
+    if (content.length() > 0) {
+      if (this.section == "DESC") {
+        this.currentTarget.description.push(content);
+      } else if (this.section == "REQUIRED") {
+        this.currentTarget.requiredArgs.push(content);
+      } else if (this.section == "OPTIONAL") {
+        this.currentTarget.optionalArgs.push(content);
+      } else if (this.section == "ALIASES") {
+        this.addAliases(content);
+      } else if (this.section == "RETURNS") {
+        this.currentTarget.returns.push(content);
+      }
+    }
+    return;
 
     // 5. Code line or blank line -> close current target block
     this.closeTarget();
