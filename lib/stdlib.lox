@@ -1,20 +1,18 @@
-class StdTest {
-  init() {
-    this.msg = "Hello from stdlib!";
-  }
-
-  die() {
-    // trigger a crash inside the stdlib file
-    var x = Option(false, nil);
-    x.unwrap();
-  }
-}
-
+//@ System
+// Part of main core libraries
 class System {
+  //: stats
+  // Get system statistics
+  // Returns:
+  //   Map
   static stats() {
     return System.sysstats();
   }
 
+  //: get_times
+  // Get timings like from time command
+  // Returns:
+  //   Map
   static get_times() {
     var s = System.sysstats();
     return {
@@ -24,6 +22,10 @@ class System {
     };
   }
 
+  //: get_memory_mb
+  // Get memory usage.
+  // Returns:
+  //   Float
   static get_memory_mb() {
     var s = System.sysstats();
     return s["maxrss"] / 1024.0;
@@ -126,6 +128,9 @@ class FieldIndex {
   }
 }
 
+//@ Serializable
+// Add serializing features to a class, with .serialize().
+// deserialize() is a separate external function.
 class Serializable {
   serialize() {
     fun writeValue(val) {

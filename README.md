@@ -8,8 +8,11 @@ See if a class has a method
 
 #### `operator overloading`
 
-`__add__`, `__sub__`, `__mul__`, `__div__` so that you can use those ops on classes like:
+  * `__add__`, `__sub__`, `__mul__`, `__div__`, `__neg__`: Math ops
+  * `__lt__`, `__gt__`, `__le__`, `__ge__`, `__eq__`: Comparison
+  * `__geti__`, `__seti__`: Index [] and []=
  
+Example:
 ```
 class A { 
  init() { this.a = 1; }
