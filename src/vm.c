@@ -2101,8 +2101,14 @@ bool invoke(ObjString* name, int argCount) {
                     vm.stackTop++;
                     argCount++;
                 } else {
-                    if (argCount != closure->function->arity) {
-                        runtimeError("Expected %d arguments, but got %d.", closure->function->arity, argCount);
+                    //if (argCount != closure->function->arity) {
+                    if (argCount < closure->function->minArity || argCount > closure->function->arity) {
+                        if (closure->function->minArity == closure->function->arity) {
+                            runtimeError("Expected %d arguments, but got %d.", closure->function->arity, argCount);
+                        } else {
+                            runtimeError("Expected between %d and %d arguments, but got %d.",
+                                    closure->function->minArity, closure->function->arity, argCount);
+                        }
                         return false;
                     }
                 }
