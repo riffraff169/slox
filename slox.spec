@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.8.8
+Version: 1.8.9
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -241,6 +241,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sat  Oct 31 2026 Lance Dillon <riffraff169@yahoo.com> - 1.8.9-1-1
+- fixed default args for methods
+
 * Sat  Oct 31 2026 Lance Dillon <riffraff169@yahoo.com> - 1.8.8-1-1
 - added uuid class
 
