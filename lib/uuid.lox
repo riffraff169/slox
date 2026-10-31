@@ -1,0 +1,73 @@
+//@ UUID
+// Library for generating Universally Unique Identifiers (UUID v4).
+class UUID {
+  //: v4
+  // Generates a pseudo-random UUID (version 4).
+  // Returns:
+  //   String
+  static v4() {
+    var bytes = [0; 16];
+
+    for (var i = 0; i < 16; i += 1) {
+      bytes[i] = Math.random(0, 256);
+    }
+
+    // Set version 4 (bits 4-7 of byte 6 to 0100 -> 0x40)
+    bytes[6] = (bytes[6] & 15) | 64;
+
+    // Set variant (bits 6-7 of bytes 8 to 10 -> 0x80)
+    bytes[8] = (bytes[8] & 63) | 128;
+
+    var hexParts = [];
+    for (var j = 0; j < 16; j += 1) {
+      hexParts.push(bytes[j].hex(2, false));
+    }
+
+    var str = hexParts.join("");
+
+    return str.slice(0, 4 * 2) + "-" +
+      str.slice(4 * 2, 6 * 2) + "-" +
+      str.slice(6 * 2, 8 *2 ) + "-" +
+      str.slice(8 * 2, 10 *2 ) + "-" +
+      str.slice(10 * 2);
+  }
+
+  //: shortId
+  // Generates a compact 8-character random hex token.
+  // Returns:
+  //   String
+  static shortId() {
+    var a = [0; 8];
+    for (var i = 0; i < 8; i += 1) {
+      a[i] = Math.random(0, 16).hex(1, false);
+    }
+    return a.join("");
+  }
+
+  //: ulid
+  // Generates a Universally Unique Lexicographically Sortable Identifier (ULID).
+  // Returns:
+  //   String
+  static ulid() {
+    // Crockford's Base32 alphabet (32 characters, excluding I, L, O, U)
+    var alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+    var timeMs = System.realtime();
+    var t = timeMs.floor();
+
+    var timeChars = [0; 10];
+    for (var i = 9; i >= 0; i -= 1) {
+      var mod = t % 32;
+      timeChars[i] = alphabet.slice(mod, mod + 1);
+      t = (t / 32).floor();
+    }
+
+    var randChars = [0; 16];
+    for (var j = 0; j < 16; j += 1) {
+      var r = Math.random(0, 32);
+      randChars[j] = alphabet.slice(r, r + 1);
+    }
+
+    return timeChars.join("") + randChars.join("");
+  }
+}

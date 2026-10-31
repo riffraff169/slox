@@ -8328,6 +8328,16 @@ Value systemTimeNative(int argCount, Value* args) {
 }
 
 //@ System
+//: realtime
+// Gets the realtime.
+Value systemRealtimeNative(int argCount, Value* args) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    double epoch_ms = (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
+    return FLOAT_VAL(epoch_ms);
+}
+
+//@ System
 //: sysstats
 // Gets system stats, mostly from rusage
 // Returns:
@@ -8807,6 +8817,7 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     ObjClass* systemMeta = systemClass->obj.klass;
 
     defineNativeMethod(systemMeta, "time", systemTimeNative);
+    defineNativeMethod(systemMeta, "realtime", systemRealtimeNative);
     defineNativeMethod(systemMeta, "sysstats", systemSysStatsNative);
     defineNativeMethod(systemMeta, "exit", systemExitNative);
     defineNativeMethod(systemMeta, "gc", systemGCNative);

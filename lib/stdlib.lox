@@ -32,13 +32,40 @@ class System {
   }
 }
 
+//@ Error
+// Error class. Used for throwing errors from so that `catch` can deal with it.
 class Error {
   init(msg = "Error") {
     this.message = msg;
   }
 }
 
+//@ Iterable
+// Mixin class for implementing iterators. Classes include this mixin, then return an iterator.
+// This class uses the Iterator class to provide the map and each methods.
+// ```
+//class Settings {
+//  include Iterable;
+//
+//  init() {
+//    this.config = {};
+//  }
+//
+//  set(key, value) {
+//    this.config[key] = value;
+//  }
+//
+//  iter() {
+//    return MapIterator(this.config);
+//  }
+//}
+//
+// Full example in examples/settings.lox
 class Iterable {
+  //: each
+  // Implements each for the iterator.
+  // Returns:
+  //   Value
   each(fn) {
     var it = this.iter();
     while (!it.done()) {
@@ -46,6 +73,10 @@ class Iterable {
     }
   }
 
+  //: map
+  // Implements map for the iterator.
+  // Returns:
+  //   Value
   map(fn) {
     var result = [];
     this.each(fun(item) {
@@ -55,31 +86,52 @@ class Iterable {
   }
 }
 
+//@ ArrayIterator
+// The actual iterator for arrays. The class will implement iter(), which will return
+// ArrayIterator with the array. 
 class ArrayIterator {
   init(array) {
     this.array = array;
     this.index = 0;
   }
 
+  //: done
+  // Signifies that there is no more data for the iterator.
+  // Returns:
+  //   Bool
   done() {
     return this.index >= this.array.length();
   }
 
+  //: next
+  // Gets next item.
+  // Returns:
+  //   Value
   next()  {
     var item = this.array[this.index];
     this.index += 1;
     return item;
   }
 
+  //: key
+  // Gets the key, in this case, the index.
+  // Returns:
+  //   Integer
   key() {
     return this.index;
   }
 
+  //: val
+  // Gets the value
+  // Returns:
+  //   Value
   val() {
     return this.array[this.index];
   }
 }
 
+//@ MapIterator
+// Iterator class for maps.
 class MapIterator {
   init(map) {
     this.map = map;
@@ -87,10 +139,18 @@ class MapIterator {
     this.index = 0;
   }
 
+  //: done
+  // Signifies that there is no more data for the iterator.
+  // Returns:
+  //   Bool
   done() {
     return this.index >= this.keys.length();
   }
 
+  //: next
+  // Gets next item.
+  // Returns:
+  //   Array: key, value
   next() {
     var key = this.keys[this.index];
     this.index = this.index + 1;
@@ -118,10 +178,23 @@ class MapIterator {
 // print u["role"];
 // ```
 class FieldIndex {
+  //: __geti__
+  // Get value of field
+  // Requires:
+  //   String: key
+  // Returns:
+  //   Value
   __geti__(key) {
     return this.get_field(key);
   }
 
+  //: __seti__
+  // Set field to value
+  // Requires:
+  //   String: key
+  //   Value: val
+  // Returns:
+  //   Value
   __seti__(key, value) {
     this.set_field(key, value);
     return this;
@@ -130,8 +203,11 @@ class FieldIndex {
 
 //@ Serializable
 // Add serializing features to a class, with .serialize().
-// deserialize() is a separate external function.
+// deserialize() is a separate external function. Used as a mixin.
+// Currently broken, needs to be updated to split Integer/Float
 class Serializable {
+  //: serialize
+  // Recursively convert a Value to a String, so it can be written somewhere.
   serialize() {
     fun writeValue(val) {
       if (isstring(val)) {
@@ -170,7 +246,6 @@ class Serializable {
     }
 
     var className = this.class_name();
-    print typeof(className);
     var result = className.len().to_string() + ":" + className;
     
     var fieldList = this.fields();
@@ -188,6 +263,9 @@ class Serializable {
   }
 }
 
+//= deserialize
+// Convert a string to its original Value recursively.
+// Currently broken.
 fun deserialize(data) {
   var offset = 0;
 
@@ -290,21 +368,32 @@ fun deserialize(data) {
   return instance;
 }
 
+//@ PP
+// Pretty printer class. Recursively creates a pretty printed version of the data and returns it
+// as a string.
 class PP {
   init() {
     this.indentValue = 0;
     this.visited = Set();
   }
 
+  //: pp
+  // Main entrypoint. Called with PP.pp(obj)
+  // Requires:
+  //   Value: obj
+  // Returns:
+  //   String
   static pp(obj) {
     var printer = PP();
     return printer.format(obj);
   }
 
-  getPad() {
-    return " " * this.indentValue;
-  }
-
+  //: format
+  // The actual format method
+  // Requires:
+  //   Value: obj
+  // Returns:
+  //   String
   format(obj) {
     if (obj == nil) return "nil";
 
@@ -337,6 +426,12 @@ class PP {
     return res;
   }
 
+  //: formatArray
+  // Pretty prints an array
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   String
   formatArray(arr) {
     var len = arr.len();
     if (len == 0) return "[]";
@@ -356,6 +451,12 @@ class PP {
     return lines.join("");
   }
 
+  //: formatArray
+  // Pretty prints a map
+  // Requires:
+  //   Map: map
+  // Returns:
+  //   String
   formatMap(map) {
     var keys = map.keys();
     var len = keys.len();
@@ -384,6 +485,12 @@ class PP {
     return lines.join("");
   }
 
+  //: formatSet
+  // Pretty prints a set
+  // Requires:
+  //   Set: set
+  // Returns:
+  //   STring
   formatSet(set) {
     var items = set.keys();
     var len = items.len();
@@ -410,6 +517,12 @@ class PP {
     return lines.join("");
   }
 
+  //: formatInstance
+  // Pretty prints an instance
+  // Requires:
+  //   Instance: instance
+  // Returns:
+  //   String
   formatInstance(instance) {
     var className = instance.class().name();
     var keys = instance.fields();
@@ -440,11 +553,22 @@ class PP {
     return lines.join("");
   }
 
+  //: formatVec3
+  // Pretty prints a vec3
+  // Requires:
+  //   Vec3: vec
+  // Returns:
+  //   String
   formatVec3(vec) {
     return "Vec3(" + String(vec.x) + ", " + String(vec.y) + ", " + String(vec.z) + ")";
   }
 }
 
+//= pp
+// Simple function that calls PP.pp() and prints the result. Calling PP.pp() directly
+// Gets the output as a string but doesn't print it.
+// Requires:
+//   Value: obj
 fun pp(obj) {
   print PP.pp(obj);
 }
@@ -453,6 +577,9 @@ const STDOUT = File.open("STDOUT").unwrap();
 const STDERR = File.stderr();
 const STDIN = File.open("STDIN").unwrap();
 
+//= sendAll
+// Send all bytes in a string, perhaps with multiple send calls
+// if not all were sent at first.
 fun sendAll(socket, data) {
   var totalBytes = data.length();
   var bytesSent = 0;
@@ -477,6 +604,8 @@ fun sendAll(socket, data) {
   return true;
 }
 
+//= readExact
+// read
 fun readExact(socket, targetLength) {
   var dataReceived = "";
 
@@ -501,14 +630,21 @@ fun readExact(socket, targetLength) {
   return dataReceived;
 }
 
+//@ AssertionError
+// Error class for assertions
 class AssertionError < Error {}
 
+//= assert
+// Test expr, and if false, throw an AssertionError
+// Requires:
+//   Value: expr
 fun assert(expr, msg = "failed assertion") {
   if (!expr) {
     throw AssertionError(msg);
   }
 }
 
+//= stringReplaceAll
 fun stringReplaceAll(str, target, replacement) {
   if (target == "" or target == nil) return str;
 
