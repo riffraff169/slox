@@ -1,5 +1,7 @@
 // color.lox
 
+//@ Color
+// Color class for terminal ansi colors
 class Color {
   // Static ANSI Escape Codes
   const ESC = chr(27);
@@ -47,8 +49,13 @@ class Color {
     "b_cyan":    Color.BRIGHT_CYAN
   };
 
+  //: format
   // Replaces tags like "{red}" or "{bold}" with ANSI codes
-  format(template) {
+  // Requires:
+  //   String: template
+  // Returns:
+  //   String
+  static format(template) {
     var result = template;
     
     // We can iterate over static map keys if Map supports keys() / iterate,
@@ -70,14 +77,26 @@ class Color {
     return result + Color.RESET;
   }
 
-  hexCharVal(c) {
+  //: hexCharVal
+  // Same as str.parse(16), but for a byte value instead of string.
+  // Requires:
+  //   Integer: c
+  // Returns:
+  //   Integer
+  static hexCharVal(c) {
     if (c >= 48 and c <= 57) return c - 48; // '0' - '9'
     if (c >= 65 and c <= 70) return c - 55; // 'A' - 'F'
     if (c >= 97 and c <= 102) return c - 87; // 'a' - 'f'
     return 0;
   }
 
-  palette(index, isBg = false) {
+  //: palette
+  // Return palette color string for palette index
+  // Requires:
+  //   Integer: index
+  // Optional:
+  //   Bool: isBg
+  static palette(index, isBg = false) {
     var mode = "38";
     if (isBg) {
       mode = "48";
@@ -86,12 +105,25 @@ class Color {
     return chr(27) + "[" + mode + ";5;" + index + "m";
   }
 
-  makeColor(val, isBg = false) {
+  //: makeColor
+  // Make a custom rgb color. Val can be:
+  // * `Integer`:  24-bit rgb value
+  // * `Array`: 3 8-bit Integers
+  // * `Map`: `red`, `green`, `blue` keys
+  // * `String`: `#ff00bb` style
+  // each of r, g, and b.  
+  // Requires:
+  //   Value: val
+  // Optional:
+  //   Bool: isBg
+  // Returns:
+  //   String
+  static makeColor(val, isBg = false) {
     var r = 0;
     var g = 0;
     var b = 0;
 
-    if (typeof(val) == "Number") {
+    if (typeof(val) == "Integer") {
       r = (val >> 16) & 255;
       g = (val >> 8) & 255;
       b = val & 255;
@@ -139,11 +171,20 @@ class Color {
     return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
   }
 
-  rgb(r,g,b, isBg) {
+  //: rgb
+  // Get rgb string for color. Shorter version of makeColor
+  // Requires:
+  //   Integer: r
+  //   Integer: g
+  //   Integer: b
+  // Optional:
+  //   Bool: isBg
+  // Returns:
+  //   String
+  static rgb(r,g,b, isBg = false) {
     var mode = "38";
     if (isBg != nil and isBg)
       mode = "48";
     return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
   }
-
 }

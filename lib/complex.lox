@@ -1,32 +1,70 @@
+//@ Complex
+// Complex class and associated methods.
+// Supports overloads of relational operators, basic math.
+// Complex vars are immutable. Every operator returns a new instance, and trying
+// to modify individual parts fails.
+// Requires:
+//   Number: real
+//   Number: imag
 class Complex {
   init(real, imag) {
     this.real = real;
     this.imag = imag;
+    this.freeze();
   }
 
+  //: fromReal
+  // Create a Complex value from a real
+  // Requires:
+  //   Number: r
+  // Returns:
+  //   Complex
   static fromReal(r) {
     return Complex(r, 0);
   }
 
+  //: fromPolar
+  // Create a Complex value from a polar r, theta
+  // Requires:
+  //   Number: r
+  //   Number: theta
+  // Returns:
+  //   Complex
   static fromPolar(r, theta) {
     return Complex(r * Math.cos(theta), r * Math.sin(theta));
   }
 
+  //: abs
+  // Get magnitude/abs
+  // Returns:
+  //   Number
   abs() {
     // magnitude |z| = sqrt(a^2 + b^2)
     return (this.real * this.real + this.imag * this.imag).sqrt();
   }
 
+  //: arg
+  // Get atan2 of imag and real
+  // Returns:
+  //   Number
   arg() {
-    // pase / argument angle
+    // phase / argument angle
     return Math.atan2(this.imag, this.real);
   }
 
+  //: conj
+  // Get complex conjugate
+  // Returns:
+  //   Complex
   conj() {
     // complex conjugate: a - bi
     return Complex(this.real, -this.imag);
   }
 
+  //: neg
+  // Get negative -a - bi
+  // Returns:
+  //   Complex
   neg() {
     // negation: -a - bi
     return Complex(-this.real, -this.imag);
@@ -37,7 +75,7 @@ class Complex {
   }
 
   __lt__(other) {
-    if (typeof(other) == "Float" or typeof(other) == "Integer") {
+    if (isnumber(other)) {
       return this.abs() < other;
     } else {
       return this.abs() < other.abs();
@@ -45,7 +83,7 @@ class Complex {
   }
 
   __gt__(other) {
-    if (typeof(other) == "Float" or typeof(other) == "Integer") {
+    if (isnumber(other)) {
       return this.abs() > other;
     } else {
       return this.abs() > other.abs();
@@ -66,8 +104,14 @@ class Complex {
   }
 
   // math ops
+  //: add
+  // Add a value to this, either another Complex, or a Number
+  // Requires:
+  //   Number: other
+  // Returns:
+  //   Complex
   add(other) {
-    if (typeof(other) == "Float") {
+    if (isnumber(other)) {
       return Complex(this.real + other, this.imag);
     }
     return Complex(this.real + other.real, this.imag + other.imag);
@@ -77,8 +121,14 @@ class Complex {
     return this.add(other);
   }
 
+  //: sub
+  // Subtract a value
+  // Requires:
+  //   Number: other
+  // Returns:
+  //   Complex
   sub(other) {
-    if (typeof(other) == "Float") {
+    if (isnumber(other)) {
       return Complex(this.real - other, this.imag);
     }
     return Complex(this.real - other.real, this.imag - other.imag);
@@ -88,8 +138,14 @@ class Complex {
     return this.sub(other);
   }
 
+  //: mul
+  // Multiply
+  // Requires:
+  //   Number: other
+  // Returns:
+  //   Complex
   mul(other) {
-    if (typeof(other) == "Float") {
+    if (isnumber(other)) {
       return Complex(this.real * other, this.imag * other);
     }
     // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
@@ -104,8 +160,14 @@ class Complex {
     return this.mul(other);
   }
 
+  //: div
+  // Divide
+  // Requires:
+  //   Number: other
+  // Returns:
+  //   Complex
   div(other) {
-    if (typeof(other) == "Float") {
+    if (isnumber(other)) {
       return Complex(this.real / other, this.imag / other);
     }
 
@@ -127,6 +189,10 @@ class Complex {
   }
 
   // advanced functions
+  //: exp
+  // Get e^this
+  // Returns:
+  //   Complex
   exp() {
     // e^(a + bi) = e^a * (cos(b) + i * sin(b))
     var expReal = Math.exp(this.real);
@@ -137,6 +203,10 @@ class Complex {
   }
 
   // formatting
+  //: to_string
+  // Format as a string
+  // Returns:
+  //   String
   to_string() {
     if (this.imag == 0) return String(this.real);
     if (this.real == 0) return String.imag + "i";

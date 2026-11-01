@@ -1,3 +1,5 @@
+//@ MethodDoc
+// Class for method documentation
 class MethodDoc {
   init(name) {
     this.name = name;
@@ -6,9 +8,12 @@ class MethodDoc {
     this.optionalArgs = [];
     this.aliases = [];
     this.returns = [];
+    this.examples = [];
   }
 }
 
+//@ ClassDoc
+// Class for class documentation
 class ClassDoc {
   init(name) {
     this.name = name;
@@ -18,9 +23,12 @@ class ClassDoc {
     this.aliases = [];
     this.methods = [];
     this.returns = [];
+    this.examples = [];
   }
 }
 
+//@ FunctionDoc
+// Class for function documentation
 class FunctionDoc {
   init(name) {
     this.name = name;
@@ -29,9 +37,13 @@ class FunctionDoc {
     this.optionalArgs = [];
     this.aliases = [];
     this.returns = [];
+    this.examples = [];
   }
 }
 
+//@ DocParser
+// Implements a doc parser for code files. Parses comment lines before functions,
+// classes, and methods.  Supports parameters with Requires and Optional.
 class DocParser {
   init() {
     this.classes = [];
@@ -39,10 +51,14 @@ class DocParser {
 
     this.currentClass = nil;
     this.currentTarget = nil; // ClassDoc, MethodDoc, or FunctionDoc
-    this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "ALIASES", "RETURNS"
+    this.section = "NONE";    // "DESC", "REQUIRED", "OPTIONAL", "ALIASES", "RETURNS", "EXAMPLE"
     this.inCodeBlock = false;
   }
 
+  //: addAliases
+  // Add aliases for this method/function.
+  // Requires:
+  //   String: rawStr
   addAliases(rawStr) {
     var parts = rawStr.split(",");
     for (var i = 0; i < parts.length(); i += 1) {
@@ -53,6 +69,12 @@ class DocParser {
     }
   }
 
+  //: extractArgName
+  // Get the name of the argument
+  // Requires:
+  //   String: raw
+  // Returns:
+  //   String
   extractArgName(raw) {
     var str = raw.trim();
     // if formatted as "Type: argName" or "Type: argName - description"
@@ -66,6 +88,13 @@ class DocParser {
     return str;
   }
 
+  //: buildSignature
+  // Creates the function signature
+  // Requires:
+  //   String: className
+  //   Class: target
+  // Returns:
+  //   String
   buildSignature(className, target) {
     var argList = [];
 
@@ -84,6 +113,12 @@ class DocParser {
     return target.name + "(" + argsJoined + ")";
   }
 
+  //: findClass
+  // Find a class from current parsed list
+  // Requires:
+  //   String: name
+  // Returns:
+  //   Class
   findClass(name) {
     for (var i = 0; i < this.classes.length(); i += 1) {
       if (this.classes[i].name == name) {
@@ -93,6 +128,12 @@ class DocParser {
     return nil;
   }
 
+  //: parseLines
+  // Parse all the lines of a file
+  // Requires:
+  //   Array: lines
+  // Returns:
+  //   this
   parseLines(lines) {
     for (var i = 0; i < lines.length(); i = i + 1) {
       this.processLine(lines[i]);
@@ -101,6 +142,11 @@ class DocParser {
     return this;
   }
 
+  //: processLine
+  // Processes a line. Scans for document comments, adding to specific class, method,
+  // or function.
+  // Requires:
+  //   String: line
   processLine(line) {
     // check if line is a comment line, allowing optional leading indentation
     var parts = line.split("//");
@@ -169,8 +215,8 @@ class DocParser {
       return;
     }
 
-    if (this.currentTarget == nil) return;
     // 4. Content Line: // Content
+    if (this.currentTarget == nil) return;
 
     var raw = commentContent;
     if (raw.length() > 0 and raw[0] == ' ') {
@@ -190,6 +236,8 @@ class DocParser {
       }
       if (this.section == "DESC") {
         this.currentTarget.description.push("```");
+      } else if (this.section == "EXAMPLE") {
+        this.currentTarget.examples.push("```");
       }
       return;
     }
@@ -277,6 +325,20 @@ class DocParser {
       return;
     }
 
+    // Example handling
+    if (content == "Example:" or content == "Example" or content == "Examples" or content == "Examples:") {
+      this.section = "EXAMPLE";
+      return;
+    }
+    if (content.slice(0, 8) == "Example:") {
+      this.section = "EXAMPLE";
+      var exVal = content.slice(8).trim();
+      if (exVal.length() > 0) {
+        this.currentTarget.examples.push(exVal);
+      }
+      return;
+    }
+
     // Append content to active section
     if (content.length() > 0) {
       if (this.section == "DESC") {
@@ -289,6 +351,8 @@ class DocParser {
         this.addAliases(content);
       } else if (this.section == "RETURNS") {
         this.currentTarget.returns.push(content);
+      } else if (this.section == "EXAMPLE") {
+        this.currentTarget.examples.push(content);
       }
     }
     return;
@@ -297,6 +361,8 @@ class DocParser {
     this.closeTarget();
   }
 
+  //: closeTarget
+  // Closes current item, preparing for next one.
   closeTarget() {
     if (this.inCodeBlock) {
       print("Warning: unclosed code block, adding closing ```");
@@ -309,6 +375,8 @@ class DocParser {
     this.section = "NONE";
   }
 
+  //: generateMarkdown
+  // Given the file as parsed earlier, creates markdown output for it.
   generateMarkdown() {
     var lines = [];
 
@@ -350,6 +418,11 @@ class DocParser {
     return lines.join("\n");
   }
 
+  //: appendDocBodyLines
+  // Part of generateMarkdown, 
+  // Requires:
+  //   Class: target
+  //   Array: lines
   appendDocBodyLines(target, lines) {
     if (target.description.length() > 0) {
       for (var i = 0; i < target.description.length(); i = i + 1) {
@@ -364,6 +437,32 @@ class DocParser {
         formatted.push("`" + target.aliases[i] + "`");
       }
       lines.push("**Aliases:** " + formatted.join(", "));
+      lines.push("");
+    }
+
+    if (target.examples.length() > 0) {
+      lines.push("**Example:**");
+
+      // Check if the user already provided explicit markdown fences ```
+      var hasExplicitFences = false;
+      for (var i = 0; i < target.examples.length(); i += 1) {
+        if (target.examples[i] == "```") {
+          hasExplicitFences = true;
+          break;
+        }
+      }
+
+      if (!hasExplicitFences) {
+        lines.push("```");
+      }
+
+      for (var i = 0; i < target.examples.length(); i += 1) {
+        lines.push(target.examples[i]);
+      }
+
+      if (!hasExplicitFences) {
+        lines.push("```");
+      }
       lines.push("");
     }
 

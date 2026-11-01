@@ -645,6 +645,13 @@ fun assert(expr, msg = "failed assertion") {
 }
 
 //= stringReplaceAll
+// Replace all occurrances of target in str with replacement
+// Requires:
+//   String: str
+//   String: target
+//   String: replacement
+// Returns:
+//   String
 fun stringReplaceAll(str, target, replacement) {
   if (target == "" or target == nil) return str;
 
@@ -666,28 +673,52 @@ fun stringReplaceAll(str, target, replacement) {
   return result;
 }
 
+//= isHexDigit
+// Test if character is a hex digit. Character must be the ascii code for the character. 5 is false, '5' is true.
+// Requires:
+//   Integer: c
 fun isHexDigit(c) {
   return (c >= '0' and c <= '9') or
     (c >= 'a' and c <= 'f') or
     (c >= 'A' and c <= 'F');
 }
 
+//= isOctDigit
+// Test if character is a octal digit. Character must be the ascii code for the character. 5 is false, '5' is true.
+// Requires:
+//   Integer: c
 fun isOctDigit(c) {
   return c >= '0' and c <= '7';
 }
 
+//= isDigit
+// Test if character is a decimal digit. Character must be the ascii code for the character. 5 is false, '5' is true.
+// Requires:
+//   Integer: c
 fun isDigit(c) {
   return c >= '0' and c <= '9';
 }
 
+//= isAlpha
+// Test if character is an alpha character. Includes '_' for identifiers.
+// Requires:
+//   Integer: c
 fun isAlpha(c) {
   return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_';
 }
 
+//= isAlphaNumeric
+// Test if character is an alpha character or digit. Includes '_' for identifiers.
+// Requires:
+//   Integer: c
 fun isAlphaNumeric(c) {
   return isAlpha(c) or isDigit(c);
 }
 
+//= parseBinary
+// Parse a string as binary.  Skips leading '%', and stops at first character that isn't '0' or '1'.
+// Returns:
+//   Integer
 fun parseBinary(str) {
   var val = 0;
   var len = str.length() ?? 0;
@@ -709,18 +740,35 @@ fun parseBinary(str) {
   return val;
 }
 
+//@ Struct
 class Struct {
+  //: packNative
+  // Assume native ordering for pack
   packNative(fmt, values) { return this.pack(fmt, values, false); }
+  //: unpackNative
+  // Assume native ordering for unpack
   unpackNative(fmt, buf) { return this.unpack(fmt, buf, false); }
 
+  //: packNet
+  // Assume network ordering for pack
   packNet(fmt, values) { return this.pack(fmt, values, true); }
+  //: unpackNet
+  // Assume network ordering for pack
   unpackNet(fmt, buf) { return this.unpack(fmt, buf, true); }
 }
 
 // Shortcut for System.exit()
 var exit = System.exit;
 
+//@ Array
 class Array {
+  //: zipWith
+  // Combines 2 arrays, transformed by a function like f(array1[i], array2[i]).
+  // Requires:
+  //   Array: other
+  //   Value: transformFn
+  // Returns:
+  //   Array
   zipWith(other, transformFn) {
     var result = [];
     var limit = this.length();
@@ -733,6 +781,24 @@ class Array {
     return result;
   }
 
+  //: zip
+  // zipWIth with no transform function.
+  // Requires:
+  //   Array: o ther
+  // Returns:
+  //   Array
+  zip(other) {
+    return this.zipWith(other, fun(x, y) {
+        return [x, y];
+    });
+  }
+  //: chunk
+  // Create an array of chunks of an array. Takes a chunk size, and returns a new array
+  // split by the chunk size. The last element will be the remainder.
+  // Requires:
+  //   Integer: size
+  // Returns:
+  //   Array
   chunk(size) {
     if (size <= 0) return [];
     var result = [];
@@ -754,6 +820,13 @@ class Array {
     return result;
   }
 
+  //: partition
+  // Companion to filter/select. Items that resolve true end up in the first set, false in the second. Creates
+  // new array containing true and false sets.
+  // Requires:
+  //   Value: predicateFn
+  // Returns:
+  //   Array
   partition(predicate) {
     var pass = [];
     var fail = [];
@@ -772,7 +845,14 @@ class Array {
   }
 }
 
+//@ Set
 class Set {
+  //: multiset
+  // Create a new Set as a multiset. Use as an initializer like: var s = Set.multiset().
+  // Optional:
+  //   Array
+  // Returns:
+  //   Set
   static multiset(arr = nil) {
     var s = Set();
     s.set_multiset();

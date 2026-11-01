@@ -1,5 +1,11 @@
 require("kittycanvas.lox");
 
+//@ BMPImage
+// BMP image class.
+// Requires:
+//   Integer: width
+//   Integer: height
+//   Array: pixels
 class BMPImage {
   init(width, height, pixels) {
     this.width = width;
@@ -7,6 +13,10 @@ class BMPImage {
     this.pixels = pixels;
   }
 
+  //: loadFromBytes
+  // Create rgba data from bmp byte string.
+  // Requires:
+  //   String: bytes
   static loadFromBytes(bytes) {
     if (bytes[0] != 66 or bytes[1] != 77) {
       print "Error: Not a valid BMP file.";
@@ -99,6 +109,12 @@ class BMPImage {
     return BMPImage(width, absHeight, pixels);
   }
 
+  //: renderToCanvas
+  // Render to a KittyCanvas
+  // Requires:
+  //   KittyCanvas: canvas
+  //   Integer: targetWidth
+  //   Integer: targetHeight
   renderToCanvas(canvas, targetWidth, targetHeight) {
     for (var py = 0; py < targetHeight; py += 1) {
       // map canvas pixel y back to bmp texture y
@@ -114,6 +130,12 @@ class BMPImage {
     }
   }
 
+  //: drawToCanvasAt
+  // Draw the current pixel data to a KittyCanvas at an offset
+  // Requires:
+  //   KittyCanvas: canvas
+  //   Integer: offsetx
+  //   Integer: offsetY
   drawToCanvasAt(canvas, offsetX, offsetY) {
     for (var y = 0; y < this.height; y += 1) {
       for (var x = 0; x < this.width; x += 1) {
@@ -125,7 +147,8 @@ class BMPImage {
 }
 
 /*
-if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+//if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+if (__name__ == "__main__") {
   var imgW = 64;
   var imgH = 58;
   var cols = 5;

@@ -1,4 +1,12 @@
+//@ CSV
+// CSV parser. Creates an array of fields.
 class CSV {
+  //: parse
+  // Parse text into csv array
+  // Requires:
+  //   String: text
+  // Returns:
+  //   Array
   static parse(text) {
     var rows = [];
     var currentRow = [];
@@ -56,12 +64,25 @@ class CSV {
     return rows;
   }
 
+  //: read
+  // Read a file and return csv array.
+  // Requires:
+  //   String: filepath
+  // Returns:
+  //   Array
   static read(filepath) {
     var content = File.load(filepath);
     if (content == nil) return nil;
     return CSV.parse(content);
   }
 
+  //: to_maps
+  // Creates an array of maps, mapping header names to values.
+  // Assumes row 0 is header row.
+  // Requires:
+  //   Array: rows
+  // Returns:
+  //   Array
   static to_maps(rows) {
     if (rows.length() == 0) return [];
 

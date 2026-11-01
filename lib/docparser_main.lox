@@ -1,5 +1,6 @@
 require("docparser.lox");
 
+// example data
 var sourceLines = [
   "//@ Buffer",
   "// Byte buffer for reading and writing raw memory.",

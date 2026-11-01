@@ -1,3 +1,5 @@
+//@ ArgOption
+// Class to just hold arguments for ArgParser
 class ArgOption {
   init(name, shortName, isFlag, defaultValue, help, optional = false) {
     this.name = name;
@@ -9,21 +11,49 @@ class ArgOption {
   }
 }
 
+//@ ParsedArgs
+// Returned from ArgParser as the parsed arguments.
 class ParsedArgs {
   init() {
     this.opts = {};
     this.args = [];
   }
 
-  set(key, val) {
-    this.opts[key] = val;
+  __seti__(key, val) {
+    this.set(key, val);
+    return this;
   }
 
+  //: set
+  // Set key to val
+  // Requires:
+  //   String: key
+  //   Value: val
+  // Returns:
+  //   this
+  set(key, val) {
+    this.opts[key] = val;
+    return this;
+  }
+
+  __geti__(key) {
+    return this.get(key);
+  }
+
+  //: get
+  // Get value of key
+  // Requires:
+  //   String: key
+  // Returns:
+  //   Value
   get(key) {
     return this.opts[key];
   }
 }
 
+//@ ArgParser
+// Argument parser class.
+// See examples/test_argparser.lox
 class ArgParser {
   init(programName, description) {
     this.programName = programName;
@@ -35,11 +65,28 @@ class ArgParser {
     this.addFlag("help", "h", "Show this help message");
   }
 
+  //: addFlag
+  // Add a flag option. 
+  // Example: parser.addOption("verbose", "v", "Enable debug logging");
+  // Requires:
+  //   String: name
+  //   String: shortname
+  //   String: help
   addFlag(name, shortName, help) {
     var opt = ArgOption(name, shortName, true, false, help);
     this.registerOption(opt);
   }
 
+  //: addOption
+  // Add a variable option
+  // Example: parser.addOption("count", "c", "10", "Number of iterations");
+  // Requires:
+  //   String: name
+  //   String: shortName
+  //   String: deffaultValue
+  //   String: help
+  // Optional:
+  //   Bool: optional
   addOption(name, shortName, defaultValue, help, optional = false) {
     var opt = ArgOption(name, shortName, false, defaultValue, help, optional);
     this.registerOption(opt);
@@ -93,6 +140,12 @@ class ArgParser {
     }
   }
 
+  //: parse
+  // Parse the provided args to create the options. Generally will be System.ARGV
+  // Requires:
+  //   Array: args
+  // Returns:
+  //   ParsedArgs
   parse(args) {
     var parsed = ParsedArgs();
 

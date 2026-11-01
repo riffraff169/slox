@@ -1,3 +1,9 @@
+//= benchmark
+// Quick and simple benchmark. Runs function once and returns time spent.
+// Requires:
+//  Value: fn
+// Returns:
+//   Map: stats
 fun benchmark(fn) {
   var start = System.sysstats();
   fn();
@@ -14,6 +20,11 @@ fun benchmark(fn) {
   };
 }
 
+//= printBenchmark
+// Given a name and stats from benchmark(), prints out a summary.
+// Requires:
+//   String: name
+//   Map: stats
 fun printBenchmark(name, stats) {
   print "========================================";
   print " Benchmark: " + name;

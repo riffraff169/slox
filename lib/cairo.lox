@@ -1,6 +1,8 @@
 import "ffi";
 require("multiffi.lox");
 
+//@ Cairo
+// Cairo canvas ffi bindings
 class Cairo {
   const FONT_SLANT_NORMAL = 0;
   const FONT_WEIGHT_NORMAL = 0;
