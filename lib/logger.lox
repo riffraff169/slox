@@ -1,5 +1,9 @@
 require("color.lox");
 
+//@ Logger
+// Logger class. Supports color for terminal if enabled.
+// Optional:
+//   options
 class Logger {
   init(options = nil) {
     options = options ?? {};
@@ -33,14 +37,28 @@ class Logger {
     }
   }
 
-  set_level(level) {
-    this.min_level = level ?? this.info;
+  //: set_level
+  // Set min level
+  // Optional:
+  //   Integer: level
+  set_level(level = 2) { // this.INFO
+    this.min_level = level;
   }
 
-  set_app_name(name) {
-    this.app_name = name ?? "";
+  //: set_app_name
+  // App name for log output
+  // Optional:
+  //   String: name
+  set_app_name(name = "") {
+    this.app_name = name;
   }
 
+  //: set_file
+  // Set file path for file output.
+  // Requires:
+  //   String: path
+  // Optional:
+  //   Bool: truncate
   set_file(path, truncate = false) {
     if (this.fd != nil) {
       this.fd.close();
@@ -62,14 +80,29 @@ class Logger {
     }
   }
 
-  register_tag(tag, level, color) {
+  //: register_tag
+  // Create custome tag
+  // Requires:
+  //   String: tag
+  // Optional:
+  //   Integer: level
+  //   String: color
+  register_tag(tag, level = this.INFO, color = "white") {
     this.custom_tags[tag] = {
-      "level": level ?? this.INFO,
-      "color": color ?? "white"
+      "level": level,
+      "color": color
     };
     this.counts[tag] = 0;
   }
 
+  //: dispatch
+  // Log a message.
+  // Requires:
+  //   String: tag
+  //   Integer: level
+  //   String: msg
+  // Optional:
+  //   String|Number: context
   dispatch(tag, level, msg, context = nil) {
     if (level < this.min_level) return;
 
@@ -113,6 +146,11 @@ class Logger {
     print app_str + stdout_tag + ctx_str + " " + msg;
   }
 
+  //: get_color_for
+  // Get the color for a tag and level
+  // Requires:
+  //   String: tag
+  //   Integer: level
   get_color_for(tag, level) {
     var tag_info = this.custom_tags[tag];
     if (tag_info) return tag_info["color"];
@@ -128,27 +166,80 @@ class Logger {
     }
   }
 
+  //: trace
+  // Send a trace message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   trace(msg, ctx = nil) { this.dispatch("TRACE", this.TRACE, msg, ctx); }
+  //: debug
+  // Send a debug message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   debug(msg, ctx = nil) { this.dispatch("DEBUG", this.DEBUG, msg, ctx); }
+  //: info
+  // Send an info message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   info(msg, ctx = nil) { this.dispatch("INFO", this.INFO, msg, ctx); }
+  //: warn
+  // Send a warn message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   warn(msg, ctx = nil) { this.dispatch("WARN", this.WARN, msg, ctx); }
+  //: error
+  // Send an error message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   error(msg, ctx = nil) { this.dispatch("ERROR", this.ERROR, msg, ctx); }
+  //: fatal
+  // Send a fatal message
+  // Requires:
+  //   String: msg
+  // Optional:
+  //   String: ctx
   fatal(msg, ctx = nil) { this.dispatch("FATAL", this.FATAL, msg, ctx); }
 
+  //: custom
+  // Send a custom message
+  // Requires:
+  //   String: tag
+  //   String: msg
+  // Optional:
+  //   String: ctx
   custom(tag, msg, ctx = nil) {
     var tag_info = this.custom_tags[tag];
     var lvl = tag_info ? tag_info["level"] : this.INFO;
     this.dispatch(tag, lvl, msg, ctx);
   }
 
+  //: error_count
+  // Get number of errors or fatals
+  // Returns:
+  //   Integer
   error_count() {
     return (this.counts["ERROR"] ?? 0) + (this.counts["FATAL"] ?? 0);
   }
 
+  //: warn_count
+  // Get number of wanrs
+  // Returns:
+  //   Integer
   warn_count() {
     return this.counts["WARN"] ?? 0;
   }
 
+  //: summary
+  // Log a summary
   summary() {
     var errs = this.error_count();
     var warns = this.warn_count();

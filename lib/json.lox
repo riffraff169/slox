@@ -1,4 +1,12 @@
+//@ Json
+// Json class. Supports most json data.
 class Json {
+  //: parse
+  // Parse json into native data structures.
+  // Requires:
+  //   String: jsonstr
+  // Returns:
+  //   String
   static parse(jsonstr) {
     if (jsonstr == nil or jsonstr.length() == 0) return nil;
 
@@ -13,12 +21,14 @@ class Json {
     try {
       eval("var __json_res = " + code + ";");
     } catch (Error e) {
-      print "[Json.parse Error] " + e.message;
+      //print "[Json.parse Error] " + e.message;
       return nil;
     } catch (e) {
-      print "[Json.parse Error] " + e;
+      //print "[Json.parse Error] " + e;
       return nil;
     }
+    // let error bubble up
+    //eval("var __json_res = " + code + ";");
     var result = __json_res;
 
     __json_res = nil;
@@ -26,6 +36,10 @@ class Json {
     return result;
   }
 
+  //: to_string
+  // Return printable json string.
+  // Requires:
+  //   Value: obj
   static to_string(obj) {
     if (obj == nil) return "null";
     var klass = obj.class();
@@ -51,7 +65,7 @@ class Json {
       return res + "]";
     }
 
-    if (klass == Map) {
+    if (klass == Map or klass = Set) {
       var keys = obj.keys();
       var res = "{";
       for (var i = 0; i < keys.length(); i += 1) {

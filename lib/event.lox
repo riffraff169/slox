@@ -1,13 +1,25 @@
+//@ Event
+// Event class. Similar to gtk signals.
+// Optionnal:
+//   Value: value
 class Event  {
   init(value = nil) {
     this._value = value;
     this.listeners = [];
   }
 
+  //: get
+  // Get current value.
+  // Returns:
+  //   Value
   get() {
     return this._value;
   }
 
+  //: set
+  // Set a new value. Notifies any listeners of the change.
+  // Requires:
+  //   Value: newValue
   set(newValue) {
     if (this._value != newValue) {
       var oldValue = this._value;
@@ -16,11 +28,21 @@ class Event  {
     }
   }
 
+  //: subscribe
+  // Subscribe to this event. Returns the callback.
+  // Requires:
+  //   Value: callback
+  // Returns:
+  //   Value: callback
   subscribe(callback) {
     this.listeners.push(callback);
     return callback; // Return reference for unsubscription
   }
 
+  //: unsubscribe
+  // Remove a callback from the listeners.
+  // Requires:
+  //   Value: callback
   unsubscribe(callback) {
     var nextListeners = [];
     for (var i = 0; i < this.listeners.length(); i += 1) {
@@ -31,16 +53,29 @@ class Event  {
     this.listeners = nextListeners;
   }
 
+  //: notify
+  // Notify any listeners. Calls the callback (listener) with newVal, oldVal.
+  // Requires:
+  //   Value: oldVal
+  //   Value: newVal
   notify(oldVal, newVal) {
     for (var i = 0; i < this.listeners.length(); i += 1) {
       this.listeners[i](newVal, oldVal);
     }
   }
 
+  //: on
+  // Set callback for this event.
+  // Requires:
+  //   Value: cb
   on(cb) {
     this.listeners.push(cb);
   }
 
+  //: off
+  // Revmove this callback.
+  // Requires:
+  //   Value: callback
   off(cb) {
     var idx = this.listeneris.index_of(cb);
     if (idx != -1) {
@@ -48,6 +83,10 @@ class Event  {
     }
   }
 
+  //: emit
+  // Call the callbacks with data.
+  // Requires:
+  //   Value: data
   emit(data) {
     for (var i = 0; i < this.listeners.length(); i += 1) {
       this.listeners[i](data);

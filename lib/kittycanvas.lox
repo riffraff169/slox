@@ -1,5 +1,9 @@
+//@ KittyCanvas
 // Manages drawing operations on the terminal canvas
 // Supports RGB color rending
+// Requires:
+//   Integer: width
+//   Integer: height
 class KittyCanvas {
   init(width, height) {
     this.width = width;
@@ -12,7 +16,16 @@ class KittyCanvas {
     this.buffer = [0; this.bufferSize];
   }
 
-  // Set a pixel at (x, y) with RGB values (0-255)
+  //: setPixel
+  // Set a pixel at (x, y) with RGB values (0-255). r can be rgb array, or
+  // values can be specified separately.
+  // Requires:
+  //   Integer: x
+  //   Integer: y
+  //   Integer|Array: r
+  // Optional:
+  //   Integer: g
+  //   Integer: b
   setPixel(x, y, r, g = 0, b = 0) {
     if (x < 0 or x >= this.width or y < 0 or y >= this.height) return;
 
@@ -28,7 +41,17 @@ class KittyCanvas {
     }
   }
 
+  //: drawLine
   // draw a line
+  // Requires:
+  //   Integer: x0
+  //   Integer: y0
+  //   Integer: x1
+  //   Integer: y1
+  //   Integer|Array: r
+  // Optional:
+  //   Integer: g
+  //   Integer: b
   drawLine(x0, y0, x1, y1, r, g = 0, b = 0) {
     if (typeof(r) == "Array") {
       b = r[2];
@@ -56,7 +79,13 @@ class KittyCanvas {
     }
   }
 
+  //: drawAxes
   // draw x and y axes
+  // Requires:
+  //   Integer: xMin
+  //   Integer: xMax
+  //   Integer: yMin
+  //   Integer: yMax
   drawAxes(xMin, xMax, yMin, yMax) {
     var originX = Integer((0 - xMin) / (xMax - xMin) * (this.width - 1));
     var originY = Integer(this.height - 1 - ((0 - yMin) / (yMax - yMin) * (this.height - 1)));
@@ -69,7 +98,16 @@ class KittyCanvas {
     }
   }
 
+  //: fillRect
   // Fill a rectangle
+  // Requires:
+  //   Integer: x
+  //   Integer: y
+  //   Integer: w
+  //   Integer: h
+  //   Integer: r
+  //   Integer: g
+  //   Integer: b
   fillRect(x, y, w, h, r, g, b) {
     for (var py = y; py < y + h; py = py + 1) {
       for (var px = x; px < x + w; px = px + 1) {
@@ -78,7 +116,15 @@ class KittyCanvas {
     }
   }
 
+  //: drawCircle
   // Draw a simple circle
+  // Requires:
+  //   Integer: cx
+  //   Integer: cy
+  //   Integer: radius
+  //   Integer; r
+  //   Integer: g
+  //   Integer: b
   drawCircle(cx, cy, radius, r, g, b) {
     var r2 = radius * radius;
     for (var y = cy - radius; y <= cy + radius; y = y + 1) {
@@ -92,6 +138,7 @@ class KittyCanvas {
     }
   }
 
+  //: render
   // Render the canvas to stdout using Kitty Protocol
   render() {
     // 1. Convert byte array/buffer to raw binary string
@@ -121,7 +168,8 @@ class KittyCanvas {
 // Example: Draw a simple scene and render
 // ----------------------------------------------------------------
 
-if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+//if (System.ARGS.length() > 0 and System.ARGS[0] == "test") {
+if (__name__ == "__main__") {
   var width = 192;
   var height = 192;
 

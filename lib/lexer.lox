@@ -1,3 +1,5 @@
+//@ Token
+// Simple class to hold a token
 class Token {
   init(type, text) {
     this.type = type;
@@ -5,6 +7,10 @@ class Token {
   }
 }
 
+//@ SloxLexer
+// Class to parse slox code into tokens.
+// Requires:
+//   String: source
 class SloxLexer {
   init(source) {
     this.source = source;
@@ -66,6 +72,10 @@ class SloxLexer {
     return this.source[this.current + 1];
   }
 
+  //: scanTokens
+  // Entrypoint. Scan source and separate into tokens.
+  // Returns:
+  //   Array: tokens
   scanTokens() {
     var tokens = [];
     while (!this.isAtEnd()) {
