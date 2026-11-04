@@ -1,13 +1,36 @@
+//@ Stats
+// Statistics library
+// Most functions do not modify the original array, but return a new one.
 class Stats {
+  //: sum
+  // Get sum of array
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static sum(arr) {
     return arr.reduce(0, fun(acc, val) { return acc + val; } );
   }
 
+  //: mean
+  // Get mean of array
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static mean(arr) {
     if (arr.length() == 0) return 0;
     return Stats.sum(arr) / arr.length();
   }
 
+  //: variance
+  // Get variance of array
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Bool: isSample
+  // Returns:
+  //   Number
   static variance(arr, isSample = true) {
     if (arr.length() < 2) return 0;
     var avg = Stats.mean(arr);
@@ -20,21 +43,46 @@ class Stats {
     return sqDiffSum / divisor;
   }
 
+  //: stdDev
+  // Standard Deviation
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Bool: isSample
+  // Returns:
+  //   Number
   static stdDev(arr, isSample = true) {
     return Math.sqrt(Stats.variance(arr, isSample));
   }
 
+  //: min
+  // Get smallest value of array
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Number
   static min(arr) {
     if (arr.length() == 0) return nil;
     return arr.reduce(arr[0], fun(min, val) { return val < min ? val : min; });
   }
 
+  //: max
+  // Get largest value of array
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Number
   static max(arr) {
     if (arr.length() == 0) return nil;
     return arr.reduce(arr[0], fun(max, val) { return val > max ? val : max; });
   }
 
-  // z-score
+  //: standardize
+  // Z-score
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static standardize(arr) {
     var avg = Stats.mean(arr);
     var sd = Stats.stdDev(arr, true);
@@ -43,6 +91,13 @@ class Stats {
     return arr.map(fun(x) { return (x - avg) / sd; });
   }
 
+  //: dotProduct
+  // Compute dot product of 2 arrays
+  // Requires:
+  //   Array: a
+  //   Array: b
+  // Returns:
+  //   Number
   static dotProduct(a, b) {
     if (a.length() != b.length()) return nil;
 
@@ -51,6 +106,13 @@ class Stats {
       .reduce(0, fun(acc, v) { return acc + v; });
   }
 
+  //: covariance
+  // Covariance
+  // Requires:
+  //   Array: a
+  //   Array: b
+  // Returns:
+  //   Number
   static covariance(a, b) {
     if (a.length() != b.length() or a.length() < 2) return 0;
 
@@ -64,6 +126,13 @@ class Stats {
     return diffProdSum / (a.length() - 1);
   }
 
+  //: correlation
+  // Correlation of 2 arrays
+  // Requires:
+  //   Array: a
+  //   Array: b
+  // Returns:
+  //   Number
   static correlation(a, b) {
     if (a.length() != b.length() or a.length() < 2) return 0;
 
@@ -75,7 +144,13 @@ class Stats {
     return Stats.covariance(a, b) / (sdA * sdB);
   }
 
+  //: slope
   // Linear Regression Slope (m in y = mx + b)
+  // Requires:
+  //   Array: x
+  //   Array: y
+  // Returns:
+  //   Number
   static slope(x, y) {
     var varX = Stats.variance(x, true);
     if (varX == 0) return 0;
@@ -83,20 +158,39 @@ class Stats {
     return Stats.covariance(x, y) / varX;
   }
 
+  //: intercept
   // Linear Regression Y-Intercept (b in y = mx + b)
+  // Requires:
+  //   Array: x
+  //   Array: y
+  // Returns:
+  //   Number
   static intercept(x, y) {
     var m = Stats.slope(x, y);
     return Stats.mean(y) - (m * Stats.mean(x));
   }
 
+  //: predict
   // Predicts y value for a given x using simple linear regression
+  // Requires:
+  //   Array: x
+  //   Array: y
+  //   Number: targetX
+  // Returns:
+  //   Number
   static predict(x, y, targetX) {
     var m = Stats.slope(x, y);
     var b = Stats.intercept(x, y);
     return (m * targetX) + b;
   }
 
+  //: sma
   // Simple Moving Average with window size k
+  // Requires:
+  //   Array: arr
+  //   Integer: k
+  // Returns:
+  //   Array
   static sma(arr, k) {
     if (k <= 0 or k > arr.length() or arr.length == 0) return [];
     var result = [];
@@ -112,8 +206,16 @@ class Stats {
     return result;
   }
 
+  //: ema
   // Exponential Moving Average with smooting multiplier alpha (0 < alpha <= 1)
   // If alpha is nil/omitted, defaults to standard formula: 2 / (k + 1)
+  // Requires:
+  //   Array: arr
+  //   Number: k
+  // Optional:
+  //   Number: alpha
+  // Returns:
+  //   Array
   static ema(arr, k, alpha = nil) {
     if (k <= 0 or k > arr.length() or arr.length() == 0) return [];
     if (alpha == nil) alpha = 2.0 / (k + 1.0);
@@ -132,7 +234,14 @@ class Stats {
     return result;
   }
 
+  //: percentile
   // Linear interpolation percentile (p from 0 to 100)
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Number: p
+  // Returns:
+  //   Number
   static percentile(arr, p = 50) {
     if (arr.length() == 0) return nil;
     if (p <= 0) return Stats.min(arr);
@@ -148,11 +257,34 @@ class Stats {
     return sorted[index] + fraction * (sorted[index + 1] - sorted[index]);
   }
 
+  //: p90
+  // 90th percentil
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static p90(arr) { return Stats.percentile(arr, 90); }
+  //: p95
+  // 95th percentil
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static p95(arr) { return Stats.percentile(arr, 95); }
+  //: p99
+  // 99th percentil
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static p99(arr) { return Stats.percentile(arr, 99); }
 
+  //: iqr
   // Interquartile Range (Q3 - Q1)
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Number
   static iqr(arr) {
     if (arr.length() < 2) return 0;
     var q1 = Stats.percentile(arr, 25);
@@ -160,8 +292,15 @@ class Stats {
     return q3 - q1;
   }
 
+  //: outliers
   // Detect outliers using IQR (Tukey's Fences)
   // Returns array of outlier values. k defaults to 1.5
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Number: k
+  // Returns:
+  //   Array
   static outliersIQR(arr, k = 1.5) {
     if (arr.length() < 4) return [];
 
@@ -177,8 +316,15 @@ class Stats {
         });
   }
 
+  //: outliersZScore
   // Detect outliers using Z-Score threshold
   // Returns array of outlier values. threshold defaults to 3.0
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Number: threshold
+  // Returns:
+  //   Array
   static outliersZScore(arr, threshold = 3.0) {
     if (arr.length() < 2) return [];
 
@@ -195,7 +341,14 @@ class Stats {
         });
   }
 
+  //: isOutlier
   // Returns array of booleans [true, false, ...] matching input array indices
+  // Requires:
+  //   Array: arr
+  // Optional:
+  //   Number: k
+  // Returns:
+  //   Array
   static isOutlier(arr, k = 1.5) {
     if (arr.length() < 4) return [];
     
@@ -211,7 +364,12 @@ class Stats {
         });
   }
 
+  //: frequency
   // Counts occurrences of each distinct element
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Set
   static frequency(arr) {
     var freqs = Set.multiset();
     var len = arr.length();
@@ -222,7 +380,12 @@ class Stats {
     return freqs;
   }
 
+  //: mode
   // Returns array of modes (handles unimodal, multimodal, or no mode)
+  // Requires:
+  //   Array: arr
+  // Returns:
+  //   Array
   static mode(arr) {
     if (arr.length() == 0) return [];
 
@@ -256,6 +419,13 @@ class Stats {
     return modes;
   }
 
+  //: linearRegression
+  // Calculate linearRegression of two arrays
+  // Requires:
+  //   Array: xArr
+  //   Array: yArr
+  // Returns:
+  //   Map
   static linearRegression(xArr, yArr) {
     if (xArr.length() != yArr.length() or xArr.length() < 2) return nil;
 
@@ -285,6 +455,13 @@ class Stats {
     return res;
   }
 
+  //: predict
+  // Takes result of linearRegression to predict y intercept
+  // Requires:
+  //   Array: x
+  //   Map: regResult
+  // Returns:
+  //   Number
   static predictY(x, regResult) {
     if (regResult == nil) return nil;
     return (regResult["slope"] * x) + regResult["intercept"];
@@ -328,6 +505,13 @@ class Stats {
   }
 
 
+  //: spearman
+  // Spearman
+  // Requires:
+  //   Array: xArr
+  //   Array: yArr
+  // Returns:
+  //   Number
   static spearman(xArr, yArr) {
     if (xArr.length() != yArr.length() or xArr.length() <  2) return 0;
 
@@ -338,6 +522,8 @@ class Stats {
   }
 }
 
+//@ Array
+// Most Stats methods can be used on an array as in arra.sum().
 class Array {
   sum()                   { return Stats.sum(this); }
   mean()                  { return Stats.mean(this); }

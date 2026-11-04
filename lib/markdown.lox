@@ -6,12 +6,16 @@ try {
   use_color = false;
 }
 
+//@ MarkdownPrinter
+// Convert markdown to strings with color
 class MarkdownPrinter {
   init(width = 80) {
     this.width = width;
     this.reset();
   }
 
+  //: reset
+  // Reset
   reset() {
     this.lines = [];
     this.inCodeBlock = false;
@@ -20,26 +24,32 @@ class MarkdownPrinter {
   }
 
   // --- Output Buffer Helper ---
+
+  //: emit
+  // Add template line to lines array
+  // Requires:
+  //   String: template
   emit(template) {
     // Run template through Color.format to resolve tags like {bold}, {green}, {reset}
-    this.lines.push(Color.format(template));
-  }
-
-  // Utility to build character strings (borders, horizontal rules)
-  repeatChar(ch, count) {
-    return ch * count;
-    /*
-    var out = "";
-    for (var i = 0; i < count; i += 1) {
-      out = out + ch;
-    }
-    return out;
-    */
+    if (use_color)
+      this.lines.push(Color.format(template));
+    else
+      this.lines.push(template);
   }
 
   // --- Inline Formatting Engine ---
-  // Wraps Markdown syntax (**bold**, *italic*, `code`) into Color format tags
+  
+  //: formatInline
+  // Wraps Markdown syntax (**bold**, *italic*, `code`) into Color format tags, if use_color is true
+  // Requires:
+  //   String: text
+  // Returns:
+  //   String
   formatInline(text) {
+    if (!use_color) {
+      return text;
+    }
+
     var result = "";
     var i = 0;
     var len = text.length();
@@ -89,7 +99,10 @@ class MarkdownPrinter {
     return result;
   }
 
-  // --- Line Processing ---
+  //: processLine
+  // Line Processing
+  // Requires:
+  //   String: rawLine
   processLine(rawLine) {
     if (typeof(rawLine) != "String") {
       return;
@@ -107,23 +120,35 @@ class MarkdownPrinter {
         this.codeLanguage = rawLine.slice(3).trim();
         var langLabel = this.codeLanguage != "" ? this.codeLanguage : "code";
         var header = "─── " + langLabel + " ───";
-        this.emit("{dim}" + header + "{reset}");
+        if (use_color)
+          this.emit("{dim}" + header + "{reset}");
+        else
+          this.emit(header);
       } else {
         this.inCodeBlock = false;
-        this.emit("{dim}─────────────────{reset}");
+        if (use_color)
+          this.emit("{dim}─────────────────{reset}");
+        else
+          this.emit("─────────────────");
       }
       return;
     }
 
     // Inside verbatim code block
     if (this.inCodeBlock) {
-      this.emit("  {cyan}" + rawLine + "{reset}");
+      if (use_color)
+        this.emit("  {cyan}" + rawLine + "{reset}");
+      else
+        this.emit("  " + rawLine);
       return;
     }
 
     // 2. Horizontal Rules (---, ***, ===)
     if (rawLine == "---" or rawLine == "***" or rawLine == "===") {
-      this.emit("{green}" + "=" * this.width + "{reset}");
+      if (use_color)
+        this.emit("{green}" + "=" * this.width + "{reset}");
+      else
+        this.emit("=" * this.width);
       return;
     }
 
@@ -139,14 +164,26 @@ class MarkdownPrinter {
 
       if (level == 1) {
         var rule = "=" * this.width;
-        this.emit("{green}" + rule + "{reset}");
-        this.emit("{bold}{blue}  " + formattedTitle + "{reset}");
-        this.emit("{green}" + rule + "{reset}");
+        if (use_color) {
+          this.emit("{green}" + rule + "{reset}");
+          this.emit("{bold}{blue}  " + formattedTitle + "{reset}");
+          this.emit("{green}" + rule + "{reset}");
+        } else {
+          this.emit(rule);
+          this.emit("  " + formattedTitle);
+          this.emit(rule);
+        }
       } else if (level == 2) {
-        this.emit("{bold}{blue}┄┄ {reset}{bold}{yellow}" + formattedTitle + "{reset}");
+        if (use_color)
+          this.emit("{bold}{blue}┄┄ {reset}{bold}{yellow}" + formattedTitle + "{reset}");
+        else
+          this.emit("┄┄ " + formattedTitle);
       } else {
         var hashes = "#" * level;
-        this.emit("{bold}{cyan}" + hashes + " " + formattedTitle + "{reset}");
+        if (use_color)
+          this.emit("{bold}{cyan}" + hashes + " " + formattedTitle + "{reset}");
+        else
+          this.emit(hashes + " " + formattedTitle);
       }
       return;
     }
@@ -161,13 +198,19 @@ class MarkdownPrinter {
     // 5. Blockquotes (> text)
     if (rawLine.slice(0, 2) == "> ") {
       var quoteText = rawLine.slice(2);
-      this.emit("{dim}│ {reset}" + this.formatInline(quoteText));
+      if (use_color)
+        this.emit("{dim}│ {reset}" + this.formatInline(quoteText));
+      else
+        this.emit("│ " + this.formatInline(quoteText));
       return;
     }
 
     // 6. Key-Value Headers / Category Labels (e.g., "Required Arguments:")
     if (rawLine[rawLine.length() - 1] == ':' and !rawLine.contains(" ")) {
-      this.emit("{bold}" + rawLine + "{reset}");
+      if (use_color)
+        this.emit("{bold}" + rawLine + "{reset}");
+      else
+        this.emit(rawLine);
       return;
     }
 
@@ -179,7 +222,12 @@ class MarkdownPrinter {
     }
   }
 
-  // --- Main Entry Point ---
+  //: render
+  // Main Entry Point
+  // Requires:
+  //   String: markdownText
+  // Returns:
+  //   String
   render(markdownText) {
     this.reset();
 

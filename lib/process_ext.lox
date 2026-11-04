@@ -1,4 +1,11 @@
+//@ Process
 class Process {
+  //: captureShell
+  // Simple method to run a command with `bash -c` and return the output.
+  // Requires:
+  //   String: cmd
+  // Returns:
+  //   String
   captureShell(cmd) {
     var shellCmd = "bash -c \"" + cmd + "\"";
 

@@ -1,3 +1,8 @@
+//@ PriorityQueue
+// Implementation of a priority queue. Defaults to standard (a < b) check if comparator callback
+// not provided.
+// Optional:
+//   Value: comparator
 class PriorityQueue {
   init(comparator = nil) {
     this.heap = [];
@@ -15,24 +20,42 @@ class PriorityQueue {
   _leftChild(i) { return 2 * i + 1; }
   _rightChild(i) { return 2 * i + 2; }
 
+  //: isEmpty
+  // Checks if heap is empty.
+  // Returns:
+  //   Bool
   isEmpty() {
     return this.heap.length() == 0;
   }
 
+  //: size
+  // Returns size of heap
+  // Returns:
+  //   Integer
   size() {
     return this.heap.length();
   }
 
+  //: peek
+  // Get top of heap, or nil
+  // Returns:
+  //   Value
   peek() {
     if (this.isEmpty()) return nil;
     return this.heap[0];
   }
 
+  //: push
+  // Adds value to heap, then restores heap order..
+  // Requires:
+  //   Value: val
   push(val) {
     this.heap.push(val);
     this._siftUp(this.heap.length() - 1);
   }
 
+  //: pop
+  // Removes top entry nd restores heap order.
   pop() {
     if (this.isEmpty()) return nil;
 
@@ -91,6 +114,10 @@ class PriorityQueue {
   }
 }
 
+//@ AVLNode
+// Node of AVL tree
+// Requires:
+//   Value: val
 class AVLNode {
   init(val) {
     this.val = val;
@@ -100,9 +127,29 @@ class AVLNode {
   }
 }
 
+//@ AVLTree
+// AVL Tree implementation. Uses AVLnode as nodes.
+// Optional:
+//   Value: comparator
 class AVLTree {
-  init() {
+  init(comparator = nil) {
     this.root = nil;
+    this.comparator = comparator;
+    if (this.comparator == nil) {
+      this.comparator = fun(a, b) { return a < b; };
+    }
+  }
+
+  _isLessThan(a, b) {
+    return this.comparator(a, b);
+  }
+
+  _isGreaterThan(a, b) {
+    return this.comparator(b, a);
+  }
+
+  _isEqual(a, b) {
+    return !this._isLessThan(a, b) and !this._isGreaterThan(a, b);
   }
 
   _height(node) {
@@ -135,7 +182,7 @@ class AVLTree {
 
   _rotateLeft(x) {
     var y = x.right;
-    var T2 = y.left;
+    var t2 = y.left;
 
     y.left = x;
     x.right = t2;
@@ -146,6 +193,10 @@ class AVLTree {
     return y;
   }
 
+  //: insert
+  // Add item to tree.
+  // Requires:
+  //   Value: val
   insert(val) {
     this.root = this._insertNode(this.root, val);
   }
@@ -153,9 +204,9 @@ class AVLTree {
   _insertNode(node, val) {
     if (node == nil) return AVLNode(val);
 
-    if (val < node.val) {
+    if (this._isLessThan(val, node.val)) {
       node.left = this._insertNode(node.left, val);
-    } else if (val > node.val) {
+    } else if (this._isGreaterThan(val, node.val)) {
       node.right = this._insertNode(node.right, val);
     } else {
       return node; // duplicate values not allowed
@@ -165,23 +216,23 @@ class AVLTree {
     var balance = this._getBalance(node);
 
     // left left case
-    if (balance > 1 and val < node.left.val) {
+    if (balance > 1 and this._isLessThan(val, node.left.val)) {
       return this._rotateRight(node);
     }
 
     // right right case
-    if (balance < -1 and val > node.right.val) {
+    if (balance < -1 and this._isGreaterThan(val, node.right.val)) {
       return this._rotateLeft(node);
     }
 
     // left right case
-    if (balance > 1 and val > node.left.val) {
+    if (balance > 1 and this._isGreaterThan(val, node.left.val)) {
       node.left = this._rotateLeft(node.left);
       return this._rotateRight(node);
     }
 
     // right left case
-    if (balance < -1 and val < node.right.val) {
+    if (balance < -1 and this._isLessThan(val, node.right.val)) {
       node.right = this._rotateRight(node.right);
       return this._rotateLeft(node);
     }
@@ -189,18 +240,28 @@ class AVLTree {
     return node;
   }
 
+  //: contains
+  // Checks if this branch contains the item
+  // Requires:
+  //   Value: val
+  // Returns:
+  //   Bool
   contains(val) {
     var curr = this.root;
     while (curr != nil) {
-      if (val == curr.val) return true;
-      if (val < curr.val) curr = curr.left;
+      if (this._isEqual(val, curr.val)) return true;
+      if (this._isLessThan(val, curr.val)) curr = curr.left;
       else curr = curr.right;
     }
     return false;
   }
 
+  //: inOrder
+  // Visit tree in order
+  // Requires:
+  //   Value: callback
   inOrder(cb) {
-    this.inOrderNode(this.root, cb);
+    this._inOrderNode(this.root, cb);
   }
 
   _inOrderNode(node, cb) {
@@ -210,6 +271,36 @@ class AVLTree {
       this._inOrderNode(node.right, cb);
     }
   }
+
+  //: preOrder
+  // Visit tree pre-order
+  // Requires:
+  //   Value: callback
+  preOrder(cb) {
+    this._preOrderNode(this.root, cb);
+  }
+
+  _preOrderNode(node, cb) {
+    if (node != nil) {
+      cb(node.val);
+      this._preOrderNode(node.left, cb);
+      this._preOrderNode(node.right, cb);
+    }
+  }
+
+  //: postOrder
+  // Visit tree post-order
+  // Requires:
+  //   Value: callback
+  postOrder(cb) {
+    this._postOrderNode(this.root, cb);
+  }
+
+  _postOrderNode(node, cb) {
+    if (node != nil) {
+      this._postOrderNode(node.left, cb);
+      this._postOrderNode(node.right, cb);
+      cb(node.val);
+    }
+  }
 }
-
-

@@ -1,6 +1,12 @@
 import "sqlite";
 
+//@ Sqlite
 class Sqlite {
+  //: with
+  // Block oriented database call. Opens database, runs callback, then closes database.
+  // Requires:
+  //   String: path
+  //   Value: callback
   with(path, callback) {
     var db = Sqlite(path);
     try {
@@ -10,6 +16,10 @@ class Sqlite {
     }
   }
 
+  //: transaction
+  // Run a callback as a transaction. If it fails, it rolls back the transaction automatically.
+  // Requires:
+  //   Value: callback
   transaction(callback) {
     this.exec("BEGIN TRANSACTION;");
     try {
@@ -22,5 +32,3 @@ class Sqlite {
     }
   }
 }
-
-

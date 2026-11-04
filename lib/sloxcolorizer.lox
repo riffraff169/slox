@@ -1,7 +1,13 @@
 require("lexer.lox");
 require("color.lox");
 
+//@ SloxColorizer
+// Colorize slox code for either html or terminal ansi.
 class SloxColorizer {
+  //: escapeHtml
+  // Escape some characters for html.
+  // Requires:
+  //   String: text
   escapeHtml(text) {
     var out = text;
     out = out.split("&").join("&amp;");
@@ -10,6 +16,12 @@ class SloxColorizer {
     return out;
   }
 
+  //: toTerminal
+  // Convert source to text with ansi color codes.
+  // Requires:
+  //   String: source
+  // Returns:
+  //   String
   toTerminal(source) {
     var lexer = SloxLexer(source);
     var tokens = lexer.scanTokens();
@@ -42,6 +54,12 @@ class SloxColorizer {
     return result;
   }
 
+  //: toHtml
+  // Convert source to text with html colors.
+  // Requires:
+  //   String: source
+  // Returns:
+  //   String
   toHtml(source, standaloneDocument = false) {
     var lexer = SloxLexer(source);
     var tokens = lexer.scanTokens();

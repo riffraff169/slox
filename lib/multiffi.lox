@@ -1,5 +1,9 @@
 import "ffi";
 
+//@ MultiFFI
+// Load multiple ffi libraries. Doesn't present skip libraries that aren't found.
+// Requires:
+//   Array: paths
 class MultiFFI {
   init(paths) {
     this.handles = [];
@@ -14,6 +18,8 @@ class MultiFFI {
     }
   }
 
+  //: bind
+  // Binds a symbol. Searches through all loaded libraries to find the first one that matches.
   bind(symbolName, returnType, argTypes) {
     for (var i = 0; i < this.handles.length(); i += 1) {
       var sym = nil;

@@ -1,10 +1,19 @@
 require("lexer.lox");
 
+//@ SloxFormatter
+// Class to format slox code. Backend to sfmt command.
+// Optional:
+//   Integer: maxLineLength
 class SloxFormatter {
   init(maxLineLength = 80) {
     this.maxLineLength = maxLineLength;
   }
 
+  //: format
+  // Format the text according to standard slox practices. FIrst parses with SloxLexer, then writes tokens
+  // in standard slox format.
+  // Requires:
+  //   String: text
   format(text) {
     var lexer = SloxLexer(text);
     var tokens = lexer.scanTokens();

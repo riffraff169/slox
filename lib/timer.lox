@@ -1,9 +1,17 @@
+//@ Timer
+// Timer class, runs through backend. Max 256 timers.
+// Requires:
+//   Number: delayMs
+//   Number: intervalMs
+//   Value: callback
 class Timer {
   init(delayMs, intervalMs, callback) {
     this.handle = Timer._start(delayMs, intervalMs, callback);
     this.active = (this.handle >= 0);
   }
 
+  //: cancel
+  // Cancel this timer
   cancel() {
     if (this.active) {
       Timer._stop(this.handle);
@@ -11,14 +19,30 @@ class Timer {
     }
   }
 
+  //: setTimeout
+  // Create a Timer that delays for x ms before calling callback.
+  // Requires:
+  //   Number: delayMs
+  //   Value: callback
+  // Returns:
+  //   Timer
   static setTimeout(delayMs, callback) {
     return Timer(delayMs, 0, callback);
   }
 
+  //: setInterval
+  // Create a timer that runs every x ms, calling a callback each time.
+  // Requires:
+  //   Number: intervalMs
+  //   Value: callback
+  // Returns:
+  //   Timer
   static setInterval(intervalMs, callback) {
     return Timer(intervalMs, intervalMs, callback);
   }
 
+  //: cancelAll
+  // Cancel all timers.
   static cancelAll() {
     Timer._stop_all();
   }

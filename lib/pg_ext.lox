@@ -1,6 +1,12 @@
 import "pg";
 
+//@ Postgres
 class Postgres {
+  //: with
+  // Run a callback against a postgres database. Closes connection after callback is complete.
+  // Requires:
+  //   String: connStr
+  //   Value: callback
   with(connStr, callback) {
     var db = Postgres(connStr);
     try {

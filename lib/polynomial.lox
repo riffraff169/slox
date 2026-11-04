@@ -1,6 +1,10 @@
 require("complex.lox");
 require("matrix.lox");
 
+//@ Polynomial
+// Class to manipulate polynomials with matrices and possible complex numbers.
+// Requires:
+//   Array: coeffs
 class Polynomial {
   init(coeffs) {
     // coefficients ordered from highest degree to lowest
@@ -9,7 +13,10 @@ class Polynomial {
     this.degree = coeffs.length() - 1;
   }
 
-  // evaluate P(x) using horner's method
+  //: eval
+  // Evaluate P(x) using horner's method
+  // Requires:
+  //   Number|Complex: x
   eval(x) {
     var result = this.coeffs[0];
     for (var i = 1; i <= this.degree; i += 1) {
@@ -23,7 +30,10 @@ class Polynomial {
     return result;
   }
 
-  // construct the companion matrix
+  //: companionMatrix
+  // Construct the companion matrix
+  // Returns:
+  //   Matrix
   companionMatrix() {
     var n = this.degree;
     var leading = this.coeffs[0];
@@ -49,7 +59,10 @@ class Polynomial {
     return C;
   }
 
-  // solve roots via companion matrix eigenvalues
+  //: roots
+  // Solve roots via companion matrix eigenvalues
+  // Returns:
+  //   Array
   roots() {
     var C = this.companionMatrix();
 

@@ -1,6 +1,8 @@
 import "ffi";
 require("multiffi.lox");
 
+//@ Readline
+// Readline class for adding readline support. Uses FFI.
 class Readline {
   init() {
     this.ffi = MultiFFI([
@@ -11,6 +13,12 @@ class Readline {
     this.fnAddHistory = this.ffi.bind("add_history", "void", ["string"]);
   }
 
+  //: prompt
+  // Read a line with a prompt
+  // Requires:
+  //   String: p
+  // Returns:
+  //   String
   prompt(p) {
     var line = this.fnReadline(p);
     if (line == nil) return nil;

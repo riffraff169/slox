@@ -1,0 +1,61 @@
+//@ SignalManager
+// Class to implement something similar to a signal bus.
+class SignalManager {
+  init() {
+    this.listeners = [];
+  }
+
+  //: connect
+  // Connect a callback to an object's signal
+  // Requires:
+  //   Value: target
+  //   String: signalName
+  //   Value: callback
+  // Returns:
+  //   Value: callback
+  connect(target, signalName, callback) {
+    this.listeners.push({
+        "target": target,
+        "signal": signalName,
+        "callback": callback
+        });
+    return callback;
+  }
+
+  //: disconnect
+  // Disconnect a callback (or all callbacks for a target/signal)
+  // Requires:
+  //   Value: target
+  //   String: signalName
+  //   Value: callback
+  disconnect(target, signalName, callback) {
+    var remaining = [];
+    for (var i = 0; i < this.listeners.length(); i += 1) {
+      var l = this.listeners[i];
+      var matchTarget = (l["target"] == target);
+      var matchSignal = (l["signal"] == signalName);
+      var matchCb = (l["callback"] == callback);
+
+      if (!(matchTarget and matchSignal and matchCb)) {
+        remaining.push(l);
+      }
+    }
+    this.listeners = remaining;
+  }
+
+  //: emit
+  // Emit a signal on a target object, passing optional data
+  // Requires:
+  //   Value: target
+  //   String: signalName
+  // Optional:
+  //   Value: data
+  emit(target, signalName, data = nil) {
+    for (var i = 0; i < this.listeners.length(); i += 1) {
+      var l = this.listeners[i];
+      if (l["target"] == target and l["signal"] == signalName) {
+        l["callback"](target, data);
+      }
+    }
+  }
+}

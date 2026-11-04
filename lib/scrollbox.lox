@@ -1,7 +1,16 @@
 require("notcurses.lox");
 
+//@ Scrollbox
 // Scrollbox class
 // Creates a box for scrolling lists
+// Requires:
+//   Notcurses: nc
+//   Plane: parentPlane
+//   Integer: y
+//   Integer: x
+//   Integer: width
+//   Integer: height
+//   Array: items
 class Scrollbox {
   init(nc, parentPlane, y, x, width, height, items) {
     this.nc = nc;
@@ -24,12 +33,17 @@ class Scrollbox {
     this.keyCallbacks = {};
   }
 
+  //: onKey
   // Set callback for specific keys
+  // Requires:
+  //   String: key
+  //   Value: callback
   onKey(key, fn) {
     this.keyCallbacks[key] = fn;
     return this;
   }
 
+  //: destroy
   // Destroy scrollbox
   destroy() {
     if (this.plane != nil) {
@@ -38,7 +52,10 @@ class Scrollbox {
     }
   }
 
+  //: getVisibleItems
   // Get list of items that have been selected
+  // Returns:
+  //   Array
   getVisibleItems() {
     if (this.showSelected) {
       return this.items;
@@ -48,37 +65,54 @@ class Scrollbox {
     });
   }
 
+  //: selectItem
   // Select an item
+  // Requires:
+  //   String: item
   selectItem(item) {
     this.selections[item] = true;
   }
 
+  //: deselectItem
   // Unselect an item
+  // Requires:
+  //   String: item
   deselectItem(item) {
     //this.selected.delete(item);
     this.selections[item] = false;
   }
 
+  //: clearSelection
   // Clear selection list
   clearSelection() {
     this.selections = {};
   }
 
+  //: setFocus
   // Change focus status of this scrollbox
+  // Required:
+  //   Bool: isFocused
   setFocus(isFocused) {
     this.focused = isFocused;
   }
 
-  // Select all items
+  //: selectAll
+  // Select all items. Change state of all items.
+  // Requires:
+  //   Bool: state
   selectAll(state) {
     this.items.each(fun(w) { this.selections[w] = state; });
   }
 
+  //: getSelectedItems
   // Get list of items that have been selected
+  // Returns:
+  //   Array
   getSelectedItems() {
     getVisibleItems();
   }
 
+  //: render
   // Render this box
   render() {
     if (this.plane == nil) return;
@@ -113,6 +147,7 @@ class Scrollbox {
     }
   }
 
+  //: update_scroll
   // Update scroll list
   update_scroll() {
     var visible_rows = this.height;
@@ -125,8 +160,13 @@ class Scrollbox {
     }
   }
 
+  //: handleInput
   // Handle input
   // Dispatch callbacks on keys
+  // Requires:
+  //   String: key
+  // Returns:
+  //   Bool
   handleInput(key) {
     if (!this.focused) return false;
 

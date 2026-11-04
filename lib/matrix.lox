@@ -1,3 +1,9 @@
+//@ Matrix
+// Matrix class.  Internally represented as a flat list.
+// Requires:
+//   Integer: rows
+//   Integer: cols
+//   Array: data
 class Matrix {
   init(rows, cols, data) {
     this.rows = rows;
@@ -6,11 +12,23 @@ class Matrix {
     this.data = data;
   }
 
-  // constructors;
+  //: zeros
+  // Create a new matrix of all zeros.
+  // Requires:
+  //   Integer: rows
+  //   Integer: cols
+  // Returns:
+  //   Matrix
   static zeros(rows, cols) {
     return Matrix(rows, cols, [0; rows * cols]);
   }
 
+  //: identity
+  // Create an identity matrix of n x n.
+  // Requires:
+  //   Integer: n
+  // Returns:
+  //   Matrix
   static identity(n) {
     var m = Matrix.zeros(n, n);
     for (var i = 0; i < n; i += 1) {
@@ -19,16 +37,33 @@ class Matrix {
     return m;
   }
 
-  // helpers
+  //: get
+  // Return value at r, c.
+  // Requires:
+  //   Integer: r
+  //   Integer: c
+  // Returns:
+  //   Number
   get(r, c) {
     return this.data[r * this.cols + c];
   }
 
+  //: set
+  // Set value at r, c
+  // Requires:
+  //   Integer: r
+  //   Integer: c
+  //   Integer: val
   set(r, c, val) {
     this.data[r * this.cols + c] = val;
   }
 
   // basic ops
+
+  //: transpose
+  // Return a transposed version of this matrix.
+  // Returns:
+  //   Matrix
   transpose() {
     var res = Matrix.zeros(this.cols, this.rows);
     for (var r = 0; r < this.rows; r += 1) {
@@ -39,6 +74,12 @@ class Matrix {
     return res;
   }
 
+  //: add
+  // Return a new matrix that is this one plus another one
+  // Requires:
+  //   Matrix: other
+  // Returns:
+  //   Matrix
   add(other) {
     var res = Matrix.zeros(this.rows, this.cols);
     for (var i = 0; i < this.rows * this.cols; i += 1) {
@@ -47,9 +88,15 @@ class Matrix {
     return res;
   }
 
+  //: mul
+  // Multiply either a number, or another matrix.  Returns a new matrix.
+  // Requires:
+  //   Matrix|Number: other
+  // Returns:
+  //   Matrix
   mul(other) {
     // scalar mul
-    if (typeof(other) == "Integer" or typeof(other) == "Float") {
+    if (isnumber(other)) {
       var res = Matrix.zeros(this.rows, this.cols);
       for (var i = 0; i < this.rows * this.cols; i += 1) {
         res.data[i] = this.data[i] * other;
@@ -71,8 +118,12 @@ class Matrix {
     return res;
   }
 
-
   // determinant & trace
+  
+  //: trace
+  // Get trace value.
+  // Returns:
+  //   Number
   trace() {
     var tr = 0;
     for (var i = 0; i < this.rows; i += 1) {
@@ -81,6 +132,10 @@ class Matrix {
     return tr;
   }
 
+  //: det
+  // Get determinant
+  // Returns:
+  //   Number
   det() {
     if (this.rows == 2 and this.cols == 2) {
       // ad - bc
@@ -92,6 +147,11 @@ class Matrix {
 
 
   // eigenvalues and eigenvectors
+
+  //: eigen2x2
+  // Get eigenvalue of a 2x2 matrix
+  // Returns:
+  //   Array|Map
   eigen2x2() {
     if (this.rows != 2 or this.cols != 2) return nil;
 
@@ -130,6 +190,12 @@ class Matrix {
     };
   }
 
+  //: eigenvectorForValue
+  // Get eigenvector for a value
+  // Requires:
+  //   Number: lambda
+  // Returns:
+  //   Matrix
   eigenvectorForValue(lambda) {
     var a = this.get(0, 0) - lambda;
     var b = this.get(0, 1);
@@ -160,7 +226,13 @@ class Matrix {
     return Matrix(2, 1, [x, y]);
   }
 
-  // extract a column vector as a 1d array
+  //: getCol
+  // Extract a column vector as a 1d array
+  // Requires:
+  //   Matrix: m
+  //   Integer: colIdx
+  // Returns:
+  //   Array
   static getCol(m, colIdx) {
     var v = [0; m.rows];
     for (var r = 0; r < m.rows; r += 1) {
@@ -169,7 +241,13 @@ class Matrix {
     return v;
   }
   
-  // dot product
+  //: dot
+  // Dot product
+  // Requires:
+  //   Matrix: u
+  //   Matrix: v
+  // Returns:
+  //   Number
   static dot(u, v) {
     var sum = 0;
     for (var i = 0; i < u.length(); i += 1) {
@@ -178,11 +256,20 @@ class Matrix {
     return sum;
   }
 
+  //: norm
+  // Get normal
+  // Requires:
+  //   Matrix: v
+  // Returns:
+  //   Number
   static norm(v) {
     return Math.sqrt(Matrix.dot(v, v));
   }
 
+  //: qrDecompose
   // qr decomposition using gram-schmidt process: A = Q * R
+  // Returns:
+  //   Map
   qrDecompose() {
     var n = this.rows;
     var Q = Matrix.zeros(n, n);
@@ -225,7 +312,10 @@ class Matrix {
     return { "Q": Q, "R": R };
   }
 
-  // compute all real eigenvalues for n x n matrix using qr iteration
+  //: eigenvaluesQR
+  // compute all real eigenvalues for n x n matrix using qr iteration. Broken
+  // Requires:
+  //   Integer: maxIter
   eigenvaluesQR(maxIter) {
     var A = Matrix.zeros(this.rows, this.cols);
     for (var i = 0; i < this.data.length(); i += 1) {

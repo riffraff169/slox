@@ -2,6 +2,8 @@ import "ffi";
 
 require("multiffi.lox");
 
+//@ PixelBuffer
+// A simple pixel buffer for notcurses boxes. Stored as 32-bit rgba. Could be scaled to implement MxN pixels.
 class PixelBuffer {
   init(width, height) {
     this.width = width;
@@ -12,6 +14,12 @@ class PixelBuffer {
     //this.clear(0x1e1e1eff); // dark grey canvas
   }
 
+  //: clear
+  // Set all bytes to a value. Can be either a single byte value, where all bytes (r, g, b, a)
+  // are set to the same value (as noticed, including the alpha channel). Or use a 32-bit value,
+  // and the bytes are set in rgba order.
+  // Requires:
+  //   Integer: rgba
   clear(rgba) {
     var totalBytes = this.width * this.height + 4;
 
@@ -36,6 +44,10 @@ class PixelBuffer {
     }
   }
 
+  //: setPixel
+  // Set pixel x,y to value rgba. rgba can be an array of [r,g,b,a], or a 32-bit value.
+  // Requires:
+  //   Array|Integer: rgba
   setPixel(x, y, rgba) {
     if (x < 0 or x >= this.width or y < 0 or y >= this.height) return;
 
@@ -67,11 +79,20 @@ class PixelBuffer {
     */
   }
 
+  //: getBuffer
+  // Return the buffer as a string
+  // Returns:
+  //   String
   getBuffer() {
     return this.pixels.to_string();
   }
 }
 
+//@ Visual
+// A Visual is a represents a notcurses visual.
+// Requires:
+//   PixelBuffer: pixelBuffer
+//   Notcurses: nc
 class Visual {
   const BLIT_DEFAULT = 0;
   const BLIT_1x1 = 1;
@@ -115,15 +136,32 @@ class Visual {
     */
   }
 
+  //: resize
+  // Resize visual
+  // Requires:
+  //   Integer: rows
+  //   Integer: cols
   resize(rows, cols) {
     return this.fnResize(this.ptr, rows, cols);
   }
 
+  //: pixelGeom
+  // Get the current geometry
+  // Returns:
+  //   Notcurses.pixelGeom
   pixelGeom() {
     return this.nc.stdplane.pixelGeom();
   }
 
-  resizeCells(plane, celLRows, cellCols) {
+  //: resizeCells
+  // Resize cell sizes
+  // Requires:
+  //   Plane: plane
+  //   Integer: cellRows
+  //   Integer: cellCols
+  // Returns:
+  //   Integer
+  resizeCells(plane, cellRows, cellCols) {
     var bufY = Buffer.alloc(4);
     var bufX = Buffer.alloc(4);
 
@@ -141,6 +179,19 @@ class Visual {
     return -1;
   }
 
+  //: blit
+  // Copy data over to plane
+  // Requires:
+  //   Plane: plane
+  // Optional:
+  //   Integer: blitMode
+  //   Integer: scale
+  //   Integer: y
+  //   Integer: x
+  //   Integer: leny
+  //   Integer: lenx
+  // Returns:
+  //   Plane
   blit(plane, blitMode = 2, scale = 2, y = 0, x = 0, leny = 0, lenx = 0) {
     if (this.ptr == nil) return nil;
 
@@ -184,6 +235,8 @@ class Visual {
     return nil;
   }
 
+  //: destroy
+  // Destroy this visual
   destroy() {
     if (this.ptr != nil) {
       this.fnDestroy(this.ptr);
@@ -192,6 +245,11 @@ class Visual {
   }
 }
 
+//@ Plane
+// Plane class for managing planes.
+// Requires:
+//   Notcurses: ptr
+//   FFI|MultiFFI: ffiLib
 class Plane {
   const NCALIGN_UNALIGNED = 0;
   const NCALIGN_LEFT = 1;
@@ -246,6 +304,10 @@ class Plane {
         "pointer", "pointer"]);
   }
 
+  //: pixelGeom
+  // Get geometry of plane.
+  // Returns:
+  //   Array
   pixelGeom() {
     var bufY = Buffer.alloc(4);
     var bufX = Buffer.alloc(4);
@@ -257,18 +319,30 @@ class Plane {
     return [cdimy, cdimx];
   }
 
+  //: erase
+  // Erase plane
   erase() {
     this.fnErase(this.ptr);
   }
 
+  //: move_top
+  // Move this plane to top of stack
   move_top() {
     this.fnMoveTop(this.ptr);
   }
 
+  //: move_bottom
+  // Move this plane to bottom of stack
   move_bottom() {
     this.fnMoveBottom(this.ptr);
   }
 
+  //: set_opaque
+  // Set plane to opaque by setting base and erasing.
+  // Requires:
+  //   Integer: r
+  //   Integer: g
+  //   Integer: b
   set_opaque(r, g, b) {
     this.set_bg(r, g, b);
 
@@ -282,10 +356,26 @@ class Plane {
     this.erase();
   }
 
+  //: move_yx
+  // Move this plane to x, y coordinates of terminal.
+  // Requires:
+  //   Integer: y
+  //   Integer: x
   move_yx(y, x) {
     this.fnMoveYx(this.ptr, y, x);
   }
 
+  //: create_child
+  // Create a child plane of this plane.
+  // Requires:
+  //   Integer: y
+  //   Integer: x
+  //   Integer: rows
+  //   Integer: cols
+  // Optional:
+  //   Integer: flags
+  // Returns:
+  //   Plane
   create_child(y, x, rows, cols, flags = 0) {
     //flags = flags ?? 0;
     //if (flags == nil) flags = 0;
@@ -296,14 +386,34 @@ class Plane {
     return Plane(childPtr, this.ffi);
   }
 
-  // either put_str("hello") or put_str(y, x, "hello")
+  //: put_str
+  // Write a string to a specific location, or at current position if y,x not specified.
+  // Examples:
+  // ```
+  // put_str("hello");
+  // put_str(5, 2, "hello");
+  // Requires:
+  //   Integer|String: a1
+  // Optional:
+  //   Integer: a2
+  //   Integer|String: a3
+  // Returns:
+  //   Integer
   put_str(a1, a2 = nil, a3 = nil) {
-    if (a2 == nil and a3 == nil)
+    if (a2 == nil and a3 == nil and typeof(a1) == "String")
       return this.fnPutStr(this.ptr, a1);
     return this.fnPutStrYx(this.ptr, a1, a2, a3);
   }
 
-  // either string name ("center") or integer alignment enum
+  //: put_str_aligned
+  // Write a string at the current y, aligned. Align is either "center",
+  // "left", or "right".
+  // Requires:
+  //   Integer: y
+  //   String: align
+  //   String: str
+  // Returns:
+  //   Integer
   put_str_aligned(y, align, str) {
     if (align == "center") align = this.NCALIGN_CENTER;
     else if (align == "left") align = this.NCALIGN_LEFT;
@@ -311,6 +421,15 @@ class Plane {
     return this.fnPutStrAlign(this.ptr, y, align, str);
   }
 
+  //: set_fg
+  // Set foreground color for future writes. r can be array of [r, g, b], or values
+  // can be provided separately.
+  // Aliases: set_fgrgb
+  // Requires:
+  //   Array|Integer: r
+  // Optional:
+  //   Integer: g
+  //   Integer: b
   set_fg(r, g = nil, b = nil) {
     var rgb = r;
     if (g != nil and b != nil)
@@ -319,6 +438,15 @@ class Plane {
   }
   set_fgrgb(rgb) { return this.set_fg(rgb); }
 
+  //: set_bg
+  // Set background color for future writes. r can be array of [r, g, b], or values
+  // can be provided separately.
+  // Aliases: set_bgrgb
+  // Requires:
+  //   Array|Integer: r
+  // Optional:
+  //   Integer: g
+  //   Integer: b
   set_bg(r, g = nil, b = nil) {
     var rgb = r;
     if (g != nil and b != nil)
@@ -327,6 +455,10 @@ class Plane {
   }
   set_bgrgb(rgb) { return this.set_bg(rgb); }
 
+  //: destroy
+  // Destroy this plane
+  // Returns:
+  //   Integer
   destroy() {
     if (this.ptr != nil) {
       var res = this.fnDestroy(this.ptr);
@@ -336,6 +468,11 @@ class Plane {
     return 0;
   }
 
+  //: createCell
+  // Create a cell for box. Internal method only.
+  // Requires:
+  //   String: egc
+  //   Integer: channels
   createCell(egc, channels) {
     var buf = Buffer.alloc(32);
     this.fnCellLoad(this.ptr, buf, egc);
@@ -349,6 +486,13 @@ class Plane {
     return [cellStr, buf];
   }
 
+  //: box
+  // Create a box around the plane.
+  // Optional:
+  //   Integer: ystop
+  //   Integer: xstop
+  //   Integer: rounded
+  //   Integer: edges
   box(ystop = 0, xstop = 0, rounded = false, edges = 0) {
     var edgesStr = "┌┐└┘─│";
 
@@ -387,10 +531,18 @@ class Plane {
     return res;
   }
 
+  //: get_dim
+  // Get dimensions of plane.
+  // Returns:
+  //   Array
   get_dim() {
     return [this.fnDimY(this.ptr), this.fnDimX(this.ptr)];
   }
 
+  //: get_pos
+  // Get current position
+  // Returns:
+  //   Array
   get_pos() {
     /*
     var yBuf = Struct.packNative("I", [0]);
@@ -406,6 +558,13 @@ class Plane {
     return [y, x];
   }
 
+  //: contains_point
+  // Check if plane contains point at current position.
+  // Requires:
+  //   Integer: screenY
+  //   Integer: screenX
+  // Returns:
+  //   Bool
   contains_point(screenY, screenX) {
     var pos = this.get_pos();
     var dim = this.get_dim();
@@ -413,12 +572,52 @@ class Plane {
         screenX >= pos[1] and screenX < (pos[1] + dim[1]));
   }
 
+  //: to_local
+  // Convert screen position to local plane position
+  // Requires:
+  //   Integer: screenY
+  //   Integer: screenX
+  // Returns:
+  //   Array
   to_local(screenY, screenX) {
     var pos = this.get_pos();
     return [screenY - pos[0], screenX - pos[1]];
   }
 }
 
+//@ DropdownMenu
+// A dropdown menu using notcurses primitives.
+// Example:
+// ```
+// var menuData = [
+// {
+//   "title": "File",
+//     "hotkey": "f",
+//     "items": [
+//     { "label": "Save Sprite", "action": "file_save", "hotkey": "s" },
+//     { "label": "Load Sprite", "action": "file_load", "hotkey": "l" },
+//     { "label": "Exit Editor", "action": "exit", "hotkey": "x" }
+//     ]
+// },
+// {
+//   "title": "Mode",
+//   "hotkey": "m",
+//   "items": [
+//   { "label": "Toggle Mono/Color", "action": "toggle_mode", "hotkey": "t" }
+//   ]
+// }
+// ];
+// var nc = Notcurses();
+// at_exit(fun() { nc.stop(); });
+// var std = nc.get_stdplane();
+// 
+// var dim = std.get_dim();
+// var menu = DropdownMenu(std, dim[1], menuData);
+// ```
+// Requires:
+//   Plane: std
+//   Integer: cols
+//   Array: menuData
 class DropdownMenu {
   init(std, cols, menuData) {
     this.std = std;
@@ -443,6 +642,8 @@ class DropdownMenu {
     this.draw_bar();
   }
 
+  //: draw_text_with_hotkey
+  // Internal method, used by draw_barj
   draw_text_with_hotkey(plane, y, x, text, hotkeyChar, defaultFg, hotkeyFg) {
     var hkLower = (hotkeyChar != nil) ? hotkeyChar.to_lower() : "";
     var hkFound = false;
@@ -460,6 +661,8 @@ class DropdownMenu {
     }
   }
 
+  //: draw_bar
+  // Draw the menu bar
   draw_bar() {
     this.barPlane.erase();
     this.barPlane.set_bg(40, 40, 60);
@@ -500,6 +703,8 @@ class DropdownMenu {
     return;
   }
 
+  //: open_dropdown
+  // Internal method, used handle_event
   open_dropdown(sectionIdx) {
     this.close_dropdown();
 
@@ -529,6 +734,7 @@ class DropdownMenu {
     this.draw_dropdown();
   }
 
+  //: draw_dropdown
   draw_dropdown() {
     if (this.dropdownPlane == nil) return;
 
@@ -557,6 +763,7 @@ class DropdownMenu {
     }
   }
 
+  //: close_dropdown
   close_dropdown() {
     if (this.dropdownPlane != nil) {
       this.dropdownPlane.destroy();
@@ -567,6 +774,10 @@ class DropdownMenu {
     this.draw_bar();
   }
 
+  //: handle_event
+  // Main loop, takes parameter from Notcurses.get_event().
+  // Requires:
+  //   Event: ev
   handle_event(ev) {
     if (ev == nil) return nil;
 
@@ -727,6 +938,10 @@ class DropdownMenu {
   }
 }
 
+//@ Notcurses
+// Main notcurses library. FFI bindings to notcurses api.
+// Optional:
+//   Integer: flags
 class Notcurses {
   const NCOPTION_INHIBIT_SETLOCALE    = 0x0001;
   const NCOPTION_NO_CLEAR_BITMAPS     = 0x0002;
@@ -780,6 +995,11 @@ class Notcurses {
     this.inputBuf = nil;
   }
 
+  //: enable_mouse
+  // Enable mouse events
+  // Optional:
+  //   Bool: enable
+  //   Bool: allow_motion
   enable_mouse(enable = true, allow_motion = false) {
     if (!enable) {
       return this.fnMiceDisable(this.ptr) == 0;
@@ -790,6 +1010,12 @@ class Notcurses {
     return this.fnMiceEnable(this.ptr, mode) == 0;
   }
 
+  //: translate_key
+  // Translate notcurses keycode to string names
+  // Requires:
+  //   Integer: k
+  // Returns:
+  //   String
   translate_key(k) {
     if (k == nil or k <= 0 or k == this.PRETERUNICODEBASE) return nil;
 
@@ -842,6 +1068,10 @@ class Notcurses {
     return nil;
   }
 
+  //: get_event
+  // Return an event mapping
+  // Returns:
+  //   Mapping
   get_event() {
     if (this.inputBuf == nil) {
       this.inputBuf = Buffer.alloc(64);
@@ -850,7 +1080,6 @@ class Notcurses {
     var k = this.fnGet(this.ptr, nil, this.inputBuf);
     if (k <= 0 or k == this.PRETERUNICODEBASE) return nil;
 
-    //var fields = Struct.unpackNative("I I I I I B B B B I", this.inputBuf);
     var fields = Struct.unpackNative("I I I B B B B B B B B I I I I", this.inputBuf);
     
     var id = fields[0];
@@ -892,18 +1121,30 @@ class Notcurses {
     };
   }
 
+  //: render
+  // Render output
   render() {
     return this.fnRender(this.ptr);
   }
 
+  //: get_stdplane
+  // Get the standard default plane.
+  // Returns:
+  //   Plane
   get_stdplane() {
     return this.stdplane;
   }
 
+  //: get_key_code
+  // Get the current key code
+  // Returns:
+  //   Integer
   get_key_code() {
     return this.fnGet(this.ptr, nil, nil);
   }
 
+  //: get_key
+  // Calls get_event() to get a key press.
   get_key() {
     var ev = this.get_event();
     if (ev == nil) return nil;
@@ -913,6 +1154,9 @@ class Notcurses {
     return ev["key"];
   }
 
+  //: stop
+  // Turns off notcurses display, restoring original display parameters. It does not clear the screen, so current
+  // output on the screen remains.
   stop() {
     if (this.ptr != nil) {
       this.fnStop(this.ptr);
@@ -921,7 +1165,8 @@ class Notcurses {
   }
 }
 
-if (System.ARGS.length() >= 1 and System.ARGS[0] == "test") {
+// test
+if (__name__ == "__main__") {
   var lib = FFI("libnotcurses.so");
   var nc = Notcurses(lib);
 

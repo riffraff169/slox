@@ -1,4 +1,9 @@
+//@ Dir
 class Dir {
+  //: mkdir_p
+  // Creates full path of directories. Unix only.
+  // Requires:
+  //   String: path
   mkdir_p(path) {
     var parts = path.split("/");
     var accumulated = [];

@@ -1,3 +1,4 @@
+require("argparser.lox");
 require("docparser.lox");
 
 // example data
@@ -30,20 +31,16 @@ var sourceLines = [
   "fun floor(x) {}"
 ];
 
-if (System.ARGS.length() < 1) {
-  print "Usage: docparser_main.lox <file> [output_file]";
-  System.exit(1);
-}
+var ap = ArgParser("docparser.lox", "Process document comments from files");
+ap.addOption("output", "o", "output_doc.md", "Outputfile");
 
-var source = File.load(System.ARGS[0]).split("\n");
+var args = ap.parse(System.ARGS);
 
 var parser = DocParser();
-parser.parseLines(source);
+args.args.each(fun(s) {
+    var source = File.load(s).split("\n");
+    parser.parseLines(source);
+    });
 var markdown = parser.generateMarkdown();
 
-if (System.ARGS.length() >= 2) {
-  File.save(System.ARGS[1], markdown);
-  print "Documentation written to " + System.ARGS[1];
-} else {
-  print markdown;
-}
+File.save(args["output"], markdown);
