@@ -1,0 +1,8 @@
+print 'A'; // expect: 65
+print '\n'; // expect: 10
+print '\t'; // expect: 9
+print '\r'; // expect: 13
+print '0'; // expect: 48
+print '\0'; // expect: 0
+print '\''; // expect: 39
+print '\\'; // expect: 92

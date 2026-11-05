@@ -130,9 +130,9 @@ static void blackenObject(Obj* object) {
 
                 if (klass->obj.klass != NULL)
                     markObject((Obj*)klass->obj.klass);
-                if (&klass->vGetter)
+                if (!IS_NIL(klass->vGetter))
                     markValue(klass->vGetter);
-                if (&klass->vSetter)
+                if (!IS_NIL(klass->vSetter))
                     markValue(klass->vSetter);
             }
             break;
@@ -175,6 +175,10 @@ static void blackenObject(Obj* object) {
             */
         case OBJ_NATIVE:
         case OBJ_STRING:
+        case OBJ_FOREIGN:
+        case OBJ_BUFFER:
+        case OBJ_BOX:
+        case OBJ_VEC3:
             break;
     }
 }
@@ -286,6 +290,9 @@ static void freeObject(Obj* object) {
                 free(buffer->bytes);
                 FREE(ObjBuffer, object);
             }
+            break;
+        case OBJ_BOX:
+        case OBJ_VEC3:
             break;
     }
 }
@@ -399,7 +406,7 @@ void collectGarbage() {
 
     if (vm.log_gc) {
         printf("-- gc end\n");
-        printf("   collected %zu bytes (from %zu to %zu) next at %z\n",
+        printf("   collected %zu bytes (from %zu to %zu) next at %zu\n",
                 before - vm.bytesAllocated, before, vm.bytesAllocated,
                 vm.nextGC);
     }

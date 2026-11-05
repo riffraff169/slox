@@ -1,0 +1,15 @@
+fun makeClosure() {
+  var a = "data";
+
+  fun f() { print a; }
+  return f;
+}
+
+{
+  var closure = makeClosure();
+  // GC here.
+  closure();
+}
+
+
+// expect: data

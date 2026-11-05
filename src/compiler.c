@@ -517,7 +517,7 @@ static void declareVariable() {
 }
 
 static void emitInvoke(const char* name, int argCount) {
-    Token token = { TOKEN_IDENTIFIER, name, (int)strlen(name), parser.previous.line };
+    Token token = { TOKEN_IDENTIFIER, name, (int)strlen(name), parser.previous.line, parser.previous.filename };
     int nameArg = identifierConstant(&token);
 
     emitInvokeHelper(nameArg, argCount);
@@ -1384,7 +1384,7 @@ static void backtick(bool canAssign) {
             parser.previous.start + 1,
             parser.previous.length - 2);
 
-    Token processToken = { TOKEN_IDENTIFIER, "Process", 7, parser.previous.line };
+    Token processToken = { TOKEN_IDENTIFIER, "Process", 7, parser.previous.line, parser.previous.filename };
     int processConstant = identifierConstant(&processToken);
 
     if (processConstant < 256) {
@@ -1970,7 +1970,7 @@ static void foreachStatement() {
     emitInvoke("iter", 0);
 
     // 3. inject a hidden local variable to keep track of the iter
-    Token iterToken = { TOKEN_IDENTIFIER, "iter ", 5, var1.line };
+    Token iterToken = { TOKEN_IDENTIFIER, "iter ", 5, var1.line, var1.filename };
     Local* iterLocal = &current->locals[current->localCount++];
     iterLocal->name = iterToken;
     iterLocal->depth = current->scopeDepth;

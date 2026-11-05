@@ -1,0 +1,13 @@
+var a = [1,2,3,4,5];
+print a;
+
+a.each(fun(val) {
+  print val;
+});
+
+// expect: [1, 2, 3, 4, 5]
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5

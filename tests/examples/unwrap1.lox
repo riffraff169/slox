@@ -1,0 +1,25 @@
+var r1 = Result(true, "yes");
+print r1;
+if (r1) print "ok";
+print r1.unwrap();
+print r1.unwrap_or(25);
+
+var r2 = Result(false, "dont");
+print r2;
+try {
+  print r2.unwrap();
+  print "foo";
+} catch (e) {
+  print e;
+  print "Error: ", e.message;
+  print r2.unwrap_or(25);
+}
+
+// expect: Result instance
+// expect: ok
+// expect: yes
+// expect: yes
+// expect: Result instance
+// expect: Error instance
+// expect: Error: Tried to unwrap an error Result: dont
+// expect: 25

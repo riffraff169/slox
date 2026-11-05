@@ -1,0 +1,12 @@
+//System.trace(true);
+
+class A {
+  const val = 12.345;
+}
+
+var a = A();
+print A.val;
+print a.val;
+
+// expect: 12.345
+// expect: 12.345

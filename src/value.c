@@ -145,7 +145,7 @@ void printValueSafe(FILE* stream, Value value) {
                 printObject(stream, value);
                 break;
             case VAL_SPLAT_COUNT:
-                fprintf(stream, "<splat count: %d>\n", AS_SPLAT_COUNT(value));
+                fprintf(stream, "<splat count: %d>", (int)AS_SPLAT_COUNT(value));
                 break;
             case VAL_VEC3:
                 fprintf(stream, "Vec3(%g, %g, %g)", AS_VEC3(value).x,

@@ -1,0 +1,52 @@
+fun test1(a) {
+  print "Test: ", a;
+}
+
+var xyz = 25;
+
+fun test2(a) {
+  var n1 = a;
+  print n1;
+}
+
+for (var i = 0; i < 25; i += 1) {
+  print i;
+}
+
+fun fs(a) {
+  var n = a.length();
+  if (n <= 1) return;
+
+  var min_val = a[0];
+  var max_idx = 0;
+
+  for (var i = 1; i < n; i += 1) {
+  }
+}
+
+
+// expect: 0
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5
+// expect: 6
+// expect: 7
+// expect: 8
+// expect: 9
+// expect: 10
+// expect: 11
+// expect: 12
+// expect: 13
+// expect: 14
+// expect: 15
+// expect: 16
+// expect: 17
+// expect: 18
+// expect: 19
+// expect: 20
+// expect: 21
+// expect: 22
+// expect: 23
+// expect: 24

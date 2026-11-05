@@ -1608,14 +1608,15 @@ Value stringFormatNative(int argCount, Value* args) {
     ObjString* formatStr = AS_STRING(args[-1]);
 
     int capacity = formatStr->length + 64;
-    char* buffer = malloc(capacity);
+    char* buffer = ALLOCATE(char, capacity);
     int length = 0;
     int currentArg = 0;
 
     for (int i = 0; i < formatStr->length; i++) {
         if (length + 32 > capacity) {
-            capacity *= 2;
-            buffer = realloc(buffer, capacity);
+            int oldCapacity = capacity;
+            while (length + 32 > capacity) capacity *= 2;
+            buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
         }
 
         if (formatStr->chars[i] == '%' && i + 1 < formatStr->length) {
@@ -1666,7 +1667,7 @@ Value stringFormatNative(int argCount, Value* args) {
 
             // missing arguments: write the specifier literally
             if (currentArg >= argCount) {
-                for (int k = 0; i < specLen; k++) {
+                for (int k = 0; k < specLen; k++) {
                     buffer[length++] = specBuf[k];
                 }
                 continue;
@@ -1737,12 +1738,18 @@ Value stringFormatNative(int argCount, Value* args) {
                     break;
             }
 
-            while (length + formattedLen + 1 >= capacity) {
-                capacity *= 2;
-                buffer = realloc(buffer, capacity);
+            if (formattedLen < 0) formattedLen = 0;
+            if (formattedLen >= (int)sizeof(tempBuf)) {
+                formattedLen = (int)sizeof(tempBuf) - 1;
             }
 
-            memcpy(buffer + length, tempBuf, formattedLen);
+            if (length + formattedLen + 1 > capacity) {
+                int oldCapacity = capacity;
+                while (length + formattedLen + 1 > capacity) capacity *= 2;
+                buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
+            }
+
+            memcpy(buffer + length, tempBuf, (size_t)formattedLen);
             length += formattedLen;
         } else {
             buffer[length++] = formatStr->chars[i];
@@ -1752,7 +1759,7 @@ Value stringFormatNative(int argCount, Value* args) {
     buffer[length] = '\0';
 
     ObjString* result = copyString(buffer, length);
-    free(buffer);
+    FREE_ARRAY(char, buffer, capacity);
 
     return OBJ_VAL(result);
 }
@@ -1783,7 +1790,7 @@ int expandSet(const char* set, int len, uint8_t* out) {
 //   String: set1
 //   String: set2
 Value stringTrNative(int argCount, Value* args) {
-    if (argCount != 2 | !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
         runtimeError("tr() expects two string arguments.");
         return NIL_VAL;
     }
@@ -1981,7 +1988,7 @@ Value mapRemoveNative(int argCount, Value* args) {
 // Returns:
 //   Integer: number of items
 Value mapLenNative(int argCount, Value* args) {
-    return INT_VAL(AS_MAP(args[-1])->items.count);
+    return INT_VAL(tableLiveCount2(&AS_MAP(args[-1])->items));
 }
 
 //: each
@@ -1990,6 +1997,7 @@ Value mapLenNative(int argCount, Value* args) {
 // Returns:
 //   Nil
 Value mapEachNative(int argCount, Value* args) {
+    GC_SCOPE;
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
         runtimeError("Map.each() expects a closure argument.");
         return NIL_VAL;
@@ -1997,24 +2005,22 @@ Value mapEachNative(int argCount, Value* args) {
     Value closure = args[0];
     ObjMap* map = AS_MAP(args[-1]);
 
-    int snapshotCapacity = map->items.capacity;
-    Entry2* snapshotEntries = malloc(sizeof(Entry2) * snapshotCapacity);
-    if (snapshotEntries == NULL) {
-        runtimeError("Out of memory during Map.each() snapshot.");
-        return NIL_VAL;
+    ObjArray* snapshot = newArray();
+    pushTemp(OBJ_VAL(snapshot));
+
+    for (int i = 0; i < map->items.capacity; i++) {
+        Entry2* entry = &map->items.entries[i];
+        if (IS_NIL(entry->key)) continue;
+        arrayAppend(snapshot, entry->key);
+        arrayAppend(snapshot, entry->value);
     }
-    memcpy(snapshotEntries, map->items.entries, sizeof(Entry2) * snapshotCapacity);
 
     VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
 
-    for (int i = 0; i < snapshotCapacity; i++) {
-        Entry2* entry = &snapshotEntries[i];
-
-        if (IS_NIL(entry->key)) continue;
-
+    for (int i = 0; i < snapshot->count; i += 2) {
         push(closure);
-        push(entry->key);
-        push(entry->value);
+        push(snapshot->values[i]);
+        push(snapshot->values[i + 1]);
 
         VM_CALLBACK_ENTER(priorFrameCount);
 
@@ -2022,7 +2028,6 @@ Value mapEachNative(int argCount, Value* args) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
                 if (res != INTERPRET_OK) {
-                    free(snapshotEntries);
                     VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
                 }
             }
@@ -2035,7 +2040,6 @@ Value mapEachNative(int argCount, Value* args) {
 
     VM_CALLBACK_EXIT(oldExitDepth);
 
-    free(snapshotEntries);
     return NIL_VAL;
 }
 
@@ -2188,7 +2192,7 @@ Value setHasNative(int argCount, Value* args) {
 //   Integer: length
 Value setLengthNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
-    return INT_VAL(set->items.count);
+    return INT_VAL(tableLiveCount2(&set->items));
 }
 
 //: set_multiset
@@ -2197,7 +2201,7 @@ Value setLengthNative(int argCount, Value* args) {
 //   Bool: whether setting to multiset was successful
 Value setMultisetNative(int argCount, Value* args) {
     ObjSet* set = AS_SET(args[-1]);
-    if (set->items.count > 0)  {
+    if (tableLiveCount2(&set->items) > 0)  {
         runtimeError("Cannot change a non-empty set to multiset.");
         return BOOL_VAL(false);
     }
@@ -3591,7 +3595,7 @@ void initMathLibrary() {
 #define X(name, func, isDual) \
     defineNativeMethod(mathClass, name, func); \
     if (isDual) { defineNativeMethod(vm.numberClass, name, func); }
-    // .. list like X("sqrt", mathSqrtNative, true) \
+    // .. list like X("sqrt", mathSqrtNative, true)
     // ..           X("random", mathRandomNative, false)
     // then: MATH_SYSTEM_METHODS(X)
 #undef X
@@ -4897,12 +4901,12 @@ Value regexNativeConstructor(int argCount, Value* args) {
 // Returns:
 //   Bool
 Value regexTestNative(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[1])) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("test() expects 1 string argument.");
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[0]);
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
     RegexInternal* re = (RegexInternal*)instance->foreignPtr;
 
     if (re == NULL) {
@@ -4910,7 +4914,7 @@ Value regexTestNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
-    ObjString* subject = AS_STRING(args[1]);
+    ObjString* subject = AS_STRING(args[0]);
 
     pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re->code, NULL);
     int rc = pcre2_match(re->code, (unsigned char*)subject->chars, subject->length,
@@ -6046,7 +6050,11 @@ Value dirMkdtempNative(int argCount, Value* args) {
     size_t len = strlen(tmpl_in);
 
     char* tmpl = malloc(len + 1);
-    strcmp(tmpl, tmpl_in);
+    if (tmpl == NULL) {
+        runtimeError("Dir.mkdtemp() out of memory.");
+        return errorResult("mkdtemp: out of memory");
+    }
+    strcpy(tmpl, tmpl_in);
 
     if (mkdtemp(tmpl) == NULL) {
         setLastError(errno, "mkdtemp('%s') failed; %s", tmpl_in, strerror(errno));
@@ -8391,7 +8399,7 @@ Value systemExitNative(int argCount, Value* args) {
         }
 
 
-        if (rawCode < 0 | rawCode > 255) {
+        if (rawCode < 0 || rawCode > 255) {
             fprintf(stderr, "exit() Warning: exit code %" PRId64 " is out of range (0-255).", rawCode);
             code = (int)(uint8_t)rawCode;
         } else {
@@ -9318,7 +9326,7 @@ Value bufferWriteUint32Native(int argCount, Value* args) {
     }
 
     memcpy(buf->bytes + offset, &val, sizeof(uint32_t));
-    return INT_VAL((int64_t)(offset + sizeof(uint64_t)));
+    return INT_VAL((int64_t)(offset + sizeof(uint32_t)));
 }
 
 //@ Buffer

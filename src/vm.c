@@ -3143,7 +3143,7 @@ InterpretResult run() {
                             return INTERPRET_RUNTIME_ERROR;
                         }
                         */
-                        push(NUMBER_VAL(fmod(a, b)));
+                        push(FLOAT_VAL(fmod(a, b)));
 
                     }
                 }
@@ -3778,7 +3778,7 @@ InterpretResult run() {
                     push(OBJ_VAL(closure));
                     for (int i = 0; i < closure->upvalueCount; i++) {
                         uint8_t isLocal = READ_BYTE();
-                        uint16_t index = (READ_BYTE() << 8) | READ_BYTE();
+                        uint16_t index = READ_SHORT();
                         if (isLocal) {
                             closure->upvalues[i] =
                                 captureUpvalue(frame->slots + index);

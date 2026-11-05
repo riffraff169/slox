@@ -1,0 +1,5 @@
+var handle = Timer._start(5, 0, fun() {
+    print "fired";
+});
+print handle >= 0; // expect: true
+// expect: fired

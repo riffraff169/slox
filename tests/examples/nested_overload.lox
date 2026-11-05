@@ -1,0 +1,21 @@
+//System.trace(true);
+
+class Nested {
+  __neg__() {
+    return 42;
+  }
+}
+
+class Outer {
+  __neg__() {
+    var n = Nested();
+    print n;
+    return -n; // 👈 Nested operator overload!
+  }
+}
+
+var o = Outer();
+print -o;
+
+// expect: Nested instance
+// expect: 42

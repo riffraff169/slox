@@ -511,21 +511,8 @@ Token scanToken() {
         return number();
     }
     if (c == '\'') {
-        char val;
-        if (match('\\')) {
-            char escape = advance();
-            switch (escape) {
-                case 'n': val = '\n'; break;
-                case 't': val = '\t'; break;
-                case 'r': val = '\r'; break;
-                case '0': val = 0; break;
-                case '\'': val = '\''; break;
-                case '\\': val = '\\'; break;
-                default: val = escape;
-            }
-        } else {
-            val = advance();
-        }
+        match('\\');
+        advance();
 
         if (!match('\'')) {
             return errorToken("Unterminated character literal.");

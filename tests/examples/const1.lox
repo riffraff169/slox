@@ -1,0 +1,15 @@
+const a = 12;
+try {
+  a = 13;
+} catch (Error e) {
+  print "Error: ${e.message}";
+}
+print a;
+
+var b = 12;
+b = 13;
+print b;
+
+// expect: Error: Canot reassign global constant 'a'.
+// expect: 12
+// expect: 13

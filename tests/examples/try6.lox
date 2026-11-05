@@ -1,0 +1,12 @@
+try {
+  throw 123;
+} catch (Number f) {
+  print typeof(f);
+  print "Caught " + f;
+} catch (Integer f) {
+  print typeof(f);
+  print "Caught " + f;
+}
+
+// expect: Integer
+// expect: Caught 123

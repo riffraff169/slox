@@ -1,0 +1,6 @@
+var r = Regex("^\\d+");
+print r.test("123"); // expect: true
+print r.test("abc"); // expect: false
+print r.test("123", "ignored"); // expect: true
+print r.match("123")[0]; // expect: 123
+print r.get_pattern(); // expect: ^\d+

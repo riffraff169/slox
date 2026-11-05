@@ -1,0 +1,15 @@
+fun areWeHavingItYet(a, b, c) {
+  print "Yes we are!";
+  print a;
+  print b;
+  print c;
+}
+
+print areWeHavingItYet;
+areWeHavingItYet(1, 2, 3);
+
+// expect: <fn areWeHavingItYet>
+// expect: Yes we are!
+// expect: 1
+// expect: 2
+// expect: 3

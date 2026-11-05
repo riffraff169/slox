@@ -1,0 +1,4 @@
+class Brioche {}
+print Brioche();
+
+// expect: Brioche instance

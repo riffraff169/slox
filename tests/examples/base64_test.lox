@@ -1,0 +1,15 @@
+var original = "slox VM + stb_image + WezTerm!";
+
+var encoded = Base64.encode(original);
+print "Encoded: " + encoded;
+
+var decoded = Base64.decode(encoded);
+print "Decoded: " + decoded;
+
+if (original == decoded) {
+  print "Round-trip successful!";
+}
+
+// expect: Encoded: c2xveCBWTSArIHN0Yl9pbWFnZSArIFdlelRlcm0h
+// expect: Decoded: slox VM + stb_image + WezTerm!
+// expect: Round-trip successful!

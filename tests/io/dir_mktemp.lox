@@ -1,0 +1,4 @@
+var path = Dir.mktemp(Dir.tempdir() + "/slox_mktemp_test_XXXXXX").unwrap();
+print Dir.exists(path); // expect: true
+Dir.rmdir(path);
+print Dir.exists(path); // expect: false

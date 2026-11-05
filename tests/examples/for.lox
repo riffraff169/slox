@@ -1,0 +1,25 @@
+for (var i = 0; i < 10; i = i + 1) {
+  print i;
+  print "hello";
+}
+
+// expect: 0
+// expect: hello
+// expect: 1
+// expect: hello
+// expect: 2
+// expect: hello
+// expect: 3
+// expect: hello
+// expect: 4
+// expect: hello
+// expect: 5
+// expect: hello
+// expect: 6
+// expect: hello
+// expect: 7
+// expect: hello
+// expect: 8
+// expect: hello
+// expect: 9
+// expect: hello

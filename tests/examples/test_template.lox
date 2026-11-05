@@ -1,0 +1,29 @@
+require("template.lox");
+
+var tpl = Template("user_profile.html");
+
+var data = {
+  "title": "User Dashboard",
+  "username": "ldillon",
+  "role": "System Architect",
+  "status": "Active"
+};
+
+var renderedHtml = tpl.render(data);
+
+File.save("profile.html", renderedHtml);
+
+print renderedHtml;
+
+// expect: <!DOCTYPE html>
+// expect: <html>
+// expect: <head>
+// expect:     <title>User Dashboard</title>
+// expect: </head>
+// expect: <body>
+// expect:     <h1>Welcome, ldillon!</h1>
+// expect:     <p>Role: System Architect</p>
+// expect:     <p>Status: Active</p>
+// expect: </body>
+// expect: </html>
+// expect: 

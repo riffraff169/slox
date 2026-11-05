@@ -1,0 +1,15 @@
+var m = {};
+for (var i = 0; i < 100; i = i + 1) {
+    m[i] = i * 2;
+}
+
+var seen = 0;
+var keys = [];
+m.each(fun(k, v) {
+    keys.push(k);
+    GC.gc();
+    seen = seen + 1;
+});
+
+print seen; // expect: 100
+print keys.len(); // expect: 100

@@ -1,0 +1,6 @@
+var a = "first value";
+a = "updated";
+// GC here.
+print a;
+
+// expect: updated

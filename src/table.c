@@ -208,6 +208,14 @@ bool tableDelete2(Table2* table, Value key) {
     return true;
 }
 
+int tableLiveCount2(Table2* table) {
+    int count = 0;
+    for (int i = 0; i < table->capacity; i++) {
+        if (!IS_NIL(table->entries[i].key)) count++;
+    }
+    return count;
+}
+
 void tableAddAll(Table* from, Table* to) {
     for (int i = 0; i < from->capacity; i++) {
         Entry* entry = &from->entries[i];

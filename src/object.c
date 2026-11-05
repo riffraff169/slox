@@ -389,7 +389,7 @@ void printMap(FILE* stream, ObjMap* map) {
         printValueSafe(stream, entry->value);
         first = false;
     }
-    fprintf(stream, "}\n");
+    fprintf(stream, "}");
 }
 
 void printSet(FILE* stream, ObjSet* set) {
@@ -407,7 +407,7 @@ void printSet(FILE* stream, ObjSet* set) {
         }
         first = false;
     }
-    fprintf(stream, ")\n");
+    fprintf(stream, ")");
 }
 
 void printObject(FILE* stream, Value value) {
@@ -452,6 +452,12 @@ void printObject(FILE* stream, Value value) {
             break;
         case OBJ_UPVALUE:
             fprintf(stream, "upvalue");
+            break;
+        case OBJ_REGEX:
+            fprintf(stream, "<regex %s>", AS_REGEX(value)->pattern->chars);
+            break;
+        case OBJ_BOX:
+        case OBJ_VEC3:
             break;
     }
 }

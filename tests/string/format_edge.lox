@@ -1,0 +1,8 @@
+print "%s".format(); // expect: %s
+print "a%sb".format(); // expect: a%sb
+print "%d %s".format(1); // expect: 1 %s
+print "%%".format(); // expect: %
+print "%1000s".format("a").length(); // expect: 511
+
+var s = "%s%s".format("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+print s; // expect: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

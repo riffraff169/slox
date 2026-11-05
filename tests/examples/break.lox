@@ -1,0 +1,60 @@
+var i = 0;
+var j = 0;
+while (true) {
+  print i;
+  var b = i + 1;
+  if (i == 20) {
+    j = i + 5;
+    break;
+  }
+  i = i + 1;
+  print b;
+}
+
+
+print "i: ", i;
+print "j: ", j;
+
+// expect: 0
+// expect: 1
+// expect: 1
+// expect: 2
+// expect: 2
+// expect: 3
+// expect: 3
+// expect: 4
+// expect: 4
+// expect: 5
+// expect: 5
+// expect: 6
+// expect: 6
+// expect: 7
+// expect: 7
+// expect: 8
+// expect: 8
+// expect: 9
+// expect: 9
+// expect: 10
+// expect: 10
+// expect: 11
+// expect: 11
+// expect: 12
+// expect: 12
+// expect: 13
+// expect: 13
+// expect: 14
+// expect: 14
+// expect: 15
+// expect: 15
+// expect: 16
+// expect: 16
+// expect: 17
+// expect: 17
+// expect: 18
+// expect: 18
+// expect: 19
+// expect: 19
+// expect: 20
+// expect: 20
+// expect: i: 20
+// expect: j: 25

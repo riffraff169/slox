@@ -1,0 +1,17 @@
+var m = {"a": 1, "b": 2};
+print m.len(); // expect: 2
+m.remove("a");
+print m.len(); // expect: 1
+m.remove("b");
+print m.len(); // expect: 0
+print m; // expect: {}
+
+var s = Set(1, 2, 3);
+print s.length(); // expect: 3
+s.remove(1);
+print s.length(); // expect: 2
+s.remove(2);
+s.remove(3);
+print s.length(); // expect: 0
+print s; // expect: Set()
+print s.set_multiset(); // expect: true

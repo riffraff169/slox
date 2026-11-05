@@ -1,0 +1,33 @@
+var i = 0;
+var j = 0;
+for (var i = 0; i < 30; i = i + 1) {
+  print i;
+  if (i == 20) {
+    j = i + 5;
+    break;
+  }
+}
+print "j: ", j;
+
+// expect: 0
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5
+// expect: 6
+// expect: 7
+// expect: 8
+// expect: 9
+// expect: 10
+// expect: 11
+// expect: 12
+// expect: 13
+// expect: 14
+// expect: 15
+// expect: 16
+// expect: 17
+// expect: 18
+// expect: 19
+// expect: 20
+// expect: j: 25

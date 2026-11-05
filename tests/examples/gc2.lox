@@ -1,0 +1,7 @@
+var global = "string";
+{
+  var local = "another";
+  print global + local;
+}
+
+// expect: stringanother

@@ -1,0 +1,13 @@
+System.set_notation(0);
+//System.trace(true);
+import "sha1";
+var sha1 = SHA1();
+print sha1;
+var x = sha1.sha1("this is a string");
+print x;
+var y = SHA1("this is a string");
+print y;
+
+// expect: SHA1 instance
+// expect: [1366659807, 2414623441, 1185389210, 4048804650, 1299730117]
+// expect: [1366659807, 2414623441, 1185389210, 4048804650, 1299730117]

@@ -1,0 +1,6 @@
+class Toast {}
+var toast = Toast();
+toast.jam = "grape";
+print toast.jam;
+
+// expect: grape

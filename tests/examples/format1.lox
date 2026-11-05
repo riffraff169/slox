@@ -1,0 +1,33 @@
+var report = <<<EOF
+=== SYSTEM REPORT ===
+Timestamp : %s
+Status    : %s
+Nodes     : %d
+=====================
+EOF;
+
+var rep = report.format("2026-06-14", "ONLINE", 12);
+
+print rep;
+
+var rep2 = <<<EOF
+=== SYSTEM REPORT ===
+Timestamp : %s
+Status    : %s
+Nodes     : %d
+=====================
+EOF.format("2026-06-14", "ONLINE", 12);
+
+print rep2;
+
+
+// expect: === SYSTEM REPORT ===
+// expect: Timestamp : 2026-06-14
+// expect: Status    : ONLINE
+// expect: Nodes     : 12
+// expect: =====================
+// expect: === SYSTEM REPORT ===
+// expect: Timestamp : 2026-06-14
+// expect: Status    : ONLINE
+// expect: Nodes     : 12
+// expect: =====================

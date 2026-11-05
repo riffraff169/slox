@@ -1,0 +1,10 @@
+class Brioche {}
+
+print Brioche;
+
+var br = Brioche();
+
+print br;
+
+// expect: Brioche
+// expect: Brioche instance

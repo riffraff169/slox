@@ -1,0 +1,12 @@
+fun triplet(a, b, c) {
+  print a;
+  print b;
+  print c;
+}
+
+var items = [2, 3];
+triplet(1, *items);
+
+// expect: 1
+// expect: 2
+// expect: 3

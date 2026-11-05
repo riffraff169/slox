@@ -1,0 +1,30 @@
+require("argparser.lox");
+
+var ARGV = ["-v", "--output", "out.bin", "--count", "50", "input1.txt", "input2.txt"];
+
+var parser = ArgParser("slox script.lox", "Processes input files into binary output.");
+
+parser.addFlag("verbose", "v", "Enable debug logging");
+parser.addOption("output", "o", "default.bin", "Path to output file");
+parser.addOption("count", "c", "10", "Number of iterations");
+
+var args = parser.parse(ARGV);
+
+if (args != nil) {
+  print "Verbose mode: " + !!args["verbose"];
+  print "Output file:  " + args["output"];
+  print "Count:        " + args["count"];
+
+  print "\nPositional Arguments:";
+  for (var i = 0; i < args.args.length(); i += 1) {
+    print "  [" + i + "]: " + args.args[i];
+  }
+}
+
+// expect: Verbose mode: true
+// expect: Output file:  out.bin
+// expect: Count:        50
+// expect: 
+// expect: Positional Arguments:
+// expect:   [0]: input1.txt
+// expect:   [1]: input2.txt

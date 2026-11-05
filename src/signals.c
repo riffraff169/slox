@@ -104,13 +104,12 @@ uint64_t getCurrentTimeMs(void) {
 // Returns:
 //   Number: id
 Value timerStartNative(int argCount, Value* args) {
-    int offset = IS_INT(args[0]) ? 0 : 1;
-    if (argCount < offset + 3 || !IS_NUMERIC(args[offset]) || !IS_NUMERIC(args[offset + 1])) {
+    if (argCount < 3 || !IS_NUMERIC(args[0]) || !IS_NUMERIC(args[1])) {
         return INT_VAL(-1);
     }
 
-    double delayMs = AS_NUMERIC(args[offset]);
-    double intervalMs = AS_NUMERIC(args[offset + 1]);
+    double delayMs = AS_NUMERIC(args[0]);
+    double intervalMs = AS_NUMERIC(args[1]);
     Value callback = args[2];
 
     if (delayMs < 0) delayMs = 0;
@@ -260,7 +259,7 @@ void awaitTimers(void) {
 
             struct timespec req = {
                 .tv_sec = (time_t)(delay / 1000),
-                .tv_nsec = (long)((delay % 1000) / 1000000)
+                .tv_nsec = (long)((delay % 1000) * 1000000)
             };
             nanosleep(&req, NULL);
         }
