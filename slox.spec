@@ -9,7 +9,7 @@
 
 Name:       slox
 Version: 1.10.0
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
 License:    MIT
