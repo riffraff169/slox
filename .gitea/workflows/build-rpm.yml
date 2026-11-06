@@ -6,6 +6,8 @@ on:
       - 'v*'
     #branches:
     #  - master
+  # Manual trigger for packaging-only rebuilds (e.g. Release changes)
+  workflow_dispatch:
 
 jobs:
   build:

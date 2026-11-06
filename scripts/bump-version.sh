@@ -1,6 +1,8 @@
 #!/bin/bash
 # Usage: scripts/bump-version.sh 1.4.2 2
 
+set -e
+
 cd "$(dirname "$0")/.."
 
 NEW_VER=${1:-}
@@ -55,6 +57,7 @@ rm changelog.tmp
 
 git add src/version.h slox.spec
 git commit -m "Bump version to $NEW_VER-$NEW_REL"
+git push origin HEAD
 
 git tag -a "$TAG_NAME" -m "Version $NEW_VER"
 git push origin $TAG_NAME
