@@ -213,6 +213,7 @@ void pushTemp(Value value);
 Value popTemp();
 int saveTempScope();
 void restoreTempScope(int scopeMarker);
+void defineGlobalConstant(const char* name, Value value);
 void defineGlobal(const char* name, Value value);
 bool findMethod(ObjClass* klass, ObjString* name, Value* method);
 void unwindFramesForError();

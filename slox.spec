@@ -103,6 +103,10 @@ export CFLAGS="%{optflags} -g"
 make %{?_smp_mflags}
 #%make_build
 
+# Generate API documentation with the freshly built interpreter
+mkdir -p docs
+./bin/slox lib/docparser_main.lox lib/*.lox src/native.c src/signals.c -o docs/api_doc.md
+
 %install
 rm -rf %{buildroot}
 mkdir -p %{buildroot}%{_bindir}

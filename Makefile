@@ -15,8 +15,8 @@ CC = gcc
 LIBS = -lm
 LIBS += $(shell pkg-config --libs readline libpcre2-8)
 
-VERSION = 1.8.10
-RELEASE = 1
+# Version is read from src/version.h (single source of truth).
+VERSION := $(shell sed -n 's/^#define SLOX_VERSION_STRING "\(.*\)"/\1/p' src/version.h)
 RPM_SOURCES = $(HOME)/rpmbuild/SOURCES
 
 MODULES = sha1 ssl
@@ -44,11 +44,7 @@ modules:
 clean:
 	rm -rf $(SRC_DIR)/*.o $(SRC_DIR)/*.d $(BIN_DIR)
 
-update-spec:
-	sed -i 's/^Version:.*/Version:    $(VERSION)/' slox.spec
-	sed -i 's/^Release:.*/Release:    $(RELEASE)%{?dist}/' slox.spec
-
-dist: #update-spec
+dist:
 	@mkdir -p $(RPM_SOURCES)
 	tar --exclude-vcs --transform "s/^/slox-$(VERSION)\//" \
 		-czf $(RPM_SOURCES)/slox-$(VERSION).tar.gz \

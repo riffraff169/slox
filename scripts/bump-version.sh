@@ -1,12 +1,19 @@
 #!/bin/bash
-# Usage: ./bump-version.sh 1.4.2 2
+# Usage: scripts/bump-version.sh 1.4.2 2
 
-NEW_VER=$1
+cd "$(dirname "$0")/.."
+
+NEW_VER=${1:-}
 NEW_REL=${2:-1}
 TAG_NAME="v$NEW_VER"
 
 if [ -z "$NEW_VER" ]; then
-    echo "Usage: $0 <version>"
+    echo "Usage: $0 <major.minor.patch> [release]"
+    exit 1
+fi
+
+if ! [[ "$NEW_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "[!] Error: Version must be in major.minor.patch format."
     exit 1
 fi
 
@@ -15,10 +22,23 @@ if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
     exit 1;
 fi
 
-# 1. Update Makefile
-sed -i "s/^VERSION =.*/VERSION = $NEW_VER/" Makefile 2>/dev/null || \
-sed -i "s/^VERSION=.*/VERSION=$NEW_VER/" Makefile
-sed -i "s/^RELEASE =.*/RELEASE = $NEW_REL/" Makefile
+# Split version string into major, minor, patch
+IFS='.' read -r MAJOR MINOR PATCH <<< "$NEW_VER"
+PATCH=${PATCH:-0}
+
+# 1. Update version.h as the single source of truth
+cat << EOF > src/version.h
+#ifndef SLOX_VERSION_H
+#define SLOX_VERSION_H
+
+#define SLOX_VERSION_MAJOR $MAJOR
+#define SLOX_VERSION_MINOR $MINOR
+#define SLOX_VERSION_PATCH $PATCH
+
+#define SLOX_VERSION_STRING "$NEW_VER"
+
+#endif
+EOF
 
 # 2. Update slox.spec Version line
 sed -i "s/^Version:.*/Version: $NEW_VER/" slox.spec
@@ -33,12 +53,11 @@ printf "* %s %s - %s-1\n%s\n\n" "$CHG_DATE" "$USER_EMAIL" "$NEW_VER-$NEW_REL" "$
 sed -i '/^%changelog/r changelog.tmp' slox.spec
 rm changelog.tmp
 
-git add Makefile slox.spec
+git add src/version.h slox.spec
 git commit -m "Bump version to $NEW_VER-$NEW_REL"
 
 git tag -a "$TAG_NAME" -m "Version $NEW_VER"
-
 git push origin $TAG_NAME
-#echo "Version bumped to $NEW_VER in Makefile and slox.spec!"
+
 echo "Successfully bumped to Version: $NEW_VER, Release: $NEW_REL%{?dist}!"
 

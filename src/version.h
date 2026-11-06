@@ -1,0 +1,10 @@
+#ifndef SLOX_VERSION_H
+#define SLOX_VERSION_H
+
+#define SLOX_VERSION_MAJOR 1
+#define SLOX_VERSION_MINOR 8
+#define SLOX_VERSION_PATCH 10
+
+#define SLOX_VERSION_STRING "1.8.10"
+
+#endif

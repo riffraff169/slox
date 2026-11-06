@@ -629,6 +629,15 @@ bool runtimeError(const char* format, ...) {
     return true;
 }
 
+void defineGlobalConstant(const char* name, Value value) {
+    push(OBJ_VAL(copyString(name, (int)strlen(name))));
+    push(value);
+    tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
+    tableSet(&vm.globalConstants, AS_STRING(peek(1)), BOOL_VAL(true));
+    pop();
+    pop();
+}
+
 void defineGlobal(const char* name, Value value) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(value);
@@ -2689,7 +2698,7 @@ InterpretResult run() {
                     Value dummy;
 
                     if (tableGet(&vm.globalConstants, name, &dummy)) {
-                        RUNTIME_ERROR("Canot reassign global constant '%s'.", name->chars);
+                        RUNTIME_ERROR("Cannot reassign global constant '%s'.", name->chars);
                         break;
                     }
 
@@ -2705,7 +2714,7 @@ InterpretResult run() {
                     ObjString* name = READ_STRING_LONG();
                     Value dummy;
                     if (tableGet(&vm.globalConstants, name, &dummy)) {
-                        RUNTIME_ERROR("Undefined variable '%s'.", name->chars);
+                        RUNTIME_ERROR("Cannot reassign global constant '%s'.", name->chars);
                         break;
                     }
 

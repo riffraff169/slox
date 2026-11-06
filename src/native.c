@@ -35,6 +35,7 @@
 #include "memory.h"
 #include "signals.h"
 #include "vm.h"
+#include "version.h"
 
 // 1. Setup phase: Capture the original depth and current stack pointer
 #define VM_CALLBACK_INIT(oldDepth, stackStart) \
@@ -8945,6 +8946,13 @@ void initSystemLibrary(int argc, const char* argv[], const char* env[]) {
     defineClassConstant(systemClass, "Scientific", INT_VAL(1));
     defineClassConstant(systemClass, "Fixed", INT_VAL(2));
     defineClassConstant(systemClass, "Default", INT_VAL(0));
+    defineGlobalConstant("_MAJOR_VERSION_", INT_VAL(SLOX_VERSION_MAJOR));
+    defineGlobalConstant("_MINOR_VERSION_", INT_VAL(SLOX_VERSION_MINOR));
+    defineGlobalConstant("_PATCH_LEVEL_", INT_VAL(SLOX_VERSION_PATCH));
+    ObjString* ver = copyString(SLOX_VERSION_STRING, strlen(SLOX_VERSION_STRING));
+    push(OBJ_VAL(ver));
+    defineGlobalConstant("VERSION_STRING", OBJ_VAL(ver));
+    pop();
 
     //tableSet(&vm.globals, systemName, OBJ_VAL(systemClass));
 

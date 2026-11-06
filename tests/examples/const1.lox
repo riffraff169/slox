@@ -10,6 +10,6 @@ var b = 12;
 b = 13;
 print b;
 
-// expect: Error: Canot reassign global constant 'a'.
+// expect: Error: Cannot reassign global constant 'a'.
 // expect: 12
 // expect: 13
