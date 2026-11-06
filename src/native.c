@@ -1042,6 +1042,7 @@ void initCoreLibrary() {
     X("parse", mathParseNative) \
     X("from_hex", fromHexNative) \
     X("from_bin", fromBinNative) \
+    X("replace", stringReplaceNative) \
     X("tr", stringTrNative)
 
 //@ String
@@ -1782,6 +1783,73 @@ int expandSet(const char* set, int len, uint8_t* out) {
         }
     }
     return outLen;
+}
+
+//@ String
+//: replace
+// Replace a substring with another
+// Requires:
+//   String: target
+//   String: replacement
+// Returns:
+//   String
+Value stringReplaceNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("replace() expects two string arguments.");
+        return NIL_VAL;
+    }
+
+    ObjString* self = AS_STRING(args[-1]);
+    ObjString* target = AS_STRING(args[0]);
+    ObjString* replacement = AS_STRING(args[1]);
+
+    if (target->length == 0) {
+        return OBJ_VAL(self);
+    }
+
+    // 1. count occurrences of target to calculate the exact new buffer size
+    int count = 0;
+    char* ptr = self->chars;
+    while ((ptr = strstr(ptr, target->chars)) != NULL) {
+        count++;
+        ptr += target->length;
+    }
+
+    if (count == 0) {
+        return OBJ_VAL(self); // nothing to replace
+    }
+
+    // 2. compute new length (handles expansion, shrinking, or deletion)
+    int newLength = self->length + count * (replacement->length - target->length);
+    char* resultBuf = ALLOCATE(char, newLength + 1);
+
+    // 3. build the new string
+    char* dest = resultBuf;
+    ptr = self->chars;
+    char* next;
+
+    while ((next = strstr(ptr, target->chars)) != NULL) {
+        int segmentLen = next - ptr;
+
+        // copy preceding text segment
+        memcpy(dest, ptr, segmentLen);
+        dest += segmentLen;
+
+        // copy replacement text (skipped or no-op if replacement->length is 0)
+        if (replacement->length > 0) {
+            memcpy(dest, replacement->chars, replacement->length);
+            dest += replacement->length;
+        }
+
+        // advance past the target in the source string
+        ptr = next + target->length;
+    }
+
+    // copy remaining
+    strcpy(dest, ptr);
+    resultBuf[newLength] = '\0';
+
+    return OBJ_VAL(takeString(resultBuf, newLength));
 }
 
 //@ String
