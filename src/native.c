@@ -1145,7 +1145,7 @@ Value stringRfindNative(int argCount, Value* args) {
     int targetByte = -1;
 
     if (IS_INT(args[0])) {
-        int targetByte = AS_INT(args[0]);
+        targetByte = AS_INT(args[0]);
         char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
         return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
     }
@@ -1156,7 +1156,7 @@ Value stringRfindNative(int argCount, Value* args) {
         const char* nStr = needle->chars;
 
         if (nLen == 1) {
-            int targetByte = (unsigned char)nStr[0];
+            targetByte = (unsigned char)nStr[0];
             char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
             return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
         }

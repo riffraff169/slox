@@ -65,7 +65,7 @@ class Json {
       return res + "]";
     }
 
-    if (klass == Map or klass = Set) {
+    if (klass == Map or klass == Set) {
       var keys = obj.keys();
       var res = "{";
       for (var i = 0; i < keys.length(); i += 1) {
