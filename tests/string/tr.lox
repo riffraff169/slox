@@ -1,0 +1,6 @@
+print "abc".tr("a-z", "x"); // expect: xxx
+print "hello".tr("el", "ip"); // expect: hippo
+print "hello".tr("el", "i"); // expect: hiiio
+print "ab".tr("aba", "xyz"); // expect: zy
+print "ab".tr("ab", "xyz"); // expect: xy
+print "abc".tr("a-za-za-za-za-z", "x"); // expect: xxx

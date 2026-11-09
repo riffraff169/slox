@@ -1,0 +1,7 @@
+var name = "";
+for (var i = 0; i < 300; i = i + 1) name = name + "A";
+eval("class " + name + " {}");
+
+var s = create_instance(name).to_string();
+print s.length(); // expect: 311
+print s.slice(301, 311); // expect:  instance>

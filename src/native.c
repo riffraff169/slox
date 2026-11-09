@@ -789,12 +789,18 @@ Value getSuperclassNative(int argCount, Value* args) {
 Value objectToStringNative(int argCount, Value* args) {
     //if (argCount != 0) return NIL_VAL;
     ObjInstance* instance = AS_INSTANCE(args[-1]);
+    ObjString* name = instance->obj.klass->name;
 
-    char buffer[256];
-    int length = snprintf(buffer, sizeof(buffer), "<%s instance>",
-            instance->obj.klass->name->chars);
+    if (name->length > INT_MAX - 11) return NIL_VAL;
 
-    return OBJ_VAL(copyString(buffer, length));
+    int length = name->length + 11;
+    char* buffer = ALLOCATE(char, (size_t)length + 1);
+
+    buffer[0] = '<';
+    memcpy(buffer + 1, name->chars, (size_t)name->length);
+    memcpy(buffer + 1 + name->length, " instance>", 11);
+
+    return OBJ_VAL(takeString(buffer, length));
 }
 
 //@ Object
@@ -1535,7 +1541,7 @@ Value stringTokensNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadCenterNative(int argCount, Value* args) {
-    if (argCount < 2) {
+    if (argCount < 2 || !IS_STRING(args[1])) {
         runtimeError("pad_center() expects a width integer and a 1-character pad string.");
         return NIL_VAL;
     }
@@ -1854,23 +1860,48 @@ Value stringFormatNative(int argCount, Value* args) {
     return OBJ_VAL(result);
 }
 
-int expandSet(const char* set, int len, uint8_t* out) {
-    int outLen = 0;
-    for (int i = 0; i < len; i++) {
-        if (i + 2 < len && set[i + 1] == '-') {
-            uint8_t start = (uint8_t)set[i];
-            uint8_t end = (uint8_t)set[i + 2];
-            if (start <= end) {
-                for (uint8_t c = start; c <= end; c++) {
-                    out[outLen++] = c;
-                }
-            }
-            i += 2;
-        } else {
-            out[outLen++] = (uint8_t)set[i];
+typedef struct {
+    const char* set;
+    int len;
+    int i;
+    int rangePos;
+    int rangeEnd;
+    bool inRange;
+} SetIterator;
+
+static void setIteratorInit(SetIterator* it, const char* set, int len) {
+    it->set = set;
+    it->len = len;
+    it->i = 0;
+    it->rangePos = 0;
+    it->rangeEnd = 0;
+    it->inRange = false;
+}
+
+static bool setIteratorNext(SetIterator* it, uint8_t* out) {
+    while (it->i < it->len || it->inRange) {
+        if (it->inRange) {
+            *out = (uint8_t)it->rangePos++;
+            if (it->rangePos > it->rangeEnd) it->inRange = false;
+            return true;
         }
+
+        if (it->i + 2 < it->len && it->set[it->i + 1] == '-') {
+            uint8_t start = (uint8_t)it->set[it->i];
+            uint8_t end = (uint8_t)it->set[it->i + 2];
+            it->i += 3;
+            if (start <= end) {
+                it->rangePos = start;
+                it->rangeEnd = end;
+                it->inRange = true;
+            }
+            continue;
+        }
+
+        *out = (uint8_t)it->set[it->i++];
+        return true;
     }
-    return outLen;
+    return false;
 }
 
 //@ String
@@ -1961,18 +1992,29 @@ Value stringTrNative(int argCount, Value* args) {
         map[i] = (uint8_t)i;
     }
 
-    uint8_t fromChars[256];
-    uint8_t toChars[256];
-    int fromLen = expandSet(fromStr->chars, fromStr->length, fromChars);
-    int toLen = expandSet(toStr->chars, toStr->length, toChars);
+    SetIterator fromIt, toIt;
+    setIteratorInit(&fromIt, fromStr->chars, fromStr->length);
+    setIteratorInit(&toIt, toStr->chars, toStr->length);
 
-    if (fromLen == 0) {
-        return OBJ_VAL(self);
-    }
+    uint8_t src, nextDst;
+    uint8_t lastDst = 0;
+    bool haveNextDst = setIteratorNext(&toIt, &nextDst);
+    bool haveAnyDst = haveNextDst;
 
-    for (int i = 0; i < fromLen; i++) {
-        uint8_t src = fromChars[i];
-        uint8_t dst = (i < toLen) ? toChars[i] : toChars[toLen - 1];
+    while (setIteratorNext(&fromIt, &src)) {
+        uint8_t dst;
+
+        if (haveNextDst) {
+            dst = nextDst;
+            lastDst = dst;
+            haveNextDst = setIteratorNext(&toIt, &nextDst);
+        } else if (haveAnyDst) {
+            dst = lastDst;
+        } else {
+            runtimeError("tr(): replacement set cannot be empty.");
+            return NIL_VAL;
+        }
+
         map[src] = dst;
     }
 
@@ -3254,7 +3296,7 @@ Value fromHexNative(int argCount, Value* args) {
     const char* str = strObj->chars;
     char* endptr;
 
-    unsigned long long result = strtoul(str, NULL, 16);
+    unsigned long long result = strtoull(str, &endptr, 16);
 
     if (str == endptr) return NIL_VAL;
 

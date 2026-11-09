@@ -1,0 +1,1 @@
+"abc".tr("a", ""); // expect: tr(): replacement set cannot be empty.

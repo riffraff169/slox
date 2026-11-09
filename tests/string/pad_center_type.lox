@@ -1,0 +1,1 @@
+"a".pad_center(5, 1); // expect: pad_center() expects a width integer and a 1-character pad string.

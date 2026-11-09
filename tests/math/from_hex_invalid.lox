@@ -1,0 +1,2 @@
+print Math.from_hex("zz"); // expect: nil
+print Math.from_hex("1f"); // expect: 31
