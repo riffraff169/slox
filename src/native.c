@@ -216,22 +216,75 @@ Value evalNative(int argCount, Value* args) {
 // Returns
 //   Instance: instance of class
 Value createInstanceNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("create_instance() expects a string argument.");
+    if (argCount < 1) {
+        runtimeError("create_instance() requires at least a class name or class object.");
         return NIL_VAL;
     }
 
-    ObjString* className = AS_STRING(args[0]);
-    Value classVal;
-
-    if (!GET_GLOBAL(className, &classVal) | !IS_CLASS(classVal)) {
-        runtimeError("No such class: %s", className->chars);
+    // 1. resolve the class from either a string name or a direct class reference
+    ObjClass* klass = NULL;
+    if (IS_STRING(args[0])) {
+        ObjString* className = AS_STRING(args[0]);
+        Value classVal;
+        // look up class in globals
+        if (!GET_GLOBAL(className, &classVal) || !IS_CLASS(classVal)) {
+            runtimeError("Class '%s' not found or is not a class.", className->chars);
+            return NIL_VAL;
+        }
+        klass = AS_CLASS(classVal);
+    } else if (IS_CLASS(args[0])) {
+        klass = AS_CLASS(args[0]);
+    } else {
+        runtimeError("create_instance() first argument must be a string class name or a Class.");
         return NIL_VAL;
     }
 
-    ObjClass* klass = AS_CLASS(classVal);
+    // 2. allocate the new instance
     ObjInstance* instance = newInstance(klass);
-    return OBJ_VAL(instance);
+    push(OBJ_VAL(instance));
+
+    // 3. check if the class defines an 'init' constructor method
+    Value initializer;
+    bool hasInit = tableGet(&klass->methods, vm.initString, &initializer);
+
+    if (hasInit) {
+        // prepare to call ini():
+        // push the instance as 'this' (receiver for the method call)
+        push(OBJ_VAL(instance));
+
+        // push all remaining aruments (args[1] to args[argCount - 1]) onto the stack
+        int callArgCount = argCount - 1;
+        for (int i = 1; i < argCount; i++) {
+            push(args[i]);
+        }
+
+        // init vm callback tracking
+        VM_CALLBACK_INIT(oldExitDepth, callbackStackStart);
+        VM_CALLBACK_ENTER(priorFrameCount);
+        int priorTryCount = vm.tryCount;
+
+        // invoke the initializer method
+        // the number of arguments passed to callValue is (argCount - 1)
+        if (callValue(initializer, callArgCount)) {
+            if (vm.frameCount > priorFrameCount) {
+                InterpretResult result = run();
+                VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart, priorFrameCount);
+            }
+
+            if (vm.tryCount < priorTryCount) {
+                VM_CALLBACK_EXIT(oldExitDepth);
+                pop();
+                return NIL_VAL;
+            }
+
+            pop();
+        }
+        VM_CALLBACK_EXIT(oldExitDepth);
+    }
+
+    Value created = pop();
+
+    return created;
 }
 
 //= program(filename)
@@ -267,7 +320,18 @@ Value programNative(int argCount, Value* args) {
         nameLength -= 4;
     }
 
-    ObjString* className = copyString(pathStart, nameLength);
+    char* sanitizedName = malloc(nameLength + 1);
+    memcpy(sanitizedName, pathStart, nameLength);
+    sanitizedName[nameLength] = '\0';
+
+    for (int i = 0; i < nameLength; i++) {
+        if (sanitizedName[i] == '-' || sanitizedName[i] == ' ' || sanitizedName[i] == '.') {
+            sanitizedName[i] = '_';
+        }
+    }
+    ObjString* className = copyString(sanitizedName, nameLength);
+    free(sanitizedName);
+
     push(OBJ_VAL(className));
 
     ObjClass* klass = newClass(className);
@@ -1563,8 +1627,8 @@ Value stringPadRightNative(int argCount, Value* args) {
 //   Value: width
 //   String: fillchar
 Value stringPadLeftNative(int argCount, Value* args) {
-    if (argCount < 2) {
-        runtimeError("pad_left() expects a number and a 1-character pd string.");
+    if (argCount < 2 || !IS_STRING(args[1])) {
+        runtimeError("pad_left() expects a number and a 1-character pad string.");
         return NIL_VAL;
     }
 
@@ -1598,6 +1662,21 @@ Value stringPadLeftNative(int argCount, Value* args) {
     buffer[width] = '\0';
 
     return OBJ_VAL(takeString(buffer, width));
+}
+
+static int formatInteger(char* buf, size_t size, const char* spec, int specLen,
+                         char specifier, int64_t value) {
+    char intSpecBuf[64];
+    memcpy(intSpecBuf, spec, specLen - 1);
+    intSpecBuf[specLen - 1] = 'l';
+    intSpecBuf[specLen] = 'l';
+    intSpecBuf[specLen + 1] = specifier;
+    intSpecBuf[specLen + 2] = '\0';
+
+    if (specifier == 'x' || specifier == 'X') {
+        return snprintf(buf, size, intSpecBuf, (unsigned long long)value);
+    }
+    return snprintf(buf, size, intSpecBuf, (long long)value);
 }
 
 //@ String
@@ -1652,9 +1731,16 @@ Value stringFormatNative(int argCount, Value* args) {
 
             // incomplete specifier at end of string: output remaining characters
             if (i >= formatStr->length) {
-                for (int k = specStart; k < formatStr->length; k++) {
-                    buffer[length++] = formatStr->chars[k];
+                int remaining = formatStr->length - specStart;
+
+                if (length + remaining + 1 > capacity) {
+                    int oldCapacity = capacity;
+                    while (length + remaining + 1 > capacity) capacity *= 2;
+                    buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
                 }
+
+                memcpy(buffer + length, formatStr->chars + specStart, (size_t)remaining);
+                length += remaining;
                 break;
             }
 
@@ -1701,7 +1787,8 @@ Value stringFormatNative(int argCount, Value* args) {
                 case 'i':
                     {
                         if (IS_INT(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_INT(val));
+                            formattedLen = formatInteger(tempBuf, sizeof(tempBuf),
+                                    specBuf, specLen, specifier, AS_INT(val));
                         } else {
                             formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
                         }
@@ -1729,7 +1816,8 @@ Value stringFormatNative(int argCount, Value* args) {
                 case 'X':
                     {
                         if (IS_INT(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, (unsigned int)AS_INT(val));
+                            formattedLen = formatInteger(tempBuf, sizeof(tempBuf),
+                                    specBuf, specLen, specifier, AS_INT(val));
                         } else {
                             formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
                         }
@@ -7204,13 +7292,19 @@ Value structUnpackNative(int argCount, Value* args) {
             continue;
         }
 
-        int width = 0;
+        int64_t width64 = 0;
         bool hasWidth = false;
         while (isdigit((unsigned char)*f)) {
-            width = width * 10 + (*f - '0');
+            width64 = width64 * 10 + (*f - '0');
+            if (width64 > INT_MAX) {
+                pop();
+                runtimeError("Struct.unpack(): field width too large.");
+                return NIL_VAL;
+            }
             hasWidth = true;
             f++;
         }
+        int width = (int)width64;
 
         const char type = *f;
         if (type == '\0') break;
@@ -7236,13 +7330,17 @@ Value structUnpackNative(int argCount, Value* args) {
                       return NIL_VAL;
         }
 
-        int requiredTotal = (type == 's' || type == 'x') ? (hasWidth ? width : elemSize) : (elemSize * count);
+        int64_t requiredTotal64 = (type == 's' || type == 'x')
+                ? (hasWidth ? (int64_t)width : (int64_t)elemSize)
+                : ((int64_t)elemSize * count);
 
-        if (offset + requiredTotal > bufferlen) {
+        if (requiredTotal64 < 0 || requiredTotal64 > (int64_t)bufferlen - offset) {
             pop();
             runtimeError("Buffer underflow: Data string is too short to unpack the specified format.");
             return NIL_VAL;
         }
+
+        int requiredTotal = (int)requiredTotal64;
 
         if (type == 'x') {
             offset += requiredTotal;

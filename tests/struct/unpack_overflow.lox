@@ -1,0 +1,1 @@
+Struct.unpack("1000000000i", "A"); // expect: Buffer underflow: Data string is too short to unpack the specified format.

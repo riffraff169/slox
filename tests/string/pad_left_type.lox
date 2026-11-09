@@ -1,0 +1,1 @@
+"a".pad_left(5, 1); // expect: pad_left() expects a number and a 1-character pad string.

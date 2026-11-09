@@ -2519,6 +2519,39 @@ static void statement() {
     }
 }
 
+bool compileModuleAsClass(const char* source, ObjClass* klass) {
+    initScanner(source);
+
+    parser.hadError = false;
+    parser.panicMode = false;
+    advance();
+
+    // set up the class compmiler context so methods, includes, and constants
+    // bind directly to our dynamically created class
+    ClassCompiler classCompiler;
+    classCompiler.hasSuperclass = false;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+
+
+    while (!check(TOKEN_EOF)) {
+        if (match(TOKEN_INCLUDE)) {
+            consume(TOKEN_IDENTIFIER, "Expect class name after 'include'.");
+            namedVariable(parser.previous, false);
+            emitByte(OP_INCLUDE);
+            consume(TOKEN_SEMICOLON, "Expect ';' after include statement.");
+        } else if (match(TOKEN_CONST)) {
+            classConstant();
+        } else {
+            method();
+        }
+    }
+    currentClass = classCompiler.enclosing;
+
+    return !parser.hadError;
+}
+
+
 ObjFunction* compileModule(const char* source, ObjString* filename) {
     initScanner(source);
     Compiler compiler;

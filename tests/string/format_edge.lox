@@ -6,3 +6,16 @@ print "%1000s".format("a").length(); // expect: 511
 
 var s = "%s%s".format("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 print s; // expect: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+var f = "%1000d%";
+for (var i = 0; i < 300; i = i + 1) f = f + "9";
+var r = f.format(5);
+print r.length(); // expect: 812
+print r[511] == 37; // expect: true
+print r[811] == 57; // expect: true
+
+print "%d".format(5000000000); // expect: 5000000000
+print "%d".format(-5000000000); // expect: -5000000000
+print "%x".format(5000000000); // expect: 12a05f200
+print "%x".format(-1); // expect: ffffffffffffffff
+print "%08d".format(42); // expect: 00000042

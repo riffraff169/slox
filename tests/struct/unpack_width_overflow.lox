@@ -1,0 +1,1 @@
+Struct.unpack("999999999999999999999i", "A"); // expect: Struct.unpack(): field width too large.
