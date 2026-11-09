@@ -8274,7 +8274,7 @@ Value ioBindNative(int argCount, Value* args) {
     }
 
     if (bind(so->fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        return errorResult("Could not bind to %s:%s: %s", ip, port, strerror(errno));
+        return errorResult("Could not bind to %s:%d: %s", ip, port, strerror(errno));
     }
 
     return okResult(args[-1]);
@@ -8706,11 +8706,15 @@ Value systemBacktraceNative(int argCount, Value* args) {
         const char* file = function->filename ? function->filename->chars : "unknown";
         const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
 
-        char lineBuffer[256];
-        int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+        int len = snprintf(NULL, 0, "[%s:%d] in %s%s",
+                file, line, fnName, (function->name == NULL) ? "" : "()");
+        if (len < 0) continue;
+
+        char* lineBuffer = ALLOCATE(char, (size_t)len + 1);
+        snprintf(lineBuffer, (size_t)len + 1, "[%s:%d] in %s%s",
                 file, line, fnName, (function->name == NULL) ? "" : "()");
 
-        ObjString* lineStr = copyString(lineBuffer, len);
+        ObjString* lineStr = takeString(lineBuffer, len);
         push(OBJ_VAL(lineStr));
         arrayAppend(stackTrace, OBJ_VAL(lineStr));
         pop();
@@ -8744,6 +8748,7 @@ Value systemShowStackNative(int argCount, Value* args) {
 // Returns:
 //   Integer: current precision
 Value systemGetPrecisionNative(int argCount, Value* args) {
+    return INT_VAL(vm.numPrecision);
 }
 
 //@ System

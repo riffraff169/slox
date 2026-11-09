@@ -543,11 +543,15 @@ bool runtimeError(const char* format, ...) {
             const char* file = function->filename ? function->filename->chars : "unknown";
             const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
 
-            char lineBuffer[256];
-            int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+            int len = snprintf(NULL, 0, "[%s:%d] in %s%s",
+                    file, line, fnName, (function->name == NULL) ? "" : "()");
+            if (len < 0) continue;
+
+            char* lineBuffer = ALLOCATE(char, (size_t)len + 1);
+            snprintf(lineBuffer, (size_t)len + 1, "[%s:%d] in %s%s",
                     file, line, fnName, (function->name == NULL) ? "" : "()");
 
-            ObjString* lineStr = copyString(lineBuffer, len);
+            ObjString* lineStr = takeString(lineBuffer, len);
             push(OBJ_VAL(lineStr));
             arrayAppend(stackTrace, OBJ_VAL(lineStr));
             pop();
@@ -3530,11 +3534,15 @@ InterpretResult run() {
                                 const char* file = function->filename ? function->filename->chars : "unknown";
                                 const char* fnName = (function->name == NULL) ? "script" : function->name->chars;
 
-                                char lineBuffer[256];
-                                int len = snprintf(lineBuffer, sizeof(lineBuffer), "[%s:%d] in %s%s",
+                                int len = snprintf(NULL, 0, "[%s:%d] in %s%s",
+                                        file, line, fnName, (function->name == NULL) ? "" : "()");
+                                if (len < 0) continue;
+
+                                char* lineBuffer = ALLOCATE(char, (size_t)len + 1);
+                                snprintf(lineBuffer, (size_t)len + 1, "[%s:%d] in %s%s",
                                         file, line, fnName, (function->name == NULL) ? "" : "()");
 
-                                ObjString* lineStr = copyString(lineBuffer, len);
+                                ObjString* lineStr = takeString(lineBuffer, len);
                                 push(OBJ_VAL(lineStr));
                                 arrayAppend(stackTrace, OBJ_VAL(lineStr));
                                 pop();

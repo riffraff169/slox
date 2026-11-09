@@ -1,0 +1,2 @@
+System.set_precision(3);
+print System.get_precision(); // expect: 3

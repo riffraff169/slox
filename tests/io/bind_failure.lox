@@ -1,0 +1,8 @@
+var s = IO.tcp();
+var r = s.bind("192.0.2.1", 0);
+if (r) {
+    print "unexpected";
+} else {
+    print "error"; // expect: error
+}
+s.close();
