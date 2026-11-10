@@ -1,0 +1,1 @@
+print Timer._start(0, 0, 123); // expect: -1

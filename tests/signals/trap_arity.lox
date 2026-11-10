@@ -1,0 +1,1 @@
+Signal.trap(); // expect: trap() expects a signal number and a callback function.

@@ -44,7 +44,12 @@ static void c_signal_handler(int sig) {
 // Returns:
 //   Nil
 Value lox_signal_trap(int argCount, Value* args) {
-    int sig = AS_NUMERIC(args[0]);
+    if (argCount < 2 || !IS_NUMERIC(args[0]) || !isCallable(args[1])) {
+        runtimeError("trap() expects a signal number and a callback function.");
+        return NIL_VAL;
+    }
+
+    int sig = (int)AS_NUMERIC(args[0]);
     Value callback = args[1];
 
     if (sig <= 0 || sig >= MAX_SIGNALS) {
@@ -104,7 +109,8 @@ uint64_t getCurrentTimeMs(void) {
 // Returns:
 //   Number: id
 Value timerStartNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMERIC(args[0]) || !IS_NUMERIC(args[1])) {
+    if (argCount < 3 || !IS_NUMERIC(args[0]) || !IS_NUMERIC(args[1]) ||
+            !isCallable(args[2])) {
         return INT_VAL(-1);
     }
 
@@ -177,6 +183,55 @@ Value timerStopAllNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
+static void unwindTimerFrames(int priorFrameCount) {
+    while (vm.frameCount > priorFrameCount) {
+        CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
+        while (frame->deferHooks.count > 0) {
+            Value deferVal = frame->deferHooks.values[--frame->deferHooks.count];
+            vmCall(AS_CLOSURE(deferVal), 0);
+        }
+        freeValueArray(&frame->deferHooks);
+        vm.frameCount--;
+    }
+}
+
+static void runTimerCallback(Value callback) {
+    int oldExitDepth = vm.nativeExitDepth;
+    Value* callbackStackStart = vm.stackTop;
+    int priorFrameCount = vm.frameCount;
+    int priorTryCount = vm.tryCount;
+
+    vm.nativeExitDepth = vm.frameCount;
+
+    push(callback);
+    if (callValue(callback, 0)) {
+        if (vm.frameCount > priorFrameCount) {
+            CallFrame* frame = &vm.frames[vm.frameCount - 1];
+            frame->isTimer = true;
+            InterpretResult result = run();
+
+            if (result == INTERPRET_RUNTIME_ERROR) {
+                unwindTimerFrames(priorFrameCount);
+            }
+        }
+    }
+
+    if (vm.tryCount < priorTryCount) {
+        // The callback's exception was handled by an outer try block. Its
+        // stack has already been unwound to the catch target, so leave it.
+        vm.nativeExitDepth = oldExitDepth;
+        return;
+    }
+
+    if (vm.tryCount > priorTryCount) {
+        vm.tryCount = priorTryCount;
+    }
+
+    vm.stackTop = callbackStackStart;
+    vm.nativeExitDepth = oldExitDepth;
+}
+
 void processTimers(void) {
     uint64_t now = getCurrentTimeMs();
 
@@ -184,19 +239,7 @@ void processTimers(void) {
         SloxTimer* t = &timerMgr.entries[i];
 
         if (t->active && now >= t->fireAtMs) {
-            int initialFrameCount = vm.frameCount;
-
-            push(t->callback);
-            if (callValue(t->callback, 0)) {
-                if (vm.frameCount > initialFrameCount) {
-                    CallFrame* frame = &vm.frames[vm.frameCount - 1];
-                    frame->isTimer = true;
-                    run();
-                } else {
-                    pop();
-                }
-            }
-            //callValue(t->callback, 0);
+            runTimerCallback(t->callback);
 
             if (t->active && t->intervalMs > 0) {
                 t->fireAtMs = now + t->intervalMs;

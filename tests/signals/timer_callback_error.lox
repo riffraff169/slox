@@ -1,0 +1,9 @@
+try {
+    Timer._start(0, 0, Dir.chdir);
+    var i = 0;
+    while (i < 50000) { i = i + 1; }
+} catch (e) {
+    print "caught"; // expect: caught
+}
+System.show_stack(); // expect: [SHOW_STACK]: stack: 2
+print "done"; // expect: done

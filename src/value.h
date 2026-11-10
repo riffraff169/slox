@@ -13,7 +13,6 @@ typedef struct {
 typedef enum {
     VAL_BOOL,
     VAL_NIL,
-    VAL_NUMBER,
     VAL_FLOAT,
     VAL_INT, 
     VAL_OBJ,
@@ -34,7 +33,6 @@ typedef struct {
 
 #define IS_BOOL(value)              ((value).type == VAL_BOOL)
 #define IS_NIL(value)               ((value).type == VAL_NIL)
-#define IS_NUMBER(value)            ((value).type == VAL_NUMBER)
 #define IS_INT(value)               ((value).type == VAL_INT)
 #define IS_FLOAT(value)             ((value).type == VAL_FLOAT)
 #define IS_OBJ(value)               ((value).type == VAL_OBJ)
@@ -51,7 +49,6 @@ typedef struct {
 
 #define BOOL_VAL(value)             ((Value){VAL_BOOL, {.boolean = value}})
 #define NIL_VAL                     ((Value){VAL_NIL, {.number = 0}})
-#define NUMBER_VAL(value)           ((Value){VAL_NUMBER, {.number = value}})
 #define INT_VAL(value)              ((Value){VAL_INT, {.integer = value}})
 #define FLOAT_VAL(value)            ((Value){VAL_FLOAT, {.number = value}})
 #define OBJ_VAL(object)             ((Value){VAL_OBJ, {.obj = (Obj*)object}})
@@ -95,7 +92,6 @@ static inline bool isIntegerDouble(double d) {
 static inline double valueToDouble(Value value) {
     if (IS_INT(value)) return (double)AS_INT(value);
     if (IS_FLOAT(value)) return AS_FLOAT(value);
-    //if (IS_NUMBER(value)) return AS_NUMBER(value);
     return 0.0;
 }
 

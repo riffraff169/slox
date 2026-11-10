@@ -797,67 +797,6 @@ static Value vec3LengthSquaredNative(int argCount, Value* args) {
 }
 
 /*
-static Value vec3AddNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
-
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b = AS_VEC3(args[1]);
-    Vec3 c;
-    c.x = a.x + b.x;
-    c.y = a.y + b.y;
-    c.z = a.z + b.z;
-    return VEC3_VAL(c);
-}
-
-static Value vec3SubNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
-
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b = AS_VEC3(args[1]);
-    Vec3 c;
-    c.x = a.x - b.x;
-    c.y = a.y - b.y;
-    c.z = a.z - b.z;
-    return VEC3_VAL(c);
-}
-
-static Value vec3MulNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_VEC3(args[1])) return args[0];
-
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b = AS_VEC3(args[1]);
-    Vec3 c;
-    c.x = a.x * b.x;
-    c.y = a.y * b.y;
-    c.z = a.z * b.z;
-    return VEC3_VAL(c);
-}
-
-static Value vec3DivNative(int argCount, Value* args) {
-    if (argCount < 3 || !IS_NUMBER(args[1])) return args[0];
-
-    Vec3 a = AS_VEC3(args[0]);
-    double b = AS_FLOAT(args[1]);
-    Vec3 c;
-    c.x = a.x / b;
-    c.y = a.y / b;
-    c.z = a.z / b;
-    return VEC3_VAL(c);
-}
-
-static Value vec3NegNative(int argCount, Value* args) {
-    if (argCount < 2) return args[0];
-
-    Vec3 a = AS_VEC3(args[0]);
-    Vec3 b;
-    b.x = -b.x;
-    b.y = -b.y;
-    b.z = -b.z;
-    return VEC3_VAL(b);
-}
-*/
-
-/*
 static inline Value getCheckTarget(int argCount, Value* args) {
     if (IS_NATIVE(args[-1])) {
         return (argCount > 0) ? args[0] : NIL_VAL;
