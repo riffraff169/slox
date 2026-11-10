@@ -363,6 +363,7 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     Local* local = &current->locals[current->localCount++];
     local->depth = 0;
     local->isCaptured = false;
+    local->isConst = false;
     if (type != TYPE_FUNCTION) {
         local->name.start = "this";
         local->name.length = 4;

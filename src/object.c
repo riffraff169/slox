@@ -145,6 +145,7 @@ static ObjString* allocateString(char* chars, int length,
         uint32_t hash) {
     ObjString* string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
     string->length = length;
+    string->utf8Length = -1;
     string->chars = chars;
     string->hash = hash;
     string->obj.klass = vm.stringClass;

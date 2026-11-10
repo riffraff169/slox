@@ -1099,6 +1099,7 @@ void initCoreLibrary() {
     X("to_lower", stringToLowerNative) \
     X("len", stringLenNative) \
     X("length", stringLenNative) \
+    X("length_utf8", stringLenUTF8Native) \
     X("split", stringSplitNative) \
     X("slice", stringSliceNative) \
     X("substring", stringSliceNative) \
@@ -1322,6 +1323,14 @@ int count_utf8_codepoints(const char* s, int byte_len) {
 // Returns:
 //   Integer: length of string
 Value stringLenUTF8Native(int argCount, Value* args) {
+    ObjString* str = AS_STRING(args[-1]);
+
+    if (str->utf8Length != -1) {
+        return INT_VAL(str->utf8Length);
+    }
+
+    str->utf8Length = count_utf8_codepoints(str->chars, str->length);
+    return INT_VAL(str->utf8Length);
 }
 
 //@ String
@@ -3444,9 +3453,6 @@ Value mathRoundNative(int argCount, Value* args) {
     double rounded = strtod(buf, NULL);
 
     return FLOAT_VAL(rounded);
-}
-
-Value valueToNumber(Value val) {
 }
 
 Value valueToFloat(Value val) {

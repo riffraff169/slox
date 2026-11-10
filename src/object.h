@@ -103,6 +103,7 @@ typedef struct ObjNative {
 struct ObjString {
     Obj obj;
     int length;
+    int utf8Length;
     char* chars;
     uint32_t hash;
 };
