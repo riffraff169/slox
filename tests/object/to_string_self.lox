@@ -1,0 +1,9 @@
+class Foo {
+    to_string() {
+        return this;
+    }
+}
+
+print "x" + Foo();
+
+// expect: xFoo instance

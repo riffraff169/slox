@@ -104,7 +104,10 @@ Value clockNative(int argCount, Value* args) {
 Value strNative(int argCount, Value* args) {
     if (argCount != 1) return OBJ_VAL(copyString("", 0));
 
-    return valueToString(args[0]);
+    Value result = valueToString(args[0]);
+    if (!IS_STRING(result)) return NIL_VAL;
+
+    return result;
 }
 
 //= typeof
@@ -2039,8 +2042,10 @@ Value stringTrNative(int argCount, Value* args) {
 Value stringInitNative(int argCount, Value* args) {
     if (argCount < 1) return OBJ_VAL(copyString("", 0));
 
-    ObjString* str = AS_STRING(valueToString(args[0]));
-    return OBJ_VAL(str);
+    Value result = valueToString(args[0]);
+    if (!IS_STRING(result)) return NIL_VAL;
+
+    return result;
 }
 
 //@ String
@@ -4115,7 +4120,12 @@ Value arrayJoinNative(int argCount, Value* args) {
     for (int i = 0; i < array->count; i++) {
         Value item = array->values[i];
 
-        ObjString* s = AS_STRING(valueToString(item));
+        Value converted = valueToString(item);
+        if (!IS_STRING(converted)) {
+            FREE_ARRAY(char, buffer, capacity);
+            return NIL_VAL;
+        }
+        ObjString* s = AS_STRING(converted);
         push(OBJ_VAL(s));
 
         int sepLen = (i < array->count - 1) ? sep->length : 0;

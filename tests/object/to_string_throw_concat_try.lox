@@ -1,0 +1,15 @@
+class Foo {
+    to_string() {
+        return undefined_variable_here;
+    }
+}
+
+try {
+    print "x" + Foo();
+} catch (Error e) {
+    print "caught: " + e.message;
+}
+print "after";
+
+// expect: caught: Undefined variable 'undefined_variable_here'.
+// expect: after

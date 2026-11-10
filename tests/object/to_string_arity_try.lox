@@ -1,0 +1,15 @@
+class Foo {
+    to_string(a) {
+        return "foo";
+    }
+}
+
+try {
+    print "x" + Foo();
+} catch (Error e) {
+    print "caught: " + e.message;
+}
+print "after";
+
+// expect: caught: Expected 1 arguments but got 0
+// expect: after

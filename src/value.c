@@ -42,40 +42,38 @@ Value valueToString(Value value) {
 
         if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
             int oldExitDepth = vm.nativeExitDepth;
-            Value* callbackStackStart = vm.stackTop;
             int framesBefore = vm.frameCount;
 
             push(value);
 
-            if (callValue(method, 0)) {
-                if (vm.frameCount > framesBefore) {
-                    vm.nativeExitDepth = framesBefore;
-                    InterpretResult result = run();
-
-                    if (result == INTERPRET_RUNTIME_ERROR) {
-                        vm.stackTop = callbackStackStart;
-                        vm.nativeExitDepth = oldExitDepth;
-                        return NIL_VAL; // return nil on runtime error
-                    }
-                }
-
-                Value resultVal = pop();
+            if (!callValue(method, 0)) {
                 vm.nativeExitDepth = oldExitDepth;
-
-                if (IS_STRING(resultVal)) {
-                    return resultVal;
-                }
-
-                if (valuesEqual(resultVal, value)) {
-                    return resultVal;
-                }
-
-                if (!valuesEqual(resultVal, value)) {
-                    return valueToString(resultVal);
-                }
+                return NIL_VAL;
             }
 
-            vm.nativeExitDepth = oldExitDepth;
+            if (vm.frameCount > framesBefore) {
+                vm.nativeExitDepth = framesBefore;
+                InterpretResult result = run();
+                vm.nativeExitDepth = oldExitDepth;
+
+                if (vm.exceptionThrown || result == INTERPRET_RUNTIME_ERROR) {
+                    return NIL_VAL; // exception is pending, or the error was already reported
+                }
+            } else {
+                vm.nativeExitDepth = oldExitDepth;
+            }
+
+            Value resultVal = pop();
+
+            if (IS_STRING(resultVal)) {
+                return resultVal;
+            }
+
+            // A to_string() that returns the receiver itself would recurse
+            // forever; fall through to the default representation instead.
+            if (!valuesEqual(resultVal, value)) {
+                return valueToString(resultVal);
+            }
         }
     }
 

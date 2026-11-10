@@ -2852,9 +2852,19 @@ InterpretResult run() {
                         Value rawA = peek(1);
 
                         Value bVal = valueToString(rawB);
+                        if (!IS_STRING(bVal)) {
+                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                            frame = &vm.frames[vm.frameCount - 1];
+                            break;
+                        }
                         push(bVal);
 
                         Value aVal = valueToString(rawA);
+                        if (!IS_STRING(aVal)) {
+                            if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                            frame = &vm.frames[vm.frameCount - 1];
+                            break;
+                        }
                         push(aVal);
 
                         ObjString* aStr = AS_STRING(aVal);
@@ -3264,6 +3274,7 @@ InterpretResult run() {
             case OP_PRINT:
                 {
                     int argCount = READ_BYTE();
+                    bool printFailed = false;
 
                     for (int i = argCount - 1; i >= 0; i--) {
                         Value value = peek(i);
@@ -3271,45 +3282,50 @@ InterpretResult run() {
                             ObjInstance* instance = AS_INSTANCE(value);
                             Value method;
 
-                            Value* stackStart = vm.stackTop;
                             if (tableGet(&instance->obj.klass->methods, vm.toString, &method)) {
                                 // 1. setup
                                 int oldExitDepth = vm.nativeExitDepth;
-                                Value* callbackStackStart = vm.stackTop;
                                 int framesBefore = vm.frameCount;
 
                                 push(value);
-                                if (callValue(method, 0)) {
-                                    if (vm.frameCount > framesBefore) {
-                                        vm.nativeExitDepth = framesBefore;
-                                        InterpretResult result = run();
-
-                                        if (result == INTERPRET_RUNTIME_ERROR) {
-                                            vm.stackTop = callbackStackStart;
-                                            vm.nativeExitDepth = oldExitDepth;
-                                            return INTERPRET_RUNTIME_ERROR;
-                                        }
-                                    }
-
-                                    //vm.nativeExitDepth = vm.frameCount - 1;
-                                    //run();
-                                    Value result = pop();
-
-                                    if (!IS_NIL(result)) {
-                                        printValueMain(result);
-                                    }
+                                if (!callValue(method, 0)) {
+                                    vm.nativeExitDepth = oldExitDepth;
+                                    printFailed = true;
+                                    break;
                                 }
-                                vm.nativeExitDepth = oldExitDepth;
+
+                                if (vm.frameCount > framesBefore) {
+                                    vm.nativeExitDepth = framesBefore;
+                                    InterpretResult result = run();
+                                    vm.nativeExitDepth = oldExitDepth;
+
+                                    if (vm.exceptionThrown ||
+                                            result == INTERPRET_RUNTIME_ERROR) {
+                                        printFailed = true;
+                                        break;
+                                    }
+                                } else {
+                                    vm.nativeExitDepth = oldExitDepth;
+                                }
+
+                                Value result = pop();
+                                if (!IS_NIL(result)) {
+                                    printValueMain(result);
+                                }
                             } else {
                                 printValueMain(value);
                             }
-                            //vm.stackTop = stackStart;
-                            //pop();
                         } else {
                             printValueMain(value);
-                            //if (i > 0) printf(" ");
                         }
                     }
+
+                    if (printFailed) {
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
+                        break;
+                    }
+
                     popn(argCount);
                     printf("\n");
                 }
@@ -3583,8 +3599,9 @@ InterpretResult run() {
             case OP_CALL:
                 {
                     int argCount = READ_BYTE();
-                    if (!callValue(peek(argCount), argCount) || vm.frameCount == 0) {
-                        RUNTIME_ERROR("Call failed.");
+                    if (!callValue(peek(argCount), argCount)) {
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
 
