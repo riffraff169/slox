@@ -71,7 +71,7 @@ static Entry2* findEntry2(Entry2* entries, int capacity, Value key) {
             } else {
                 return tombstone != NULL ? tombstone : entry;
             }
-        } else if (valuesEqual(entry->key, key)) {
+        } else if (valuesEqualStrict(entry->key, key)) {
             return entry;
         }
 

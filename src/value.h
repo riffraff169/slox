@@ -63,6 +63,7 @@ typedef struct {
 
 Value valueToString(Value value);
 bool valuesEqual(Value a, Value b);
+bool valuesEqualStrict(Value a, Value b);
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, Value value);
 void freeValueArray(ValueArray* array);

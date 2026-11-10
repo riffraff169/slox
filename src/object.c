@@ -170,6 +170,12 @@ static uint32_t hashString(const char* key, int length) {
     return hashBytes((const uint8_t*)key, length);
 }
 
+static uint32_t hashDouble(double n) {
+    // Normalize -0.0 so that equal floats (0.0 == -0.0) hash equally.
+    if (n == 0.0) n = 0.0;
+    return hashBytes((const uint8_t*)&n, sizeof(double));
+}
+
 uint32_t hashValue(Value value) {
     switch (value.type) {
         case VAL_INT:
@@ -178,10 +184,7 @@ uint32_t hashValue(Value value) {
                 return hashBytes((const uint8_t*)&n, sizeof(uint64_t));
             }
         case VAL_FLOAT:
-            {
-                double n = AS_FLOAT(value);
-                return hashBytes((const uint8_t*)&n, sizeof(double));
-            }
+            return hashDouble(AS_FLOAT(value));
         case VAL_OBJ:
             {
                 if (IS_STRING(value)) {
@@ -194,6 +197,9 @@ uint32_t hashValue(Value value) {
         case VAL_VEC3:
             {
                 Vec3 v = AS_VEC3(value);
+                if (v.x == 0.0) v.x = 0.0;
+                if (v.y == 0.0) v.y = 0.0;
+                if (v.z == 0.0) v.z = 0.0;
                 return hashBytes((const uint8_t*)&v, sizeof(Vec3));
             }
         case VAL_BOOL:

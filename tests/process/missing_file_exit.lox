@@ -1,0 +1,5 @@
+var missing = Process.capture("./bin/slox /definitely/not/a/real/file.lox >/dev/null 2>&1; echo $?").unwrap();
+print missing.trim(); // expect: 74
+
+var directory = Process.capture("./bin/slox . >/dev/null 2>&1; echo $?").unwrap();
+print directory.trim(); // expect: 74

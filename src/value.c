@@ -194,3 +194,26 @@ bool valuesEqual(Value a, Value b) {
     }
 }
 
+bool valuesEqualStrict(Value a, Value b) {
+    if (a.type != b.type) return false;
+
+    switch (a.type) {
+        case VAL_BOOL:
+            return AS_BOOL(a) == AS_BOOL(b);
+        case VAL_NIL:
+            return true;
+        case VAL_INT:
+            return AS_INT(a) == AS_INT(b);
+        case VAL_FLOAT:
+            return AS_FLOAT(a) == AS_FLOAT(b);
+        case VAL_VEC3:
+            return (AS_VEC3(a).x == AS_VEC3(b).x) &&
+                (AS_VEC3(a).y == AS_VEC3(b).y) &&
+                (AS_VEC3(a).z == AS_VEC3(b).z);
+        case VAL_OBJ:
+            return AS_OBJ(a) == AS_OBJ(b);
+        default:
+            return false;
+    }
+}
+

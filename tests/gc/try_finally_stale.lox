@@ -1,0 +1,28 @@
+GC.stress_mode(GC.StressMode);
+
+fun allocateGarbage(n) {
+    for (var i = 0; i < n; i = i + 1) {
+        var temp = "garbage_" + i;
+    }
+}
+
+fun returnThroughFinally(i) {
+    try {
+        return "value_" + i;
+    } finally {
+        allocateGarbage(5);
+    }
+}
+
+for (var cycle = 0; cycle < 100; cycle = cycle + 1) {
+    returnThroughFinally(cycle);
+    allocateGarbage(5);
+    try {
+        allocateGarbage(5);
+    } finally {
+        allocateGarbage(5);
+    }
+}
+
+GC.stress_mode(GC.NormalMode);
+print "ok"; // expect: ok
