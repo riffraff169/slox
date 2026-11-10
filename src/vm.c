@@ -86,6 +86,7 @@
 VM vm;
 InterpretResult run();
 static void resetStack();
+static void clearTryBlock(TryBlock* block);
 //void initArrayMethods();
 
 typedef enum {
@@ -249,6 +250,7 @@ void raiseException(Value exceptionValue) {
         target->catchIp = NULL;
 
         if (target->finallyIp == NULL) {
+            clearTryBlock(target);
             vm.tryCount--;
         }
         push(exceptionValue);
@@ -264,6 +266,7 @@ void raiseException(Value exceptionValue) {
 
         currentFrame->ip = finallyTargetIp;
     } else {
+        clearTryBlock(target);
         vm.tryCount--;
         raiseException(exceptionValue);
     }
@@ -509,6 +512,13 @@ static void resetStack() {
     vm.stackTop = vm.stack;
     vm.frameCount = 0;
     vm.openUpvalues = NULL;
+}
+
+static void clearTryBlock(TryBlock* block) {
+    block->isReturning = false;
+    block->hasUncaughtException = false;
+    block->returnValue = NIL_VAL;
+    block->uncaughtException = NIL_VAL;
 }
 
 bool runtimeError(const char* format, ...) {
@@ -3354,6 +3364,7 @@ InterpretResult run() {
                 {
                     TryBlock* block = &vm.tryStack[vm.tryCount - 1];
                     if (block->finallyIp == NULL) {
+                        clearTryBlock(block);
                         vm.tryCount--;
                     }
                     uint16_t catchOffset = READ_SHORT();
@@ -3364,15 +3375,20 @@ InterpretResult run() {
             case OP_END_FINALLY:
                 {
                     TryBlock* block = &vm.tryStack[--vm.tryCount];
+                    bool isReturning = block->isReturning;
+                    Value returnValue = block->returnValue;
+                    bool hasUncaughtException = block->hasUncaughtException;
+                    Value uncaughtException = block->uncaughtException;
+                    clearTryBlock(block);
 
-                    if (block->isReturning) {
+                    if (isReturning) {
                         // check if an enclosing try-finally block needs to run before returning
                         if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
                             TryBlock* outerBlock = &vm.tryStack[vm.tryCount - 1];
                             if (outerBlock->finallyIp != NULL) {
                                 // pass the return state to the outer finally handler
                                 outerBlock->isReturning = true;
-                                outerBlock->returnValue = block->returnValue;
+                                outerBlock->returnValue = returnValue;
 
                                 uint8_t* finallyTargetIp = outerBlock->finallyIp;
                                 outerBlock->finallyIp = NULL; // mark as executing
@@ -3382,7 +3398,7 @@ InterpretResult run() {
                                 break;
                             }
                         }
-                        push(block->returnValue);
+                        push(returnValue);
 
                         Value result = pop();
                         vm.frameCount--;
@@ -3396,8 +3412,8 @@ InterpretResult run() {
                         break;
                     }
 
-                    if (block->hasUncaughtException) {
-                        raiseException(block->uncaughtException);
+                    if (hasUncaughtException) {
+                        raiseException(uncaughtException);
                         frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
@@ -3901,6 +3917,7 @@ InterpretResult run() {
                             break;
                         }
                         vm.tryCount--;
+                        clearTryBlock(block);
                     }
 
                     if (divertedToFinally) {
