@@ -1,0 +1,2 @@
+Process.exec("/definitely/not/a/real/binary", ["x"], {"SLOX_EXEC_TEST": "ok"});
+// expect: exec() failed: No such file or directory

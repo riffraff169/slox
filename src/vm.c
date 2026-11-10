@@ -1450,15 +1450,6 @@ void runAtExitHooks() {
     }
 }
 
-int vmAddRoot(Value value) {
-    if (!IS_OBJ(value)) return -1;
-
-    writeValueArray(&vm.globalRoots, value);
-}
-
-void vmRemoveRoot(int handle) {
-}
-
 void initVM(int argc, const char* argv[], const char* env[]) {
     resetStack();
     vm.objects = NULL;
@@ -1651,7 +1642,7 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vmAnchor(vm.valString);
     vm.errString = copyString("err", 3);
     vmAnchor(vm.errString);
-    vm.isSomeString = copyString("is_some", 7);
+    vm.isSomeString = copyString("__is_some", 9);
     vmAnchor(vm.isSomeString);
 
     vm.isPipeString = copyString("__is_pipe", 9);
@@ -3221,16 +3212,16 @@ InterpretResult run() {
                     } else if (IS_FLOAT(valueVal) && isExactInteger(AS_FLOAT(valueVal))) {
                         val = (int64_t)AS_FLOAT(valueVal);
                     } else {
-                        runtimeError("Left operand for '>>' must be an integer or exactl float.");
+                        runtimeError("Left operand for '>>' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
                     if (IS_INT(amountVal)) {
                         amount = AS_INT(amountVal);
                     } else if (IS_FLOAT(amountVal) && isExactInteger(AS_FLOAT(amountVal))) {
-                        val = (int64_t)AS_FLOAT(amountVal);
+                        amount = (int64_t)AS_FLOAT(amountVal);
                     } else {
-                        runtimeError("Right operand for '>>' must be an integer or exactl float.");
+                        runtimeError("Right operand for '>>' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 

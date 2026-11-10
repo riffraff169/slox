@@ -1,0 +1,2 @@
+fun f(a = foo) { print a; }
+// expect: [line 1] Error at 'foo': Default parameter must be a constant (number, string, bool, or nil).

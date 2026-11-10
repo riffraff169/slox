@@ -1,0 +1,5 @@
+var m = {1: "x"};
+print m.has(1); // expect: true
+print m.has(2); // expect: false
+print m.has("1"); // expect: false
+print m.has(nil); // expect: false

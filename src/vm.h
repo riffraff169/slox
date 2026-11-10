@@ -207,8 +207,6 @@ Value objectClassNameNative(int argCount, Value* args);
 Value classNameNative(int argCount, Value* args);
 Value classSuperclassNative(int argCount, Value* args);
 Value createResult(Value value, Value errval, bool isok);
-int vmAddRoot(Value value);
-void vmRemoveRoot(int handle);
 void pushTemp(Value value);
 Value popTemp();
 int saveTempScope();

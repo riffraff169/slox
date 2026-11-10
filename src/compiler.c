@@ -1532,6 +1532,7 @@ static Value parseConstant() {
         return NIL_VAL;
     } else {
         errorAtCurrent("Default parameter must be a constant (number, string, bool, or nil).");
+        return NIL_VAL;
     }
 }
 

@@ -198,7 +198,9 @@ static TokenType identifierType() {
         case 'i': 
                   if (scanner.current - scanner.start > 1) {
                       switch (scanner.start[1]) {
-                          case 'f': if (scanner.current - scanner.start == 2) return TOKEN_IF;
+                          case 'f':
+                                    if (scanner.current - scanner.start == 2) return TOKEN_IF;
+                                    break;
                           case 'm': return checkKeyword(2, 4, "port", TOKEN_IMPORT);
                           case 'n': 
                                     {

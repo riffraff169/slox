@@ -1,0 +1,4 @@
+print System.debug_print(); // expect: false
+print System.debug_print(true); // expect: true
+print System.debug_print(false); // expect: false
+print System.debug_print(true, 1, 2, 3); // expect: true

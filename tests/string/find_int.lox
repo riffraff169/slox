@@ -1,0 +1,3 @@
+print "abc".find(98); // expect: 1
+print "abc".find(122); // expect: -1
+print "abc".find("b"); // expect: 1

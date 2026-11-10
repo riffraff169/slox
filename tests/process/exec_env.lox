@@ -1,0 +1,2 @@
+Process.exec("/bin/sh", ["-c", "echo $SLOX_EXEC_TEST"], {"SLOX_EXEC_TEST": "ok"});
+// expect: ok

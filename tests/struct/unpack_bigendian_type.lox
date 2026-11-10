@@ -1,0 +1,1 @@
+Struct.unpack("i", "AAAA", 1); // expect: Struct.unpack() big-endian argument must be a boolean.

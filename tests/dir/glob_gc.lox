@@ -1,0 +1,6 @@
+GC.stress_mode(GC.StressMode);
+var files = Dir.glob("tests/dir/fixtures/*.txt");
+GC.stress_mode(GC.NormalMode);
+
+print files.len(); // expect: 3
+print Set(files[0], files[1], files[2]).len(); // expect: 3

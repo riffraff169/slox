@@ -1,0 +1,4 @@
+var some = Option(1);
+var none = Option();
+print some.is_some(); // expect: true
+print none.is_some(); // expect: false

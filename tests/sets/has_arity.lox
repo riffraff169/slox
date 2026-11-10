@@ -1,0 +1,1 @@
+Set().has(); // expect: has() expects exactly 1 argument.

@@ -1,0 +1,2 @@
+print Process.signal(999999, 0); // expect: false
+print Process.signal(Process.pid(), 0); // expect: true

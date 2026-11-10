@@ -1162,7 +1162,7 @@ Value stringContainsNative(int argCount, Value* args) {
 // Returns:
 //   Integer: index of first position of string
 Value stringFindNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
+    if (argCount != 1 || (!IS_STRING(args[0]) && !IS_INT(args[0]))) {
         return NIL_VAL;
     }
 
@@ -2137,7 +2137,7 @@ Value mapValuesNative(int argCount, Value* args) {
 // Returns:
 //   Bool: true if key exists
 Value mapHasNative(int argCount, Value* args) {
-    if (argCount != 1 || !IS_STRING(args[0])) {
+    if (argCount != 1 || IS_NIL(args[0])) {
         return BOOL_VAL(false);
     }
 
@@ -2288,6 +2288,11 @@ Value setNativeConstructor(int argCount, Value* args) {
 // Returns:
 //   Set
 Value setAddNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("add() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
     ObjSet* set = AS_SET(args[-1]);
     Value key = args[0];
 
@@ -2376,6 +2381,11 @@ Value setRemoveNative(int argCount, Value* args) {
 // Returns:
 //   Bool
 Value setHasNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("has() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
     ObjSet* set = AS_SET(args[-1]);
     Value key = args[0];
 
@@ -4604,6 +4614,8 @@ Value arraySortSliceNative(int argCount, Value* args) {
     if (IS_INT(args[1])) {
         end = AS_INT(args[1]);
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
+        end = (int64_t)AS_FLOAT(args[1]);
+    } else {
         runtimeError("sort_slice() end index must be an integer.");
         return NIL_VAL;
     }
@@ -4988,6 +5000,11 @@ Value optionUnwrapNative(int argCount, Value* args) {
 // Returns:
 //   Value
 Value optionUnwrapOrNative(int argCount, Value* args) {
+    if (argCount < 1) {
+        runtimeError("unwrap_or() requires a default value.");
+        return NIL_VAL;
+    }
+
     ObjInstance* instance = AS_INSTANCE(args[-1]);
 
     Value is_some = NIL_VAL;
@@ -5011,9 +5028,8 @@ Value optionIssomeNative(int argCount, Value* args) {
 
     Value is_some = NIL_VAL;
     tableGet(&instance->fields, vm.isSomeString, &is_some);
-    
-    if (isTruthy(is_some))
-        return BOOL_VAL(true);
+
+    return BOOL_VAL(isTruthy(is_some));
 }
 
 //@ Option
@@ -5027,8 +5043,7 @@ Value optionIsnoneNative(int argCount, Value* args) {
     Value is_some = NIL_VAL;
     tableGet(&instance->fields, vm.isSomeString, &is_some);
 
-    if (isFalsey(is_some))
-        return BOOL_VAL(true);
+    return BOOL_VAL(isFalsey(is_some));
 }
 
 void initResultAndOptionClass() {
@@ -5226,7 +5241,7 @@ int closeFileInternal(ObjInstance* inst) {
             isPipe = AS_BOOL(isPipeVal);
         }
 
-        int res;
+        int res = 0;
 
         if (isPipe) {
             res = pclose(handle);
@@ -6348,7 +6363,9 @@ Value dirGlobNative(int argCount, Value* args) {
     if (res == 0) {
         for (size_t i = 0; i < results.gl_pathc; i++) {
             Value pathVal = OBJ_VAL(copyString(results.gl_pathv[i], (int)strlen(results.gl_pathv[i])));
+            push(pathVal);
             arrayAppend(array, pathVal);
+            pop();
         }
         globfree(&results);
     } else if (res == GLOB_NOMATCH) {
@@ -6694,35 +6711,34 @@ Value processExecStatic(int argCount, Value* args) {
     }
     argv[arrayCount + 1] = NULL;
 
-    if (argCount >= 3 && IS_MAP(args[2])) {
+    if (argCount >= 3 && !IS_NIL(args[2])) {
         if (!IS_MAP(args[2])) {
             for (int i = 0; i <= arrayCount; i++) {
                 free(argv[i]);
-                free(argv);
-                runtimeError("exec() third argument must be a Map or nil.");
-                return NIL_VAL;
             }
-
-            ObjMap* envMap = AS_MAP(args[2]);
-            for (int i = 0; i < envMap->items.capacity; i++) {
-                Entry2* entry = &envMap->items.entries[i];
-
-                if (!IS_NIL(entry->key)) {
-                    char* valStr = valueToCString(entry->value);
-                    char* keyStr = valueToCString(entry->key);
-                    setenv(keyStr, valStr, 1);
-                    free(valStr);
-                    free(keyStr);
-                }
-            }
+            free(argv);
+            runtimeError("exec() third argument must be a Map or nil.");
+            return NIL_VAL;
         }
 
+        ObjMap* envMap = AS_MAP(args[2]);
+        for (int i = 0; i < envMap->items.capacity; i++) {
+            Entry2* entry = &envMap->items.entries[i];
+
+            if (!IS_NIL(entry->key)) {
+                char* valStr = valueToCString(entry->value);
+                char* keyStr = valueToCString(entry->key);
+                setenv(keyStr, valStr, 1);
+                free(valStr);
+                free(keyStr);
+            }
+        }
     }
 
     execvp(path, argv);
 
     int errsv = errno;
-    for (int i = 0; i < arrayCount; i++) {
+    for (int i = 0; i <= arrayCount; i++) {
         free(argv[i]);
     }
     free(argv);
@@ -6908,7 +6924,13 @@ Value processCloseStatic(int argCount, Value* args) {
 // Returns:
 //   Bool
 Value processSignalStatic(int argCount, Value* args) {
-    int offset = (IS_INT(args[0]) || IS_FLOAT(args[0])) ? 0 : 1;
+    if (argCount < 2) {
+        runtimeError("Process.signal() expects (pid, signal).");
+        return NIL_VAL;
+    }
+
+    int offset = (IS_INT(args[0]) ||
+            (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0])))) ? 0 : 1;
 
     if (argCount < offset + 2) {
         runtimeError("Process.signal() expects (pid, signal).");
@@ -6930,9 +6952,9 @@ Value processSignalStatic(int argCount, Value* args) {
     }
 
     if (IS_INT(sigVal)) {
-        pid = (int)AS_INT(sigVal);
+        sig = (int)AS_INT(sigVal);
     } else if (IS_FLOAT(sigVal) && isExactInteger(AS_FLOAT(sigVal))) {
-        pid = (int)AS_FLOAT(sigVal);
+        sig = (int)AS_FLOAT(sigVal);
     } else {
         runtimeError("Process.signal() signal argument must be an integer.");
         return NIL_VAL;
@@ -7111,6 +7133,10 @@ Value structPackNative(int argCount, Value* args) {
         bigend = false;
         p++;
     } else if (argCount >= 3) {
+        if (!IS_BOOL(args[2])) {
+            runtimeError("Struct.pack() big-endian argument must be a boolean.");
+            return NIL_VAL;
+        }
         bigend = AS_BOOL(args[2]);
     }
 
@@ -7320,6 +7346,10 @@ Value structUnpackNative(int argCount, Value* args) {
         bigend = false;
         f++;
     } else if (argCount >= 3) {
+        if (!IS_BOOL(args[2])) {
+            runtimeError("Struct.unpack() big-endian argument must be a boolean.");
+            return NIL_VAL;
+        }
         bigend = AS_BOOL(args[2]);
     }
 
@@ -7782,7 +7812,7 @@ void initGCLibrary() {
 void ioDestructor(ObjInstance* inst) {
     if (inst->foreignPtr != NULL) {
         SocketInternal* so = (SocketInternal*)inst->foreignPtr;
-        if (so->fd < 0) {
+        if (so->fd >= 0) {
             close(so->fd);
         }
         FREE(SocketInternal, inst->foreignPtr);
@@ -7807,14 +7837,15 @@ Value ioCallHandler(int argCount, Value* args) {
     int sockType = (strcmp(klass->name->chars, "udp") == 0) ? SOCK_DGRAM : SOCK_STREAM;
 
     int fd = socket(AF_INET, sockType, 0);
+    if (fd == -1) {
+        pop();
+        runtimeError("Could not create OS socket.");
+        return NIL_VAL;
+    }
+
     if (sockType == SOCK_STREAM) {
         int opt = 1;
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
-    }
-
-    if (fd == -1) {
-        runtimeError("Could not create OS socket.");
-        return NIL_VAL;
     }
 
     SocketInternal* so = ALLOCATE(SocketInternal, 1);
@@ -8819,7 +8850,7 @@ Value systemSetNotationNative(int argCount, Value* args) {
 // Returns;
 //   Bool: mode
 Value systemDebugPrintNative(int argCount, Value* args) {
-    if (argCount < 0) {
+    if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
             runtimeError("debug_print() expects a boolean argument.");
             return NIL_VAL;

@@ -1,0 +1,2 @@
+var ifport = 1;
+print ifport; // expect: 1

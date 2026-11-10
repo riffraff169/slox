@@ -1,0 +1,2 @@
+var f = File.stderr();
+print f.close().unwrap(); // expect: 0

@@ -1,0 +1,7 @@
+var a = [3, 1, 2, 4];
+a.sort_slice(0, 4.0);
+print a; // expect: [1, 2, 3, 4]
+
+var b = [5, 3, 4, 1];
+b.sort_slice(0.0, 3.0);
+print b; // expect: [3, 4, 5, 1]
