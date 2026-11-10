@@ -329,8 +329,12 @@ static void markRoots() {
     markArray(&vm.globalRoots);
     markObject((Obj*)vm.includePaths);
     for (int i = 0; i < vm.tryCount; i++) {
-        markValue(vm.tryStack[i].returnValue);
-        markValue(vm.tryStack[i].uncaughtException);
+        if (vm.tryStack[i].isReturning) {
+            markValue(vm.tryStack[i].returnValue);
+        }
+        if (vm.tryStack[i].hasUncaughtException) {
+            markValue(vm.tryStack[i].uncaughtException);
+        }
     }
 
     for (int i = 0; i < MAX_SIGNALS; i++) {

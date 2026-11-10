@@ -59,23 +59,41 @@ char* readFile(const char* path) {
     if (file == NULL) {
         fprintf(stderr, "Could not open file \"%s\".\n", path);
         return NULL;
-        //exit(74);
     }
 
-    fseek(file, 0L, SEEK_END);
-    size_t fileSize = ftell(file);
-    rewind(file);
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        fprintf(stderr, "Could not seek file \"%s\".\n", path);
+        fclose(file);
+        return NULL;
+    }
 
+    long fileSizeLong = ftell(file);
+    if (fileSizeLong < 0) {
+        fprintf(stderr, "Could not determine size of \"%s\".\n", path);
+        fclose(file);
+        return NULL;
+    }
+
+    if (fseek(file, 0L, SEEK_SET) != 0) {
+        fprintf(stderr, "Could not rewind file \"%s\".\n", path);
+        fclose(file);
+        return NULL;
+    }
+
+    size_t fileSize = (size_t)fileSizeLong;
     char* buffer = (char*)malloc(fileSize + 1);
     if (buffer == NULL) {
         fprintf(stderr, "Not enough memory to read \"%s\".\n", path);
+        fclose(file);
         exit(74);
     }
 
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
-    if (bytesRead < fileSize) {
+    if (bytesRead < fileSize || ferror(file)) {
         fprintf(stderr, "Could not read file \"%s\".\n", path);
-        exit(74);
+        free(buffer);
+        fclose(file);
+        return NULL;
     }
 
     buffer[bytesRead] = '\0';
@@ -150,7 +168,7 @@ char* locateAndReadLoxFile(const char* name) {
 
 static void runFile(const char* path) {
     char* source = readFile(path);
-    if (source == NULL) return;
+    if (source == NULL) exit(74);
 
     ObjString* string = copyString("__main__", 8);
     push(OBJ_VAL(string));
