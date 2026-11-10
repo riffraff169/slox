@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.10.3
+Version: 1.10.4
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -245,6 +245,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Tue  Nov 10 2026 Lance Dillon <riffraff169@yahoo.com> - 1.10.4-1-1
+- added length_utf8()
+
 * Mon  Nov 09 2026 Lance Dillon <riffraff169@yahoo.com> - 1.10.3-1-1
 - more fixes and tests
 
