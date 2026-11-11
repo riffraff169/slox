@@ -1,0 +1,15 @@
+// program() builds a class from the contents of a .lox file.
+var P = program("examples/vessel.lox");
+print P;                 // expect: vessel
+
+var p = P();
+print p;                 // expect: vessel instance
+print p.maxVolume;       // expect: 100
+
+p.svol(42);
+print p.currentVolume;   // expect: 42
+
+var q = P();
+q.svol(7);
+print p.currentVolume;   // expect: 42
+print q.currentVolume;   // expect: 7

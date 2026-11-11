@@ -1,0 +1,10 @@
+// Regression: program() compiles a class at runtime, so the class, its name,
+// and the source filename must stay rooted while compilation allocates.
+GC.stress_mode(GC.StressMode);
+
+var V = program("tests/program/fixtures/my-vessel.lox");
+var v = V("stress");
+print V;                // expect: my_vessel
+print v.describe();     // expect: stress:10
+
+GC.stress_mode(GC.NormalMode);

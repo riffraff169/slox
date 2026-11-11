@@ -1,0 +1,2 @@
+program("does-not-exist.lox");
+// expect: Could not locate or read class file 'does-not-exist.lox'.

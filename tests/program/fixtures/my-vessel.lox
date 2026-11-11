@@ -1,0 +1,8 @@
+init(name) {
+    this.name = name;
+    this.volume = 10;
+}
+
+describe() {
+    return this.name + ":" + String(this.volume);
+}

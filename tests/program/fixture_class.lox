@@ -1,0 +1,8 @@
+// The class name comes from the basename with the extension removed and
+// characters other than letters/digits replaced by underscores.
+var V = program("tests/program/fixtures/my-vessel.lox");
+print V;                       // expect: my_vessel
+
+var v = V("boat");
+print v;                       // expect: my_vessel instance
+print v.describe();            // expect: boat:10
