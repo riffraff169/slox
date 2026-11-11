@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.10.5
+Version: 1.10.6
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -245,6 +245,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Wed  Nov 11 2026 Lance Dillon <riffraff169@yahoo.com> - 1.10.6-1-1
+- Make compiler locals and upvalues dynamically allocated
+
 * Wed  Nov 11 2026 Lance Dillon <riffraff169@yahoo.com> - 1.10.5-1-1
 - fixed foreach and a few other fixes
 
