@@ -73,6 +73,8 @@ typedef enum {
     OP_JUMP_IF_FALSE,
     OP_JUMP_IF_TRUE,
     OP_LOOP,
+    OP_BREAK,
+    OP_CONTINUE,
     OP_CALL,
     OP_INVOKE,
     OP_INVOKE_LONG,
@@ -105,6 +107,7 @@ typedef enum {
     OP_UNPACK,
     OP_DEFER,
     OP_DEFER_LONG,
+    OP_FINALLY,
     OP_END_FINALLY
 } OpCode;
 

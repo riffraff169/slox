@@ -1,0 +1,11 @@
+// continue must skip to the next foreach iteration.
+foreach (x in [1, 2, 3, 4]) {
+    if (x == 2) continue;
+    print x;
+}
+print "after";
+
+// expect: 1
+// expect: 3
+// expect: 4
+// expect: after

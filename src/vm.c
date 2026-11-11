@@ -500,6 +500,11 @@ static void clearTryBlock(TryBlock* block) {
     block->hasUncaughtException = false;
     block->returnValue = NIL_VAL;
     block->uncaughtException = NIL_VAL;
+
+    block->isJumping = false;
+    block->jumpTarget = NULL;
+    block->jumpTargetSlot = 0;
+    block->isExecutingFinally = false;
 }
 
 bool runtimeError(const char* format, ...) {
@@ -2334,6 +2339,57 @@ static void closeUpvalues(Value* last) {
     }
 }
 
+// Discard every try block belonging to the current frame. Used when a frame
+// is about to be popped, so stale catch/finally handlers cannot survive it.
+static void popCurrentFrameTryBlocks(void) {
+    while (vm.tryCount > 0 &&
+            vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+        clearTryBlock(&vm.tryStack[--vm.tryCount]);
+    }
+}
+
+static void finishControlJump(CallFrame* frame, uint8_t* target, int targetSlot) {
+    Value* slot = frame->slots + targetSlot;
+    closeUpvalues(slot);
+    vm.stackTop = slot;
+    frame->ip = target;
+}
+
+// A break/continue is a jump within the current frame. Unwind try blocks whose
+// body does not contain the target, so their catch handlers are discarded and
+// any pending finally runs first. Returns false if execution was diverted into
+// a finally (frame->ip is already updated); otherwise the caller may jump.
+static bool unwindForJump(CallFrame* frame, uint8_t* target, int targetSlot) {
+    while (vm.tryCount > 0) {
+        TryBlock* block = &vm.tryStack[vm.tryCount - 1];
+        if (block->frameCount != vm.frameCount) break;
+
+        if (block->startIp != NULL && block->endIp != NULL &&
+                target >= block->startIp && target < block->endIp) {
+            // This try encloses the jump target; keep it active.
+            break;
+        }
+
+        if (block->finallyIp != NULL && !block->isExecutingFinally) {
+            block->isJumping = true;
+            block->jumpTarget = target;
+            block->jumpTargetSlot = targetSlot;
+
+            // Locals declared inside the try body are out of scope while the
+            // finally runs; close their upvalues before discarding the slots.
+            closeUpvalues(block->stackTop);
+            vm.stackTop = block->stackTop;
+            frame->ip = block->finallyIp;
+            return false;
+        }
+
+        clearTryBlock(block);
+        vm.tryCount--;
+    }
+
+    return true;
+}
+
 static void defineMethod(ObjString* name) {
     Value method = peek(0);
     ObjClass* klass = AS_CLASS(peek(1));
@@ -2463,6 +2519,18 @@ static bool processPendingUnwind() {
 
         vm.pendingUnwindActive = false;
         vm.pendingUnwindException = NIL_VAL;
+
+        // The exception was raised from inside this block's own finally. That
+        // finally must not run a second time; drop the block and keep
+        // propagating the new exception outward.
+        if (target->isExecutingFinally) {
+            clearTryBlock(target);
+            vm.tryCount--;
+            raiseException(exception);
+            continue;
+        }
+
+        closeUpvalues(target->stackTop);
         vm.stackTop = target->stackTop;
 
         CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
@@ -2484,10 +2552,7 @@ static bool processPendingUnwind() {
             target->hasUncaughtException = true;
             target->uncaughtException = exception;
 
-            uint8_t* finallyTargetIp = target->finallyIp;
-            target->finallyIp = NULL;
-
-            currentFrame->ip = finallyTargetIp;
+            currentFrame->ip = target->finallyIp;
             return true;
         }
 
@@ -3464,6 +3529,7 @@ InterpretResult run() {
 
                     uint16_t catchOffset = READ_SHORT();
                     uint16_t finallyOffset = READ_SHORT();
+                    uint16_t endOffset = READ_SHORT();
 
                     /*
                     if (vm.tryCount >= TRY_STACK_MAX) {
@@ -3495,9 +3561,17 @@ InterpretResult run() {
                     block->stackTop = vm.stackTop;
                     block->catchIp = catchOffset == 0 ? NULL : frame->ip + catchOffset;
                     block->finallyIp = finallyOffset == 0 ? NULL : frame->ip + finallyOffset;
+                    block->startIp = frame->ip;
+                    block->endIp = endOffset == 0 ? NULL : frame->ip + endOffset;
 
                     block->isReturning = false;
                     block->hasUncaughtException = false;
+
+                    block->isJumping = false;
+                    block->jumpTarget = NULL;
+                    block->jumpTargetSlot = 0;
+                    block->isExecutingFinally = false;
+
                     vm.exceptionThrown = false;
                 }
                 break;
@@ -3513,6 +3587,16 @@ InterpretResult run() {
                     frame->ip += catchOffset;
                 }
                 break;
+            case OP_FINALLY:
+                {
+                    // Marker at the start of every finally body. Recording it
+                    // here covers normal completion, catches, returns,
+                    // exceptions, and pending break/continue jumps alike.
+                    if (vm.tryCount > 0) {
+                        vm.tryStack[vm.tryCount - 1].isExecutingFinally = true;
+                    }
+                }
+                break;
             case OP_END_FINALLY:
                 {
                     TryBlock* block = &vm.tryStack[--vm.tryCount];
@@ -3520,25 +3604,43 @@ InterpretResult run() {
                     Value returnValue = block->returnValue;
                     bool hasUncaughtException = block->hasUncaughtException;
                     Value uncaughtException = block->uncaughtException;
+                    bool isJumping = block->isJumping;
+                    uint8_t* jumpTarget = block->jumpTarget;
+                    int jumpTargetSlot = block->jumpTargetSlot;
                     clearTryBlock(block);
 
+                    if (isJumping) {
+                        if (unwindForJump(frame, jumpTarget, jumpTargetSlot)) {
+                            finishControlJump(frame, jumpTarget, jumpTargetSlot);
+                        }
+                        break;
+                    }
+
                     if (isReturning) {
-                        // check if an enclosing try-finally block needs to run before returning
-                        if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                        // Propagate the return through any enclosing finallys,
+                        // popping catch-only blocks along the way.
+                        bool diverted = false;
+                        while (vm.tryCount > 0) {
                             TryBlock* outerBlock = &vm.tryStack[vm.tryCount - 1];
-                            if (outerBlock->finallyIp != NULL) {
+                            if (outerBlock->frameCount != vm.frameCount) break;
+
+                            if (outerBlock->finallyIp != NULL && !outerBlock->isExecutingFinally) {
                                 // pass the return state to the outer finally handler
                                 outerBlock->isReturning = true;
                                 outerBlock->returnValue = returnValue;
 
-                                uint8_t* finallyTargetIp = outerBlock->finallyIp;
-                                outerBlock->finallyIp = NULL; // mark as executing
-
+                                closeUpvalues(outerBlock->stackTop);
                                 vm.stackTop = outerBlock->stackTop;
-                                frame->ip = finallyTargetIp;
+                                frame->ip = outerBlock->finallyIp;
+                                diverted = true;
                                 break;
                             }
+
+                            clearTryBlock(outerBlock);
+                            vm.tryCount--;
                         }
+                        if (diverted) break;
+
                         push(returnValue);
 
                         Value result = pop();
@@ -3683,6 +3785,26 @@ InterpretResult run() {
                 {
                     uint16_t offset = READ_SHORT();
                     frame->ip -= offset;
+                }
+                break;
+            case OP_BREAK:
+                {
+                    uint16_t offset = READ_SHORT();
+                    uint16_t targetSlot = READ_SHORT();
+                    uint8_t* target = frame->ip + offset;
+                    if (unwindForJump(frame, target, targetSlot)) {
+                        finishControlJump(frame, target, targetSlot);
+                    }
+                }
+                break;
+            case OP_CONTINUE:
+                {
+                    uint16_t offset = READ_SHORT();
+                    uint16_t targetSlot = READ_SHORT();
+                    uint8_t* target = frame->ip - offset;
+                    if (unwindForJump(frame, target, targetSlot)) {
+                        finishControlJump(frame, target, targetSlot);
+                    }
                 }
                 break;
             case OP_DUP:
@@ -4097,23 +4219,29 @@ InterpretResult run() {
                     }
 
                     bool divertedToFinally = false;
-                    if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {
+                    while (vm.tryCount > 0) {
                         TryBlock* block = &vm.tryStack[vm.tryCount - 1];
-                        if (block->finallyIp != NULL && !block->isReturning) {
+                        if (block->frameCount != vm.frameCount) break;
+
+                        if (block->finallyIp != NULL && !block->isExecutingFinally) {
                             block->isReturning = true;
                             block->returnValue = result;
+                            closeUpvalues(block->stackTop);
                             vm.stackTop = block->stackTop;
                             frame->ip = block->finallyIp;
                             divertedToFinally = true;
                             break;
                         }
-                        vm.tryCount--;
+
                         clearTryBlock(block);
+                        vm.tryCount--;
                     }
 
                     if (divertedToFinally) {
                         break;
                     }
+
+                    popCurrentFrameTryBlocks();
 
                     freeValueArray(&frame->deferHooks);
 

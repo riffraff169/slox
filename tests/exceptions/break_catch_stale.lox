@@ -1,0 +1,64 @@
+// Leaving a catch-only try block must discard its handler. Otherwise a later
+// unrelated runtime error is caught by the stale handler.
+
+var result = "none";
+
+fun breakOut() {
+    while (true) {
+        try {
+            print "before break";
+            break;
+        } catch (e) {
+            result = "stale catch ran";
+        }
+    }
+    trigger_missing;
+}
+
+try {
+    breakOut();
+} catch (e) {
+    print "outer caught";
+}
+print result;
+
+// The same applies to a return out of nested catch-only blocks.
+fun nestedReturn() {
+    try {
+        try {
+            return 1;
+        } catch (e) {
+            print "stale inner";
+        }
+    } catch (e) {
+        print "stale outer";
+    }
+}
+
+try {
+    print nestedReturn();
+    trigger_also_missing;
+} catch (e) {
+    print "outer caught again";
+}
+
+// Breaking out of nested catch-only blocks must be clean too.
+while (true) {
+    try {
+        try {
+            break;
+        } catch (e) {
+            print "stale nested inner";
+        }
+    } catch (e) {
+        print "stale nested outer";
+    }
+}
+print "done";
+
+// expect: before break
+// expect: outer caught
+// expect: none
+// expect: 1
+// expect: outer caught again
+// expect: done

@@ -1,0 +1,66 @@
+// continue must also run enclosing finallys, and a continue inside a finally
+// must resume the loop instead of re-entering that finally.
+
+var count = 0;
+
+fun skipEven() {
+    for (var i = 0; i < 4; i += 1) {
+        try {
+            if (i % 2 == 0) {
+                print "skip " + i;
+                continue;
+            }
+            print "keep " + i;
+        } finally {
+            count += 1;
+            print "finally " + i;
+        }
+        print "after try " + i;
+    }
+}
+skipEven();
+print count;
+
+var finallyContinues = 0;
+fun continueInFinally() {
+    for (var i = 0; i < 3; i += 1) {
+        try {
+            print "cf body " + i;
+        } finally {
+            finallyContinues += 1;
+            if (i < 2) continue;
+        }
+        print "cf after " + i;
+    }
+}
+continueInFinally();
+print finallyContinues;
+
+// A finally that encloses the loop runs once, after the loop finishes.
+try {
+    foreach (x in [1, 2]) {
+        if (x == 1) continue;
+        print "enclosed " + x;
+    }
+} finally {
+    print "enclosed finally";
+}
+
+// expect: skip 0
+// expect: finally 0
+// expect: keep 1
+// expect: finally 1
+// expect: after try 1
+// expect: skip 2
+// expect: finally 2
+// expect: keep 3
+// expect: finally 3
+// expect: after try 3
+// expect: 4
+// expect: cf body 0
+// expect: cf body 1
+// expect: cf body 2
+// expect: cf after 2
+// expect: 3
+// expect: enclosed 2
+// expect: enclosed finally

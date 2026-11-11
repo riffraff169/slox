@@ -1,0 +1,10 @@
+// break must exit a foreach loop like any other loop.
+foreach (x in [1, 2, 3, 4]) {
+    if (x == 3) break;
+    print x;
+}
+print "after";
+
+// expect: 1
+// expect: 2
+// expect: after

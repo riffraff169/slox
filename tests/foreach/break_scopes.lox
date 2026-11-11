@@ -1,0 +1,33 @@
+// break/continue only affect the innermost loop and must keep the enclosing
+// scope and captured foreach locals intact.
+var outer = "keep";
+var saved;
+
+foreach (x in [1, 2, 3]) {
+    var captured = "captured-" + x;
+    saved = fun() {
+        return captured;
+    };
+    if (x == 1) continue;
+    break;
+}
+
+// Overwrite abandoned stack slots if any upvalue was left open.
+for (var i = 0; i < 100; i = i + 1) {
+    var junk = String(i) + " junk junk junk";
+}
+
+print outer;
+print saved();
+
+foreach (a in [1, 2]) {
+    foreach (b in [10, 20]) {
+        if (b == 20) break;
+        print a + ":" + b;
+    }
+}
+
+// expect: keep
+// expect: captured-2
+// expect: 1:10
+// expect: 2:10

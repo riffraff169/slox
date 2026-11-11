@@ -30,10 +30,24 @@ typedef struct {
     uint8_t* catchIp;
     uint8_t* finallyIp;
 
+    // Bytecode span [startIp, endIp) of the whole try statement. Used to tell
+    // whether a break/continue target lies inside this try or outside it.
+    uint8_t* startIp;
+    uint8_t* endIp;
+
     bool isReturning;
     Value returnValue;
     bool hasUncaughtException;
     Value uncaughtException;
+
+    // Pending break/continue that is waiting for this block's finally.
+    bool isJumping;
+    uint8_t* jumpTarget;
+    int jumpTargetSlot;
+
+    // True while this block's finally body is running. Prevents re-entering
+    // the same finally from a return, exception, or nested control transfer.
+    bool isExecutingFinally;
 } TryBlock;
 
 typedef struct {

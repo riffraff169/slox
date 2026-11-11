@@ -1,0 +1,130 @@
+// A break that leaves a try block must run its finally before execution
+// continues after the loop. A try that encloses the loop must stay active.
+
+var count = 0;
+
+fun breakWhile() {
+    while (true) {
+        try {
+            print "while body";
+            break;
+        } finally {
+            count += 1;
+            print "while finally";
+        }
+    }
+    print "while after";
+}
+breakWhile();
+print count;
+
+fun breakFor() {
+    for (var i = 0; i < 3; i += 1) {
+        try {
+            print "for body " + i;
+            break;
+        } finally {
+            print "for finally " + i;
+        }
+    }
+    print "for after";
+}
+breakFor();
+
+fun breakForeach() {
+    foreach (x in [1, 2, 3]) {
+        try {
+            print "foreach body " + x;
+            break;
+        } finally {
+            print "foreach finally " + x;
+        }
+    }
+    print "foreach after";
+}
+breakForeach();
+
+// Nested finallys run innermost first.
+fun nested() {
+    while (true) {
+        try {
+            try {
+                print "nested body";
+                break;
+            } finally {
+                print "inner finally";
+            }
+        } finally {
+            print "outer finally";
+        }
+    }
+    print "nested after";
+}
+nested();
+
+// A catch-only try between the break and an outer finally is discarded, but
+// the outer finally still runs.
+while (true) {
+    try {
+        try {
+            print "catch-gap body";
+            break;
+        } catch (e) {
+            print "stale catch-gap catch";
+        }
+    } finally {
+        print "catch-gap finally";
+    }
+}
+print "catch-gap after";
+
+// A finally that encloses the loop is not part of the break's unwind.
+try {
+    while (true) {
+        print "enclosed body";
+        break;
+    }
+    print "enclosed after loop";
+} finally {
+    print "enclosed finally";
+}
+print "end";
+
+// A break inside a finally overrides the pending unwind and must not re-enter
+// the same finally.
+var finallyBreaks = 0;
+while (true) {
+    try {
+        print "override body";
+    } finally {
+        finallyBreaks += 1;
+        print "override finally";
+        break;
+    }
+}
+print "override after " + finallyBreaks;
+
+// expect: while body
+// expect: while finally
+// expect: while after
+// expect: 1
+// expect: for body 0
+// expect: for finally 0
+// expect: for after
+// expect: foreach body 1
+// expect: foreach finally 1
+// expect: foreach after
+// expect: nested body
+// expect: inner finally
+// expect: outer finally
+// expect: nested after
+// expect: catch-gap body
+// expect: catch-gap finally
+// expect: catch-gap after
+// expect: enclosed body
+// expect: enclosed after loop
+// expect: enclosed finally
+// expect: end
+// expect: override body
+// expect: override finally
+// expect: override after 1

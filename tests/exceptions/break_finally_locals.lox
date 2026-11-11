@@ -1,0 +1,62 @@
+// break/continue must not pop locals that are still in scope for a finally,
+// and closures over locals declared inside the try must survive the unwind.
+
+var saved;
+var log = [];
+
+fun captureAndBreak() {
+    var outer = "outer";
+    while (true) {
+        var loopLocal = "loop";
+        try {
+            var inner = "inner";
+            saved = fun() {
+                return inner;
+            };
+            break;
+        } finally {
+            log.push(outer);
+            log.push(loopLocal);
+            var junk = "finally junk junk junk";
+        }
+    }
+    print "after loop";
+}
+
+captureAndBreak();
+print log.join(",");
+print saved();
+
+// Overwrite abandoned stack slots to expose dangling open upvalues.
+for (var i = 0; i < 100; i += 1) {
+    var padding = "padding " + i + " padding padding";
+}
+print saved();
+
+fun captureAndContinue() {
+    for (var i = 0; i < 3; i += 1) {
+        var keep = "keep" + i;
+        try {
+            var inner = "inner" + i;
+            var cap = fun() {
+                return inner;
+            };
+            print cap();
+            if (i < 2) continue;
+        } finally {
+            print keep;
+        }
+    }
+}
+captureAndContinue();
+
+// expect: after loop
+// expect: outer,loop
+// expect: inner
+// expect: inner
+// expect: inner0
+// expect: keep0
+// expect: inner1
+// expect: keep1
+// expect: inner2
+// expect: keep2

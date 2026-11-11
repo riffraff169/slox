@@ -1,0 +1,64 @@
+// Returning out of nested try blocks must run every enclosing finally, even
+// when catch-only blocks sit between the return and an outer finally.
+
+fun throughCatchOnly() {
+    try {
+        try {
+            try {
+                return "value";
+            } finally {
+                print "inner finally";
+            }
+        } catch (e) {
+            print "stale catch";
+        }
+    } finally {
+        print "outer finally";
+    }
+}
+print throughCatchOnly();
+
+fun multipleCatchOnly() {
+    try {
+        try {
+            try {
+                try {
+                    return 2;
+                } catch (e) {
+                    print "stale D";
+                }
+            } catch (e) {
+                print "stale C";
+            }
+        } catch (e) {
+            print "stale B";
+        }
+    } finally {
+        print "outer finally 2";
+    }
+}
+print multipleCatchOnly();
+
+// A return inside an already-running finally must not re-enter that finally.
+fun returnInFinally() {
+    try {
+        try {
+            return 1;
+        } finally {
+            print "inner return finally";
+            return 3;
+        }
+    } finally {
+        print "outer return finally";
+    }
+}
+print returnInFinally();
+
+// expect: inner finally
+// expect: outer finally
+// expect: value
+// expect: outer finally 2
+// expect: 2
+// expect: inner return finally
+// expect: outer return finally
+// expect: 3

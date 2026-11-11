@@ -364,6 +364,40 @@ static void patchJump(int offset) {
     currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
+// OP_BREAK carries a 2-byte offset followed by a 2-byte target local slot.
+static void patchBreakJump(int offset) {
+    int jump = currentChunk()->count - offset - 4;
+
+    if (jump > UINT16_MAX) {
+        error("Too much code to jump over.");
+    }
+
+    currentChunk()->code[offset] = (jump >> 8) & 0xff;
+    currentChunk()->code[offset + 1] = jump & 0xff;
+}
+
+static void emitBreak(int targetSlot) {
+    emitByte(OP_BREAK);
+    int offset = currentChunk()->count;
+    emitBytes(0xff, 0xff);
+    emitBytes((targetSlot >> 8) & 0xff, targetSlot & 0xff);
+    addJump(&currentLoop->breaks, offset);
+}
+
+static void emitContinue(int targetSlot) {
+    emitByte(OP_CONTINUE);
+    int offsetSlot = currentChunk()->count;
+    int offset = offsetSlot + 4 - currentLoop->continueTarget;
+
+    if (offset > UINT16_MAX) {
+        error("Loop body too large.");
+    }
+
+    emitByte((offset >> 8) & 0xff);
+    emitByte(offset & 0xff);
+    emitBytes((targetSlot >> 8) & 0xff, targetSlot & 0xff);
+}
+
 static void ensureLocalCapacity(Compiler* compiler) {
     if (compiler->localCount < compiler->localCapacity) return;
 
@@ -2122,6 +2156,14 @@ static void foreachStatement() {
 
     int loopStart = currentChunk()->count;
 
+    Loop loop;
+    loop.scopeDepth = current->scopeDepth;
+    loop.firstLocalSlot = current->localCount;
+    loop.enclosing = currentLoop;
+    loop.continueTarget = loopStart;
+    initJumpList(&loop.breaks);
+    currentLoop = &loop;
+
     // 4. check condition. call iter.done()
     namedVariable(iterToken, false);
     emitInvoke("done", 0);
@@ -2167,6 +2209,12 @@ static void foreachStatement() {
     patchJump(exitJump);
     emitByte(OP_POP);
 
+    for (int i = 0; i < loop.breaks.count; i++) {
+        patchBreakJump(loop.breaks.values[i]);
+    }
+    freeJumpList(&loop.breaks);
+    currentLoop = loop.enclosing;
+
     endScope();
 }
 
@@ -2197,6 +2245,10 @@ static void tryStatement() {
     int catchJumpPlaceholder = currentChunk()->count;
     emitBytes(0xff, 0xff);
     int finallyJumpPlaceholder = currentChunk()->count;
+    emitBytes(0xff, 0xff);
+    // End of the whole try statement, used to decide which try blocks a
+    // break/continue must unwind.
+    int endJumpPlaceholder = currentChunk()->count;
     emitBytes(0xff, 0xff);
 
     beginScope();
@@ -2273,6 +2325,7 @@ static void tryStatement() {
     if (match(TOKEN_FINALLY)) {
         hasFinally = true;
         finallyTarget = currentChunk()->count;
+        emitByte(OP_FINALLY);
         consume(TOKEN_LEFT_BRACE, "Expect '{' before finally body.");
 
         beginScope();
@@ -2293,8 +2346,9 @@ static void tryStatement() {
     }
     freeJumpList(&catchSuccessJumps);
 
-    patchTryOffset(catchJumpPlaceholder, catchTarget, 4);
-    patchTryOffset(finallyJumpPlaceholder, hasFinally ? finallyTarget: 0, 2);
+    patchTryOffset(catchJumpPlaceholder, catchTarget, 6);
+    patchTryOffset(finallyJumpPlaceholder, hasFinally ? finallyTarget : 0, 4);
+    patchTryOffset(endJumpPlaceholder, finalDestination, 2);
 }
 
 static void forStatement() {
@@ -2350,7 +2404,7 @@ static void forStatement() {
     }
 
     for (int i = 0; i < loop.breaks.count; i++) {
-        patchJump(loop.breaks.values[i]);
+        patchBreakJump(loop.breaks.values[i]);
     }
     freeJumpList(&loop.breaks);
     currentLoop = loop.enclosing;
@@ -2514,15 +2568,10 @@ static void continueStatement() {
 
     consume(TOKEN_SEMICOLON, "Expect ';' after 'continue.");
 
-    for (int i = current->localCount - 1; i >= currentLoop->firstLocalSlot; i--) {
-        if (current->locals[i].isCaptured) {
-            emitByte(OP_CLOSE_UPVALUE);
-        } else {
-            emitByte(OP_POP);
-        }
-    }
-
-    emitLoop(currentLoop->continueTarget);
+    // Skip past locals without touching the stack: a finally may still need to
+    // read locals that are in scope at the try. The VM closes upvalues and
+    // resets the stack to the target slot once all enclosing finallys have run.
+    emitContinue(currentLoop->firstLocalSlot);
 }
 
 static void breakStatement() {
@@ -2537,15 +2586,7 @@ static void breakStatement() {
 
     consume(TOKEN_SEMICOLON, "Expect ';' after 'break'.");
 
-    for (int i = current->localCount - 1; i >= currentLoop->firstLocalSlot; i--) {
-        if (current->locals[i].isCaptured) {
-            emitByte(OP_CLOSE_UPVALUE);
-        } else {
-            emitByte(OP_POP);
-        }
-    }
-
-    addJump(&currentLoop->breaks, emitJump(OP_JUMP));
+    emitBreak(currentLoop->firstLocalSlot);
 }
 
 static void whileStatement() {
@@ -2574,7 +2615,7 @@ static void whileStatement() {
     emitByte(OP_POP);
 
     for (int i = 0; i < loop.breaks.count; i++) {
-        patchJump(loop.breaks.values[i]);
+        patchBreakJump(loop.breaks.values[i]);
     }
     freeJumpList(&loop.breaks);
     currentLoop = loop.enclosing;

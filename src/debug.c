@@ -107,6 +107,18 @@ static int jumpInstruction(const char* name, int sign,
     return offset + 3;
 }
 
+// Jump instruction with a 2-byte target local slot after the offset.
+static int jumpSlotInstruction(const char* name, int sign,
+        Chunk* chunk, int offset) {
+    uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+    jump |= chunk->code[offset + 2];
+    uint16_t slot = (uint16_t)(chunk->code[offset + 3] << 8);
+    slot |= chunk->code[offset + 4];
+    printf("%-16s %4d -> %d (slot %d)\n", name, offset,
+            offset + 5 + sign * jump, slot);
+    return offset + 5;
+}
+
 /*
 static int arrayInstruction(const char* name, Chunk* chunk,
         int offset) {
@@ -246,6 +258,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return jumpInstruction("OP_JUMP_IF_TRUE", 1, chunk, offset);
         case OP_LOOP:
             return jumpInstruction("OP_LOOP", -1, chunk, offset);
+        case OP_BREAK:
+            return jumpSlotInstruction("OP_BREAK", 1, chunk, offset);
+        case OP_CONTINUE:
+            return jumpSlotInstruction("OP_CONTINUE", -1, chunk, offset);
         case OP_CALL:
             return byteInstruction("OP_CALL", chunk, offset);
         case OP_INVOKE:
@@ -362,10 +378,13 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             printf("%-16s ", "OP_TRY");
             uint16_t catchTarget = (chunk->code[offset + 1] << 8) | chunk->code[offset + 2];
             uint16_t finallyTarget = (chunk->code[offset + 3] << 8) | chunk->code[offset + 4];
-            printf(" catch: %d, finally: %d\n", catchTarget, finallyTarget);
-            return offset + 5;
+            uint16_t endTarget = (chunk->code[offset + 5] << 8) | chunk->code[offset + 6];
+            printf(" catch: %d, finally: %d, end: %d\n", catchTarget, finallyTarget, endTarget);
+            return offset + 7;
         case OP_END_TRY:
             return jumpInstruction("OP_END_TRY", 1, chunk, offset);
+        case OP_FINALLY:
+            return simpleInstruction("OP_FINALLY", offset);
         case OP_END_FINALLY:
             return simpleInstruction("OP_END_FINALLY", offset);
         case OP_THROW:
