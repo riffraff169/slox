@@ -1,0 +1,14 @@
+fun outer() {
+  var a = 0;
+  var b = 0;
+  fun inner() {
+    a, b = [1, 2];
+  }
+  inner();
+  print a;
+  print b;
+}
+outer();
+
+// expect: 1
+// expect: 2

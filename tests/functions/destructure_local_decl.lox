@@ -1,0 +1,53 @@
+fun uninitialized() {
+  var a, b;
+  a = 1;
+  b = 2;
+  print a;
+  print b;
+}
+
+fun initialized() {
+  var a, b = [3, 4];
+  print a;
+  print b;
+}
+
+fun constants() {
+  const a, b = [5, 6];
+  print a;
+  print b;
+}
+
+fun in_block() {
+  {
+    var a, b = [7, 8];
+    print a;
+    print b;
+  }
+}
+
+fun in_lambda() {
+  var f = fun() {
+    var a, b = [9, 10];
+    print a;
+    print b;
+  };
+  f();
+}
+
+uninitialized();
+initialized();
+constants();
+in_block();
+in_lambda();
+
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5
+// expect: 6
+// expect: 7
+// expect: 8
+// expect: 9
+// expect: 10

@@ -84,16 +84,41 @@ typedef struct ClassCompiler {
     bool hasSuperclass;
 } ClassCompiler;
 
+typedef struct {
+    int* values;
+    int count;
+    int capacity;
+} JumpList;
+
 typedef struct Loop {
     struct Loop* enclosing;
     int scopeDepth;
     int continueTarget;
     int firstLocalSlot;
-    int* breakJumps;
-    int breakCount;
+    JumpList breaks;
 } Loop;
 
 Loop* currentLoop = NULL;
+
+static void initJumpList(JumpList* list) {
+    list->values = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+static void addJump(JumpList* list, int offset) {
+    if (list->count == list->capacity) {
+        int oldCapacity = list->capacity;
+        list->capacity = oldCapacity < 8 ? 8 : oldCapacity * 2;
+        list->values = GROW_ARRAY(int, list->values, oldCapacity, list->capacity);
+    }
+    list->values[list->count++] = offset;
+}
+
+static void freeJumpList(JumpList* list) {
+    FREE_ARRAY(int, list->values, list->capacity);
+    initJumpList(list);
+}
 
 typedef struct {
     int totalSlots;
@@ -1873,6 +1898,7 @@ static void varDeclaration() {
 
     int globals[64];
     int varCount = 0;
+    int firstLocal = current->localCount;
 
     // 1. loop through all comma-separated identifiers
     do {
@@ -1906,8 +1932,14 @@ static void varDeclaration() {
     consume(TOKEN_SEMICOLON,
             "Expect ';' after variable declaration.");
 
-    for (int i = 0; i < varCount; i++) {
-        defineVariableExt(globals[i], isConst);
+    if (current->scopeDepth > 0) {
+        for (int i = 0; i < varCount; i++) {
+            current->locals[firstLocal + i].depth = current->scopeDepth;
+        }
+    } else {
+        for (int i = varCount - 1; i >= 0; i--) {
+            defineVariableExt(globals[i], isConst);
+        }
     }
 }
 
@@ -1924,13 +1956,23 @@ static void assignToVariable(Token name) {
         } else {
             emitSetVar(OP_SET_LOCAL, arg);
         }
-    } else {
-        int nameIndex = identifierConstant(&name);
-        if (arg > 255) {
-            emitSetVar(OP_SET_GLOBAL_LONG, nameIndex);
-        } else {
-            emitSetVar(OP_SET_GLOBAL, nameIndex);
+        return;
+    }
+
+    arg = resolveUpvalue(current, &name);
+    if (arg != -1) {
+        if (current->upvalues[arg].isConst) {
+            error("Cannot assign to a constant variable");
         }
+        emitSetVar(OP_SET_UPVALUE, arg);
+        return;
+    }
+
+    int nameIndex = identifierConstant(&name);
+    if (nameIndex > 255) {
+        emitSetVar(OP_SET_GLOBAL_LONG, nameIndex);
+    } else {
+        emitSetVar(OP_SET_GLOBAL, nameIndex);
     }
 }
 
@@ -1955,7 +1997,7 @@ static void destructuringAssignment() {
 
     emitBytes(OP_UNPACK, (uint8_t)varCount);
 
-    for (int i = 0; i < varCount; i++) {
+    for (int i = varCount - 1; i >= 0; i--) {
         assignToVariable(targets[i]);
         emitByte(OP_POP);
     }
@@ -2093,8 +2135,8 @@ static void tryStatement() {
     int endTryJump = emitJump(OP_END_TRY);
 
     int catchTarget = 0;
-    int catchSuccessJumps[256];
-    int catchSuccessCount = 0;
+    JumpList catchSuccessJumps;
+    initJumpList(&catchSuccessJumps);
     int lastMismatchJump = -1;
 
     while (match(TOKEN_CATCH)) {
@@ -2145,7 +2187,7 @@ static void tryStatement() {
         }
         block();
         endScope();
-        catchSuccessJumps[catchSuccessCount++] = emitJump(OP_JUMP);
+        addJump(&catchSuccessJumps, emitJump(OP_JUMP));
     }
 
     if (lastMismatchJump != -1) {
@@ -2175,9 +2217,10 @@ static void tryStatement() {
 
     patchTryOffset(endTryJump, successTarget, 2);
 
-    for (int i = 0; i < catchSuccessCount; i++) {
-        patchTryOffset(catchSuccessJumps[i], successTarget, 2);
+    for (int i = 0; i < catchSuccessJumps.count; i++) {
+        patchTryOffset(catchSuccessJumps.values[i], successTarget, 2);
     }
+    freeJumpList(&catchSuccessJumps);
 
     patchTryOffset(catchJumpPlaceholder, catchTarget, 4);
     patchTryOffset(finallyJumpPlaceholder, hasFinally ? finallyTarget: 0, 2);
@@ -2185,7 +2228,6 @@ static void tryStatement() {
 
 static void forStatement() {
     beginScope();
-    int jumps[255];
 
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
     if (match(TOKEN_SEMICOLON)) {
@@ -2212,8 +2254,7 @@ static void forStatement() {
     loop.firstLocalSlot = current->localCount;
     loop.enclosing = currentLoop;
     loop.continueTarget = loopStart;
-    loop.breakCount = 0;
-    loop.breakJumps = jumps;
+    initJumpList(&loop.breaks);
     currentLoop = &loop;
 
     if (!match(TOKEN_RIGHT_PAREN)) {
@@ -2237,9 +2278,10 @@ static void forStatement() {
         emitByte(OP_POP);
     }
 
-    for (int i = 0; i < loop.breakCount; i++) {
-        patchJump(loop.breakJumps[i]);
+    for (int i = 0; i < loop.breaks.count; i++) {
+        patchJump(loop.breaks.values[i]);
     }
+    freeJumpList(&loop.breaks);
     currentLoop = loop.enclosing;
 
     endScope();
@@ -2296,14 +2338,10 @@ static void switchStatement() {
     addLocal(dummyToken);
     markInitialized();
 
-    int endJumps[255];
-    int jumpCount = 0;
+    JumpList endJumps;
+    initJumpList(&endJumps);
 
     while (match(TOKEN_CASE)) {
-        if (jumpCount > 255) {
-            error("Too many cases in switch statement.");
-        }
-
         emitByte(OP_DUP);
         expression();
         consume(TOKEN_COLON, "Expect ':' after case.");
@@ -2316,7 +2354,7 @@ static void switchStatement() {
             statement();
         }
 
-        endJumps[jumpCount++] = emitJump(OP_JUMP);
+        addJump(&endJumps, emitJump(OP_JUMP));
 
         patchJump(skipCaseJump);
 
@@ -2333,9 +2371,10 @@ static void switchStatement() {
 
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after last case or default.");
 
-    for (int i = 0; i < jumpCount; i++) {
-        patchJump(endJumps[i]);
+    for (int i = 0; i < endJumps.count; i++) {
+        patchJump(endJumps.values[i]);
     }
+    freeJumpList(&endJumps);
     endScope();
 }
 
@@ -2421,12 +2460,10 @@ static void breakStatement() {
         }
     }
 
-    currentLoop->breakJumps[currentLoop->breakCount++] = emitJump(OP_JUMP);
+    addJump(&currentLoop->breaks, emitJump(OP_JUMP));
 }
 
 static void whileStatement() {
-    int jumps[255];
-
     int loopStart = currentChunk()->count;
 
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
@@ -2441,8 +2478,7 @@ static void whileStatement() {
     loop.firstLocalSlot = current->localCount;
     loop.continueTarget = loopStart;
     loop.enclosing = currentLoop;
-    loop.breakCount = 0;
-    loop.breakJumps = jumps;
+    initJumpList(&loop.breaks);
     currentLoop = &loop;
 
     statement();
@@ -2452,9 +2488,10 @@ static void whileStatement() {
 
     emitByte(OP_POP);
 
-    for (int i = 0; i < loop.breakCount; i++) {
-        patchJump(loop.breakJumps[i]);
+    for (int i = 0; i < loop.breaks.count; i++) {
+        patchJump(loop.breaks.values[i]);
     }
+    freeJumpList(&loop.breaks);
     currentLoop = loop.enclosing;
 
 }

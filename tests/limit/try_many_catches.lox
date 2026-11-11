@@ -1,0 +1,607 @@
+try {
+  throw "boom";
+} catch (e0) {
+  if (false) print 0;
+} catch (e1) {
+  if (false) print 1;
+} catch (e2) {
+  if (false) print 2;
+} catch (e3) {
+  if (false) print 3;
+} catch (e4) {
+  if (false) print 4;
+} catch (e5) {
+  if (false) print 5;
+} catch (e6) {
+  if (false) print 6;
+} catch (e7) {
+  if (false) print 7;
+} catch (e8) {
+  if (false) print 8;
+} catch (e9) {
+  if (false) print 9;
+} catch (e10) {
+  if (false) print 10;
+} catch (e11) {
+  if (false) print 11;
+} catch (e12) {
+  if (false) print 12;
+} catch (e13) {
+  if (false) print 13;
+} catch (e14) {
+  if (false) print 14;
+} catch (e15) {
+  if (false) print 15;
+} catch (e16) {
+  if (false) print 16;
+} catch (e17) {
+  if (false) print 17;
+} catch (e18) {
+  if (false) print 18;
+} catch (e19) {
+  if (false) print 19;
+} catch (e20) {
+  if (false) print 20;
+} catch (e21) {
+  if (false) print 21;
+} catch (e22) {
+  if (false) print 22;
+} catch (e23) {
+  if (false) print 23;
+} catch (e24) {
+  if (false) print 24;
+} catch (e25) {
+  if (false) print 25;
+} catch (e26) {
+  if (false) print 26;
+} catch (e27) {
+  if (false) print 27;
+} catch (e28) {
+  if (false) print 28;
+} catch (e29) {
+  if (false) print 29;
+} catch (e30) {
+  if (false) print 30;
+} catch (e31) {
+  if (false) print 31;
+} catch (e32) {
+  if (false) print 32;
+} catch (e33) {
+  if (false) print 33;
+} catch (e34) {
+  if (false) print 34;
+} catch (e35) {
+  if (false) print 35;
+} catch (e36) {
+  if (false) print 36;
+} catch (e37) {
+  if (false) print 37;
+} catch (e38) {
+  if (false) print 38;
+} catch (e39) {
+  if (false) print 39;
+} catch (e40) {
+  if (false) print 40;
+} catch (e41) {
+  if (false) print 41;
+} catch (e42) {
+  if (false) print 42;
+} catch (e43) {
+  if (false) print 43;
+} catch (e44) {
+  if (false) print 44;
+} catch (e45) {
+  if (false) print 45;
+} catch (e46) {
+  if (false) print 46;
+} catch (e47) {
+  if (false) print 47;
+} catch (e48) {
+  if (false) print 48;
+} catch (e49) {
+  if (false) print 49;
+} catch (e50) {
+  if (false) print 50;
+} catch (e51) {
+  if (false) print 51;
+} catch (e52) {
+  if (false) print 52;
+} catch (e53) {
+  if (false) print 53;
+} catch (e54) {
+  if (false) print 54;
+} catch (e55) {
+  if (false) print 55;
+} catch (e56) {
+  if (false) print 56;
+} catch (e57) {
+  if (false) print 57;
+} catch (e58) {
+  if (false) print 58;
+} catch (e59) {
+  if (false) print 59;
+} catch (e60) {
+  if (false) print 60;
+} catch (e61) {
+  if (false) print 61;
+} catch (e62) {
+  if (false) print 62;
+} catch (e63) {
+  if (false) print 63;
+} catch (e64) {
+  if (false) print 64;
+} catch (e65) {
+  if (false) print 65;
+} catch (e66) {
+  if (false) print 66;
+} catch (e67) {
+  if (false) print 67;
+} catch (e68) {
+  if (false) print 68;
+} catch (e69) {
+  if (false) print 69;
+} catch (e70) {
+  if (false) print 70;
+} catch (e71) {
+  if (false) print 71;
+} catch (e72) {
+  if (false) print 72;
+} catch (e73) {
+  if (false) print 73;
+} catch (e74) {
+  if (false) print 74;
+} catch (e75) {
+  if (false) print 75;
+} catch (e76) {
+  if (false) print 76;
+} catch (e77) {
+  if (false) print 77;
+} catch (e78) {
+  if (false) print 78;
+} catch (e79) {
+  if (false) print 79;
+} catch (e80) {
+  if (false) print 80;
+} catch (e81) {
+  if (false) print 81;
+} catch (e82) {
+  if (false) print 82;
+} catch (e83) {
+  if (false) print 83;
+} catch (e84) {
+  if (false) print 84;
+} catch (e85) {
+  if (false) print 85;
+} catch (e86) {
+  if (false) print 86;
+} catch (e87) {
+  if (false) print 87;
+} catch (e88) {
+  if (false) print 88;
+} catch (e89) {
+  if (false) print 89;
+} catch (e90) {
+  if (false) print 90;
+} catch (e91) {
+  if (false) print 91;
+} catch (e92) {
+  if (false) print 92;
+} catch (e93) {
+  if (false) print 93;
+} catch (e94) {
+  if (false) print 94;
+} catch (e95) {
+  if (false) print 95;
+} catch (e96) {
+  if (false) print 96;
+} catch (e97) {
+  if (false) print 97;
+} catch (e98) {
+  if (false) print 98;
+} catch (e99) {
+  if (false) print 99;
+} catch (e100) {
+  if (false) print 100;
+} catch (e101) {
+  if (false) print 101;
+} catch (e102) {
+  if (false) print 102;
+} catch (e103) {
+  if (false) print 103;
+} catch (e104) {
+  if (false) print 104;
+} catch (e105) {
+  if (false) print 105;
+} catch (e106) {
+  if (false) print 106;
+} catch (e107) {
+  if (false) print 107;
+} catch (e108) {
+  if (false) print 108;
+} catch (e109) {
+  if (false) print 109;
+} catch (e110) {
+  if (false) print 110;
+} catch (e111) {
+  if (false) print 111;
+} catch (e112) {
+  if (false) print 112;
+} catch (e113) {
+  if (false) print 113;
+} catch (e114) {
+  if (false) print 114;
+} catch (e115) {
+  if (false) print 115;
+} catch (e116) {
+  if (false) print 116;
+} catch (e117) {
+  if (false) print 117;
+} catch (e118) {
+  if (false) print 118;
+} catch (e119) {
+  if (false) print 119;
+} catch (e120) {
+  if (false) print 120;
+} catch (e121) {
+  if (false) print 121;
+} catch (e122) {
+  if (false) print 122;
+} catch (e123) {
+  if (false) print 123;
+} catch (e124) {
+  if (false) print 124;
+} catch (e125) {
+  if (false) print 125;
+} catch (e126) {
+  if (false) print 126;
+} catch (e127) {
+  if (false) print 127;
+} catch (e128) {
+  if (false) print 128;
+} catch (e129) {
+  if (false) print 129;
+} catch (e130) {
+  if (false) print 130;
+} catch (e131) {
+  if (false) print 131;
+} catch (e132) {
+  if (false) print 132;
+} catch (e133) {
+  if (false) print 133;
+} catch (e134) {
+  if (false) print 134;
+} catch (e135) {
+  if (false) print 135;
+} catch (e136) {
+  if (false) print 136;
+} catch (e137) {
+  if (false) print 137;
+} catch (e138) {
+  if (false) print 138;
+} catch (e139) {
+  if (false) print 139;
+} catch (e140) {
+  if (false) print 140;
+} catch (e141) {
+  if (false) print 141;
+} catch (e142) {
+  if (false) print 142;
+} catch (e143) {
+  if (false) print 143;
+} catch (e144) {
+  if (false) print 144;
+} catch (e145) {
+  if (false) print 145;
+} catch (e146) {
+  if (false) print 146;
+} catch (e147) {
+  if (false) print 147;
+} catch (e148) {
+  if (false) print 148;
+} catch (e149) {
+  if (false) print 149;
+} catch (e150) {
+  if (false) print 150;
+} catch (e151) {
+  if (false) print 151;
+} catch (e152) {
+  if (false) print 152;
+} catch (e153) {
+  if (false) print 153;
+} catch (e154) {
+  if (false) print 154;
+} catch (e155) {
+  if (false) print 155;
+} catch (e156) {
+  if (false) print 156;
+} catch (e157) {
+  if (false) print 157;
+} catch (e158) {
+  if (false) print 158;
+} catch (e159) {
+  if (false) print 159;
+} catch (e160) {
+  if (false) print 160;
+} catch (e161) {
+  if (false) print 161;
+} catch (e162) {
+  if (false) print 162;
+} catch (e163) {
+  if (false) print 163;
+} catch (e164) {
+  if (false) print 164;
+} catch (e165) {
+  if (false) print 165;
+} catch (e166) {
+  if (false) print 166;
+} catch (e167) {
+  if (false) print 167;
+} catch (e168) {
+  if (false) print 168;
+} catch (e169) {
+  if (false) print 169;
+} catch (e170) {
+  if (false) print 170;
+} catch (e171) {
+  if (false) print 171;
+} catch (e172) {
+  if (false) print 172;
+} catch (e173) {
+  if (false) print 173;
+} catch (e174) {
+  if (false) print 174;
+} catch (e175) {
+  if (false) print 175;
+} catch (e176) {
+  if (false) print 176;
+} catch (e177) {
+  if (false) print 177;
+} catch (e178) {
+  if (false) print 178;
+} catch (e179) {
+  if (false) print 179;
+} catch (e180) {
+  if (false) print 180;
+} catch (e181) {
+  if (false) print 181;
+} catch (e182) {
+  if (false) print 182;
+} catch (e183) {
+  if (false) print 183;
+} catch (e184) {
+  if (false) print 184;
+} catch (e185) {
+  if (false) print 185;
+} catch (e186) {
+  if (false) print 186;
+} catch (e187) {
+  if (false) print 187;
+} catch (e188) {
+  if (false) print 188;
+} catch (e189) {
+  if (false) print 189;
+} catch (e190) {
+  if (false) print 190;
+} catch (e191) {
+  if (false) print 191;
+} catch (e192) {
+  if (false) print 192;
+} catch (e193) {
+  if (false) print 193;
+} catch (e194) {
+  if (false) print 194;
+} catch (e195) {
+  if (false) print 195;
+} catch (e196) {
+  if (false) print 196;
+} catch (e197) {
+  if (false) print 197;
+} catch (e198) {
+  if (false) print 198;
+} catch (e199) {
+  if (false) print 199;
+} catch (e200) {
+  if (false) print 200;
+} catch (e201) {
+  if (false) print 201;
+} catch (e202) {
+  if (false) print 202;
+} catch (e203) {
+  if (false) print 203;
+} catch (e204) {
+  if (false) print 204;
+} catch (e205) {
+  if (false) print 205;
+} catch (e206) {
+  if (false) print 206;
+} catch (e207) {
+  if (false) print 207;
+} catch (e208) {
+  if (false) print 208;
+} catch (e209) {
+  if (false) print 209;
+} catch (e210) {
+  if (false) print 210;
+} catch (e211) {
+  if (false) print 211;
+} catch (e212) {
+  if (false) print 212;
+} catch (e213) {
+  if (false) print 213;
+} catch (e214) {
+  if (false) print 214;
+} catch (e215) {
+  if (false) print 215;
+} catch (e216) {
+  if (false) print 216;
+} catch (e217) {
+  if (false) print 217;
+} catch (e218) {
+  if (false) print 218;
+} catch (e219) {
+  if (false) print 219;
+} catch (e220) {
+  if (false) print 220;
+} catch (e221) {
+  if (false) print 221;
+} catch (e222) {
+  if (false) print 222;
+} catch (e223) {
+  if (false) print 223;
+} catch (e224) {
+  if (false) print 224;
+} catch (e225) {
+  if (false) print 225;
+} catch (e226) {
+  if (false) print 226;
+} catch (e227) {
+  if (false) print 227;
+} catch (e228) {
+  if (false) print 228;
+} catch (e229) {
+  if (false) print 229;
+} catch (e230) {
+  if (false) print 230;
+} catch (e231) {
+  if (false) print 231;
+} catch (e232) {
+  if (false) print 232;
+} catch (e233) {
+  if (false) print 233;
+} catch (e234) {
+  if (false) print 234;
+} catch (e235) {
+  if (false) print 235;
+} catch (e236) {
+  if (false) print 236;
+} catch (e237) {
+  if (false) print 237;
+} catch (e238) {
+  if (false) print 238;
+} catch (e239) {
+  if (false) print 239;
+} catch (e240) {
+  if (false) print 240;
+} catch (e241) {
+  if (false) print 241;
+} catch (e242) {
+  if (false) print 242;
+} catch (e243) {
+  if (false) print 243;
+} catch (e244) {
+  if (false) print 244;
+} catch (e245) {
+  if (false) print 245;
+} catch (e246) {
+  if (false) print 246;
+} catch (e247) {
+  if (false) print 247;
+} catch (e248) {
+  if (false) print 248;
+} catch (e249) {
+  if (false) print 249;
+} catch (e250) {
+  if (false) print 250;
+} catch (e251) {
+  if (false) print 251;
+} catch (e252) {
+  if (false) print 252;
+} catch (e253) {
+  if (false) print 253;
+} catch (e254) {
+  if (false) print 254;
+} catch (e255) {
+  if (false) print 255;
+} catch (e256) {
+  if (false) print 256;
+} catch (e257) {
+  if (false) print 257;
+} catch (e258) {
+  if (false) print 258;
+} catch (e259) {
+  if (false) print 259;
+} catch (e260) {
+  if (false) print 260;
+} catch (e261) {
+  if (false) print 261;
+} catch (e262) {
+  if (false) print 262;
+} catch (e263) {
+  if (false) print 263;
+} catch (e264) {
+  if (false) print 264;
+} catch (e265) {
+  if (false) print 265;
+} catch (e266) {
+  if (false) print 266;
+} catch (e267) {
+  if (false) print 267;
+} catch (e268) {
+  if (false) print 268;
+} catch (e269) {
+  if (false) print 269;
+} catch (e270) {
+  if (false) print 270;
+} catch (e271) {
+  if (false) print 271;
+} catch (e272) {
+  if (false) print 272;
+} catch (e273) {
+  if (false) print 273;
+} catch (e274) {
+  if (false) print 274;
+} catch (e275) {
+  if (false) print 275;
+} catch (e276) {
+  if (false) print 276;
+} catch (e277) {
+  if (false) print 277;
+} catch (e278) {
+  if (false) print 278;
+} catch (e279) {
+  if (false) print 279;
+} catch (e280) {
+  if (false) print 280;
+} catch (e281) {
+  if (false) print 281;
+} catch (e282) {
+  if (false) print 282;
+} catch (e283) {
+  if (false) print 283;
+} catch (e284) {
+  if (false) print 284;
+} catch (e285) {
+  if (false) print 285;
+} catch (e286) {
+  if (false) print 286;
+} catch (e287) {
+  if (false) print 287;
+} catch (e288) {
+  if (false) print 288;
+} catch (e289) {
+  if (false) print 289;
+} catch (e290) {
+  if (false) print 290;
+} catch (e291) {
+  if (false) print 291;
+} catch (e292) {
+  if (false) print 292;
+} catch (e293) {
+  if (false) print 293;
+} catch (e294) {
+  if (false) print 294;
+} catch (e295) {
+  if (false) print 295;
+} catch (e296) {
+  if (false) print 296;
+} catch (e297) {
+  if (false) print 297;
+} catch (e298) {
+  if (false) print 298;
+} catch (e299) {
+  if (false) print 299;
+}
+
+print "done";
+
+// expect: done

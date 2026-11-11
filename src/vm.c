@@ -3727,8 +3727,8 @@ InterpretResult run() {
                         }
                     }
 
-                    // case 3: clean extraction (unpack in reverse order)
-                    for (int i = expectedCount - 1; i >= 0; i--) {
+                    // case 3: clean extraction (push in declaration order)
+                    for (int i = 0; i < expectedCount; i++) {
                         push(array->values[i]);
                     }
                 }

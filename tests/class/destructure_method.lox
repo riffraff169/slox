@@ -1,0 +1,54 @@
+class C {
+  locals() {
+    var a, b;
+    a, b = [1, 2];
+    print a;
+    print b;
+  }
+
+  declared() {
+    var a, b = [3, 4];
+    print a;
+    print b;
+  }
+
+  captured() {
+    var a, b = [0, 0];
+    fun inner() {
+      a, b = [5, 6];
+    }
+    inner();
+    print a;
+    print b;
+  }
+
+  params(a, b) {
+    a, b = [7, 8];
+    print a;
+    print b;
+  }
+
+  static statics() {
+    var a, b = [9, 10];
+    print a;
+    print b;
+  }
+}
+
+var c = C();
+c.locals();
+c.declared();
+c.captured();
+c.params(0, 0);
+C.statics();
+
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5
+// expect: 6
+// expect: 7
+// expect: 8
+// expect: 9
+// expect: 10
