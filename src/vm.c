@@ -1781,6 +1781,8 @@ bool vmCall(ObjClosure* closure, int argCount) {
     frame->closure = closure;
     frame->ip = closure->function->chunk.code;
     frame->isTimer = false;
+    frame->pendingReturn = NIL_VAL;
+    frame->hasPendingReturn = false;
 
     frame->slots = vm.stackTop - argCount - 1;
     return true;
@@ -3967,7 +3969,13 @@ InterpretResult run() {
                 break;
             case OP_RETURN:
                 {
+                    Value result = pop();
+
                     if (frame->deferHooks.count > 0) {
+                        if (!frame->hasPendingReturn) {
+                            frame->pendingReturn = result;
+                            frame->hasPendingReturn = true;
+                        }
                         Value deferVal = frame->deferHooks.values[--frame->deferHooks.count];
                         push(deferVal);
                         frame->ip--;
@@ -3976,7 +3984,10 @@ InterpretResult run() {
                         break;
                     }
 
-                    Value result = pop();
+                    if (frame->hasPendingReturn) {
+                        result = frame->pendingReturn;
+                        frame->hasPendingReturn = false;
+                    }
 
                     bool divertedToFinally = false;
                     if (vm.tryCount > 0 && vm.tryStack[vm.tryCount - 1].frameCount == vm.frameCount) {

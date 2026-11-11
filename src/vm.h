@@ -19,6 +19,9 @@ typedef struct {
     bool isTimer;
 
     ValueArray deferHooks;
+
+    Value pendingReturn;
+    bool hasPendingReturn;
 } CallFrame;
 
 typedef struct {

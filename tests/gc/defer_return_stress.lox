@@ -1,0 +1,13 @@
+// Regression: a return value stashed while defer hooks run must stay rooted
+// even when the hooks allocate and trigger a collection.
+GC.stress_mode(GC.StressMode);
+
+fun makeValue() {
+    defer print "cleanup";
+    return "fresh-" + String(1);
+}
+
+print makeValue(); // expect: cleanup
+                   // expect: fresh-1
+
+GC.stress_mode(GC.NormalMode);

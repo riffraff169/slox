@@ -1,0 +1,39 @@
+// Regression: defer hooks must not replace an explicit return value.
+fun explicitValue() {
+    defer print "cleanup explicit";
+    return 42;
+}
+print explicitValue(); // expect: cleanup explicit
+                       // expect: 42
+
+fun implicitNil() {
+    defer print "cleanup implicit";
+}
+print implicitNil();   // expect: cleanup implicit
+                       // expect: nil
+
+fun multiple() {
+    defer print "cleanup 1";
+    defer print "cleanup 2";
+    return "value";
+}
+print multiple();      // expect: cleanup 2
+                       // expect: cleanup 1
+                       // expect: value
+
+fun early() {
+    defer print "cleanup early";
+    if (true) return "early";
+    return "late";
+}
+print early();         // expect: cleanup early
+                       // expect: early
+
+class Box {
+    init() {
+        defer print "cleanup init";
+        this.v = 5;
+    }
+}
+print Box().v;         // expect: cleanup init
+                       // expect: 5

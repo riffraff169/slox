@@ -311,6 +311,9 @@ static void markRoots() {
         for (int j = 0; j < vm.frames[i].deferHooks.count; j++) {
             markValue(vm.frames[i].deferHooks.values[j]);
         }
+        if (vm.frames[i].hasPendingReturn) {
+            markValue(vm.frames[i].pendingReturn);
+        }
     }
 
     for (ObjUpvalue* upvalue = vm.openUpvalues;
