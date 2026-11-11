@@ -763,6 +763,12 @@ static void dot(bool canAssign) {
                 emitBytes(OP_INVOKE, (uint8_t)name);
                 emitByte((uint8_t)args.totalSlots);
             }
+        } else if (args.hasSplat) {
+            emitByte(OP_INVOKE_SPLAT_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+            emitByte(args.totalSlots);
         } else {
             emitByte(OP_INVOKE_LONG);
             emitByte((uint8_t)((name >> 16) & 0xff));
@@ -792,7 +798,7 @@ static void literal(bool canAssign) {
 }
 
 static void subscript(bool canAssign) {
-    parsePrecedence(PREC_OR);
+    parsePrecedence(PREC_TERNARY);
     consume(TOKEN_RIGHT_BRACKET, "Expect ']' after index.");
 
     if (canAssign && match(TOKEN_EQUAL)) {
@@ -834,9 +840,9 @@ static void map(bool canAssign) {
 
     if (!check(TOKEN_RIGHT_BRACE)) {
         do {
-            parsePrecedence(PREC_OR);
+            parsePrecedence(PREC_TERNARY);
             consume(TOKEN_COLON, "Expect ':' after map key.");
-            parsePrecedence(PREC_OR);
+            parsePrecedence(PREC_TERNARY);
             item_count++;
 
             if (item_count > 255) {
@@ -959,6 +965,12 @@ static void optionalDot(bool canAssign) {
                 emitBytes(OP_INVOKE, (uint8_t)name);
                 emitByte((uint8_t)args.totalSlots);
             }
+        } else if (args.hasSplat) {
+            emitByte(OP_INVOKE_SPLAT_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+            emitByte(args.totalSlots);
         } else {
             emitByte(OP_INVOKE_LONG);
             emitByte((uint8_t)((name >> 16) & 0xff));
@@ -1262,10 +1274,24 @@ static void super_(bool canAssign) {
         ArgResult args = argumentList();
         namedVariable(syntheticToken("super"), false);
         if (args.hasSplat) {
-            emitBytes(OP_SUPER_INVOKE_SPLAT, (uint8_t)name);
+            if (name > 255) {
+                emitByte(OP_SUPER_INVOKE_SPLAT_LONG);
+                emitByte((uint8_t)((name >> 16) & 0xff));
+                emitByte((uint8_t)((name >> 8) & 0xff));
+                emitByte((uint8_t)(name & 0xff));
+            } else {
+                emitBytes(OP_SUPER_INVOKE_SPLAT, (uint8_t)name);
+            }
             emitByte((uint8_t)args.totalSlots);
         } else {
-            emitBytes(OP_SUPER_INVOKE, (uint8_t)name);
+            if (name > 255) {
+                emitByte(OP_SUPER_INVOKE_LONG);
+                emitByte((uint8_t)((name >> 16) & 0xff));
+                emitByte((uint8_t)((name >> 8) & 0xff));
+                emitByte((uint8_t)(name & 0xff));
+            } else {
+                emitBytes(OP_SUPER_INVOKE, (uint8_t)name);
+            }
             emitByte(args.totalSlots);
         }
     } else {

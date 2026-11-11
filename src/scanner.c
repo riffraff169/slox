@@ -341,6 +341,14 @@ static Token number() {
 
 static Token continueString() {
     while (peek() != '"' && !isAtEnd()) {
+        if (peek() == '\\') {
+            advance();
+            if (isAtEnd()) break;
+            if (peek() == '\n') scanner.line++;
+            advance();
+            continue;
+        }
+
         if (peek() == '\n') scanner.line++;
 
         if (peek() == '$' && peekNext() == '{') {
@@ -350,10 +358,8 @@ static Token continueString() {
             scanner.interpolationDepth++;
             return token;
         }
-        if (peek() == '\\') advance();
 
         advance();
-
     }
 
     if (isAtEnd()) return errorToken("Unterminated string.");
@@ -405,11 +411,15 @@ static Token heredocToken() {
 
 static Token string() {
     while (peek() != '"' && !isAtEnd()) {
-        if (peek() == '\n') scanner.line++;
-
         if (peek() == '\\') {
             advance();
+            if (isAtEnd()) break;
+            if (peek() == '\n') scanner.line++;
+            advance();
+            continue;
         }
+
+        if (peek() == '\n') scanner.line++;
 
         if (peek() == '$' && peekNext() == '{') {
             Token token = makeToken(TOKEN_INTERPOLATION);

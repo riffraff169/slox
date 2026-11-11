@@ -1,0 +1,8 @@
+var x = 1;
+print "\${x}";
+print "a${x}\${x}b";
+print "\$x";
+
+// expect: ${x}
+// expect: a1${x}b
+// expect: $x

@@ -1,0 +1,16 @@
+class Base {
+  sum(a, b) { return a + b; }
+}
+
+class Derived < Base {
+  plain() { return super.sum(1, 2); }
+  splat() { return super.sum(*[3, 4]); }
+  splatFirst() { return super.sum(*[5], 6); }
+  splatLast() { return super.sum(7, *[8]); }
+}
+
+var d = Derived();
+print d.plain();      // expect: 3
+print d.splat();      // expect: 7
+print d.splatFirst(); // expect: 11
+print d.splatLast();  // expect: 15
