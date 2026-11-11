@@ -1,0 +1,4 @@
+for (var i = 0; i < 1; i = i + 1) {
+    defer { break; }
+}
+// expect: [line 2] Error at 'break': Can't use 'break' in a defer statement.

@@ -1,0 +1,4 @@
+fun f() {
+    defer { return 1; }
+}
+// expect: [line 2] Error at 'return': Can't return from a defer statement.

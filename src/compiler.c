@@ -67,6 +67,8 @@ typedef enum {
     TYPE_MODULE
 } FunctionType;
 
+typedef struct Loop Loop;
+
 typedef struct Compiler {
     struct Compiler* enclosing;
     ObjFunction* function;
@@ -79,6 +81,7 @@ typedef struct Compiler {
     int upvalueCapacity;
     int scopeDepth;
     bool isDefer;
+    Loop* enclosingLoop;
 } Compiler;
 
 typedef struct ClassCompiler {
@@ -92,13 +95,13 @@ typedef struct {
     int capacity;
 } JumpList;
 
-typedef struct Loop {
+struct Loop {
     struct Loop* enclosing;
     int scopeDepth;
     int continueTarget;
     int firstLocalSlot;
     JumpList breaks;
-} Loop;
+};
 
 Loop* currentLoop = NULL;
 
@@ -409,6 +412,8 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
     compiler->isDefer = false;
+    compiler->enclosingLoop = currentLoop;
+    currentLoop = NULL;
     //initValueArray(&compiler->deferHooks);
 
     if (current != NULL) {
@@ -454,6 +459,7 @@ static ObjFunction* endCompiler() {
         }
     }
 
+    currentLoop = current->enclosingLoop;
     current = current->enclosing;
     return function;
 }
@@ -2476,6 +2482,9 @@ static void printStatement() {
 }
 
 static void returnStatement() {
+    if (current->isDefer) {
+        error("Can't return from a defer statement.");
+    }
     if (current->type == TYPE_SCRIPT) {
         error("Can't return from top-level code.");
     }
@@ -2495,7 +2504,11 @@ static void returnStatement() {
 
 static void continueStatement() {
     if (currentLoop == NULL) {
-        error("Can't use 'continue' outside of a loop.");
+        if (current->isDefer) {
+            error("Can't use 'continue' in a defer statement.");
+        } else {
+            error("Can't use 'continue' outside of a loop.");
+        }
         return;
     }
 
@@ -2514,7 +2527,11 @@ static void continueStatement() {
 
 static void breakStatement() {
     if (currentLoop == NULL) {
-        error("Can't use 'break' outside of a loop.");
+        if (current->isDefer) {
+            error("Can't use 'break' in a defer statement.");
+        } else {
+            error("Can't use 'break' outside of a loop.");
+        }
         return;
     }
 

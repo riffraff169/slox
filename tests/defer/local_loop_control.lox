@@ -1,0 +1,14 @@
+// break/continue must still work for loops declared inside a defer body.
+fun f() {
+    defer {
+        for (var i = 0; i < 3; i = i + 1) {
+            if (i == 1) continue;
+            print "defer loop " + String(i);
+            if (i == 2) break;
+        }
+    }
+    return "done";
+}
+print f(); // expect: defer loop 0
+           // expect: defer loop 2
+           // expect: done
