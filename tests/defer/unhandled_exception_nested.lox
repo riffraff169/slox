@@ -1,0 +1,20 @@
+// An exception with no handler must still unwind every active frame and run
+// its defer hooks before the process reports the error.
+fun inner() {
+    defer print "inner cleanup";
+    print "inner body";
+    throw "boom";
+}
+
+fun outer() {
+    defer print "outer cleanup";
+    inner();
+    print "unreachable";
+}
+
+outer();
+
+// expect: inner body
+// expect: inner cleanup
+// expect: outer cleanup
+// expect: Unhandled Exception: boom

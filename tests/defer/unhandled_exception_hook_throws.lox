@@ -1,0 +1,14 @@
+// If a defer hook throws while an unhandled exception is unwinding, the new
+// exception replaces the original and the remaining hooks still run.
+fun f() {
+    defer print "first";
+    defer throw "hook-error";
+    defer print "third";
+    throw "original";
+}
+
+f();
+
+// expect: third
+// expect: first
+// expect: Unhandled Exception: hook-error

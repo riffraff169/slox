@@ -1,0 +1,10 @@
+// Top-level defer hooks run LIFO when an unhandled exception ends the script.
+defer print "top first";
+defer print "top second";
+print "before";
+throw "boom";
+
+// expect: before
+// expect: top second
+// expect: top first
+// expect: Unhandled Exception: boom

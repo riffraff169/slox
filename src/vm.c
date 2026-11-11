@@ -87,7 +87,12 @@ VM vm;
 InterpretResult run();
 static void resetStack();
 static void clearTryBlock(TryBlock* block);
+static void reportUnhandledException(Value exceptionValue);
 //void initArrayMethods();
+
+// pendingUnwindTry sentinel: no handler remains in any frame, so every frame
+// must be unwound (running defer hooks) before the exception is reported.
+#define UNHANDLED_UNWIND (-1)
 
 typedef enum {
     PROP_FOUND,
@@ -208,34 +213,52 @@ bool isResultOk(Value value) {
     return false;
 }
 
-void raiseException(Value exceptionValue) {
-    vm.exceptionThrown = true;
-    if (vm.tryCount == 0) {
-        fprintf(stderr, "Unhandled Exception: ");
-        printValueMain(exceptionValue);
-        fprintf(stderr, "\n");
+static void reportUnhandledException(Value exceptionValue) {
+    // All frames have already been unwound here. Keep the exception rooted
+    // while formatting it, since building the trace lookup key can trigger GC.
+    resetStack();
+    push(exceptionValue);
 
-        // print attached e.stack_trace if exception is an instance
-        if (IS_INSTANCE(exceptionValue)) {
-            ObjInstance* instance = AS_INSTANCE(exceptionValue);
-            ObjString* traceKey = copyString("stack_trace", 11);
-            push(OBJ_VAL(traceKey));
+    fflush(stdout);
+    fprintf(stderr, "Unhandled Exception: ");
+    printValueMain(exceptionValue);
+    fflush(stdout);
+    fprintf(stderr, "\n");
 
-            Value traceVal;
-            if (tableGet(&instance->fields, traceKey, &traceVal) && IS_ARRAY(traceVal)) {
-                ObjArray* array = AS_ARRAY(traceVal);
-                for (int i = 0; i < array->count; i++) {
-                    Value lineVal = array->values[i];
-                    if (IS_STRING(lineVal)) {
-                        fprintf(stderr, " %s\n", AS_CSTRING(lineVal));
-                    }
+    // print attached e.stack_trace if exception is an instance
+    if (IS_INSTANCE(exceptionValue)) {
+        ObjInstance* instance = AS_INSTANCE(exceptionValue);
+        ObjString* traceKey = copyString("stack_trace", 11);
+        push(OBJ_VAL(traceKey));
+
+        Value traceVal;
+        if (tableGet(&instance->fields, traceKey, &traceVal) && IS_ARRAY(traceVal)) {
+            ObjArray* array = AS_ARRAY(traceVal);
+            for (int i = 0; i < array->count; i++) {
+                Value lineVal = array->values[i];
+                if (IS_STRING(lineVal)) {
+                    fprintf(stderr, " %s\n", AS_CSTRING(lineVal));
                 }
             }
-            pop();
         }
-        resetStack();
+        pop();
+    }
 
-        exit(70);
+    exit(70);
+}
+
+void raiseException(Value exceptionValue) {
+    vm.exceptionThrown = true;
+
+    if (vm.tryCount == 0) {
+        // No handler remains. Stage a full unwind so active frames can run
+        // their defer hooks before the process reports the exception. Any
+        // in-flight unwind state is superseded by this new exception.
+        vm.unwindHookCount = 0;
+        vm.pendingUnwindActive = true;
+        vm.pendingUnwindTry = UNHANDLED_UNWIND;
+        vm.pendingUnwindException = exceptionValue;
+        return;
     }
 
     int targetIndex = vm.tryCount - 1;
@@ -2460,14 +2483,28 @@ static bool processPendingUnwind() {
             return true;
         }
 
-        if (vm.pendingUnwindTry < 0 || vm.pendingUnwindTry >= vm.tryCount) {
-            vm.pendingUnwindActive = false;
-            vm.pendingUnwindException = NIL_VAL;
-            return true;
-        }
+        TryBlock* target = NULL;
+        int targetFrameCount;
 
-        TryBlock* target = &vm.tryStack[vm.pendingUnwindTry];
-        int targetFrameCount = target->frameCount;
+        if (vm.pendingUnwindTry == UNHANDLED_UNWIND) {
+            if (vm.frameCount == 0) {
+                Value exception = vm.pendingUnwindException;
+                vm.pendingUnwindActive = false;
+                vm.pendingUnwindException = NIL_VAL;
+                reportUnhandledException(exception);
+                return true; // reportUnhandledException never returns
+            }
+            targetFrameCount = 0;
+        } else {
+            if (vm.pendingUnwindTry < 0 || vm.pendingUnwindTry >= vm.tryCount) {
+                vm.pendingUnwindActive = false;
+                vm.pendingUnwindException = NIL_VAL;
+                return true;
+            }
+
+            target = &vm.tryStack[vm.pendingUnwindTry];
+            targetFrameCount = target->frameCount;
+        }
 
         if (vm.frameCount > targetFrameCount) {
             CallFrame* frame = &vm.frames[vm.frameCount - 1];
@@ -2510,6 +2547,12 @@ static bool processPendingUnwind() {
             closeUpvalues(frame->slots);
             freeValueArray(&frame->deferHooks);
             vm.frameCount--;
+            continue;
+        }
+
+        // Unhandled exceptions are reported once every frame has been popped;
+        // the loop above always continues while any frame remains.
+        if (vm.pendingUnwindTry == UNHANDLED_UNWIND) {
             continue;
         }
 
