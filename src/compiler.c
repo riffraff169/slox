@@ -72,9 +72,11 @@ typedef struct Compiler {
     ObjFunction* function;
     FunctionType type;
 
-    Local locals[8192];
+    Local* locals;
     int localCount;
-    Upvalue upvalues[8192];
+    int localCapacity;
+    Upvalue* upvalues;
+    int upvalueCapacity;
     int scopeDepth;
     bool isDefer;
 } Compiler;
@@ -359,11 +361,51 @@ static void patchJump(int offset) {
     currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
+static void ensureLocalCapacity(Compiler* compiler) {
+    if (compiler->localCount < compiler->localCapacity) return;
+
+    int oldCapacity = compiler->localCapacity;
+    int newCapacity = GROW_CAPACITY(oldCapacity);
+    if (newCapacity > UINT16_COUNT) newCapacity = UINT16_COUNT;
+
+    compiler->locals = GROW_ARRAY(Local, compiler->locals,
+            oldCapacity, newCapacity);
+    compiler->localCapacity = newCapacity;
+}
+
+static void ensureUpvalueCapacity(Compiler* compiler) {
+    int upvalueCount = compiler->function->upvalueCount;
+    if (upvalueCount < compiler->upvalueCapacity) return;
+
+    int oldCapacity = compiler->upvalueCapacity;
+    int newCapacity = GROW_CAPACITY(oldCapacity);
+    if (newCapacity > UINT16_COUNT) newCapacity = UINT16_COUNT;
+
+    compiler->upvalues = GROW_ARRAY(Upvalue, compiler->upvalues,
+            oldCapacity, newCapacity);
+    compiler->upvalueCapacity = newCapacity;
+}
+
+static void freeCompiler(Compiler* compiler) {
+    FREE_ARRAY(Local, compiler->locals, compiler->localCapacity);
+    FREE_ARRAY(Upvalue, compiler->upvalues, compiler->upvalueCapacity);
+
+    compiler->locals = NULL;
+    compiler->localCount = 0;
+    compiler->localCapacity = 0;
+    compiler->upvalues = NULL;
+    compiler->upvalueCapacity = 0;
+}
+
 static void initCompiler(Compiler* compiler, FunctionType type) {
     compiler->enclosing = current;
     compiler->function = NULL;
     compiler->type = type;
+    compiler->locals = NULL;
     compiler->localCount = 0;
+    compiler->localCapacity = 0;
+    compiler->upvalues = NULL;
+    compiler->upvalueCapacity = 0;
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
     compiler->isDefer = false;
@@ -385,6 +427,9 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
         }
     }
 
+    // Allocate after `current` points at this compiler so the new function is
+    // visible to the GC (it is not reachable from any chunk yet).
+    ensureLocalCapacity(current);
     Local* local = &current->locals[current->localCount++];
     local->depth = 0;
     local->isCaptured = false;
@@ -483,12 +528,18 @@ static int addUpvalue(Compiler* compiler, int index,
         }
     }
 
-    int maxUpvalues = (int)(sizeof(compiler->upvalues) / sizeof(compiler->upvalues[0]));
-    if (upvalueCount == maxUpvalues) {
+    if (upvalueCount == UINT16_COUNT) {
         error("Too many closure variables in function.");
         return 0;
     }
 
+    // Upvalue indices are encoded as 16-bit values in closure metadata.
+    if (index < 0 || index >= UINT16_COUNT) {
+        error("Too many closure variables in function.");
+        return 0;
+    }
+
+    ensureUpvalueCapacity(compiler);
     compiler->upvalues[upvalueCount].isLocal = isLocal;
     compiler->upvalues[upvalueCount].index = index;
     compiler->upvalues[upvalueCount].isConst = isConst;
@@ -513,11 +564,12 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
 }
 
 static void addLocal(Token name) {
-    if (current->localCount == UINT8_COUNT) {
+    if (current->localCount == UINT16_COUNT) {
         error("Too many local variables in function.");
         return;
     }
 
+    ensureLocalCapacity(current);
     Local* local = &current->locals[current->localCount++];
     local->name = name;
     local->depth = -1;
@@ -1677,6 +1729,7 @@ static void function(FunctionType type) {
         emitByte((uint8_t)((compiler.upvalues[i].index >> 8) & 0xff));
         emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
     }
+    freeCompiler(&compiler);
 }
 
 static void parseFunction(FunctionType type) {
@@ -1742,6 +1795,7 @@ static void parseFunction(FunctionType type) {
         emitByte((uint8_t)(compiler.upvalues[i].index >> 8) & 0xff);
         emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
     }
+    freeCompiler(&compiler);
 }
 
 static void lambda(bool canAssign) {
@@ -2328,6 +2382,7 @@ static void deferStatement() {
         emitByte((uint8_t)((compiler.upvalues[i].index >> 8) & 0xff));
         emitByte((uint8_t)(compiler.upvalues[i].index & 0xff));
     }
+    freeCompiler(&compiler);
 }
 
 static void switchStatement() {
@@ -2635,6 +2690,7 @@ ObjFunction* compileModule(const char* source, ObjString* filename) {
     }
 
     ObjFunction* function = endCompiler();
+    freeCompiler(&compiler);
     return parser.hadError ? NULL : function;
 }
 
@@ -2717,6 +2773,7 @@ static void compileModuleMethod(ObjClass* klass) {
     block();
 
     ObjFunction* methodFunc = endCompiler();
+    freeCompiler(&compiler);
 
     if (type == TYPE_METHOD || type == TYPE_INITIALIZER || type == TYPE_STATIC_METHOD) {
         methodFunc->isfree = false;
@@ -2785,6 +2842,7 @@ ObjFunction* compile(const char* source, ObjString* filename) {
     }
 
     ObjFunction* function = endCompiler();
+    freeCompiler(&compiler);
     return parser.hadError ? NULL : function;
 }
 
