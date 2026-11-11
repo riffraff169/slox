@@ -1,0 +1,19 @@
+// An enclosing try/finally runs before the frame's defer hooks and catch.
+fun f() {
+    defer print "defer runs";
+    try {
+        throw "inside";
+    } finally {
+        print "finally runs";
+    }
+}
+
+try {
+    f();
+} catch (e) {
+    print "caught " + e;
+}
+
+// expect: finally runs
+// expect: defer runs
+// expect: caught inside

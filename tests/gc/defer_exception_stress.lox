@@ -1,0 +1,39 @@
+// Regression: pending unwind state and defer hooks must stay rooted while an
+// exception unwinds and while hooks allocate.
+GC.stress_mode(GC.StressMode);
+
+fun makeValue() {
+    defer print "cleanup";
+    throw "fresh-" + String(1);
+}
+
+try {
+    makeValue();
+} catch (e) {
+    print "caught " + e;
+}
+
+var saved;
+fun capture() {
+    var x = "captured-" + String(7);
+    saved = fun() {
+        return x;
+    };
+    defer print "capture cleanup";
+    throw "boom";
+}
+
+try {
+    capture();
+} catch (e) {
+    print "caught " + e;
+}
+print saved();
+
+GC.stress_mode(GC.NormalMode);
+
+// expect: cleanup
+// expect: caught fresh-1
+// expect: capture cleanup
+// expect: caught boom
+// expect: captured-7

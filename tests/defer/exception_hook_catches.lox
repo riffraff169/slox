@@ -1,0 +1,22 @@
+// A hook that catches its own exception must not replace the original one.
+fun f() {
+    defer {
+        try {
+            throw "inner";
+        } catch (e) {
+            print "hook caught " + e;
+        }
+        print "hook done";
+    }
+    throw "original";
+}
+
+try {
+    f();
+} catch (e) {
+    print "outer caught " + e;
+}
+
+// expect: hook caught inner
+// expect: hook done
+// expect: outer caught original

@@ -1,0 +1,18 @@
+// Hooks run in LIFO order when an exception unwinds the frame.
+fun f() {
+    defer print "first";
+    defer print "second";
+    defer print "third";
+    throw "boom";
+}
+
+try {
+    f();
+} catch (e) {
+    print "caught " + e;
+}
+
+// expect: third
+// expect: second
+// expect: first
+// expect: caught boom

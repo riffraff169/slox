@@ -238,38 +238,19 @@ void raiseException(Value exceptionValue) {
         exit(70);
     }
 
-    TryBlock* target = &vm.tryStack[vm.tryCount - 1];
+    int targetIndex = vm.tryCount - 1;
+    int targetFrameCount = vm.tryStack[targetIndex].frameCount;
 
-    vm.stackTop = target->stackTop;
-    vm.frameCount = target->frameCount;
-    CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
-
-    if (target->catchIp != NULL) {
-        uint8_t* catchTargetIp = target->catchIp;
-
-        target->catchIp = NULL;
-
-        if (target->finallyIp == NULL) {
-            clearTryBlock(target);
-            vm.tryCount--;
-        }
-        push(exceptionValue);
-        currentFrame->ip = catchTargetIp;
-
-        //vm.exceptionThrown = true;
-    } else if (target->finallyIp != NULL) {
-        target->hasUncaughtException = true;
-        target->uncaughtException = exceptionValue;
-
-        uint8_t* finallyTargetIp = target->finallyIp;
-        target->finallyIp = NULL;
-
-        currentFrame->ip = finallyTargetIp;
-    } else {
-        clearTryBlock(target);
-        vm.tryCount--;
-        raiseException(exceptionValue);
+    // Defer hooks that belong to frames being unwound cannot resume their
+    // saved exception state; this new exception supersedes it.
+    while (vm.unwindHookCount > 0 &&
+            vm.unwindHooks[vm.unwindHookCount - 1].callerDepth >= targetFrameCount) {
+        vm.unwindHookCount--;
     }
+
+    vm.pendingUnwindActive = true;
+    vm.pendingUnwindTry = targetIndex;
+    vm.pendingUnwindException = exceptionValue;
 }
 
 void defineClassConstant(ObjClass* klass, const char* name, Value value) {
@@ -1448,6 +1429,13 @@ void initVM(int argc, const char* argv[], const char* env[]) {
     vm.tryCount = 0;
     //vm.tryCapacity = 0;
 
+    vm.pendingUnwindActive = false;
+    vm.pendingUnwindTry = -1;
+    vm.pendingUnwindException = NIL_VAL;
+    vm.unwindHooks = NULL;
+    vm.unwindHookCount = 0;
+    vm.unwindHookCapacity = 0;
+
     initTable(&vm.globals);
     initTable(&vm.strings);
     initTable(&vm.globalConstants);
@@ -1696,6 +1684,7 @@ void freeVM() {
     FREE_ARRAY(void*, vm.moduleHandles, vm.moduleCapacity);
     freeValueArray(&vm.atExitHooks);
     freeValueArray(&vm.globalRoots);
+    FREE_ARRAY(UnwindHookContext, vm.unwindHooks, vm.unwindHookCapacity);
 }
 
 void push(Value value) {
@@ -2397,6 +2386,117 @@ static inline uint32_t read24(uint8_t* ip) {
     return(ip[0] << 16) | (ip[1] << 8) | ip[2];
 }
 
+static bool processPendingUnwind() {
+    for (;;) {
+        // Retire hooks that have returned to their caller.
+        while (vm.unwindHookCount > 0) {
+            UnwindHookContext* ctx = &vm.unwindHooks[vm.unwindHookCount - 1];
+            if (vm.frameCount > ctx->callerDepth) break;
+
+            vm.unwindHookCount--;
+            vm.stackTop = ctx->stackBefore;
+            vm.pendingUnwindActive = true;
+            vm.pendingUnwindTry = ctx->savedTryIndex;
+            vm.pendingUnwindException = ctx->savedException;
+        }
+
+        if (!vm.pendingUnwindActive) {
+            return true;
+        }
+
+        if (vm.pendingUnwindTry < 0 || vm.pendingUnwindTry >= vm.tryCount) {
+            vm.pendingUnwindActive = false;
+            vm.pendingUnwindException = NIL_VAL;
+            return true;
+        }
+
+        TryBlock* target = &vm.tryStack[vm.pendingUnwindTry];
+        int targetFrameCount = target->frameCount;
+
+        if (vm.frameCount > targetFrameCount) {
+            CallFrame* frame = &vm.frames[vm.frameCount - 1];
+
+            if (frame->deferHooks.count > 0) {
+                Value hook = frame->deferHooks.values[--frame->deferHooks.count];
+                Value* stackBefore = vm.stackTop;
+                push(hook);
+
+                if (vm.unwindHookCount == vm.unwindHookCapacity) {
+                    int oldCapacity = vm.unwindHookCapacity;
+                    vm.unwindHookCapacity = GROW_CAPACITY(oldCapacity);
+                    vm.unwindHooks = GROW_ARRAY(UnwindHookContext, vm.unwindHooks,
+                            oldCapacity, vm.unwindHookCapacity);
+                }
+
+                UnwindHookContext* ctx = &vm.unwindHooks[vm.unwindHookCount++];
+                ctx->callerDepth = vm.frameCount;
+                ctx->stackBefore = stackBefore;
+                ctx->savedTryIndex = vm.pendingUnwindTry;
+                ctx->savedException = vm.pendingUnwindException;
+
+                vm.pendingUnwindActive = false;
+                vm.exceptionThrown = false;
+
+                if (!vmCall(AS_CLOSURE(hook), 0)) {
+                    vm.unwindHookCount--;
+                    vm.stackTop = stackBefore;
+                    vm.pendingUnwindActive = true;
+                    vm.pendingUnwindTry = ctx->savedTryIndex;
+                    vm.pendingUnwindException = ctx->savedException;
+                    freeValueArray(&frame->deferHooks);
+                    closeUpvalues(frame->slots);
+                    vm.frameCount--;
+                    continue;
+                }
+                return true;
+            }
+
+            closeUpvalues(frame->slots);
+            freeValueArray(&frame->deferHooks);
+            vm.frameCount--;
+            continue;
+        }
+
+        Value exception = vm.pendingUnwindException;
+        int tryIndex = vm.pendingUnwindTry;
+        target = &vm.tryStack[tryIndex];
+
+        vm.pendingUnwindActive = false;
+        vm.pendingUnwindException = NIL_VAL;
+        vm.stackTop = target->stackTop;
+
+        CallFrame* currentFrame = &vm.frames[vm.frameCount - 1];
+
+        if (target->catchIp != NULL) {
+            uint8_t* catchTargetIp = target->catchIp;
+            target->catchIp = NULL;
+
+            if (target->finallyIp == NULL) {
+                clearTryBlock(target);
+                vm.tryCount--;
+            }
+            push(exception);
+            currentFrame->ip = catchTargetIp;
+            return true;
+        }
+
+        if (target->finallyIp != NULL) {
+            target->hasUncaughtException = true;
+            target->uncaughtException = exception;
+
+            uint8_t* finallyTargetIp = target->finallyIp;
+            target->finallyIp = NULL;
+
+            currentFrame->ip = finallyTargetIp;
+            return true;
+        }
+
+        clearTryBlock(target);
+        vm.tryCount--;
+        raiseException(exception);
+    }
+}
+
 InterpretResult run() {
     int initialFrameCount = vm.frameCount;
 
@@ -2478,8 +2578,15 @@ InterpretResult run() {
             return INTERPRET_OK;
         }
 
-        if (vm.exceptionThrown) {
+        if (vm.exceptionThrown && !vm.pendingUnwindActive) {
             vm.exceptionThrown = false;
+        }
+
+        if (!processPendingUnwind()) {
+            return INTERPRET_RUNTIME_ERROR;
+        }
+        if (vm.frameCount < initialFrameCount) {
+            return INTERPRET_OK;
         }
 
         CallFrame* frame = &vm.frames[vm.frameCount - 1];

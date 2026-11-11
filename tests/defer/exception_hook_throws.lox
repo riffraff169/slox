@@ -1,0 +1,18 @@
+// A throwing hook replaces the pending exception, and the remaining hooks still
+// run before unwinding continues.
+fun f() {
+    defer print "first";
+    defer throw "hook-error";
+    defer print "third";
+    throw "original";
+}
+
+try {
+    f();
+} catch (e) {
+    print "caught " + e;
+}
+
+// expect: third
+// expect: first
+// expect: caught hook-error

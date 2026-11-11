@@ -36,6 +36,13 @@ typedef struct {
     Value uncaughtException;
 } TryBlock;
 
+typedef struct {
+    int callerDepth;
+    Value* stackBefore;
+    int savedTryIndex;
+    Value savedException;
+} UnwindHookContext;
+
 #define TRY_STACK_MAX 64
 
 typedef struct {
@@ -170,6 +177,14 @@ typedef struct {
 
     ValueArray atExitHooks;
     ValueArray globalRoots;
+
+    bool pendingUnwindActive;
+    int pendingUnwindTry;
+    Value pendingUnwindException;
+
+    UnwindHookContext* unwindHooks;
+    int unwindHookCount;
+    int unwindHookCapacity;
 } VM;
 
 typedef enum {

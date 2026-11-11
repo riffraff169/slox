@@ -340,6 +340,13 @@ static void markRoots() {
         }
     }
 
+    if (vm.pendingUnwindActive) {
+        markValue(vm.pendingUnwindException);
+    }
+    for (int i = 0; i < vm.unwindHookCount; i++) {
+        markValue(vm.unwindHooks[i].savedException);
+    }
+
     for (int i = 0; i < MAX_SIGNALS; i++) {
         markValue(signal_callbacks[i]);
     }

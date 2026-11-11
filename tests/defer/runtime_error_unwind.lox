@@ -1,0 +1,16 @@
+// Runtime errors must unwind frames the same way explicit throws do.
+fun f() {
+    defer print "cleanup";
+    missing_variable;
+}
+
+try {
+    f();
+} catch (e) {
+    print "caught " + e.message;
+}
+print "after";
+
+// expect: cleanup
+// expect: caught Undefined variable 'missing_variable'.
+// expect: after

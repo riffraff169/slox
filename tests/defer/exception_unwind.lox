@@ -1,0 +1,26 @@
+// Defer hooks must run while an exception unwinds each frame, and must run
+// before the matching catch block gets control.
+fun inner() {
+    defer print "inner cleanup";
+    print "inner body";
+    throw "boom";
+}
+
+fun outer() {
+    defer print "outer cleanup";
+    inner();
+    print "unreachable";
+}
+
+try {
+    outer();
+} catch (e) {
+    print "caught " + e;
+}
+print "after";
+
+// expect: inner body
+// expect: inner cleanup
+// expect: outer cleanup
+// expect: caught boom
+// expect: after

@@ -1,0 +1,25 @@
+// Captured locals must be closed when an exception unwinds their frame.
+var saved;
+fun f() {
+    var x = "captured-value";
+    fun g() {
+        return x;
+    }
+    saved = g;
+    throw "boom";
+}
+
+try {
+    f();
+} catch (e) {
+    print "caught";
+}
+
+// Overwrite the abandoned stack slot if the upvalue was left open.
+for (var i = 0; i < 200; i = i + 1) {
+    var junk = String(i) + " filler filler filler";
+}
+print saved();
+
+// expect: caught
+// expect: captured-value
