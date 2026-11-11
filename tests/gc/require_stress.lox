@@ -1,0 +1,15 @@
+// Regression: require() replaces the __name__ global while compiling the
+// module, so the previous value must stay rooted until it is restored.
+GC.stress_mode(GC.StressMode);
+
+require("tests/gc/fixtures/require_module.lox");
+
+// Force another collection while the restored __name__ value is still live.
+for (var i = 0; i < 10; i = i + 1) {
+    var scratch = "item-" + String(i);
+}
+
+GC.stress_mode(GC.NormalMode);
+
+print moduleLoaded;         // expect: true
+print ModuleClass().value(); // expect: module

@@ -1,0 +1,32 @@
+// Regression: compiled child functions must stay rooted while makeConstant()
+// and newClosure() allocate (nested functions, methods, and defer bodies).
+GC.stress_mode(GC.StressMode);
+
+eval("
+fun makeCounter() {
+    var count = 0;
+    fun increment() {
+        count = count + 1;
+        return count;
+    }
+    return increment;
+}
+
+class Greeter {
+    greet() { return \"hi\"; }
+}
+
+fun withDefer() {
+    defer print \"cleanup\";
+    print \"body\";
+}
+");
+
+var counter = makeCounter();
+print counter();        // expect: 1
+print counter();        // expect: 2
+print Greeter().greet(); // expect: hi
+withDefer();            // expect: body
+                        // expect: cleanup
+
+GC.stress_mode(GC.NormalMode);

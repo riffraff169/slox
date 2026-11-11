@@ -1,0 +1,11 @@
+// Regression: a defer closure must stay rooted while its hook is appended to
+// frame->deferHooks, since growing that array can trigger a collection.
+GC.stress_mode(GC.StressMode);
+
+fun f() {
+    defer print "cleanup";
+}
+
+f();                    // expect: cleanup
+
+GC.stress_mode(GC.NormalMode);

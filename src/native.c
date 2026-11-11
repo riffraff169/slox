@@ -176,7 +176,10 @@ Value evalNative(int argCount, Value* args) {
 
     ObjString* source = AS_STRING(args[0]);
 
-    ObjFunction* function = compile(source->chars, copyString("<eval>", 6));
+    ObjString* filename = copyString("<eval>", 6);
+    push(OBJ_VAL(filename));
+    ObjFunction* function = compile(source->chars, filename);
+    pop();
     if (function == NULL) {
         return NIL_VAL;
     }
@@ -915,6 +918,7 @@ Value requireNative(int argCount, Value* args) {
 
     Value oldName = NIL_VAL;
     tableGet(&vm.globals, nameKey, &oldName);
+    push(oldName);
 
     tableSet(&vm.globals, nameKey, OBJ_VAL(path));
 
@@ -923,6 +927,7 @@ Value requireNative(int argCount, Value* args) {
 
     if (function == NULL) {
         tableSet(&vm.globals, nameKey, oldName);
+        pop();
         pop();
         return NIL_VAL;
     }
@@ -953,6 +958,7 @@ Value requireNative(int argCount, Value* args) {
 
         tableSet(&vm.globals, nameKey, oldName);
         pop();
+        pop();
 
         VM_CALLBACK_EXIT(oldExitDepth);
         return exportResult;
@@ -961,6 +967,7 @@ Value requireNative(int argCount, Value* args) {
     tableSet(&vm.globals, nameKey, oldName);
     pop();
 
+    pop();
     pop();
 
     VM_CALLBACK_EXIT(oldExitDepth);

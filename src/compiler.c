@@ -1695,7 +1695,9 @@ static void function(FunctionType type) {
                 if (match(TOKEN_EQUAL)) {
                     isOptional = true;
                     Value defaultValue = parseConstant();
+                    push(defaultValue);
                     writeValueArray(&current->function->defaults, defaultValue);
+                    pop();
                 } else if (isOptional) {
                     error("Cannot have a require parameter after an optional one.");
                 }
@@ -1712,7 +1714,9 @@ static void function(FunctionType type) {
         function->isfree = false;
     }
 
+    push(OBJ_VAL(function));
     int constant = makeConstant(OBJ_VAL(function));
+    pop();
 
     if (constant < 256) {
         emitByte(OP_CLOSURE);
@@ -1766,7 +1770,9 @@ static void parseFunction(FunctionType type) {
             if (match(TOKEN_EQUAL)) {
                 isOptional = true;
                 Value defaultValue = parseConstant();
+                push(defaultValue);
                 writeValueArray(&current->function->defaults, defaultValue);
+                pop();
             } else if (isOptional) {
                 error("Can't have a required parameter after an optional one.");
             }
@@ -1780,7 +1786,9 @@ static void parseFunction(FunctionType type) {
 
     ObjFunction* function = endCompiler();
 
+    push(OBJ_VAL(function));
     int constant = makeConstant(OBJ_VAL(function));
+    pop();
     if (constant < 256) {
         emitBytes(OP_CLOSURE, constant);
     } else {
@@ -2365,7 +2373,9 @@ static void deferStatement() {
 
     ObjFunction* function = endCompiler();
 
+    push(OBJ_VAL(function));
     int constant = makeConstant(OBJ_VAL(function));
+    pop();
 
     if (constant < 256) {
         emitByte(OP_DEFER);
@@ -2758,7 +2768,9 @@ static void compileModuleMethod(ObjClass* klass) {
                 if (match(TOKEN_EQUAL)) {
                     isOptional = true;
                     Value defaultValue = parseConstant();
+                    push(defaultValue);
                     writeValueArray(&current->function->defaults, defaultValue);
+                    pop();
                 } else if (isOptional)  {
                     error("Cannot have a require parameter after an optional one.");
                 }
@@ -2779,7 +2791,9 @@ static void compileModuleMethod(ObjClass* klass) {
         methodFunc->isfree = false;
     }
 
+    push(OBJ_VAL(methodFunc));
     ObjClosure* methodClosure = newClosure(methodFunc);
+    pop();
     push(OBJ_VAL(methodClosure));
 
     if (type == TYPE_GETTER) {
@@ -2834,8 +2848,15 @@ ObjFunction* compile(const char* source, ObjString* filename) {
             Token dataToken = parser.previous;
             
             ObjString* dataStr = copyString(dataToken.start, dataToken.length);
+            push(OBJ_VAL(dataStr));
 
-            tableSet(&vm.globals, copyString("DATA", 4), OBJ_VAL(dataStr));
+            ObjString* dataKey = copyString("DATA", 4);
+            push(OBJ_VAL(dataKey));
+
+            tableSet(&vm.globals, dataKey, OBJ_VAL(dataStr));
+
+            pop();
+            pop();
             break;
         }
         declaration();

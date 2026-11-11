@@ -3824,8 +3824,8 @@ InterpretResult run() {
                     }
 
                     if (instruction == OP_DEFER || instruction == OP_DEFER_LONG) {
-                        Value closureVal = pop();
-                        writeValueArray(&frame->deferHooks, closureVal);
+                        writeValueArray(&frame->deferHooks, peek(0));
+                        pop();
                     }
                 }
                 break;

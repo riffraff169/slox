@@ -1,0 +1,5 @@
+var moduleLoaded = true;
+
+class ModuleClass {
+    value() { return "module"; }
+}

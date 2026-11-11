@@ -1,0 +1,9 @@
+// Regression: eval() must keep its synthetic filename rooted, and the compiler
+// must root default parameter values while appending them to the function.
+GC.stress_mode(GC.StressMode);
+
+eval("fun f(x = \"hello\") { return x; }");
+print f();              // expect: hello
+print f("world");       // expect: world
+
+GC.stress_mode(GC.NormalMode);

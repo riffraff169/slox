@@ -1,0 +1,9 @@
+// Regression: the __END__ DATA string and the "DATA" key must stay rooted
+// across the allocations that publish them into vm.globals.
+GC.stress_mode(GC.StressMode);
+
+eval("var before = 1;\n__END__\nraw payload that becomes DATA");
+
+print before;           // expect: 1
+
+GC.stress_mode(GC.NormalMode);
