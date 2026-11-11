@@ -1,0 +1,37 @@
+// Foreach loop variables are ordinary mutable locals, not implicitly const.
+class It {
+  init() {
+    this.i = 0;
+    this.cur = nil;
+  }
+  done() { return this.i >= 2; }
+  next() {
+    this.i = this.i + 1;
+    this.cur = this.i;
+    return this.cur;
+  }
+  key() { return this.i * 10; }
+  val() { return this.cur; }
+}
+
+class Coll {
+  iter() { return It(); }
+}
+
+foreach (x in Coll()) {
+  x = x + 100;
+  print x;
+}
+
+foreach (k, v in Coll()) {
+  v = v + 200;
+  print k;
+  print v;
+}
+
+// expect: 101
+// expect: 102
+// expect: 10
+// expect: 201
+// expect: 20
+// expect: 202

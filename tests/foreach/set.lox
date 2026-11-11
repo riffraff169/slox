@@ -1,0 +1,36 @@
+// Set iteration order is hash-dependent, so test aggregates and membership.
+var s = Set("a", "b", "c");
+
+var count = 0;
+var total = 0;
+foreach (x in s) {
+  count += 1;
+  total += x.length();
+}
+
+print count;                                    // expect: 3
+print total;                                    // expect: 3
+print s.has("a") and s.has("b") and s.has("c");   // expect: true
+print s.has("missing");                         // expect: false
+
+// Single-variable form on a multiset visits each unique key once.
+var ms = Set.multiset(["a", "a", "b"]);
+
+var multiCount = 0;
+var multiTotal = 0;
+foreach (x in ms) {
+  multiCount += 1;
+  multiTotal += x.length();
+}
+
+print multiCount;                               // expect: 2
+print multiTotal;                               // expect: 2
+print ms.count("a");                            // expect: 2
+print ms.count("b");                            // expect: 1
+
+// Empty sets must not execute the body.
+var empty = Set();
+foreach (x in empty) {
+  print "never";
+}
+print "done";                                   // expect: done

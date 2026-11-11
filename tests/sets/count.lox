@@ -1,0 +1,9 @@
+var s = Set("a", "b");
+print s.count("a");          // expect: 1
+print s.count("b");          // expect: 1
+print s.count("missing");    // expect: 0
+
+var ms = Set.multiset(["x", "x", "y"]);
+print ms.count("x");         // expect: 2
+print ms.count("y");         // expect: 1
+print ms.count("z");         // expect: 0

@@ -1,0 +1,39 @@
+// Map iteration is hash-ordered, so test aggregates instead of print order.
+var m = {"a": 1, "b": 2, "c": 3};
+
+var keys = Set();
+var values = Set();
+var sum = 0;
+var count = 0;
+
+foreach (k, v in m) {
+  keys.add(k);
+  values.add(v);
+  sum += v;
+  count += 1;
+}
+
+print count;                                    // expect: 3
+print sum;                                      // expect: 6
+print keys.len();                               // expect: 3
+print keys.has("a") and keys.has("b") and keys.has("c");     // expect: true
+print values.has(1) and values.has(2) and values.has(3);     // expect: true
+print keys.has("missing");                      // expect: false
+
+// Single-variable form yields [key, value].
+var entrySum = 0;
+var entryCount = 0;
+foreach (entry in m) {
+  entrySum += entry[1];
+  entryCount += 1;
+}
+
+print entryCount;                               // expect: 3
+print entrySum;                                 // expect: 6
+
+// Empty maps must not execute the body.
+var empty = {};
+foreach (k, v in empty) {
+  print "never";
+}
+print "done";                                   // expect: done

@@ -2323,6 +2323,12 @@ You can extend an array using .push().
 
 ### Methods
 
+#### `Array.iter()`
+Returns an iterator so foreach can traverse the array.
+
+**Returns:**
+  - `ArrayIterator`
+
 #### `Array.zipWith(other, transformFn)`
 Combines 2 arrays, transformed by a function like f(array1[i], array2[i]).
 
@@ -2820,6 +2826,70 @@ Gets next item.
 **Returns:**
   - `Array: key, value`
 
+#### `MapIterator.key()`
+Gets the key of the current entry.
+
+**Returns:**
+  - `Value`
+
+#### `MapIterator.val()`
+Gets the value of the current entry.
+
+**Returns:**
+  - `Value`
+
+---
+
+## Class: Map
+Extends the native Map class with an iterator so foreach can traverse it.
+Map/Hash table/Dictionary type.  Keys can be any type other than nil. Values can be any type.
+Constructor can take a list of values that are converted to key/value pairs. Must be an
+even number.
+Map/Dictionary/Hash table of key/value entries.
+
+**Optional Arguments:**
+  - `Array: vals`
+
+### Methods
+
+#### `Map.keys()`
+Get list of keys
+
+**Returns:**
+  - `Array: list of keys`
+
+#### `Map.values()`
+Get list of values
+
+**Returns:**
+  - `Array: list of values`
+
+#### `Map.has()`
+Check if map has a key
+
+**Returns:**
+  - `Bool: true if key exists`
+
+#### `Map.remove(key)`
+Remove keys from a map. Takes at least one argument.
+
+**Required Arguments:**
+  - `Value: key`
+
+**Returns:**
+  - `Map: removed keys`
+
+#### `Map.length()`
+**Returns:**
+  - `Integer: number of items`
+
+#### `Map.each()`
+Executes a callback on each key/value pair.
+Works on a copy of the map, so the map won't be modified by the callback.
+
+**Returns:**
+  - `Nil`
+
 ---
 
 ## Class: FieldIndex
@@ -2994,6 +3064,12 @@ Special case of Map. Values are ignored, can keep a count of number
 of times key has been added.
 
 ### Methods
+
+#### `Set.iter()`
+Returns an iterator over the set's keys so foreach can traverse it.
+
+**Returns:**
+  - `ArrayIterator`
 
 #### `Set.multiset([Array])`
 Create a new Set as a multiset. Use as an initializer like: var s = Set.multiset().
@@ -3418,6 +3494,16 @@ Get a string format similar to printf(). Format string recognizes s, d, f, b, fo
   - `String: format`
   - `Args: args`
 
+#### `String.replace(target, replacement)`
+Replace a substring with another
+
+**Required Arguments:**
+  - `String: target`
+  - `String: replacement`
+
+**Returns:**
+  - `String`
+
 #### `String.tr(set1, set2)`
 Similar to the tr tool, converts characters from one set of characters to another.
 
@@ -3445,57 +3531,6 @@ Converts a hex string to an Integer
 
 **Returns:**
   - `Integer`
-
----
-
-## Class: Map
-Map/Hash table/Dictionary type.  Keys can be any type other than nil. Values can be any type.
-Constructor can take a list of values that are converted to key/value pairs. Must be an
-even number.
-Map/Dictionary/Hash table of key/value entries.
-
-**Optional Arguments:**
-  - `Array: vals`
-
-### Methods
-
-#### `Map.keys()`
-Get list of keys
-
-**Returns:**
-  - `Array: list of keys`
-
-#### `Map.values()`
-Get list of values
-
-**Returns:**
-  - `Array: list of values`
-
-#### `Map.has()`
-Check if map has a key
-
-**Returns:**
-  - `Bool: true if key exists`
-
-#### `Map.remove(key)`
-Remove keys from a map. Takes at least one argument.
-
-**Required Arguments:**
-  - `Value: key`
-
-**Returns:**
-  - `Map: removed keys`
-
-#### `Map.length()`
-**Returns:**
-  - `Integer: number of items`
-
-#### `Map.each()`
-Executes a callback on each key/value pair.
-Works on a copy of the map, so the map won't be modified by the callback.
-
-**Returns:**
-  - `Nil`
 
 ---
 

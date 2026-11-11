@@ -928,6 +928,12 @@ ObjClass* getClassForValue(Value value) {
 }
 
 PropertyResult getProperty(Value receiver, ObjString* name, Value* result) {
+    // Keep values reachable from C locals alive across allocations below
+    // (e.g. newBoundMethod, getter calls, native getters).
+    GC_SCOPE;
+    pushTemp(receiver);
+    pushTemp(OBJ_VAL(name));
+
     // 1. dynamic local fields (exclusive to heap instances; no class check needed)
     // direct field access, instance fields or static class fields
     if (IS_INSTANCE(receiver)) {
@@ -1212,6 +1218,13 @@ void getPropertyOp(ObjString* name) {
 */
 
 PropertyResult setProperty(Value receiver, ObjString* name, Value value, Value* result) {
+    // Keep values reachable from C locals alive across allocations below
+    // (tableSet can grow fields and trigger GC, setters can allocate, ...).
+    GC_SCOPE;
+    pushTemp(receiver);
+    pushTemp(OBJ_VAL(name));
+    pushTemp(value);
+
     // 1. frozen state check
     if ((IS_CLASS(receiver) && AS_CLASS(receiver)->isFrozen) ||
             (IS_INSTANCE(receiver) && AS_INSTANCE(receiver)->isFrozen)) {
@@ -2779,8 +2792,11 @@ InterpretResult run() {
                 }
                 break;
             case OP_GET_SUPER:
+            case OP_GET_SUPER_LONG:
                 {
-                    ObjString* name = READ_STRING();
+                    ObjString* name = (instruction == OP_GET_SUPER)
+                        ? READ_STRING()
+                        : READ_STRING_LONG();
                     ObjClass* superclass = AS_CLASS(pop());
 
                     if (!bindMethod(superclass, name)) {

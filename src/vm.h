@@ -8,7 +8,7 @@
 #define FRAMES_MAX 256
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 #define MAX_INCLUDE_PATHS 64
-#define TEMP_STACK_MAX 256
+#define TEMP_STACK_MAX (FRAMES_MAX * 8)
 
 typedef struct {
     ObjClosure* closure;

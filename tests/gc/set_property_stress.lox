@@ -1,0 +1,34 @@
+// Regression: setProperty/getProperty must keep their receiver, name, and value
+// reachable while they allocate (field tables, bound methods, getters).
+GC.stress_mode(GC.StressMode);
+
+class Holder {}
+
+var h = Holder();
+
+h.items = [1, 2, 3];
+print h.items[0];       // expect: 1
+print h.items[1];       // expect: 2
+print h.items[2];       // expect: 3
+
+h.map = {"a": 1};
+print h.map["a"];       // expect: 1
+
+class Counter {
+  init() {
+    this.n = 0;
+  }
+
+  bump() {
+    this.n = this.n + 1;
+    return this.n;
+  }
+}
+
+var c = Counter();
+var bump = c.bump;
+print bump();           // expect: 1
+print bump();           // expect: 2
+
+GC.stress_mode(GC.NormalMode);
+print "done";           // expect: done

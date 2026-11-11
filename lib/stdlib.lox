@@ -93,6 +93,7 @@ class ArrayIterator {
   init(array) {
     this.array = array;
     this.index = 0;
+    this.current = nil;
   }
 
   //: done
@@ -108,9 +109,9 @@ class ArrayIterator {
   // Returns:
   //   Value
   next()  {
-    var item = this.array[this.index];
+    this.current = this.array[this.index];
     this.index += 1;
-    return item;
+    return this.current;
   }
 
   //: key
@@ -118,7 +119,7 @@ class ArrayIterator {
   // Returns:
   //   Integer
   key() {
-    return this.index;
+    return this.index - 1;
   }
 
   //: val
@@ -126,7 +127,7 @@ class ArrayIterator {
   // Returns:
   //   Value
   val() {
-    return this.array[this.index];
+    return this.current;
   }
 }
 
@@ -137,6 +138,8 @@ class MapIterator {
     this.map = map;
     this.keys = map.keys();
     this.index = 0;
+    this.currentKey = nil;
+    this.currentVal = nil;
   }
 
   //: done
@@ -152,9 +155,34 @@ class MapIterator {
   // Returns:
   //   Array: key, value
   next() {
-    var key = this.keys[this.index];
+    this.currentKey = this.keys[this.index];
+    this.currentVal = this.map[this.currentKey];
     this.index = this.index + 1;
-    return [key, this.map[key]];
+    return [this.currentKey, this.currentVal];
+  }
+
+  //: key
+  // Gets the key of the current entry.
+  // Returns:
+  //   Value
+  key() {
+    return this.currentKey;
+  }
+
+  //: val
+  // Gets the value of the current entry.
+  // Returns:
+  //   Value
+  val() {
+    return this.currentVal;
+  }
+}
+
+//@ Map
+// Extends the native Map class with an iterator so foreach can traverse it.
+class Map {
+  iter() {
+    return MapIterator(this);
   }
 }
 
@@ -762,6 +790,14 @@ var exit = System.exit;
 
 //@ Array
 class Array {
+  //: iter
+  // Returns an iterator so foreach can traverse the array.
+  // Returns:
+  //   ArrayIterator
+  iter() {
+    return ArrayIterator(this);
+  }
+
   //: zipWith
   // Combines 2 arrays, transformed by a function like f(array1[i], array2[i]).
   // Requires:
@@ -847,6 +883,14 @@ class Array {
 
 //@ Set
 class Set {
+  //: iter
+  // Returns an iterator over the set's keys so foreach can traverse it.
+  // Returns:
+  //   ArrayIterator
+  iter() {
+    return ArrayIterator(this.keys());
+  }
+
   //: multiset
   // Create a new Set as a multiset. Use as an initializer like: var s = Set.multiset().
   // Optional:
@@ -856,6 +900,11 @@ class Set {
   static multiset(arr = nil) {
     var s = Set();
     s.set_multiset();
+    if (arr != nil) {
+      for (var i = 0; i < arr.length(); i += 1) {
+        s.add(arr[i]);
+      }
+    }
     return s;
   }
 }

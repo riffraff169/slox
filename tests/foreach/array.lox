@@ -1,0 +1,23 @@
+var arr = [10, 20, 30];
+
+foreach (x in arr) {
+  print x;
+}
+
+foreach (i, v in arr) {
+  print i + ":" + v;
+}
+
+foreach (x in []) {
+  print "never";
+}
+
+print "done";
+
+// expect: 10
+// expect: 20
+// expect: 30
+// expect: 0:10
+// expect: 1:20
+// expect: 2:30
+// expect: done

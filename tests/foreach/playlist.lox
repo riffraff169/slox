@@ -1,0 +1,44 @@
+class Playlist {
+  init(name) {
+    this.name = name;
+    this.songs = [];
+  }
+
+  add(song) {
+    this.songs.push(song);
+  }
+
+  iter() {
+    return ArrayIterator(this.songs);
+  }
+}
+
+var p = Playlist("Road Trip");
+p.add("Take On Me");
+p.add("Billie Jean");
+p.add("Africa");
+
+print p.name;
+foreach (song in p) {
+  print song;
+}
+
+foreach (i, song in p) {
+  print i + ". " + song;
+}
+
+// Empty playlists must not execute the body.
+var empty = Playlist("Empty");
+foreach (song in empty) {
+  print "never";
+}
+print "done";
+
+// expect: Road Trip
+// expect: Take On Me
+// expect: Billie Jean
+// expect: Africa
+// expect: 0. Take On Me
+// expect: 1. Billie Jean
+// expect: 2. Africa
+// expect: done

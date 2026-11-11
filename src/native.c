@@ -2495,6 +2495,7 @@ void initSetClass() {
     defineNativeMethod(vm.setClass, "keys", setKeysNative);
     defineNativeMethod(vm.setClass, "remove", setRemoveNative);
     defineNativeMethod(vm.setClass, "has", setHasNative);
+    defineNativeMethod(vm.setClass, "count", setCountNative);
     defineNativeMethod(vm.setClass, "len", setLengthNative);
     defineNativeMethod(vm.setClass, "length", setLengthNative);
     defineNativeMethod(vm.setClass, "set_multiset", setMultisetNative);

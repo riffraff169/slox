@@ -483,7 +483,8 @@ static int addUpvalue(Compiler* compiler, int index,
         }
     }
 
-    if (upvalueCount == 16777215) {
+    int maxUpvalues = (int)(sizeof(compiler->upvalues) / sizeof(compiler->upvalues[0]));
+    if (upvalueCount == maxUpvalues) {
         error("Too many closure variables in function.");
         return 0;
     }
@@ -737,7 +738,7 @@ static void dot(bool canAssign) {
         return;
     }
 
-    uint16_t  name = identifierConstant(&parser.previous);
+    int name = identifierConstant(&parser.previous);
 
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
@@ -1321,7 +1322,14 @@ static void super_(bool canAssign) {
         }
     } else {
         namedVariable(syntheticToken("super"), false);
-        emitBytes(OP_GET_SUPER, name);
+        if (name > 255) {
+            emitByte(OP_GET_SUPER_LONG);
+            emitByte((uint8_t)((name >> 16) & 0xff));
+            emitByte((uint8_t)((name >> 8) & 0xff));
+            emitByte((uint8_t)(name & 0xff));
+        } else {
+            emitBytes(OP_GET_SUPER, (uint8_t)name);
+        }
     }
 }
 
@@ -2041,47 +2049,42 @@ static void foreachStatement() {
 
     // 3. inject a hidden local variable to keep track of the iter
     Token iterToken = { TOKEN_IDENTIFIER, "iter ", 5, var1.line, var1.filename };
-    Local* iterLocal = &current->locals[current->localCount++];
-    iterLocal->name = iterToken;
-    iterLocal->depth = current->scopeDepth;
-    iterLocal->isCaptured = false;
+    addLocal(iterToken);
+    markInitialized();
 
     int loopStart = currentChunk()->count;
 
-    // 4. check condition. call iter.next()
+    // 4. check condition. call iter.done()
     namedVariable(iterToken, false);
-    emitInvoke("next", 0);
+    emitInvoke("done", 0);
 
-    int exitJump = emitJump(OP_JUMP_IF_FALSE);
+    int exitJump = emitJump(OP_JUMP_IF_TRUE);
     emitByte(OP_POP);
 
     // 5. scope 2: intter block scope for the users's loop body and variables
     beginScope();
 
     if (isDual) {
-        // fetch key and bind to var1
+        // advance the iterator, then bind its current key and value
+        namedVariable(iterToken, false);
+        emitInvoke("next", 0);
+        emitByte(OP_POP);
+
         namedVariable(iterToken, false);
         emitInvoke("key", 0);
-        Local* l1 = &current->locals[current->localCount++];
-        l1->name = var1;
-        l1->depth = current->scopeDepth;
-        l1->isCaptured = false;
+        addLocal(var1);
+        markInitialized();
 
-        // fetch value and bind to var2
         namedVariable(iterToken, false);
         emitInvoke("val", 0);
-        Local* l2 = &current->locals[current->localCount++];
-        l2->name = var2;
-        l2->depth = current->scopeDepth;
-        l2->isCaptured = false;
+        addLocal(var2);
+        markInitialized();
     } else {
-        // single variable syntax: fetch value and bind to var 1
+        // single variable syntax: bind the value returned by next()
         namedVariable(iterToken, false);
-        emitInvoke("val", 0);
-        Local* l1 = &current->locals[current->localCount++];
-        l1->name = var1;
-        l1->depth = current->scopeDepth;
-        l1->isCaptured = false;
+        emitInvoke("next", 0);
+        addLocal(var1);
+        markInitialized();
     }
 
     // 6 compile loop and body
