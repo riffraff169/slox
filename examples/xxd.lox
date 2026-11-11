@@ -272,7 +272,7 @@ var config = {
 
 var customGroup = opts.get("groupsize");
 if (customGroup != nil) {
-  config["groupsize"] = Number(customGroup);
+  config["groupsize"] = Integer(customGroup);
 } else if (config["bitsmode"]) {
   config["groupsize"] = 1;
 } else if (config["littleendian"]) {
