@@ -3347,8 +3347,8 @@ InterpretResult run() {
                             break;
                         }
                     }
-                    double b = AS_NUMERIC(pop());
-                    double a = AS_NUMERIC(pop());
+                    double b = AS_NUMERIC(bVal);
+                    double a = AS_NUMERIC(aVal);
                     push(FLOAT_VAL(pow(a, b)));
                 }
                 break;

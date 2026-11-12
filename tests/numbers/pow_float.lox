@@ -1,0 +1,9 @@
+// Exponentiation must not pop the operands twice. The float path covers
+// mixed int/float operands and negative integer exponents.
+print 2.0 ** 3;   // expect: 8
+print 2 ** 3.0;   // expect: 8
+print 9 ** 0.5;   // expect: 3
+print 4 ** 0.5;   // expect: 2
+print 2 ** -1;    // expect: 0.5
+print 2 ** -2;    // expect: 0.25
+print 2 ** 3 ** 2; // expect: 512
