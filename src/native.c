@@ -8671,6 +8671,9 @@ Value systemExitNative(int argCount, Value* args) {
         }
     }
 
+    // Run remaining defer and at_exit hooks before terminating. The hook
+    // sequence itself is guarded against re-entry from an at_exit hook.
+    runExitHooks();
     exit(code);
 
     return NIL_VAL;

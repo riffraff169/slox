@@ -1,0 +1,8 @@
+// An unhandled runtime error still runs defer hooks and then at_exit hooks.
+defer print "defer ran";
+at_exit(fun() { print "at_exit ran"; });
+missing_variable;
+
+// expect: Undefined variable 'missing_variable'.
+// expect: defer ran
+// expect: at_exit ran

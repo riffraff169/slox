@@ -87,6 +87,7 @@ VM vm;
 InterpretResult run();
 static void resetStack();
 static void clearTryBlock(TryBlock* block);
+static void closeUpvalues(Value* last);
 static void reportUnhandledException(Value exceptionValue);
 //void initArrayMethods();
 
@@ -104,19 +105,36 @@ typedef enum {
     PROP_SETTER
 } PropertyResult;
 
+static bool unwindingFramesForError = false;
+
 void unwindFramesForError() {
+    // A runtime error raised by a defer hook during this unwind must not
+    // recursively re-enter the unwinder and reset the frames under us.
+    if (unwindingFramesForError) return;
+    unwindingFramesForError = true;
+
     while (vm.frameCount > 0) {
         CallFrame* frame = &vm.frames[vm.frameCount - 1];
 
-        while (frame->deferHooks.count > 0) {
+        if (frame->deferHooks.count > 0) {
             Value deferVal = frame->deferHooks.values[--frame->deferHooks.count];
+            Value* stackBefore = vm.stackTop;
             push(deferVal);
-            frame->ip--;
-            vmCall(AS_CLOSURE(deferVal), 0);
+
+            if (vmCall(AS_CLOSURE(deferVal), 0)) {
+                run();
+            }
+
+            vm.stackTop = stackBefore;
+            continue;
         }
+
+        closeUpvalues(frame->slots);
         freeValueArray(&frame->deferHooks);
         vm.frameCount--;
     }
+
+    unwindingFramesForError = false;
 }
 
 void pushTemp(Value value) {
@@ -244,6 +262,9 @@ static void reportUnhandledException(Value exceptionValue) {
         pop();
     }
 
+    // at_exit hooks run after the unhandled exception has been reported,
+    // matching the order used for runtime errors and normal completion.
+    runExitHooks();
     exit(70);
 }
 
@@ -647,6 +668,9 @@ bool runtimeError(const char* format, ...) {
             fprintf(stderr, "%s()\n", function->name->chars);
         }
     }
+
+    // Run pending defer hooks before discarding the frames that own them.
+    unwindFramesForError();
 
     resetStack();
     return true;
@@ -1404,6 +1428,10 @@ Value atExitNative(int argCount, Value* args) {
 }
 
 void runAtExitHooks() {
+    static bool running = false;
+    if (running) return;
+    running = true;
+
     while (vm.atExitHooks.count > 0) {
         Value hook = vm.atExitHooks.values[vm.atExitHooks.count - 1];
         vm.atExitHooks.count--;
@@ -1419,6 +1447,27 @@ void runAtExitHooks() {
             }
         }
     }
+
+    running = false;
+}
+
+void runExitHooks() {
+    // An at_exit hook must not recursively trigger another full exit sequence.
+    if (vm.atExitHooks.count == 0 && vm.frameCount == 0) {
+        return;
+    }
+
+    // Frame-scoped cleanup runs before process-wide at_exit hooks.
+    unwindFramesForError();
+
+    vm.tryCount = 0;
+    vm.pendingUnwindActive = false;
+    vm.pendingUnwindException = NIL_VAL;
+    vm.unwindHookCount = 0;
+    vm.exceptionThrown = false;
+    resetStack();
+
+    runAtExitHooks();
 }
 
 void initVM(int argc, const char* argv[], const char* env[]) {

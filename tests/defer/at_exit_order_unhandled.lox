@@ -1,0 +1,9 @@
+// at_exit hooks run after defer hooks and after the unhandled exception
+// report, so the process still performs process-wide cleanup.
+defer print "defer ran";
+at_exit(fun() { print "at_exit ran"; });
+throw "boom";
+
+// expect: defer ran
+// expect: Unhandled Exception: boom
+// expect: at_exit ran

@@ -1,0 +1,9 @@
+// exit() runs remaining defer hooks and then at_exit hooks before quitting.
+defer print "defer ran";
+at_exit(fun() { print "at_exit ran"; });
+print "before";
+exit(0);
+
+// expect: before
+// expect: defer ran
+// expect: at_exit ran

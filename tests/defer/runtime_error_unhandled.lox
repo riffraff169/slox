@@ -1,0 +1,16 @@
+// An unhandled runtime error must run defer hooks in every frame, including
+// the top-level script frame, before the process exits.
+defer print "top cleanup";
+
+fun f() {
+    defer print "first";
+    defer print "second";
+    missing_variable;
+}
+
+f();
+
+// expect: Undefined variable 'missing_variable'.
+// expect: second
+// expect: first
+// expect: top cleanup

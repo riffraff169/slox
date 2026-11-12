@@ -234,6 +234,7 @@ void clearLastError();
 void defineClassConstant(ObjClass* klass, const char* name, Value value);
 bool isCallable(Value value);
 void runAtExitHooks();
+void runExitHooks();
 void nativeBindFunction(ObjClass* klass, const char* name, NativeFn fn);
 Value objectClassNameNative(int argCount, Value* args);
 Value classNameNative(int argCount, Value* args);

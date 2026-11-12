@@ -1,0 +1,13 @@
+// On normal completion, top-level defers run LIFO before at_exit hooks,
+// and at_exit hooks also run LIFO.
+defer print "defer first";
+defer print "defer second";
+at_exit(fun() { print "at_exit first"; });
+at_exit(fun() { print "at_exit second"; });
+print "body";
+
+// expect: body
+// expect: defer second
+// expect: defer first
+// expect: at_exit second
+// expect: at_exit first

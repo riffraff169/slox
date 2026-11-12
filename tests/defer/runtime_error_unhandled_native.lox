@@ -1,0 +1,13 @@
+// Runtime errors raised directly by native functions must also run defer hooks
+// before the process exits.
+fun f() {
+    defer print "cleanup";
+    print "body";
+    create_instance();
+}
+
+f();
+
+// expect: body
+// expect: create_instance() requires at least a class name or class object.
+// expect: cleanup
