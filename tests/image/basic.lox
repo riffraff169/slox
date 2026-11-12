@@ -1,0 +1,101 @@
+import "image";
+
+var img = Image.load("tests/image/fixture.png");
+print img == nil;
+// expect: false
+print img.width;
+// expect: 2
+print img.height;
+// expect: 2
+print img.get_pixel(0, 0);
+// expect: [255, 0, 0, 255]
+print img.get_pixel(1, 0);
+// expect: [0, 255, 0, 255]
+print img.get_pixel(0, 1);
+// expect: [0, 0, 255, 128]
+print img.get_pixel(1, 1);
+// expect: [255, 255, 255, 0]
+print img.get_bytes().length();
+// expect: 16
+
+// Alpha defaults to opaque when omitted.
+img.set_pixel(1, 1, [10, 20, 30]);
+print img.get_pixel(1, 1);
+// expect: [10, 20, 30, 255]
+
+print img.save("/tmp/slox_image_test.png");
+// expect: true
+
+var saved = Image.load("/tmp/slox_image_test.png");
+print saved.width;
+// expect: 2
+print saved.height;
+// expect: 2
+print saved.get_pixel(1, 1);
+// expect: [10, 20, 30, 255]
+
+// The module form remains available as Image.save(image, filename).
+print Image.save(img, "/tmp/slox_image_test.bmp");
+// expect: true
+var savedBmp = Image.load("/tmp/slox_image_test.bmp");
+print savedBmp.get_pixel(1, 1);
+// expect: [10, 20, 30, 255]
+
+img.clear([1, 2, 3, 4]);
+print img.get_pixel(0, 0);
+// expect: [1, 2, 3, 4]
+print img.get_bytes().length();
+// expect: 16
+
+img.scale(1, 1);
+print img.width;
+// expect: 1
+print img.height;
+// expect: 1
+print img.get_bytes().length();
+// expect: 4
+
+// Invalid colors and coordinates must be reported instead of touching memory.
+try {
+    img.set_pixel(0, 0, [1, 2]);
+} catch (e) {
+    print "bad color";
+}
+// expect: bad color
+
+try {
+    img.set_pixel(0, 5, [1, 2, 3]);
+} catch (e) {
+    print "bad coordinates";
+}
+// expect: bad coordinates
+
+try {
+    img.clear([1, 2, 999]);
+} catch (e) {
+    print "bad clear color";
+}
+// expect: bad clear color
+
+var missing = Image.load("/definitely/not/a/real/image.png");
+print missing == nil;
+// expect: true
+
+var blank = Image.Data();
+try {
+    print blank.get_bytes();
+} catch (e) {
+    print "empty buffer";
+}
+// expect: empty buffer
+
+try {
+    img.scale(0, 0);
+} catch (e) {
+    print "bad scale";
+}
+// expect: bad scale
+
+System.gc();
+print "done";
+// expect: done

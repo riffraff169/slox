@@ -1,6 +1,9 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdint.h>
+#include <limits.h>
 #include "vm.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -12,7 +15,64 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
+typedef struct {
+    unsigned char* pixels;
+    int width;
+    int height;
+    size_t size;
+} ImageBuffer;
+
 static ObjClass* imageDataClass = NULL;
+
+static ImageBuffer* image_buffer_for(ObjInstance* instance, const char* action) {
+    ImageBuffer* img = (ImageBuffer*)instance->foreignPtr;
+    if (img == NULL) {
+        runtimeError("Cannot %s: the image buffer is empty or has been freed.", action);
+        return NULL;
+    }
+
+    if (img->pixels == NULL || img->width <= 0 || img->height <= 0) {
+        runtimeError("Cannot %s: the image buffer is invalid.", action);
+        return NULL;
+    }
+
+    size_t expected = (size_t)img->width * (size_t)img->height * 4;
+    if (img->size < expected) {
+        runtimeError("Cannot %s: the image buffer is smaller than its dimensions.", action);
+        return NULL;
+    }
+
+    return img;
+}
+
+static bool color_array_to_rgba(ObjArray* color, unsigned char* rgba) {
+    if (color->count < 3) {
+        runtimeError("Color arrays must contain at least r, g, and b components.");
+        return false;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (i >= color->count) {
+            rgba[i] = 255;
+            continue;
+        }
+
+        Value value = color->values[i];
+        if (!IS_INT(value)) {
+            runtimeError("Color components must be integers from 0 to 255.");
+            return false;
+        }
+
+        int64_t component = AS_INT(value);
+        if (component < 0 || component > 255) {
+            runtimeError("Color component %lld is out of range (0-255).", (long long)component);
+            return false;
+        }
+        rgba[i] = (unsigned char)component;
+    }
+
+    return true;
+}
 
 static Value nxImageClear(int argCount, Value* args) {
     if (argCount < 1 || !IS_ARRAY(args[0])) {
@@ -21,61 +81,57 @@ static Value nxImageClear(int argCount, Value* args) {
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
-    ObjArray* color = AS_ARRAY(args[0]);
-    unsigned char* pixels = (unsigned char*)instance->foreignPtr;
-
-    Value wval, hval;
-    tableGet(&instance->fields, copyString("width", 5), &wval);
-    tableGet(&instance->fields, copyString("height", 6), &hval);
-    int total = (int)AS_INT(wval) * (int)AS_INT(hval);
-
-    unsigned char r = (unsigned char)AS_INT(color->values[0]);
-    unsigned char g = (unsigned char)AS_INT(color->values[1]);
-    unsigned char b = (unsigned char)AS_INT(color->values[2]);
-    unsigned char a = (color->count > 3) ? (unsigned char)AS_INT(color->values[3]) : 255;
-
-    for (int i = 0; i < total; i++) {
-        pixels[i * 4] = r;
-        pixels[i * 4 + 1] = g;
-        pixels[i * 4 + 2] = b;
-        pixels[i * 4 + 3] = a;
+    ImageBuffer* img = image_buffer_for(instance, "clear the image");
+    if (img == NULL) {
+        return NIL_VAL;
     }
+
+    unsigned char rgba[4];
+    if (!color_array_to_rgba(AS_ARRAY(args[0]), rgba)) {
+        return NIL_VAL;
+    }
+
+    size_t total = (size_t)img->width * (size_t)img->height;
+    for (size_t i = 0; i < total; i++) {
+        img->pixels[i * 4] = rgba[0];
+        img->pixels[i * 4 + 1] = rgba[1];
+        img->pixels[i * 4 + 2] = rgba[2];
+        img->pixels[i * 4 + 3] = rgba[3];
+    }
+
     return NIL_VAL;
 }
 
 static Value nxSetPixel(int argCount, Value* args) {
-    if (argCount < 2 || !IS_INT(args[0]) || !IS_INT(args[1])
+    if (argCount < 3 || !IS_INT(args[0]) || !IS_INT(args[1])
             || !IS_ARRAY(args[2])) {
         runtimeError("set_pixel() expects x, y, and a color array.");
         return NIL_VAL;
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
-    unsigned char* pixels = (unsigned char*)instance->foreignPtr;
-
-    Value wval, hval;
-    tableGet(&instance->fields, copyString("width", 5), &wval);
-
-    int width = (int)AS_INT(wval);
-    int x = (int)AS_INT(args[0]);
-    int y = (int)AS_INT(args[1]);
-    ObjArray* color = AS_ARRAY(args[2]);
-
-    if (x < 0 || x >= width || y < 0) {
+    ImageBuffer* img = image_buffer_for(instance, "set a pixel");
+    if (img == NULL) {
         return NIL_VAL;
     }
 
-    int offset = (y * width + x) * 4;
-
-    pixels[offset] = (unsigned char)AS_INT(color->values[0]);
-    pixels[offset + 1] = (unsigned char)AS_INT(color->values[1]);
-    pixels[offset + 2] = (unsigned char)AS_INT(color->values[2]);
-
-    if (color->count > 3) {
-        pixels[offset + 3] = (unsigned char)AS_INT(color->values[3]);
-    } else {
-        pixels[offset + 3] = 255;
+    int64_t raw_x = AS_INT(args[0]);
+    int64_t raw_y = AS_INT(args[1]);
+    if (raw_x < 0 || raw_y < 0 || raw_x >= img->width || raw_y >= img->height) {
+        runtimeError("Pixel coordinates out of bounds.");
+        return NIL_VAL;
     }
+
+    unsigned char rgba[4];
+    if (!color_array_to_rgba(AS_ARRAY(args[2]), rgba)) {
+        return NIL_VAL;
+    }
+
+    size_t offset = ((size_t)raw_y * (size_t)img->width + (size_t)raw_x) * 4;
+    img->pixels[offset] = rgba[0];
+    img->pixels[offset + 1] = rgba[1];
+    img->pixels[offset + 2] = rgba[2];
+    img->pixels[offset + 3] = rgba[3];
 
     return NIL_VAL;
 }
@@ -87,64 +143,62 @@ static Value nxGetPixel(int argCount, Value* args) {
     }
 
     ObjInstance* instance = AS_INSTANCE(args[-1]);
-    unsigned char* pixels = (unsigned char*) instance->foreignPtr;
+    ImageBuffer* img = image_buffer_for(instance, "read a pixel");
+    if (img == NULL) {
+        return NIL_VAL;
+    }
 
-    Value wval, hval;
-    tableGet(&instance->fields, copyString("width", 5), &wval);
-    tableGet(&instance->fields, copyString("height", 6), &hval);
+    int64_t x = AS_INT(args[0]);
+    int64_t y = AS_INT(args[1]);
 
-    int width = (int)AS_INT(wval);
-    int height = (int)AS_INT(hval);
-    int x = (int)AS_INT(args[0]);
-    int y = (int)AS_INT(args[1]);
-
-    if (x < 0 || x >= width || y < 0 || y >= height) {
+    if (x < 0 || x >= img->width || y < 0 || y >= img->height) {
         runtimeError("Pixel coordinates out of bounds.");
         return NIL_VAL;
     }
 
-    int offset = (y * width + x) * 4;
+    size_t offset = ((size_t)y * (size_t)img->width + (size_t)x) * 4;
 
     ObjArray* rgba = newArray();
     push(OBJ_VAL(rgba));
-    arrayAppend(rgba, INT_VAL(pixels[offset]));      // r
-    arrayAppend(rgba, INT_VAL(pixels[offset + 1]));  // g
-    arrayAppend(rgba, INT_VAL(pixels[offset + 2]));  // b
-    arrayAppend(rgba, INT_VAL(pixels[offset + 3]));  // a
+    arrayAppend(rgba, INT_VAL(img->pixels[offset]));      // r
+    arrayAppend(rgba, INT_VAL(img->pixels[offset + 1]));  // g
+    arrayAppend(rgba, INT_VAL(img->pixels[offset + 2]));  // b
+    arrayAppend(rgba, INT_VAL(img->pixels[offset + 3]));  // a
 
     return pop();
 }
 
 static Value nxImageScale(int argCount, Value* args) {
-    if (argCount < 3 || !IS_INSTANCE(args[-1]) || !IS_INT(args[0]) || !IS_INT(args[1])) {
+    if (argCount < 2 || !IS_INT(args[0]) || !IS_INT(args[1])) {
         runtimeError("scale() expects (max_width, max_height).");
         return NIL_VAL;
     }
 
     ObjInstance* imgObj = AS_INSTANCE(args[-1]);
-    unsigned char* data = (unsigned char*)imgObj->foreignPtr;
-    if (!data) return NIL_VAL;
-
-    int max_w = (int)AS_INT(args[0]);
-    int max_h = (int)AS_INT(args[1]);
-    if (max_w <= 0 || max_h <= 0) return args[-1];
-
-    Value wVal, hVal;
-    if (!tableGet(&imgObj->fields, copyString("width", 5), &wVal) ||
-            !tableGet(&imgObj->fields, copyString("height", 6), &hVal)) {
-        runtimeError("ImageData missing width or height fields.");
+    ImageBuffer* img = image_buffer_for(imgObj, "scale the image");
+    if (img == NULL) {
         return NIL_VAL;
     }
 
-    int w = (int)AS_INT(wVal);
-    int h = (int)AS_INT(hVal);
+    int64_t raw_max_w = AS_INT(args[0]);
+    int64_t raw_max_h = AS_INT(args[1]);
+    if (raw_max_w <= 0 || raw_max_h <= 0
+            || raw_max_w > INT_MAX || raw_max_h > INT_MAX) {
+        runtimeError("scale() expects positive maximum dimensions.");
+        return NIL_VAL;
+    }
+
+    int max_w = (int)raw_max_w;
+    int max_h = (int)raw_max_h;
+    int w = img->width;
+    int h = img->height;
 
     if (w <= max_w && h <= max_h) {
         return args[-1];
     }
 
-    double scale_w = (double)max_w / w;
-    double scale_h = (double)max_h / h;
+    double scale_w = (double)max_w / (double)w;
+    double scale_h = (double)max_h / (double)h;
     double scale = (scale_w < scale_h) ? scale_w : scale_h;
 
     int new_w = (int)(w * scale);
@@ -152,20 +206,32 @@ static Value nxImageScale(int argCount, Value* args) {
     if (new_w < 1) new_w = 1;
     if (new_h < 1) new_h = 1;
 
-    unsigned char* new_data = (unsigned char*)malloc((size_t)new_w * new_h * 4);
-    if (!new_data) {
-        runtimeError("Failed to allcoate memory for scaled image.");
+    if ((size_t)new_w > SIZE_MAX / 4u / (size_t)new_h) {
+        runtimeError("Scaled image dimensions are too large.");
+        return NIL_VAL;
+    }
+    size_t new_size = (size_t)new_w * (size_t)new_h * 4u;
+
+    unsigned char* new_data = (unsigned char*)STBI_MALLOC(new_size);
+    if (new_data == NULL) {
+        runtimeError("Failed to allocate memory for the scaled image.");
         return NIL_VAL;
     }
 
-    stbir_resize_uint8_linear(
-            data, w, h, 0,
-            new_data, new_w, new_h, 0,
-            STBIR_RGBA
-            );
+    if (stbir_resize_uint8_linear(
+                img->pixels, w, h, 0,
+                new_data, new_w, new_h, 0,
+                STBIR_RGBA) == NULL) {
+        stbi_image_free(new_data);
+        runtimeError("Failed to scale the image.");
+        return NIL_VAL;
+    }
 
-    stbi_image_free(data);
-    imgObj->foreignPtr = new_data;
+    stbi_image_free(img->pixels);
+    img->pixels = new_data;
+    img->width = new_w;
+    img->height = new_h;
+    img->size = new_size;
 
     tableSet(&imgObj->fields, copyString("width", 5), INT_VAL(new_w));
     tableSet(&imgObj->fields, copyString("height", 6), INT_VAL(new_h));
@@ -180,20 +246,17 @@ static Value nxGetRawBytes(int argCount, Value* args) {
     }
 
     ObjInstance* imgData = AS_INSTANCE(args[-1]);
-    if (imgData->foreignPtr == NULL) {
-        runtimeError("Image buffer is empty or has already been freed.");
+    ImageBuffer* img = image_buffer_for(imgData, "read the image bytes");
+    if (img == NULL) {
         return NIL_VAL;
     }
 
-    Value wVal = NIL_VAL, hVal = NIL_VAL;
-    tableGet(&imgData->fields, copyString("width", 5), &wVal);
-    tableGet(&imgData->fields, copyString("height", 6), &hVal);
+    if (img->size > (size_t)INT_MAX) {
+        runtimeError("Image buffer is too large to expose as a string.");
+        return NIL_VAL;
+    }
 
-    int w = (int)AS_INT(wVal);
-    int h = (int)AS_INT(hVal);
-    int totalBytes = w * h * 4;
-
-    ObjString* rawString = copyString((const char*)imgData->foreignPtr, totalBytes);
+    ObjString* rawString = copyString((const char*)img->pixels, (int)img->size);
     return OBJ_VAL(rawString);
 }
 
@@ -204,18 +267,37 @@ static Value nxImageLoad(int argCount, Value* args) {
     }
 
     const char* path = AS_CSTRING(args[0]);
-    int w, h, ch;
+    int w = 0, h = 0, ch = 0;
     unsigned char* data = stbi_load(path, &w, &h, &ch, 4);
 
-    if (!data) {
-        printf("Data load failed: %s\n", stbi_failure_reason());
+    if (data == NULL) {
+        const char* reason = stbi_failure_reason();
+        setLastError(0, "Image load failed for '%s': %s", path,
+                reason != NULL ? reason : "unknown error");
         return NIL_VAL;
     }
+
+    if (w <= 0 || h <= 0 || (size_t)w > SIZE_MAX / 4u / (size_t)h) {
+        stbi_image_free(data);
+        runtimeError("Image dimensions are invalid or too large.");
+        return NIL_VAL;
+    }
+
+    ImageBuffer* img = (ImageBuffer*)malloc(sizeof(ImageBuffer));
+    if (img == NULL) {
+        stbi_image_free(data);
+        runtimeError("Failed to allocate memory for the loaded image.");
+        return NIL_VAL;
+    }
+    img->pixels = data;
+    img->width = w;
+    img->height = h;
+    img->size = (size_t)w * (size_t)h * 4u;
 
     ObjInstance* imgData = newInstance(imageDataClass);
     push(OBJ_VAL(imgData));
 
-    imgData->foreignPtr = data;
+    imgData->foreignPtr = img;
     tableSet(&imgData->fields, copyString("width", 5), INT_VAL(w));
     tableSet(&imgData->fields, copyString("height", 6), INT_VAL(h));
 
@@ -224,31 +306,39 @@ static Value nxImageLoad(int argCount, Value* args) {
 
 static bool has_extension(const char* filename, const char* ext) {
     const char* dot = strrchr(filename, '.');
-    if (!dot || dot == filename) return false;
-
-    for (int i = 0; ext[i]; i++) {
-        if (tolower(dot[1 + i]) != tolower(ext[i])) return false;
+    if (dot == NULL || dot == filename) {
+        return false;
     }
+
+    const char* slash = strrchr(filename, '/');
+    if (slash != NULL && dot < slash) {
+        return false;
+    }
+
+    const char* actual = dot + 1;
+    size_t ext_len = strlen(ext);
+    if (strlen(actual) != ext_len) {
+        return false;
+    }
+
+    for (size_t i = 0; i < ext_len; i++) {
+        if (tolower((unsigned char)actual[i]) != tolower((unsigned char)ext[i])) {
+            return false;
+        }
+    }
+
     return true;
 }
 
-static Value nxImageSave(int argCount, Value* args) {
-    if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("save() expects a filename string.");
+static Value image_save_instance(ObjInstance* instance, const char* filename) {
+    ImageBuffer* img = image_buffer_for(instance, "save the image");
+    if (img == NULL) {
         return NIL_VAL;
     }
 
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    const char* filename = AS_CSTRING(args[0]);
-
-    Value wval, hval;
-    tableGet(&instance->fields, copyString("width", 5), &wval);
-    tableGet(&instance->fields, copyString("height", 6), &hval);
-
-
-    int w = (int)AS_INT(wval);
-    int h = (int)AS_INT(hval);
-    void* data = instance->foreignPtr;
+    int w = img->width;
+    int h = img->height;
+    void* data = img->pixels;
 
     int result = 0;
 
@@ -269,11 +359,33 @@ static Value nxImageSave(int argCount, Value* args) {
     return BOOL_VAL(result != 0);
 }
 
-void imageDestructor(ObjInstance* instance) {
-    if (instance->foreignPtr != NULL) {
-        stbi_image_free(instance->foreignPtr);
-        instance->foreignPtr = NULL;
+static Value nxImageSave(int argCount, Value* args) {
+    if (argCount < 1 || !IS_STRING(args[0])) {
+        runtimeError("save() expects a filename string.");
+        return NIL_VAL;
     }
+
+    return image_save_instance(AS_INSTANCE(args[-1]), AS_CSTRING(args[0]));
+}
+
+static Value nxImageSaveModule(int argCount, Value* args) {
+    if (argCount < 2 || !IS_INSTANCE(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("save() expects an image and a filename string.");
+        return NIL_VAL;
+    }
+
+    return image_save_instance(AS_INSTANCE(args[0]), AS_CSTRING(args[1]));
+}
+
+void imageDestructor(ObjInstance* instance) {
+    if (instance->foreignPtr == NULL) {
+        return;
+    }
+
+    ImageBuffer* img = (ImageBuffer*)instance->foreignPtr;
+    stbi_image_free(img->pixels);
+    free(img);
+    instance->foreignPtr = NULL;
 }
 
 void lox_module_init(VM* vm) {
@@ -310,12 +422,12 @@ void lox_module_init(VM* vm) {
     pop(); // [2] string
     pop(); // [1] native
 
-    // save
-    ObjNative* saveFn = newNative(nxImageSave);
-    push(OBJ_VAL(saveFn)); // [1] native
+    // save (module form: Image.save(image, filename))
+    ObjNative* saveModuleFn = newNative(nxImageSaveModule);
+    push(OBJ_VAL(saveModuleFn)); // [1] native
     ObjString* saveStr = copyString("save", 4);
     push(OBJ_VAL(saveStr)); // [2] string
-    tableSet(&imageModule->fields, saveStr, OBJ_VAL(saveFn));
+    tableSet(&imageModule->fields, saveStr, OBJ_VAL(saveModuleFn));
     pop(); // [2] string
     pop(); // [1] native
 
@@ -339,7 +451,14 @@ void lox_module_init(VM* vm) {
     push(OBJ_VAL(scaleFn));
     tableSet(&imageDataClass->methods, copyString("scale", 5), OBJ_VAL(scaleFn));
     pop();
-    //pop(); // [2] string
-    //pop(); // [1] instance
-}
 
+    ObjNative* saveFn = newNative(nxImageSave);
+    push(OBJ_VAL(saveFn));
+    tableSet(&imageDataClass->methods, copyString("save", 4), OBJ_VAL(saveFn));
+    pop();
+
+    ObjNative* clearFn = newNative(nxImageClear);
+    push(OBJ_VAL(clearFn));
+    tableSet(&imageDataClass->methods, copyString("clear", 5), OBJ_VAL(clearFn));
+    pop();
+}
