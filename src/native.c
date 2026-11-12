@@ -4699,16 +4699,29 @@ Value arrayReverseNative(int argCount, Value* args) {
     return args[-1];
 }
 
-static void flattenDeepHelper(ObjArray* result, ObjArray* current) {
+#define MAX_FLATTEN_DEPTH 256
+
+static bool flattenDeepHelper(ObjArray* result, ObjArray* current,
+                              ObjArray** ancestors, int depth) {
+    if (depth >= MAX_FLATTEN_DEPTH) return false;
+
+    for (int i = 0; i < depth; i++) {
+        if (ancestors[i] == current) return false;
+    }
+    ancestors[depth] = current;
+
     for (int i = 0; i < current->count; i++) {
         Value item = current->values[i];
 
         if (IS_ARRAY(item)) {
-            flattenDeepHelper(result, AS_ARRAY(item));
+            if (!flattenDeepHelper(result, AS_ARRAY(item), ancestors, depth + 1)) {
+                return false;
+            }
         } else {
             arrayAppend(result, item);
         }
     }
+    return true;
 }
 
 //@ Array
@@ -4721,7 +4734,12 @@ Value arrayFlattenNative(int argCount, Value* args) {
     ObjArray* result = newArray();
     push(OBJ_VAL(result));
 
-    flattenDeepHelper(result, source);
+    ObjArray* ancestors[MAX_FLATTEN_DEPTH];
+    if (!flattenDeepHelper(result, source, ancestors, 0)) {
+        pop();
+        runtimeError("Cannot flatten a cyclic or too deeply nested array.");
+        return NIL_VAL;
+    }
     return pop();
 }
 

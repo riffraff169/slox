@@ -1,0 +1,14 @@
+// The cyclic-flatten runtime error is a normal catchable exception.
+var a = [];
+a.push(a);
+
+try {
+    print a.flatten();
+} catch (e) {
+    print "ERROR: " + e.message;
+}
+
+print "after";
+
+// expect: ERROR: Cannot flatten a cyclic or too deeply nested array.
+// expect: after

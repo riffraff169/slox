@@ -1,0 +1,8 @@
+// Flattening must not recurse forever on cyclic arrays or overflow the C
+// stack on extremely deep nesting.
+print [1, [2, [3, 4]], 5].flatten(); // expect: [1, 2, 3, 4, 5]
+
+var a = [];
+a.push(a);
+print a.flatten(); // expect: Cannot flatten a cyclic or too deeply nested array.
+print "unreachable";
