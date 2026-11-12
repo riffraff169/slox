@@ -1,0 +1,7 @@
+import "yaml";
+
+var doc = Yaml.load("tests/yaml/load_fixture.yml");
+print doc["name"];         // expect: loaded
+print doc["items"][1];     // expect: 2
+
+print Yaml.load("tests/yaml/does_not_exist.yml"); // expect: nil

@@ -1,0 +1,15 @@
+import "yaml";
+
+var source =
+    "roots: &roots [1, 2, {name: three}]\n" +
+    "alias: *roots\n" +
+    "list: [{a: 1}, {b: 2}, {c: 3}]\n" +
+    "text: &text hello\n" +
+    "textCopy: *text\n";
+
+GC.stress_mode(GC.StressMode);
+var doc = Yaml.parse(source);
+print doc["alias"][2]["name"]; // expect: three
+print doc["list"][1]["b"];     // expect: 2
+print doc["textCopy"];         // expect: hello
+GC.stress_mode(GC.NormalMode);

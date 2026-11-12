@@ -1,0 +1,26 @@
+import "yaml";
+
+var doc = Yaml.parse(
+    "defaults: &defaults {color: blue, size: 10}\n" +
+    "copy: *defaults\n" +
+    "list: &items [1, 2, 3]\n" +
+    "listCopy: *items\n" +
+    "name: &name slox\n" +
+    "nameCopy: *name\n"
+);
+
+print doc["copy"]["color"];             // expect: blue
+print doc["copy"]["size"];              // expect: 10
+print doc["copy"] == doc["defaults"];   // expect: true
+print doc["listCopy"][1];               // expect: 2
+print doc["listCopy"] == doc["list"];   // expect: true
+print doc["nameCopy"];                  // expect: slox
+
+var recursive = Yaml.parse("root: &r {name: node, self: *r}\n");
+print recursive["root"]["self"] == recursive["root"]; // expect: true
+
+var recursiveList = Yaml.parse("root: &r [*r]\n");
+print recursiveList["root"][0] == recursiveList["root"]; // expect: true
+
+var missing = Yaml.parse("value: *doesNotExist\n");
+print missing["value"];                 // expect: nil

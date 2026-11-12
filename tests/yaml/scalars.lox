@@ -1,0 +1,60 @@
+import "yaml";
+
+var doc = Yaml.parse(
+    "int: 42\n" +
+    "hex: 0x10\n" +
+    "octal: 0o17\n" +
+    "binary: 0b101\n" +
+    "under: 1_000\n" +
+    "maxInt: 9223372036854775807\n" +
+    "overInt: 9223372036854775808\n" +
+    "float: 0.5\n" +
+    "wholeFloat: 1.0\n" +
+    "exponent: 1e3\n" +
+    "quotedNumber: \"123\"\n" +
+    "taggedString: !!str 123\n" +
+    "explicitFloat: !!float 1\n" +
+    "explicitInt: !!int 0x10\n" +
+    "plainNull: null\n" +
+    "tildeNull: ~\n" +
+    "emptyPlain: \n" +
+    "quotedNull: \"null\"\n" +
+    "quotedBool: \"true\"\n" +
+    "emptyString: \"\"\n" +
+    "yesValue: yes\n" +
+    "noValue: NO\n" +
+    "onValue: On\n" +
+    "offValue: off\n" +
+    "plainWord: nan\n"
+);
+
+print doc["int"];                // expect: 42
+print doc["hex"];                // expect: 16
+print doc["octal"];              // expect: 15
+print doc["binary"];             // expect: 5
+print doc["under"];              // expect: 1000
+print doc["maxInt"];             // expect: 9223372036854775807
+print typeof(doc["overInt"]);    // expect: Float
+print doc["float"];              // expect: 0.5
+print typeof(doc["wholeFloat"]); // expect: Float
+print typeof(doc["exponent"]);   // expect: Float
+print typeof(doc["quotedNumber"]); // expect: String
+print doc["quotedNumber"];       // expect: 123
+print typeof(doc["taggedString"]); // expect: String
+print doc["taggedString"];       // expect: 123
+print typeof(doc["explicitFloat"]); // expect: Float
+print doc["explicitInt"];        // expect: 16
+print doc["plainNull"];          // expect: nil
+print doc["tildeNull"];          // expect: nil
+print doc["emptyPlain"];         // expect: nil
+print typeof(doc["quotedNull"]); // expect: String
+print doc["quotedNull"];         // expect: null
+print typeof(doc["quotedBool"]); // expect: String
+print doc["quotedBool"];         // expect: true
+print typeof(doc["emptyString"]); // expect: String
+print doc["yesValue"];           // expect: true
+print doc["noValue"];            // expect: false
+print doc["onValue"];            // expect: true
+print doc["offValue"];           // expect: false
+print typeof(doc["plainWord"]);  // expect: String
+print doc["plainWord"];          // expect: nan

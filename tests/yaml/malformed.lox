@@ -1,0 +1,6 @@
+import "yaml";
+
+print Yaml.parse("[1, 2");                  // expect: nil
+print Yaml.parse("key: [1, 2\nother: 3");   // expect: nil
+print Yaml.parse("key: {a: 1");             // expect: nil
+print Yaml.parse("key: \"unterminated");    // expect: nil

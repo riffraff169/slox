@@ -1,0 +1,23 @@
+import "yaml";
+
+var docs = Yaml.parse(
+    "---\nname: first\n" +
+    "---\nname: second\n" +
+    "---\n- 1\n- 2\n"
+);
+
+print typeof(docs);         // expect: Array
+print docs[0]["name"];      // expect: first
+print docs[1]["name"];      // expect: second
+print docs[2][1];           // expect: 2
+
+var single = Yaml.parse("name: only\n");
+print typeof(single);       // expect: Map
+print single["name"];       // expect: only
+
+print Yaml.parse("");       // expect: nil
+
+var emptyDocs = Yaml.parse("---\n---\n");
+print typeof(emptyDocs);    // expect: Array
+print emptyDocs[0];         // expect: nil
+print emptyDocs[1];         // expect: nil
