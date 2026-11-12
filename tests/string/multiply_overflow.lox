@@ -1,0 +1,9 @@
+// String multiplication must not overflow the result length. This used to
+// wrap 65536 * 65536 to zero, allocate one byte, and then write past it.
+print "ab" * 3; // expect: ababab
+
+var s = "a" * 65536;
+print s.len(); // expect: 65536
+
+s * 65536; // expect: String multiplication result is too large.
+print "unreachable";

@@ -2469,20 +2469,29 @@ static void defineMethod(ObjString* name) {
     pop();
 }
 
-Value multiplyString(ObjString* string, int count) {
+bool multiplyString(ObjString* string, int64_t count, Value* result) {
     if (count <= 0 || string->length == 0) {
-        return OBJ_VAL(copyString("", 0));
+        *result = OBJ_VAL(copyString("", 0));
+        return true;
     }
 
-    int length = string->length * count;
+    // Guard the length computation against 32-bit overflow. Both factors are
+    // at most INT_MAX here, so this product cannot overflow int64_t.
+    int64_t total = (int64_t)string->length * count;
+    if (count > INT_MAX || total > INT_MAX) {
+        return false;
+    }
+
+    int length = (int)total;
 
     char* chars = ALLOCATE(char, length + 1);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < (int)count; i++) {
         memcpy(chars + (i * string->length), string->chars, string->length);
     }
     chars[length] = '\0';
 
-    return OBJ_VAL(takeString(chars, length));
+    *result = OBJ_VAL(takeString(chars, length));
+    return true;
 }
 /*
 static void concatenate() {
@@ -3259,8 +3268,12 @@ InterpretResult run() {
                         push(VEC3_VAL(res));
                     } else if (IS_STRING(peek(1)) && IS_INT(peek(0))) {
                         ObjString* str = AS_STRING(peek(1));
-                        int count = AS_INT(peek(0));
-                        Value result = multiplyString(str, count);
+                        int64_t count = AS_INT(peek(0));
+                        Value result;
+                        if (!multiplyString(str, count, &result)) {
+                            RUNTIME_ERROR("String multiplication result is too large.");
+                            break;
+                        }
                         pop();
                         pop();
                         push(result);
