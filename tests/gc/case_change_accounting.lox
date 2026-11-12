@@ -1,0 +1,16 @@
+// to_upper()/to_lower() buffers become GC-managed string storage, so they
+// must be allocated through the VM. Raw malloc storage would be subtracted
+// from the heap accounting on free without ever being added.
+var s = "a" * 200000;
+
+for (var i = 0; i < 5; i = i + 1) {
+    var u = s.to_upper();
+}
+
+print GC.stats()["bytesAllocated"] > 0; // expect: true
+
+for (var i = 0; i < 5; i = i + 1) {
+    var l = s.to_lower();
+}
+
+print GC.stats()["bytesAllocated"] > 0; // expect: true

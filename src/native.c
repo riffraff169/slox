@@ -1273,7 +1273,7 @@ Value stringRfindNative(int argCount, Value* args) {
 Value stringToUpperNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
 
-    char* buffer = (char*)malloc(str->length + 1);
+    char* buffer = ALLOCATE(char, (size_t)str->length + 1);
     if (buffer == NULL) {
         runtimeError("to_upper() failed to allocate memory.");
         return NIL_VAL;
@@ -1295,7 +1295,7 @@ Value stringToUpperNative(int argCount, Value* args) {
 Value stringToLowerNative(int argCount, Value* args) {
     ObjString* str = AS_STRING(args[-1]);
 
-    char* buffer = (char*)malloc(str->length + 1);
+    char* buffer = ALLOCATE(char, (size_t)str->length + 1);
     if (buffer == NULL) {
         runtimeError("to_lower() failed to allocate memory.");
         return NIL_VAL;
