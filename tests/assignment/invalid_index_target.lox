@@ -1,0 +1,8 @@
+// Assigning through an index on a target that cannot be indexed must be a
+// runtime error instead of silently leaving operands on the stack (which
+// previously leaked stack slots and could overflow in a loop).
+var x = 1;
+x[0] = 5;
+print "unreachable";
+
+// expect: Invalid index target.

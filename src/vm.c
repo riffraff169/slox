@@ -4741,7 +4741,13 @@ InterpretResult run() {
                         }
                         //vm.stackTop[-3] = newValue;
                         //popn(2);
+                        break;
                     }
+
+                    // Targets such as numbers, strings, and booleans cannot be
+                    // assigned through an index. Report an error instead of
+                    // leaving the target, index, and value on the stack.
+                    RUNTIME_ERROR("Invalid index target.");
                 }
                 break;
         }
