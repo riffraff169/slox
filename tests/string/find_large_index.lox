@@ -1,0 +1,10 @@
+// Search positions and byte values are 64-bit and must be range-checked
+// rather than narrowed, which would wrap them into valid positions/bytes.
+print "abc".find(4294967393);            // expect: -1
+print "abc".rfind(4294967393);           // expect: -1
+print "abcabc".rfind("a", 4294967296);   // expect: 3
+print "abcabc".rfind("a", 4294967298);   // expect: 3
+
+print "abc".find(98);                    // expect: 1
+print "abc".rfind("b");                  // expect: 1
+print "abcabc".rfind("a", 2);            // expect: 0

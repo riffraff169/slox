@@ -1181,8 +1181,9 @@ Value stringFindNative(int argCount, Value* args) {
     ObjString* haystack = AS_STRING(args[-1]);
     
     if (IS_INT(args[0])) {
-        int targetByte = AS_INT(args[0]);
-        char* match = (char*)memchr(haystack->chars, targetByte, haystack->length);
+        int64_t targetByte = AS_INT(args[0]);
+        if (targetByte < 0 || targetByte > 255) return INT_VAL(-1);
+        char* match = (char*)memchr(haystack->chars, (int)targetByte, haystack->length);
         return match ? INT_VAL((int)(match - haystack->chars)) : INT_VAL(-1);
     }
 
@@ -1218,19 +1219,20 @@ Value stringRfindNative(int argCount, Value* args) {
     int hLen = haystack->length;
     const char* hStr = haystack->chars;
 
-    int maxIdx = hLen - 1;
+    int64_t maxIdx = hLen - 1;
     if (argCount >= 2 && IS_INT(args[1])) {
-        int customIdx = AS_INT(args[1]);
+        int64_t customIdx = AS_INT(args[1]);
         if (customIdx < maxIdx) maxIdx = customIdx;
     }
 
     if (maxIdx < 0 || hLen == 0) return INT_VAL(-1);
 
-    int targetByte = -1;
+    int64_t targetByte = -1;
 
     if (IS_INT(args[0])) {
         targetByte = AS_INT(args[0]);
-        char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
+        if (targetByte < 0 || targetByte > 255) return INT_VAL(-1);
+        char* match = (char*)memrchr(hStr, (int)targetByte, (size_t)maxIdx + 1);
         return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
     }
 
@@ -1241,14 +1243,14 @@ Value stringRfindNative(int argCount, Value* args) {
 
         if (nLen == 1) {
             targetByte = (unsigned char)nStr[0];
-            char* match = (char*)memrchr(hStr, targetByte, maxIdx + 1);
+            char* match = (char*)memrchr(hStr, (int)targetByte, (size_t)maxIdx + 1);
             return match ? INT_VAL((int)(match - hStr)) : INT_VAL(-1);
         }
 
         if (nLen == 0) return INT_VAL(maxIdx);
         if (nLen > hLen) return INT_VAL(-1);
 
-        int start = maxIdx;
+        int start = (int)maxIdx;
         if (start + nLen > hLen) {
             start = hLen - nLen;
         }
@@ -1465,14 +1467,16 @@ Value stringSliceNative(int argCount, Value* args) {
     }
 
     ObjString* dom = AS_STRING(args[-1]);
-    int length = dom->length;
+    int64_t length = dom->length;
 
-    int start = (int)rawStart;
+    // Keep indices in 64-bit through clamping. Casting to int first would wrap
+    // large values into unrelated in-range indices.
+    int64_t start = rawStart;
     if (start < 0) start += length;
     if (start < 0) start = 0;
     if (start > length) start = length;
 
-    int end = length;
+    int64_t end = length;
     if (argCount >= 2 && !IS_NIL(args[1])) {
         int64_t rawEnd;
         if (IS_INT(args[1])) {
@@ -1484,7 +1488,7 @@ Value stringSliceNative(int argCount, Value* args) {
             return NIL_VAL;
         }
 
-        end = (int)rawEnd;
+        end = rawEnd;
         if (end < 0) end += length;
         if (end < 0) end = 0;
         if (end > length) end = length;
@@ -1492,7 +1496,7 @@ Value stringSliceNative(int argCount, Value* args) {
 
     if (start >= end) return OBJ_VAL(copyString("", 0));
 
-    return OBJ_VAL(copyString(dom->chars + start, end - start));
+    return OBJ_VAL(copyString(dom->chars + (int)start, (int)(end - start)));
 }
 
 //@ String
@@ -1579,9 +1583,15 @@ Value stringPadCenterNative(int argCount, Value* args) {
     }
 
     ObjString* str = AS_STRING(args[-1]);
-    int width = (int)rawWidth;
 
-    if (width <= str->length) return args[-1];
+    if (rawWidth <= str->length) return args[-1];
+
+    if (rawWidth > INT_MAX - 1) {
+        runtimeError("pad_center() width is too large.");
+        return NIL_VAL;
+    }
+
+    int width = (int)rawWidth;
 
     ObjString* padStr = AS_STRING(args[1]);
     if (padStr->length == 0) {
@@ -1627,9 +1637,15 @@ Value stringPadRightNative(int argCount, Value* args) {
     }
 
     ObjString* str = AS_STRING(args[-1]);
-    int width = (int)rawWidth;
 
-    if (width <= str->length) return args[-1];
+    if (rawWidth <= str->length) return args[-1];
+
+    if (rawWidth > INT_MAX - 1) {
+        runtimeError("pad_right() width is too large.");
+        return NIL_VAL;
+    }
+
+    int width = (int)rawWidth;
 
     ObjString* padStr = AS_STRING(args[1]);
     if (padStr->length == 0) {
@@ -1671,9 +1687,15 @@ Value stringPadLeftNative(int argCount, Value* args) {
     }
 
     ObjString* str = AS_STRING(args[-1]);
-    int width = (int)rawWidth;
 
-    if (width <= str->length) return args[-1];
+    if (rawWidth <= str->length) return args[-1];
+
+    if (rawWidth > INT_MAX - 1) {
+        runtimeError("pad_left() width is too large.");
+        return NIL_VAL;
+    }
+
+    int width = (int)rawWidth;
 
     ObjString* padStr = AS_STRING(args[1]);
     if (padStr->length == 0) {

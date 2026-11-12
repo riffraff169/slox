@@ -1,0 +1,34 @@
+// Indices and widths are 64-bit values. They must be clamped before being
+// narrowed, otherwise large values wrap into unrelated in-range positions.
+var s = "abcdef";
+
+print s.slice(4294967301).len();          // expect: 0
+print s.slice(0, 4294967301);             // expect: abcdef
+print s.slice(4294967296 + 2).len();      // expect: 0
+print s.slice(-4294967294);               // expect: abcdef
+print s.slice(9223372036854775807).len(); // expect: 0
+print s.slice(2, 9223372036854775807);    // expect: cdef
+print s.slice(-9223372036854775808);      // expect: abcdef
+print s.slice(0, -9223372036854775808).len(); // expect: 0
+
+try {
+    "a".pad_left(4294967300, " ");
+} catch (e) {
+    print e.message; // expect: pad_left() width is too large.
+}
+
+try {
+    "a".pad_right(4294967300, " ");
+} catch (e) {
+    print e.message; // expect: pad_right() width is too large.
+}
+
+try {
+    "a".pad_center(4294967300, " ");
+} catch (e) {
+    print e.message; // expect: pad_center() width is too large.
+}
+
+print "a".pad_left(3, "-");  // expect: --a
+print "a".pad_right(3, "-"); // expect: a--
+print "a".pad_center(5, "-"); // expect: --a--
