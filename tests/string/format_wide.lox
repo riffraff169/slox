@@ -1,0 +1,14 @@
+// Formatted fields must be sized from the actual result rather than a fixed
+// stack buffer, and long format specs must not be truncated.
+print "%1000s".format("x").len();   // expect: 1000
+print "%1000d".format(7).len();     // expect: 1000
+print "%1000.2f".format(1.5).len(); // expect: 1000
+print "%.1000f".format(1.0).len();  // expect: 1002
+print "%600s".format("abc").len();  // expect: 600
+print "%512s".format("abc").len();  // expect: 512
+print "%511s".format("abc").len();  // expect: 511
+
+var longSpec = "%" + ("0" * 40) + "1000s";
+print longSpec.format("x").len();   // expect: 1000
+print longSpec.format().len();      // expect: 46
+print "[" + ("%" + ("+" * 40) + "5d").format(7) + "]"; // expect: [   +7]

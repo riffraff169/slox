@@ -1714,19 +1714,41 @@ Value stringPadLeftNative(int argCount, Value* args) {
     return OBJ_VAL(takeString(buffer, width));
 }
 
-static int formatInteger(char* buf, size_t size, const char* spec, int specLen,
-                         char specifier, int64_t value) {
-    char intSpecBuf[64];
-    memcpy(intSpecBuf, spec, specLen - 1);
-    intSpecBuf[specLen - 1] = 'l';
-    intSpecBuf[specLen] = 'l';
-    intSpecBuf[specLen + 1] = specifier;
-    intSpecBuf[specLen + 2] = '\0';
+static void appendFormatted(char** buffer, int* length, int* capacity,
+                            const char* spec, ...) {
+    va_list args;
+    va_start(args, spec);
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    int needed = vsnprintf(NULL, 0, spec, args);
+    va_end(args);
 
-    if (specifier == 'x' || specifier == 'X') {
-        return snprintf(buf, size, intSpecBuf, (unsigned long long)value);
+    if (needed < 0) {
+        va_end(argsCopy);
+        return;
     }
-    return snprintf(buf, size, intSpecBuf, (long long)value);
+
+    int64_t required = (int64_t)*length + (int64_t)needed + 1;
+    if (required > INT_MAX) {
+        va_end(argsCopy);
+        return;
+    }
+
+    if (required > *capacity) {
+        int oldCapacity = *capacity;
+        while ((int64_t)*capacity < required) {
+            if (*capacity > INT_MAX / 2) {
+                *capacity = INT_MAX;
+                break;
+            }
+            *capacity *= 2;
+        }
+        *buffer = GROW_ARRAY(char, *buffer, oldCapacity, *capacity);
+    }
+
+    vsnprintf(*buffer + *length, (size_t)needed + 1, spec, argsCopy);
+    va_end(argsCopy);
+    *length += needed;
 }
 
 //@ String
@@ -1798,28 +1820,23 @@ Value stringFormatNative(int argCount, Value* args) {
 
             // extract the full specifier string (eg "%-20s", "%10.2f")
             int specLen = i - specStart + 1;
-            char specBuf[32];
-            if (specLen >= 32) specLen = 31;
+            char* specBuf = ALLOCATE(char, (size_t)specLen + 1);
             memcpy(specBuf, formatStr->chars + specStart, specLen);
             specBuf[specLen] = '\0';
 
             // missing arguments: write the specifier literally
             if (currentArg >= argCount) {
-                for (int k = 0; k < specLen; k++) {
-                    buffer[length++] = specBuf[k];
-                }
+                appendFormatted(&buffer, &length, &capacity, "%s", specBuf);
+                FREE_ARRAY(char, specBuf, specLen + 1);
                 continue;
             }
 
             Value val = args[currentArg++];
 
             // string specifier variant for fallback types (eg convert %-10d to %-10s for nan)
-            char stringSpecBuf[32];
+            char* stringSpecBuf = ALLOCATE(char, (size_t)specLen + 1);
             memcpy(stringSpecBuf, specBuf, specLen + 1);
             stringSpecBuf[specLen - 1] = 's';
-
-            char tempBuf[512];
-            int formattedLen = 0;
 
             switch (specifier) {
                 case 's':
@@ -1830,26 +1847,41 @@ Value stringFormatNative(int argCount, Value* args) {
                         } else if (IS_NIL(val)) {
                             strVal = "nil";
                         }
-                        formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, strVal);
+                        appendFormatted(&buffer, &length, &capacity, specBuf, strVal);
                     }
                     break;
                 case 'd':
                 case 'i':
+                case 'x':
+                case 'X':
                     {
                         if (IS_INT(val)) {
-                            formattedLen = formatInteger(tempBuf, sizeof(tempBuf),
-                                    specBuf, specLen, specifier, AS_INT(val));
+                            char* intSpecBuf = ALLOCATE(char, (size_t)specLen + 3);
+                            memcpy(intSpecBuf, specBuf, specLen - 1);
+                            intSpecBuf[specLen - 1] = 'l';
+                            intSpecBuf[specLen] = 'l';
+                            intSpecBuf[specLen + 1] = specifier;
+                            intSpecBuf[specLen + 2] = '\0';
+
+                            if (specifier == 'x' || specifier == 'X') {
+                                appendFormatted(&buffer, &length, &capacity, intSpecBuf,
+                                                (unsigned long long)AS_INT(val));
+                            } else {
+                                appendFormatted(&buffer, &length, &capacity, intSpecBuf,
+                                                (long long)AS_INT(val));
+                            }
+                            FREE_ARRAY(char, intSpecBuf, specLen + 3);
                         } else {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
+                            appendFormatted(&buffer, &length, &capacity, stringSpecBuf, "NaN");
                         }
                     }
                     break;
                 case 'f':
                     {
                         if (IS_FLOAT(val)) {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), specBuf, AS_FLOAT(val));
+                            appendFormatted(&buffer, &length, &capacity, specBuf, AS_FLOAT(val));
                         } else {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
+                            appendFormatted(&buffer, &length, &capacity, stringSpecBuf, "NaN");
                         }
                     }
                     break;
@@ -1859,38 +1891,16 @@ Value stringFormatNative(int argCount, Value* args) {
                         if (IS_BOOL(val)) {
                             boolVal = AS_BOOL(val) ? "true" : "false";
                         }
-                        formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, boolVal);
-                    }
-                    break;
-                case 'x':
-                case 'X':
-                    {
-                        if (IS_INT(val)) {
-                            formattedLen = formatInteger(tempBuf, sizeof(tempBuf),
-                                    specBuf, specLen, specifier, AS_INT(val));
-                        } else {
-                            formattedLen = snprintf(tempBuf, sizeof(tempBuf), stringSpecBuf, "NaN");
-                        }
+                        appendFormatted(&buffer, &length, &capacity, stringSpecBuf, boolVal);
                     }
                     break;
                 default:
-                    formattedLen = snprintf(tempBuf, sizeof(tempBuf), "%s", specBuf);
+                    appendFormatted(&buffer, &length, &capacity, "%s", specBuf);
                     break;
             }
 
-            if (formattedLen < 0) formattedLen = 0;
-            if (formattedLen >= (int)sizeof(tempBuf)) {
-                formattedLen = (int)sizeof(tempBuf) - 1;
-            }
-
-            if (length + formattedLen + 1 > capacity) {
-                int oldCapacity = capacity;
-                while (length + formattedLen + 1 > capacity) capacity *= 2;
-                buffer = GROW_ARRAY(char, buffer, oldCapacity, capacity);
-            }
-
-            memcpy(buffer + length, tempBuf, (size_t)formattedLen);
-            length += formattedLen;
+            FREE_ARRAY(char, stringSpecBuf, specLen + 1);
+            FREE_ARRAY(char, specBuf, specLen + 1);
         } else {
             buffer[length++] = formatStr->chars[i];
         }
