@@ -1,0 +1,18 @@
+// Printing self-referential containers must terminate with an explicit cycle
+// marker instead of recursing until the C stack overflows.
+var a = [];
+a.push(a);
+print a; // expect: [[...]]
+
+var b = [];
+var c = [b];
+b.push(c);
+print b; // expect: [[[...]]]
+
+var m = {};
+m["self"] = m;
+print m; // expect: {"self": {...}}
+
+var s = Set();
+s.add(s);
+print s; // expect: Set(Set(...))

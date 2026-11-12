@@ -364,7 +364,7 @@ void printValueMain(Value value) {
     printValue(stdout, value);
 }
 
-static void printFunction(FILE* stream, ObjFunction* function) {
+void printFunction(FILE* stream, ObjFunction* function) {
     if (function->name == NULL) {
         fprintf(stream, "<script>");
         return;
@@ -372,16 +372,47 @@ static void printFunction(FILE* stream, ObjFunction* function) {
     fprintf(stream, "<fn %s>", function->name->chars);
 }
 
+// Bound recursive printing so deeply nested or self-referential containers
+// cannot overflow the C stack. Ancestors are tracked to elide true cycles.
+#define MAX_PRINT_DEPTH 128
+static const Obj* printStack[MAX_PRINT_DEPTH];
+static int printDepth = 0;
+
+static bool printEnter(const Obj* obj) {
+    for (int i = 0; i < printDepth; i++) {
+        if (printStack[i] == obj) return false;
+    }
+    if (printDepth >= MAX_PRINT_DEPTH) return false;
+    printStack[printDepth++] = obj;
+    return true;
+}
+
+static void printLeave() {
+    if (printDepth > 0) printDepth--;
+}
+
 void printArray(FILE* stream, ObjArray* array) {
+    if (!printEnter(&array->obj)) {
+        fprintf(stream, "[...]");
+        return;
+    }
+
     fprintf(stream, "[");
     for (int i = 0; i < array->count; i++) {
         printValueSafe(stream, array->values[i]);
         if (i < array->count - 1) fprintf(stream, ", ");
     }
     fprintf(stream, "]");
+
+    printLeave();
 }
 
 void printMap(FILE* stream, ObjMap* map) {
+    if (!printEnter(&map->obj)) {
+        fprintf(stream, "{...}");
+        return;
+    }
+
     fprintf(stream, "{");
     bool first = true;
 
@@ -397,9 +428,16 @@ void printMap(FILE* stream, ObjMap* map) {
         first = false;
     }
     fprintf(stream, "}");
+
+    printLeave();
 }
 
 void printSet(FILE* stream, ObjSet* set) {
+    if (!printEnter(&set->obj)) {
+        fprintf(stream, "Set(...)");
+        return;
+    }
+
     fprintf(stream, "Set(");
     bool first = true;
     for (int i = 0; i < set->items.capacity; i++) {
@@ -415,6 +453,8 @@ void printSet(FILE* stream, ObjSet* set) {
         first = false;
     }
     fprintf(stream, ")");
+
+    printLeave();
 }
 
 void printObject(FILE* stream, Value value) {
