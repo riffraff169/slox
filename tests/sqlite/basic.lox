@@ -1,0 +1,61 @@
+import "sqlite";
+
+var db = Sqlite(":memory:");
+
+print db.exec("CREATE TABLE t (id INTEGER, name TEXT, score REAL, active BOOL);");
+// expect: 0
+
+print db.exec("INSERT INTO t VALUES (?, ?, ?, ?);", [1, "alice", 1.5, true]);
+// expect: 1
+
+print db.exec("INSERT INTO t VALUES (?, ?, ?, ?);", [2, "bob", 2.25, false]);
+// expect: 1
+
+var rows = db.exec("SELECT id, name, score, active FROM t ORDER BY id;");
+print typeof(rows);
+// expect: Array
+print rows.len();
+// expect: 2
+print rows[0]["id"];
+// expect: 1
+print rows[0]["name"];
+// expect: alice
+print rows[0]["score"];
+// expect: 1.5
+print rows[0]["active"];
+// expect: 1
+print rows[1]["name"];
+// expect: bob
+
+// A SELECT with no rows must return an empty array, not a change count.
+var empty = db.exec("SELECT id FROM t WHERE id = ?;", [999]);
+print typeof(empty);
+// expect: Array
+print empty.len();
+// expect: 0
+
+print db.exec("SELECT COUNT(*) AS n FROM t;")[0]["n"];
+// expect: 2
+
+// int64 parameters and results must not be truncated to 32 bits.
+var big = 9007199254740991;
+print db.exec(
+    "INSERT INTO t (id, name, score, active) VALUES (?, ?, ?, ?);",
+    [big, "big", 0.0, false]
+);
+// expect: 1
+print db.exec("SELECT id FROM t WHERE name = ?;", ["big"])[0]["id"];
+// expect: 9007199254740991
+
+print db.exec("UPDATE t SET name = ? WHERE id = ?;", ["carol", 2]);
+// expect: 1
+print db.exec("SELECT name FROM t WHERE id = ?;", [2])[0]["name"];
+// expect: carol
+
+var nullRows = db.exec("SELECT id FROM t WHERE name = ?;", [nil]);
+print nullRows.len();
+// expect: 0
+
+db.close();
+print "closed";
+// expect: closed

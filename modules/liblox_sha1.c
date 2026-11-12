@@ -126,20 +126,28 @@ static Value sha1NativeMethod(int argCount, Value* args) {
         free(ctx);
         return build_return_array(digest);
     } else if (IS_INSTANCE(args[-1])) {
-        ObjInstance* instance = AS_INSTANCE(args[-1]);
-        SHA1_CTX* ctx = (SHA1_CTX*)instance->foreignPtr;
-        if (ctx == NULL) {
-            runtimeError("Cannot call methods on an uninitialized SHA1 instance.");
+        if (argCount < 1 || !IS_STRING(args[0])) {
+            runtimeError("sha1() expects a string argument.");
             return NIL_VAL;
         }
 
-        // ...
+        ObjInstance* instance = AS_INSTANCE(args[-1]);
+        SHA1_CTX* ctx = (SHA1_CTX*)instance->foreignPtr;
+        if (ctx == NULL) {
+            runtimeError("Cannot call sha1() on an uninitialized or closed SHA1 instance.");
+            return NIL_VAL;
+        }
+
         ObjString* str = AS_STRING(args[0]);
         uint8_t digest[20];
 
-        //sha1_init(ctx);
+        /*
+         * Add the string to the running state, but finalize a copy so the
+         * instance can still be updated or finalized later.
+         */
         sha1_update(ctx, (const uint8_t*)str->chars, str->length);
-        sha1_final(ctx, digest);
+        SHA1_CTX snapshot = *ctx;
+        sha1_final(&snapshot, digest);
 
         return build_return_array(digest);
     }
@@ -160,6 +168,7 @@ static Value sha1InitMethod(int argCount, Value* args) {
             return NIL_VAL;
         }
 
+        free(instance->foreignPtr);
         sha1_init(ctx);
         instance->foreignPtr = ctx;
 
@@ -177,6 +186,8 @@ static Value sha1InitMethod(int argCount, Value* args) {
 
         uint8_t digest[20];
 
+        free(instance->foreignPtr);
+        instance->foreignPtr = NULL;
         sha1_init(ctx);
         sha1_update(ctx, (const uint8_t*)str->chars, str->length);
         sha1_final(ctx, digest);
@@ -197,6 +208,11 @@ static Value sha1UpdateMethod(int argCount, Value* args) {
     }
 
     SHA1_CTX* ctx = (SHA1_CTX*)instance->foreignPtr;
+    if (ctx == NULL) {
+        runtimeError("Cannot call update() on an uninitialized or closed SHA1 instance.");
+        return NIL_VAL;
+    }
+
     ObjString* str = AS_STRING(args[0]);
 
     sha1_update(ctx, (const uint8_t*)str->chars, str->length);
@@ -220,20 +236,7 @@ static Value sha1FinalMethod(int argCount, Value* args) {
     free(ctx);
     instance->foreignPtr = NULL;
 
-    ObjArray* array = newArray();
-    push(OBJ_VAL(array));
-
-    for (int i = 0; i < 5; i++) {
-        uint32_t h = ((uint32_t)digest[i * 4] << 24) |
-            ((uint32_t)digest[i * 4 + 1] << 16) |
-            ((uint32_t)digest[i * 4 + 2] << 8) |
-            (uint32_t)digest[i * 4 + 3];
-
-        arrayAppend(array, INT_VAL(h));
-    }
-
-    pop();
-    return OBJ_VAL(array);
+    return build_return_array(digest);
 }
 
 void sha1Destructor(ObjInstance* inst) {

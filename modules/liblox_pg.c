@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <libpq-fe.h>
 #include "vm.h"
 
@@ -67,27 +68,61 @@ Value postgresQuery(int argCount, Value* args) {
 
     int nParams = 0;
     char** paramValues = NULL;
+    bool paramError = false;
 
     if (argCount > 1 && IS_ARRAY(args[1])) {
         ObjArray* arr = AS_ARRAY(args[1]);
         nParams = arr->count;
         if (nParams > 0) {
-            paramValues = malloc(sizeof(char*) * nParams);
+            paramValues = calloc((size_t)nParams, sizeof(char*));
+            if (paramValues == NULL) {
+                runtimeError("Out of memory while preparing Postgres parameters.");
+                return NIL_VAL;
+            }
+
             for (int i = 0; i < nParams; i++) {
                 Value val = arr->values[i];
                 if (IS_NIL(val)) {
                     paramValues[i] = NULL;
-                } else if (IS_STRING(val)) {
-                    paramValues[i] = AS_CSTRING(val);
+                    continue;
+                }
+
+                char buf[96];
+                const char* text = NULL;
+
+                if (IS_STRING(val)) {
+                    text = AS_CSTRING(val);
+                } else if (IS_FLOAT(val)) {
+                    snprintf(buf, sizeof(buf), "%g", AS_FLOAT(val));
+                    text = buf;
+                } else if (IS_INT(val)) {
+                    snprintf(buf, sizeof(buf), "%" PRId64, AS_INT(val));
+                    text = buf;
+                } else if (IS_BOOL(val)) {
+                    snprintf(buf, sizeof(buf), "%s", AS_BOOL(val) ? "true" : "false");
+                    text = buf;
                 } else {
-                    char buf[64];
-                    if (IS_FLOAT(val)) snprintf(buf, sizeof(buf), "%g", AS_FLOAT(val));
-                    else if (IS_INT(val)) snprintf(buf, sizeof(buf), "%" PRId64, AS_INT(val));
-                    else if (IS_BOOL(val)) snprintf(buf, sizeof(buf), "%s", AS_BOOL(val) ? "true" : "false");
-                    paramValues[i] = strdup(buf);
+                    runtimeError("Postgres query parameters must be strings, numbers, booleans, or nil.");
+                    paramError = true;
+                    break;
+                }
+
+                paramValues[i] = strdup(text);
+                if (paramValues[i] == NULL) {
+                    runtimeError("Out of memory while preparing Postgres parameters.");
+                    paramError = true;
+                    break;
                 }
             }
         }
+    }
+
+    if (paramError) {
+        if (paramValues != NULL) {
+            for (int i = 0; i < nParams; i++) free(paramValues[i]);
+            free(paramValues);
+        }
+        return NIL_VAL;
     }
 
     PGresult* res = PQexecParams(
@@ -96,19 +131,19 @@ Value postgresQuery(int argCount, Value* args) {
             NULL, NULL, 0
             );
 
-    if (paramValues) {
-        for (int i = 0; i < nParams; i++) {
-            Value val = AS_ARRAY(args[1])->values[i];
-            if (!IS_NIL(val) && !IS_STRING(val) && paramValues[i]) {
-                free(paramValues[i]);
-            }
-        }
+    if (paramValues != NULL) {
+        for (int i = 0; i < nParams; i++) free(paramValues[i]);
         free(paramValues);
+    }
+
+    if (res == NULL) {
+        runtimeError("Postgres query failed: %s", PQerrorMessage(conn));
+        return NIL_VAL;
     }
 
     ExecStatusType status = PQresultStatus(res);
     if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK) {
-        runtimeError("Postgres QUery Error: %s", PQerrorMessage(conn));
+        runtimeError("Postgres query error: %s", PQresultErrorMessage(res));
         PQclear(res);
         return NIL_VAL;
     }
@@ -145,7 +180,7 @@ Value postgresQuery(int argCount, Value* args) {
                             {
                                 char* endptr;
                                 long long num = strtoll(valStr, &endptr, 10);
-                                if (endptr != valStr) {
+                                if (endptr != valStr && *endptr == '\0') {
                                     val = INT_VAL(num);
                                 } else {
                                     val = OBJ_VAL(copyString(valStr, valLen));
@@ -157,7 +192,7 @@ Value postgresQuery(int argCount, Value* args) {
                             {
                                 char* endptr;
                                 double num = strtod(valStr, &endptr);
-                                if (endptr != valStr) {
+                                if (endptr != valStr && *endptr == '\0') {
                                     val = FLOAT_VAL(num);
                                 } else {
                                     val = OBJ_VAL(copyString(valStr, valLen));
@@ -183,9 +218,9 @@ Value postgresQuery(int argCount, Value* args) {
     }
 
     char* affectedStr = PQcmdTuples(res);
-    double affected = 0.0;
+    long long affected = 0;
     if (affectedStr != NULL && affectedStr[0] != '\0') {
-        affected = strtod(affectedStr, NULL);
+        affected = strtoll(affectedStr, NULL, 10);
     }
     PQclear(res);
 

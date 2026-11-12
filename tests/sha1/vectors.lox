@@ -1,0 +1,29 @@
+import "sha1";
+
+// Known SHA-1 vectors as five unsigned 32-bit words.
+var empty = SHA1("");
+print empty;
+// expect: [3661210606, 1584089869, 844480495, 2506102928, 2950170377]
+
+var a = SHA1("a");
+print a;
+// expect: [2264392759, 4205160444, 3780976092, 3119180522, 930506680]
+
+var abc = SHA1("abc");
+print abc;
+// expect: [2845392438, 1191608682, 3124634993, 2018558572, 2630932637]
+
+// Streaming update/final.
+var streaming = SHA1();
+streaming.update("a");
+streaming.update("bc");
+print streaming.final();
+// expect: [2845392438, 1191608682, 3124634993, 2018558572, 2630932637]
+
+// sha1() updates the running state but does not consume the instance.
+var combined = SHA1();
+combined.update("a");
+print combined.sha1("bc");
+// expect: [2845392438, 1191608682, 3124634993, 2018558572, 2630932637]
+print combined.final();
+// expect: [2845392438, 1191608682, 3124634993, 2018558572, 2630932637]

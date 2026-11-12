@@ -6,7 +6,7 @@
 
 void sqliteDestructor(ObjInstance* inst) {
     if (inst->foreignPtr) {
-        int rc = sqlite3_close_v2((sqlite3*)inst->foreignPtr);
+        sqlite3_close_v2((sqlite3*)inst->foreignPtr);
         inst->foreignPtr = NULL;
     }
 }
@@ -21,8 +21,12 @@ Value sqliteCallHandler(int argCount, Value* args) {
     sqlite3 *db;
 
     int rc = sqlite3_open(AS_CSTRING(args[0]), &db);
-    if (rc) {
-        runtimeError("Can't open database %s", AS_CSTRING(args[0]));
+    if (rc != SQLITE_OK) {
+        const char* message = db != NULL ? sqlite3_errmsg(db) : "out of memory";
+        runtimeError("Can't open database %s: %s", AS_CSTRING(args[0]), message);
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
         return NIL_VAL;
     }
     ObjInstance* inst = newInstance(klass);
@@ -33,7 +37,7 @@ Value sqliteCallHandler(int argCount, Value* args) {
 Value sqliteClose(int argCount, Value* args) {
     ObjInstance* inst = AS_INSTANCE(args[-1]);
     if (inst->foreignPtr) {
-        int rc = sqlite3_close_v2((sqlite3*)inst->foreignPtr);
+        sqlite3_close_v2((sqlite3*)inst->foreignPtr);
         inst->foreignPtr = NULL;
     }
     return NIL_VAL;
@@ -54,11 +58,16 @@ Value sqliteExec(int argCount, Value* args) {
     sqlite3* db = (sqlite3*)inst->foreignPtr;
     const char* sql = AS_CSTRING(args[0]);
 
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         runtimeError("Sqlite Error: %s", sqlite3_errmsg(db));
         return NIL_VAL;
+    }
+
+    /* Empty statements and comments produce no prepared statement. */
+    if (stmt == NULL) {
+        return INT_VAL(0);
     }
 
     if (argCount > 1 && IS_ARRAY(args[1])) {
@@ -66,18 +75,26 @@ Value sqliteExec(int argCount, Value* args) {
         for (int i = 0; i < params->count; i++) {
             Value val = params->values[i];
             int paramIdx = i + 1;
+            int bindRc = SQLITE_OK;
 
             if (IS_FLOAT(val)) {
-                sqlite3_bind_double(stmt, paramIdx, AS_FLOAT(val));
+                bindRc = sqlite3_bind_double(stmt, paramIdx, AS_FLOAT(val));
             } else if (IS_STRING(val)) {
                 ObjString* str = AS_STRING(val);
-                sqlite3_bind_text(stmt, paramIdx, str->chars, str->length, SQLITE_TRANSIENT);
+                bindRc = sqlite3_bind_text(
+                    stmt, paramIdx, str->chars, str->length, SQLITE_TRANSIENT);
             } else if (IS_BOOL(val)) {
-                sqlite3_bind_int(stmt, paramIdx, AS_BOOL(val) ? 1 : 0);
+                bindRc = sqlite3_bind_int(stmt, paramIdx, AS_BOOL(val) ? 1 : 0);
             } else if (IS_INT(val)) {
-                sqlite3_bind_int(stmt, paramIdx, AS_INT(val));
-            } else if (IS_NIL(val)) {
-                sqlite3_bind_null(stmt, paramIdx);
+                bindRc = sqlite3_bind_int64(stmt, paramIdx, AS_INT(val));
+            } else {
+                bindRc = sqlite3_bind_null(stmt, paramIdx);
+            }
+
+            if (bindRc != SQLITE_OK) {
+                runtimeError("Sqlite parameter error: %s", sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                return NIL_VAL;
             }
         }
     }
@@ -85,10 +102,9 @@ Value sqliteExec(int argCount, Value* args) {
     ObjArray* results = newArray();
     push(OBJ_VAL(results));
 
-    bool isSelect = false;
+    bool isSelect = sqlite3_column_count(stmt) > 0;
 
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        isSelect = true;
         int cols = sqlite3_column_count(stmt);
 
         ObjMap* row = newMap();
@@ -96,6 +112,7 @@ Value sqliteExec(int argCount, Value* args) {
 
         for (int i = 0; i < cols; i++) {
             const char* colName = sqlite3_column_name(stmt, i);
+            if (colName == NULL) colName = "";
             ObjString* key = copyString(colName, (int)strlen(colName));
             push(OBJ_VAL(key));
 
@@ -109,9 +126,11 @@ Value sqliteExec(int argCount, Value* args) {
                     break;
                 case SQLITE_TEXT:
                     {
-                        const char* text = (const char*)sqlite3_column_text(stmt, i);
+                        const unsigned char* text = sqlite3_column_text(stmt, i);
                         int len = sqlite3_column_bytes(stmt, i);
-                        val = OBJ_VAL(copyString(text, len));
+                        if (text != NULL) {
+                            val = OBJ_VAL(copyString((const char*)text, len));
+                        }
                     }
                     break;
                 case SQLITE_NULL:
@@ -133,7 +152,7 @@ Value sqliteExec(int argCount, Value* args) {
 
     sqlite3_finalize(stmt);
 
-    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+    if (rc != SQLITE_DONE) {
         pop();
         runtimeError("Sqlite Execution Error: %s", sqlite3_errmsg(db));
         return NIL_VAL;
