@@ -1,0 +1,11 @@
+// A callback that catches its own exception must not abort the outer loop.
+var out = [];
+[1, 2, 3].each(fun(x) {
+    try {
+        if (x == 2) throw "two";
+        out.push(x);
+    } catch (e) {
+        out.push("caught " + String(e));
+    }
+});
+print out; // expect: [1, "caught two", 3]

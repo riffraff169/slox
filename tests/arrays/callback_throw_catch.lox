@@ -1,0 +1,58 @@
+// Exceptions thrown inside collection callbacks must reach an enclosing catch
+// instead of aborting the process or resuming the callback loop.
+try {
+    [1, 2, 3].map(fun(x) { throw "map"; });
+} catch (e) {
+    print "map: " + String(e); // expect: map: map
+}
+
+try {
+    [1, 2, 3].filter(fun(x) { throw "filter"; });
+} catch (e) {
+    print "filter: " + String(e); // expect: filter: filter
+}
+
+try {
+    [1, 2, 3].reduce(fun(a, b) { throw "reduce"; });
+} catch (e) {
+    print "reduce: " + String(e); // expect: reduce: reduce
+}
+
+// A falsy thrown value used to make find() resume the loop.
+try {
+    [1, 2, 3].find(fun(x) { throw false; });
+} catch (e) {
+    print "find: " + String(e); // expect: find: false
+}
+
+try {
+    [1, 2, 3].find_index(fun(x) { throw nil; });
+} catch (e) {
+    print "find_index: " + String(e); // expect: find_index: nil
+}
+
+try {
+    [1, 2, 3].each(fun(x) { throw "each"; });
+} catch (e) {
+    print "each: " + String(e); // expect: each: each
+}
+
+try {
+    Map("a", 1, "b", 2).each(fun(k, v) { throw "map.each"; });
+} catch (e) {
+    print "map.each: " + String(e); // expect: map.each: map.each
+}
+
+try {
+    [3, 1, 2].sort(fun(a, b) { throw "sort"; });
+} catch (e) {
+    print "sort: " + String(e); // expect: sort: sort
+}
+
+try {
+    [3, 1, 2].sort_slice(0, 3, fun(a, b) { throw "slice"; });
+} catch (e) {
+    print "sort_slice: " + String(e); // expect: sort_slice: slice
+}
+
+print "done"; // expect: done

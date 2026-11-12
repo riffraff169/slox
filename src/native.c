@@ -48,6 +48,9 @@
     vm.nativeExitDepth = vm.frameCount
 
 // 3. Error Guard: Abort immediately if the loop encountered a runtime panic
+// or if the callback threw past its own frame. In the latter case the
+// exception machinery has already installed a handler in an outer frame and
+// fixed up the stack, so the native must return without touching either.
 #define VM_CALLBACK_CHECK_ERROR(resultState, oldDepth, stackStart, priorFrame) \
     if ((resultState) == INTERPRET_RUNTIME_ERROR) { \
         while (vm.frameCount > (priorFrame)) { \
@@ -60,6 +63,10 @@
             vm.frameCount--; \
         } \
         vm.stackTop = stackStart; \
+        vm.nativeExitDepth = oldDepth; \
+        return NIL_VAL; \
+    } \
+    if (vm.exceptionThrown) { \
         vm.nativeExitDepth = oldDepth; \
         return NIL_VAL; \
     }
@@ -943,7 +950,11 @@ Value requireNative(int argCount, Value* args) {
     if (callValue(OBJ_VAL(closure), 0)) {
         if (vm.frameCount > priorFrameCount) {
             InterpretResult result = run();
-            VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart, priorFrameCount);
+            if (result == INTERPRET_RUNTIME_ERROR || vm.exceptionThrown) {
+                // Restore the module name before the callback error escapes.
+                tableSet(&vm.globals, nameKey, oldName);
+                VM_CALLBACK_CHECK_ERROR(result, oldExitDepth, callbackStackStart, priorFrameCount);
+            }
         }
 
         Value exportResult = pop();
@@ -2294,9 +2305,7 @@ Value mapEachNative(int argCount, Value* args) {
         if (callValue(closure, 2)) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
-                if (res != INTERPRET_OK) {
-                    VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
-                }
+                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
 
             callbackStackStart[-1] = peek(0);
@@ -4567,6 +4576,11 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
     Value valA = *(Value*)a;
     Value valB = *(Value*)b;
 
+    // The callback threw past its own frame and the unwinder has already
+    // installed a handler in an outer frame. qsort cannot be aborted, so leave
+    // the stack alone and treat the remaining comparisons as equal.
+    if (vm.exceptionThrown) return 0;
+
     Value* comparisonStackBase = vm.stackTop;
 
     push(OBJ_VAL(callback));
@@ -4581,16 +4595,7 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
 
     if (vmCall(callback, 2)) {
         InterpretResult state = run();
-        if (state == INTERPRET_OK) {
-
-            /*
-        if (state == INTERPRET_RUNTIME_ERROR) {
-            vm.stackTop = comparisonStackBase;
-            vm.nativeExitDepth = oldExitDepth;
-            return 0;
-        }
-        */
-
+        if (state == INTERPRET_OK && !vm.exceptionThrown) {
             Value result = pop();
 
             if (IS_INT(result)) {
@@ -4603,23 +4608,15 @@ static int loxSortComparator(const void* a, const void* b, void* userdata) {
                 resultCmp = AS_BOOL(result) ? -1 : 1;
             }
         }
-
-        /*
-        vm.stackTop = comparisonStackBase;
-
-        if (IS_INT(result)) {
-            int64_t val = AS_INT(result);
-            return (val > 0) - (val < 0);
-        }
-        if (IS_FLOAT(result)) {
-            double val = AS_FLOAT(result);
-            return (val > 0) - (val < 0);
-        }
-        if (IS_BOOL(result)) {
-            return AS_BOOL(result) ? -1 : 1;
-        }
-        */
     }
+
+    if (vm.exceptionThrown) {
+        // Preserve the stack state produced by the unwinder; the pending
+        // handler runs once the native call returns.
+        vm.nativeExitDepth = oldExitDepth;
+        return 0;
+    }
+
     vm.stackTop = comparisonStackBase;
     vm.nativeExitDepth = oldExitDepth;
     return resultCmp;
@@ -6224,7 +6221,7 @@ Value dirChdirNative(int argCount, Value* args) {
         if (vm.frameCount > priorFrameCount) {
             InterpretResult res = run();
 
-            if (res != INTERPRET_OK) {
+            if (res != INTERPRET_OK || vm.exceptionThrown) {
                 chdir(oldCwd);
                 VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
             }
@@ -6416,7 +6413,10 @@ Value dirEachNative(int argCount, Value* args) {
             if (vm.frameCount > priorFrameCount) {
                 InterpretResult res = run();
 
-                VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
+                if (res != INTERPRET_OK || vm.exceptionThrown) {
+                    closedir(dir);
+                    VM_CALLBACK_CHECK_ERROR(res, oldExitDepth, callbackStackStart, priorFrameCount);
+                }
 
             }
         }
