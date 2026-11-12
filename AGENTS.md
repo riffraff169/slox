@@ -25,6 +25,7 @@ C implementation of Lox (a bytecode VM derived from clox) with additional native
 ## Layout and conventions
 
 - `src/version.h` is the single version source. `scripts/bump-version.sh X.Y.Z [release]` updates version files, commits, creates tag `vX.Y.Z`, and pushes. Do not bump versions manually.
+- The language extends Lox with raw strings: `r"..."` does not process escapes and ends at the next `"` (used for regex patterns such as `Regex(r"\d+")`).
 - Native functions use `Value nameNative(int argCount, Value* args)`; `args[-1]` is the receiver/callee and `args[0..]` are arguments. Report errors with `runtimeError(...)` and return a fallback value.
 - Callback-driven natives must stop when a callback throws; follow the `VM_CALLBACK_*` macros at the top of `src/native.c` and preserve `vm.exceptionThrown`/pending-unwind state instead of resetting the stack.
 - `src/native.h` is generated from `src/native.c` by `src/makeheaders.sh src/native.c`.
