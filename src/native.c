@@ -3104,7 +3104,7 @@ Value binNative(int argCount, Value* args) {
 //   Bool: true if set
 Value bitTestNative(int argCount, Value* args) {
     uint64_t num;
-    int bit;
+    int64_t bit;
 
 #define EXTRACT_INT_VAL(val, outNum) \
     if (IS_INT(val)) { \
@@ -3126,7 +3126,7 @@ Value bitTestNative(int argCount, Value* args) {
 
         int64_t rawBit;
         EXTRACT_INT_VAL(args[0], rawBit);
-        bit = (int)rawBit;
+        bit = rawBit;
     } else {
         // static call: Math.bit_test(num, bit)
         if (argCount < 2) {
@@ -3137,7 +3137,7 @@ Value bitTestNative(int argCount, Value* args) {
 
         int64_t rawBit;
         EXTRACT_INT_VAL(args[1], rawBit);
-        bit = (int)rawBit;
+        bit = rawBit;
     }
 
 #undef EXTRACT_INT_VAL

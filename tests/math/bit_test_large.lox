@@ -1,0 +1,10 @@
+// Bit positions are 64-bit values and must not be narrowed before the
+// 0..63 range check, or large values wrap into valid bit indices.
+print 1.bit_test(4294967296);                // expect: false
+print 1.bit_test(4294967297);                // expect: false
+print Math.bit_test(1, 4294967296);          // expect: false
+print 1.bit_test(9223372036854775807);       // expect: false
+print 1.bit_test(-1);                        // expect: false
+print 1.bit_test(0);                         // expect: true
+print 2.bit_test(1);                         // expect: true
+print Math.bit_test(1, 63);                  // expect: false
