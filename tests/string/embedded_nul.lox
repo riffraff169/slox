@@ -1,0 +1,20 @@
+// String methods must operate on the stored byte length rather than treating
+// the contents as a C string, otherwise embedded NUL bytes truncate results.
+var s = "a\0b";
+
+print s.len();                     // expect: 3
+print s.find("b");                 // expect: 2
+print s.contains("b");             // expect: true
+print s.find("\0");                // expect: 1
+
+print s.split("b").len();          // expect: 2
+print s.split("b")[0].to_array();  // expect: [97, 0]
+print s.split("b")[1].len();       // expect: 0
+
+print s.split("\0").len();         // expect: 2
+print s.split("\0")[0].to_array(); // expect: [97]
+print s.split("\0")[1].to_array(); // expect: [98]
+
+print s.replace("b", "c").to_array(); // expect: [97, 0, 99]
+print s.replace("a", "z").to_array(); // expect: [122, 0, 98]
+print s.replace("\0", "-").to_array(); // expect: [97, 45, 98]

@@ -1162,7 +1162,8 @@ Value stringContainsNative(int argCount, Value* args) {
     ObjString* haystack = AS_STRING(args[-1]);
     ObjString* needle = AS_STRING(args[0]);
 
-    return BOOL_VAL(strstr(haystack->chars, needle->chars) != NULL);
+    return BOOL_VAL(memmem(haystack->chars, haystack->length,
+                           needle->chars, needle->length) != NULL);
 }
 
 //@ String
@@ -1187,7 +1188,8 @@ Value stringFindNative(int argCount, Value* args) {
 
     if (IS_STRING(args[0])) {
         ObjString* needle = AS_STRING(args[0]);
-        char* location = strstr(haystack->chars, needle->chars);
+        char* location = memmem(haystack->chars, haystack->length,
+                                needle->chars, needle->length);
         if (location != NULL) {
             return INT_VAL(location - haystack->chars);
         }
@@ -1376,10 +1378,11 @@ Value stringSplitNative(int argCount, Value* args) {
         }
 
         char* text = receiver->chars;
+        char* end = receiver->chars + receiver->length;
         char* found;
         int sepLen = sep->length;
 
-        while ((found = strstr(text, sep->chars)) != NULL) {
+        while (text <= end && (found = memmem(text, end - text, sep->chars, sepLen)) != NULL) {
             int segmentLen = (int)(found - text);
 
             ObjString* segment = copyString(text, segmentLen);
@@ -1390,7 +1393,7 @@ Value stringSplitNative(int argCount, Value* args) {
             text = found + sepLen;
         }
 
-        ObjString* lastSegment = copyString(text, (int)strlen(text));
+        ObjString* lastSegment = copyString(text, (int)(end - text));
         push(OBJ_VAL(lastSegment));
         arrayAppend(result, OBJ_VAL(lastSegment));
         pop();
@@ -1947,8 +1950,9 @@ Value stringReplaceNative(int argCount, Value* args) {
 
     // 1. count occurrences of target to calculate the exact new buffer size
     int count = 0;
+    char* end = self->chars + self->length;
     char* ptr = self->chars;
-    while ((ptr = strstr(ptr, target->chars)) != NULL) {
+    while (ptr <= end && (ptr = memmem(ptr, end - ptr, target->chars, target->length)) != NULL) {
         count++;
         ptr += target->length;
     }
@@ -1958,16 +1962,25 @@ Value stringReplaceNative(int argCount, Value* args) {
     }
 
     // 2. compute new length (handles expansion, shrinking, or deletion)
-    int newLength = self->length + count * (replacement->length - target->length);
+    int64_t newLength64 = (int64_t)self->length +
+        (int64_t)count * ((int64_t)replacement->length - target->length);
+
+    if (newLength64 < 0 || newLength64 > INT_MAX) {
+        runtimeError("replace() result is too large.");
+        return NIL_VAL;
+    }
+
+    int newLength = (int)newLength64;
     char* resultBuf = ALLOCATE(char, newLength + 1);
 
-    // 3. build the new string
+    // 3. build the new string using explicit lengths so embedded NUL bytes
+    // are preserved instead of being treated as string terminators.
     char* dest = resultBuf;
     ptr = self->chars;
     char* next;
 
-    while ((next = strstr(ptr, target->chars)) != NULL) {
-        int segmentLen = next - ptr;
+    while (ptr <= end && (next = memmem(ptr, end - ptr, target->chars, target->length)) != NULL) {
+        int segmentLen = (int)(next - ptr);
 
         // copy preceding text segment
         memcpy(dest, ptr, segmentLen);
@@ -1984,7 +1997,9 @@ Value stringReplaceNative(int argCount, Value* args) {
     }
 
     // copy remaining
-    strcpy(dest, ptr);
+    int tailLen = (int)(end - ptr);
+    memcpy(dest, ptr, tailLen);
+    dest += tailLen;
     resultBuf[newLength] = '\0';
 
     return OBJ_VAL(takeString(resultBuf, newLength));
