@@ -1,0 +1,45 @@
+import "ssl";
+import "sha1";
+
+// SSL requires a connected TCP socket. An unconnected socket is rejected
+// without closing or taking ownership of it.
+var tcp = IO.tcp();
+var sec = SSL("example.com", tcp);
+
+print errno;
+// expect: 107
+print errstr;
+// expect: Initialization failed: the passed socket is not connected.
+
+// Argument validation.
+print sec.write(123);
+// expect: nil
+print errno;
+// expect: 22
+print errstr;
+// expect: write() expects a string argument.
+
+print sec.read();
+// expect: nil
+print errno;
+// expect: 9
+print errstr;
+// expect: Cannot read from an uninitialized or failed SSL context.
+
+var sec2 = SSL("example.com");
+print errno;
+// expect: 22
+print errstr;
+// expect: Initialization failed: init() expects a host string and a connected socket instance.
+
+// Non-IO instances are rejected.
+var sha1 = SHA1();
+var sec3 = SSL("example.com", sha1);
+print errno;
+// expect: 22
+print errstr;
+// expect: Initialization failed: the passed instance is not an IO socket.
+
+System.gc();
+print "ok";
+// expect: ok
