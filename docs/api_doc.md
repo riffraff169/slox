@@ -1217,15 +1217,25 @@ like ./../..
 ---
 
 ## Class: MultiFFI
-Load multiple ffi libraries. Doesn't present skip libraries that aren't found.
+Loads FFI libraries from a list of platform-specific names, skipping any
+name that cannot be opened. This allows the same binding code to work on
+systems that ship the library under a different name.
 
 **Required Arguments:**
   - `Array: paths`
 
 ### Methods
 
-#### `MultiFFI.bind()`
-Binds a symbol. Searches through all loaded libraries to find the first one that matches.
+#### `MultiFFI.bind(symbolName, returnType, argTypes)`
+Binds a symbol from the first loaded library that exports it.
+
+**Required Arguments:**
+  - `String: symbolName`
+  - `String: returnType`
+  - `Array: argTypes`
+
+**Returns:**
+  - `Native: bound function`
 
 ---
 

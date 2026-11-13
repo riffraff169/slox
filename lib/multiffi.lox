@@ -1,7 +1,9 @@
 import "ffi";
 
 //@ MultiFFI
-// Load multiple ffi libraries. Doesn't present skip libraries that aren't found.
+// Loads FFI libraries from a list of platform-specific names, skipping any
+// name that cannot be opened. This allows the same binding code to work on
+// systems that ship the library under a different name.
 // Requires:
 //   Array: paths
 class MultiFFI {
@@ -10,32 +12,40 @@ class MultiFFI {
     for (var i = 0; i < paths.length(); i += 1) {
       try {
         this.handles.push(FFI(paths[i]));
-        //print "MultiFFI: Added " + paths[i];
       } catch (e) {
-        print "MultiFFI: Skipped " + paths[i];
-        // skip libraries that fail to load
-      } 
+        // This name is not available on this platform; try the next one.
+      }
     }
   }
 
   //: bind
-  // Binds a symbol. Searches through all loaded libraries to find the first one that matches.
+  // Binds a symbol from the first loaded library that exports it.
+  // Requires:
+  //   String: symbolName
+  //   String: returnType
+  //   Array: argTypes
+  // Returns:
+  //   Native: bound function
   bind(symbolName, returnType, argTypes) {
-    for (var i = 0; i < this.handles.length(); i += 1) {
-      var sym = nil;
-      try {
-        sym = this.handles[i].bind(symbolName, returnType, argTypes);
-        //print "Found symbol " + symbolName + ": " + i;
-      } catch (Error e) {
-        sym = nil;
-        print "MultiFFI: Not found " + symbolName + ": " + i + " - " + e.message;
-        // try next library
-      } catch (e) {
-        sym = nil;
-        print "MultiFFI: Not found " + symbolName + ": " + i + " - " + e;
-      }
-      return sym;
+    if (this.handles.length() == 0) {
+      throw Error("MultiFFI: No FFI libraries could be loaded.");
     }
-    throw("MultiFFI: Symbol '" + symbolName + "' not found in any loaded libraries.");
+
+    var lastError = nil;
+    for (var i = 0; i < this.handles.length(); i += 1) {
+      try {
+        return this.handles[i].bind(symbolName, returnType, argTypes);
+      } catch (Error e) {
+        lastError = e.message;
+      } catch (e) {
+        lastError = "" + e;
+      }
+    }
+
+    var message = "MultiFFI: Symbol '" + symbolName + "' not found in any loaded library.";
+    if (lastError != nil) {
+      message = "MultiFFI: Could not bind '" + symbolName + "': " + lastError;
+    }
+    throw Error(message);
   }
 }

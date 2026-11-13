@@ -1,0 +1,46 @@
+import "ffi";
+require("multiffi.lox");
+
+// A library name that does not exist must be skipped, not abort construction.
+var m = MultiFFI(["libslox_missing_library.so", "libc.so.6"]);
+print m.handles.length();
+// expect: 1
+
+var strlen = m.bind("strlen", "size_t", ["string"]);
+print strlen("hello");
+// expect: 5
+
+// bind() must keep searching when an earlier loaded library lacks the symbol.
+var m2 = MultiFFI(["libm.so.6", "libc.so.6"]);
+var strlen2 = m2.bind("strlen", "size_t", ["string"]);
+print strlen2("abcd");
+// expect: 4
+
+// A symbol missing from every library raises one clear error.
+try {
+  m.bind("slox_missing_symbol", "void", []);
+  print "unreachable";
+} catch (e) {
+  print e.message.contains("Could not bind 'slox_missing_symbol'");
+  // expect: true
+}
+
+// Invalid binding metadata must still be reported, not hidden as a missing symbol.
+try {
+  m.bind("strlen", "nope", []);
+} catch (e) {
+  print e.message.contains("Unknown return type 'nope'");
+  // expect: true
+}
+
+// A list where nothing loads reports the failure when binding.
+var none = MultiFFI(["libslox_missing_library.so"]);
+print none.handles.length();
+// expect: 0
+
+try {
+  none.bind("strlen", "size_t", ["string"]);
+} catch (e) {
+  print e.message;
+  // expect: MultiFFI: No FFI libraries could be loaded.
+}
