@@ -1,0 +1,234 @@
+import "ffi";
+
+// libc is always available to the running process. Try the common soname
+// first, then the generic linker name for systems without a versioned libc.
+var libc;
+try {
+    libc = FFI("libc.so.6");
+} catch (e) {
+    libc = FFI("libc.so");
+}
+
+// C int arguments and return values.
+var abs = libc.bind("abs", "int32", ["int32"]);
+print abs(-7);
+// expect: 7
+
+var toupper = libc.bind("toupper", "int", ["int"]);
+print toupper(97);
+// expect: 65
+
+// Narrow integer types use their declared widths for arguments and returns.
+var abs8 = libc.bind("abs", "int8", ["int8"]);
+print abs8(-5);
+// expect: 5
+var abs16 = libc.bind("abs", "int16", ["int16"]);
+print abs16(-300);
+// expect: 300
+var toupper8 = libc.bind("toupper", "uint8", ["uint8"]);
+print toupper8(97);
+// expect: 65
+var toupper16 = libc.bind("toupper", "uint16", ["uint16"]);
+print toupper16(97);
+// expect: 65
+
+var strcmp = libc.bind("strcmp", "int", ["string", "string"]);
+print strcmp("a", "a");
+// expect: 0
+print strcmp("a", "b") < 0;
+// expect: true
+
+var sleep = libc.bind("sleep", "uint", ["uint"]);
+print sleep(0);
+// expect: 0
+
+var htonl = libc.bind("htonl", "uint32", ["uint32"]);
+var ntohl = libc.bind("ntohl", "uint32", ["uint32"]);
+print ntohl(htonl(305419896));
+// expect: 305419896
+
+var htons = libc.bind("htons", "uint16", ["uint16"]);
+var ntohs = libc.bind("ntohs", "uint16", ["uint16"]);
+print ntohs(htons(4660));
+// expect: 4660
+
+// Native long and unsigned long types.
+var labs = libc.bind("labs", "long", ["long"]);
+print labs(-1234);
+// expect: 1234
+
+var memset = libc.bind("memset", "pointer", ["buffer", "int32", "ulong"]);
+var ulongBuf = Buffer.alloc(4);
+memset(ulongBuf, 65, 3);
+print ulongBuf.to_array();
+// expect: [65, 65, 65, 0]
+
+// size_t arguments and returns.
+var strlen = libc.bind("strlen", "size_t", ["string"]);
+print strlen("hello");
+// expect: 5
+print strlen("");
+// expect: 0
+
+// Native long/unsigned long widths.
+var strtoul = libc.bind("strtoul", "ulong", ["string", "pointer", "int32"]);
+print strtoul("4294967295", nil, 10);
+// expect: 4294967295
+
+// Explicit 64-bit types, including values outside the signed range.
+var llabs = libc.bind("llabs", "int64", ["int64"]);
+print llabs(-9007199254740991);
+// expect: 9007199254740991
+
+var strtoull = libc.bind("strtoull", "uint64", ["string", "pointer", "int32"]);
+print strtoull("18446744073709551615", nil, 10);
+// expect: -1
+
+// Floating point arguments and returns.
+var atof = libc.bind("atof", "double", ["string"]);
+print atof("2.5");
+// expect: 2.5
+
+var strtof = libc.bind("strtof", "float", ["string", "pointer"]);
+print strtof("1.25", nil);
+// expect: 1.25
+
+// A C string result is copied into an immutable Lox String.
+var strchrString = libc.bind("strchr", "string", ["string", "int32"]);
+print strchrString("hello", 108);
+// expect: llo
+print strchrString("hello", 122);
+// expect: nil
+
+// A pointer result is an integer address, with NULL mapped to nil.
+var strchrPointer = libc.bind("strchr", "pointer", ["string", "int32"]);
+print strchrPointer("hello", 108) != nil;
+// expect: true
+print strchrPointer("hello", 122);
+// expect: nil
+
+var malloc = libc.bind("malloc", "pointer", ["size_t"]);
+var free = libc.bind("free", "void", ["pointer"]);
+var ptr = malloc(16);
+print ptr != nil;
+// expect: true
+free(ptr);
+
+// Buffers are writable memory, not Strings.
+var memcpy = libc.bind("memcpy", "pointer", ["buffer", "string", "size_t"]);
+var buf = Buffer.alloc(4);
+memcpy(buf, "abc", 4);
+print buf.to_array();
+// expect: [97, 98, 99, 0]
+
+// A String must not be accepted where a writable Buffer is required.
+try {
+    memcpy("abc", "def", 4);
+} catch (e) {
+    print e.message;
+    // expect: FFI argument 1 to 'memcpy' is not valid for type 'buffer'.
+}
+
+// Conversely, a Buffer is not a String argument automatically.
+try {
+    strlen(Buffer.alloc(4));
+} catch (e) {
+    print e.message;
+    // expect: FFI argument 1 to 'strlen' is not valid for type 'string'.
+}
+
+// Buffer.get_ptr() represents a raw pointer as pointer-sized String bytes.
+var memcpyRaw = libc.bind("memcpy", "pointer", ["pointer", "pointer", "size_t"]);
+var src = Buffer.alloc(8);
+src.write_uint8(0, 65);
+var dst = Buffer.alloc(8);
+memcpyRaw(dst, src.get_ptr(), 1);
+print dst.to_array()[0];
+// expect: 65
+
+// Invalid binding metadata must be rejected instead of silently ignored.
+try {
+    libc.bind("abs", "nope", []);
+} catch (e) {
+    print e.message;
+    // expect: Unknown return type 'nope'.
+}
+
+try {
+    libc.bind("abs", "int32", ["nope"]);
+} catch (e) {
+    print e.message;
+    // expect: Unknown argument type 'nope'.
+}
+
+try {
+    libc.bind("abs", "int32", [1]);
+} catch (e) {
+    print e.message;
+    // expect: Argument types must be strings.
+}
+
+try {
+    libc.bind("abs", "int32", "int32");
+} catch (e) {
+    print e.message;
+    // expect: bind() argument types must be an array of strings.
+}
+
+try {
+    libc.bind("abs", "int32", ["void"]);
+} catch (e) {
+    print e.message;
+    // expect: Argument type 'void' is not valid.
+}
+
+try {
+    libc.bind("abs", "buffer", ["int32"]);
+} catch (e) {
+    print e.message;
+    // expect: Return type 'buffer' is not supported.
+}
+
+try {
+    libc.bind("slox_missing_symbol", "void", []);
+} catch (e) {
+    print "missing symbol";
+    // expect: missing symbol
+}
+
+// Argument values must match the declared C types.
+try {
+    abs("not a number");
+} catch (e) {
+    print e.message;
+    // expect: FFI argument 1 to 'abs' is not valid for type 'int32'.
+}
+
+try {
+    strlen(5);
+} catch (e) {
+    print e.message;
+    // expect: FFI argument 1 to 'strlen' is not valid for type 'string'.
+}
+
+try {
+    abs();
+} catch (e) {
+    print e.message;
+    // expect: FFI call expected 1 arguments, got 0.
+}
+
+// A bound function must keep its library loaded even after the FFI handle is
+// collected. libz is optional, so skip the check if it is unavailable.
+var lifetimeOk = false;
+try {
+    var zlib = FFI("libz.so.1");
+    var zlibVersion = zlib.bind("zlibVersion", "string", []);
+    zlib = nil;
+    GC.gc();
+    lifetimeOk = zlibVersion().length() > 0;
+} catch (e) {
+    lifetimeOk = true;
+}
+print lifetimeOk;
+// expect: true
