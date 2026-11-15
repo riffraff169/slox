@@ -7,5 +7,6 @@ slox
 temp/*
 *.ppm
 *.txt
+!tests/gi/data.txt
 /*.lox
 .*.swp

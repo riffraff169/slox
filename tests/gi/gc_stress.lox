@@ -1,0 +1,70 @@
+// Collection on every allocation exercises rooting in namespace loading,
+// module tables, wrappers, signals, and out arguments.
+GC.stress_mode(GC.StressMode);
+
+import "gi";
+
+var Gio = gi.load("Gio");
+var GLib = gi.load("GLib");
+
+// Enum instances, classes, and their keys must survive collection.
+print Gio.IOErrorEnum.failed;
+// expect: 0
+print Gio.FileType.REGULAR;
+// expect: 1
+
+var action = Gio.SimpleAction.new("stress", nil);
+var count = 0;
+var id = gi.connect(action, "activate", fun(sender, parameter) {
+    count = count + 1;
+});
+gi.emit(action, "activate", nil);
+gi.disconnect(action, id);
+print count;
+// expect: 1
+
+var keyFile = GLib.KeyFile.new();
+keyFile.set_string("group", "key", "value");
+print keyFile.get_string("group", "key");
+// expect: value
+
+// Array results and their out-argument lengths must stay rooted too.
+var groups = keyFile.get_groups();
+print groups[1];
+// expect: 1
+print groups[0][0];
+// expect: group
+
+// Return values combined with out arguments are rooted as an array.
+var contents = GLib.file_get_contents("tests/gi/data.txt");
+print contents[0];
+// expect: true
+print contents[2];
+// expect: 6
+print contents[1][0];
+// expect: 104
+
+for (var i = 0; i < 10; i = i + 1) {
+    var temporary = Gio.SimpleAction.new("temporary", nil);
+    temporary.enabled = false;
+}
+
+print GLib.str_has_prefix("hello", "he");
+// expect: true
+
+// Interface wrappers and reference-counted variants survive collection.
+var file = Gio.file_new_for_path("tests/gi/data.txt");
+print file.get_basename();
+// expect: data.txt
+print file.query_exists(nil);
+// expect: true
+
+var action2 = Gio.SimpleAction.new_stateful("toggle", nil,
+        GLib.Variant.new_boolean(false));
+print action2.get_state().get_boolean();
+// expect: false
+action2.set_state(GLib.Variant.new_boolean(true));
+print action2.state;
+// expect: true
+
+GC.stress_mode(GC.NormalMode);

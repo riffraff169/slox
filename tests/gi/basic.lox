@@ -1,0 +1,32 @@
+import "gi";
+
+// Namespaces expose their constants as plain properties.
+var GLib = gi.load("GLib");
+print GLib.MAJOR_VERSION;
+// expect: 2
+
+print GLib.MINOR_VERSION >= 2;
+// expect: true
+
+// Functions map directly to Lox functions.
+print GLib.str_has_prefix("hello world", "hello");
+// expect: true
+print GLib.str_has_prefix("hello world", "world");
+// expect: false
+print GLib.str_has_suffix("script.lox", ".lox");
+// expect: true
+
+// Out arguments are returned after the return value.
+var parsed = GLib.ascii_string_to_signed("42", 10, -100, 100);
+print parsed[0];
+// expect: true
+print parsed[1];
+// expect: 42
+
+// A failed throwable function raises a catchable runtime error.
+try {
+    GLib.ascii_string_to_signed("notnum", 10, -100, 100);
+} catch (e) {
+    print e.message.contains("not a signed number");
+    // expect: true
+}

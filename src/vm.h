@@ -161,6 +161,9 @@ typedef struct {
     ObjClass* vec3MetaClass;
 
     int nativeExitDepth;
+    // Native currently executing. Natives called as methods cannot otherwise
+    // discover their own ObjNative (the receiver occupies stack[-argCount-1]).
+    ObjNative* currentNative;
     bool noStdLib;
 
     int moduleCount;

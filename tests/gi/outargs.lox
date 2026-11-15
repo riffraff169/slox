@@ -1,0 +1,18 @@
+import "gi";
+
+var GLib = gi.load("GLib");
+
+// file_get_contents has three out values: success flag, contents, length.
+var result = GLib.file_get_contents("tests/gi/data.txt");
+print result[0];
+// expect: true
+print result[2];
+// expect: 6
+
+// The byte array is a Lox Array of numbers, sized by the sibling out length.
+print result[1].length();
+// expect: 6
+print result[1][0];
+// expect: 104
+print result[1][4];
+// expect: 111

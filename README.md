@@ -93,7 +93,27 @@ var b = Option(nil);
 print b.unwrap_or(25);
 ```
 #### GI Module
-GTK4 through gi module.  I refactored dynamic loading and broke this, so I have to fix it.
+GObject-Introspection bindings, including GTK4, Gio, and GLib. Methods,
+properties, enums, constructors, and signals are discovered from the installed
+GIRepository typelibs.
+
+Available helpers:
+```
+var Gtk = gi.load("Gtk");   // load a namespace; optional second arg is the version
+gi.connect(obj, "clicked", fun(sender) { ... });
+gi.emit(obj, "activate", nil);
+gi.disconnect(obj, handlerId);
+gi.loop();                  // run the GLib main loop
+gi.quit();
+```
+
+`connect` returns a handler id. Signal callbacks receive the emitter first,
+followed by the signal parameters. Signal handlers with a return value should
+return the matching Lox value (for example `true`/`false` for key-pressed).
+Properties are accessed with their GObject spelling, or with underscores in
+place of hyphens. Enum values use their lowercase GIR names, and the uppercase
+alias is also available. Introspection functions that report errors raise a
+catchable Lox runtime error.
 ```
 import "gi";
 var Gdk = gi.load("Gdk");
@@ -113,7 +133,7 @@ btn.label = "Click Me";
 
 gi.connect(btn, "clicked", fun(sender) {
   print "--- Signal Debug ---";
-  print sendre;
+  print sender;
 
   var currentLabel = sender.label;
   print "Old Label: " + currentLabel;
@@ -142,10 +162,9 @@ gi.connect(controller, "key-pressed", fun(ctrl, keyval, keycode, state) {
     gi.quit();
     return false;
   }
-  print "Key pressed: ", keyvarl;
+  print "Key pressed: ", keyval;
   return true;
 });
 
 gi.loop();
 ```
-

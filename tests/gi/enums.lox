@@ -1,0 +1,30 @@
+import "gi";
+
+var Gtk = gi.load("Gtk");
+var Gdk = gi.load("Gdk");
+
+// Enum and flag values are integers named with their lowercase GIR spelling.
+print Gtk.Orientation.horizontal;
+// expect: 0
+print Gtk.Orientation.vertical;
+// expect: 1
+print Gtk.Orientation.VERTICAL;
+// expect: 1
+print Gtk.Orientation.vertical == Gtk.Orientation.VERTICAL;
+// expect: true
+
+print Gdk.ModifierType.control_mask;
+// expect: 4
+print Gdk.KEY_q;
+// expect: 113
+
+// Unknown members report a normal property error.
+var bad = nil;
+try {
+    bad = Gtk.Orientation.nope;
+} catch (e) {
+    print e.message.contains("nope");
+    // expect: true
+}
+print bad;
+// expect: nil

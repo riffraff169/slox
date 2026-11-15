@@ -1,0 +1,59 @@
+import "gi";
+
+var Gio = gi.load("Gio");
+
+// Constructors and plain GObject properties.
+var action = Gio.SimpleAction.new("act", nil);
+print action;
+// expect: SimpleAction instance
+print action.name;
+// expect: act
+print action.enabled;
+// expect: true
+
+action.enabled = false;
+print action.enabled;
+// expect: false
+
+// Underscores in property names map to hyphens.
+print action.parameter_type;
+// expect: nil
+
+var parameterised = Gio.SimpleAction.new("param", "s");
+print parameterised.parameter_type;
+// expect: s
+
+// A class call without arguments creates the default GObject.
+var direct = Gio.SimpleAction.new("direct", nil);
+print direct.name;
+// expect: direct
+
+print action.get_name();
+// expect: act
+
+// Signals invoke Lox callbacks and can be disconnected.
+var count = 0;
+var id = gi.connect(action, "activate", fun(sender, parameter) {
+    count = count + 1;
+});
+print id > 0;
+// expect: true
+
+gi.emit(action, "activate", nil);
+print count;
+// expect: 1
+
+gi.disconnect(action, id);
+gi.emit(action, "activate", nil);
+print count;
+// expect: 1
+
+// A GVariant signal parameter is converted to a Lox value.
+var received = nil;
+var paramId = gi.connect(parameterised, "activate", fun(sender, parameter) {
+    received = parameter;
+});
+gi.emit(parameterised, "activate", "payload");
+print received;
+// expect: payload
+gi.disconnect(parameterised, paramId);

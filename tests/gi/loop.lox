@@ -1,0 +1,27 @@
+import "gi";
+require("timer.lox");
+
+var Gio = gi.load("Gio");
+var action = Gio.SimpleAction.new("act", nil);
+
+var count = 0;
+gi.connect(action, "activate", fun(sender, parameter) {
+    count = count + 1;
+    print "tick";
+    // expect: tick
+});
+
+// Timers drive the GI main loop without a display server.
+Timer.setTimeout(20, fun() {
+    gi.emit(action, "activate", nil);
+});
+
+Timer.setTimeout(80, fun() {
+    print count;
+    // expect: 1
+    gi.quit();
+});
+
+gi.loop();
+print "loop done";
+// expect: loop done

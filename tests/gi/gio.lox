@@ -1,0 +1,48 @@
+import "gi";
+
+var GLib = gi.load("GLib");
+var Gio = gi.load("Gio");
+
+// A namespace function returning an interface is wrapped with its interface
+// class, even when the concrete GObject type is private.
+var file = Gio.file_new_for_path("tests/gi/data.txt");
+print typeof(file);
+// expect: File
+print file.get_basename();
+// expect: data.txt
+print file.query_exists(nil);
+// expect: true
+print file.get_path().contains("tests/gi/data.txt");
+// expect: true
+
+var missing = Gio.file_new_for_path("tests/gi/nope.txt");
+print missing.query_exists(nil);
+// expect: false
+
+// GVariant is reference counted but is not a boxed GType.
+var boolean = GLib.Variant.new_boolean(false);
+print typeof(boolean);
+// expect: Variant
+print boolean.get_boolean();
+// expect: false
+
+// GVariant properties are converted to strings.
+var action = Gio.SimpleAction.new_stateful("toggle", nil, boolean);
+print action.get_state().get_boolean();
+// expect: false
+action.set_state(GLib.Variant.new_boolean(true));
+print action.state;
+// expect: true
+
+// GVariantType arguments accept strings and round-trip as strings.
+var parameterised = Gio.SimpleAction.new("param", "s");
+print parameterised.parameter_type;
+// expect: s
+print typeof(parameterised.parameter_type);
+// expect: String
+
+var text = GLib.Variant.new_string("hi");
+print text.get_type_string();
+// expect: s
+print text.get_string();
+// expect: ["hi", 2]

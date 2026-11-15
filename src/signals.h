@@ -36,6 +36,7 @@ Value timerStopNative(int argCount, Value* args);
 Value timerStartNative(int argCount, Value* args);
 uint64_t getCurrentTimeMs(void);
 void processTimers(void);
+uint64_t getNextTimerDelayMs(void);
 void initTimerClass(void);
 void markTimerRoots(void);
 bool hasActiveTimers(void);

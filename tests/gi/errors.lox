@@ -1,0 +1,53 @@
+import "gi";
+
+var GLib = gi.load("GLib");
+var Gio = gi.load("Gio");
+
+// Missing function arguments are reported before the C call.
+try {
+    GLib.str_has_prefix("hi");
+} catch (e) {
+    print e.message;
+    // expect: gi: str_has_prefix is missing required argument 'prefix'
+}
+
+// Missing constructor arguments are reported the same way.
+try {
+    Gio.SimpleAction.new();
+} catch (e) {
+    print e.message;
+    // expect: gi: constructor for SimpleAction is missing required argument 'name'
+}
+
+// Constructors reject extra arguments.
+try {
+    GLib.KeyFile.new(1);
+} catch (e) {
+    print e.message;
+    // expect: gi: constructor for KeyFile takes at most 0 arguments
+}
+
+// Argument values are checked against the introspected type.
+try {
+    GLib.str_has_prefix(1, "x");
+} catch (e) {
+    print e.message;
+    // expect: gi: argument 'str' expects a string
+}
+
+// Unknown methods remain normal Lox method errors.
+var action = Gio.SimpleAction.new("act", nil);
+try {
+    action.nope();
+} catch (e) {
+    print e.message;
+    // expect: Undefined method 'nope'.
+}
+
+// Unknown namespaces fail to load.
+try {
+    gi.load("NoSuchNamespace");
+} catch (e) {
+    print e.message.contains("NoSuchNamespace");
+    // expect: true
+}

@@ -4780,3 +4780,75 @@ Get list of classes, methods, and fields on this instance/class
   - `Value: object`
 
 ---
+
+# Native Modules
+
+## GI
+GObject-Introspection bindings for GLib, Gio, GTK4, and any other installed
+GIRepository namespace. Load it with `import "gi"`.
+
+#### `gi.load(namespace, [version])`
+Loads and caches an introspection namespace. Classes, constructors, methods,
+properties, enums, flags, constants, and functions are exposed as members of
+the returned module object.
+
+**Required Arguments:**
+  - `String: namespace`
+
+**Optional Arguments:**
+  - `String: version`
+
+**Returns:**
+  - `Instance: namespace module`
+
+#### `gi.connect(object, signal, callback)`
+Connects a Lox callback to a GObject signal and returns its handler id. The
+callback receives the emitter as its first argument, followed by the signal
+parameters. A callback for a signal with a return value must return a compatible
+Lox value.
+
+**Required Arguments:**
+  - `Instance: object`
+  - `String: signal`
+  - `Function: callback`
+
+**Returns:**
+  - `Integer: handler id`
+
+#### `gi.disconnect(object, handlerId)`
+Disconnects a handler previously returned by `gi.connect`.
+
+**Required Arguments:**
+  - `Instance: object`
+  - `Integer: handlerId`
+
+#### `gi.emit(object, signal, argument)`
+Emits a signal on a GObject. Pass `nil` when the signal has no parameter.
+
+**Required Arguments:**
+  - `Instance: object`
+  - `String: signal`
+  - `Value: argument`
+
+#### `gi.loop()`
+Runs the GLib main loop until `gi.quit` is called, for example from a signal
+callback or a timer.
+
+#### `gi.quit()`
+Stops a running `gi.loop` and destroys its toplevel windows.
+
+### Conversion Notes
+- Introspection out arguments are returned after the return value. A function
+  with no return value but at least one out argument returns an Array of the out
+  values; with no out arguments it returns `nil`.
+- `GError` results raise a catchable Lox runtime error instead of being returned.
+- Enum and flag values are integers named with their lowercase GIR spelling;
+  uppercase aliases are also registered.
+- Property names accept underscores in place of hyphens.
+- String values are accepted for `GVariantType` arguments, and `GVariant`
+  string values are converted to Lox Strings.
+- Introspection objects are reference-counted. GObject, boxed, and struct
+  wrappers release their reference when the Lox instance is collected, and
+  signal handlers are disconnected with the wrapper.
+
+---

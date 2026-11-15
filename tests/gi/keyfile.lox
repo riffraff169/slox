@@ -1,0 +1,43 @@
+import "gi";
+
+var GLib = gi.load("GLib");
+
+var keyFile = GLib.KeyFile.new();
+print keyFile;
+// expect: KeyFile instance
+
+keyFile.set_string("group", "key", "value");
+print keyFile.get_string("group", "key");
+// expect: value
+
+keyFile.set_integer("numbers", "answer", 42);
+print keyFile.get_integer("numbers", "answer");
+// expect: 42
+
+keyFile.set_boolean("flags", "enabled", true);
+print keyFile.get_boolean("flags", "enabled");
+// expect: true
+
+// Out-argument lengths are used when converting array results.
+var groups = keyFile.get_groups();
+print groups[1];
+// expect: 3
+print groups[0].has("group");
+// expect: true
+print groups[0].has("numbers");
+// expect: true
+print keyFile.get_keys("group");
+// expect: [["key"], 1]
+
+// KeyFile methods report failures through GError.
+try {
+    keyFile.get_string("missing", "missing");
+} catch (e) {
+    print e.message.contains("get_string failed");
+    // expect: true
+}
+
+print keyFile.has_group("group");
+// expect: true
+print keyFile.has_group("missing");
+// expect: false

@@ -1970,7 +1970,10 @@ bool callValue(Value callee, int argCount) {
                 {
                     NativeFn native = AS_NATIVE(callee);
 
+                    ObjNative* previousNative = vm.currentNative;
+                    vm.currentNative = AS_NATIVE_OBJ(callee);
                     Value result = native(argCount, vm.stackTop - argCount);
+                    vm.currentNative = previousNative;
 
                     /*
                     if (vm.exceptionThrown) {

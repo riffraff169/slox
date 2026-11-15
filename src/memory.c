@@ -306,6 +306,10 @@ static void markRoots() {
         markValue(vm.tempStack[i]);
     }
 
+    if (vm.currentNative != NULL) {
+        markObject((Obj*)vm.currentNative);
+    }
+
     for (int i = 0; i < vm.frameCount; i++) {
         markObject((Obj*)vm.frames[i].closure);
         for (int j = 0; j < vm.frames[i].deferHooks.count; j++) {
