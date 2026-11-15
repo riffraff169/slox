@@ -3,14 +3,14 @@ require("sloxcolorizer.lox");
 var sampleCode = "
 // Simple Slox Example
 class Person {
-    init(name) {
-          this.name = name;
-            }
+  init(name) {
+    this.name = name;
+  }
 
-      greet() {
-            var msg = \"Hello, \" + this.name;
-                return msg;
-                  }
+  greet() {
+    var msg = \"Hello, \" + this.name;
+    return msg;
+  }
 }
 ";
 
