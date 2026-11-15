@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.10.10
+Version: 1.11.0
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -245,6 +245,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Sun  Nov 15 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.0-1-1
+- Normalize indentation in test_color1 example
+
 * Thu  Nov 12 2026 Lance Dillon <riffraff169@yahoo.com> - 1.10.10-1-1
 - Propagate exceptions thrown by collection callbacks
 
