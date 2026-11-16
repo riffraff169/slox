@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.11.1
+Version: 1.11.2
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -245,6 +245,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Mon  Nov 16 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.2-1-1
+- Replace eval-based JSON parser with strict parser
+
 * Sun  Nov 15 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.1-1-1
 - Add X11 + Cairo canvas library with plotting and widgets
 
