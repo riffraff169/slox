@@ -1,0 +1,73 @@
+require("json.lox");
+
+print Json.to_string(nil);
+// expect: null
+print Json.to_string(true);
+// expect: true
+print Json.to_string(false);
+// expect: false
+print Json.to_string(42);
+// expect: 42
+print Json.to_string(-2.5);
+// expect: -2.5
+print Json.to_string(2.0);
+// expect: 2
+print Json.to_string("plain");
+// expect: "plain"
+
+// Quotes, backslashes, and control characters are escaped.
+print Json.to_string("quote\" slash\\ back\n tab\t");
+// expect: "quote\" slash\\ back\n tab\t"
+print Json.to_string(chr(1) + chr(8) + chr(12) + chr(11));
+// expect: "\u0001\b\f\u000b"
+
+// Valid UTF-8 passes through unchanged.
+print Json.to_string("café");
+// expect: "café"
+print Json.to_string("😀");
+// expect: "😀"
+
+// Containers and nesting.
+print Json.to_string([1, "two", nil, [true]]);
+// expect: [1,"two",null,[true]]
+print Json.to_string({"b": 2, "a": 1});
+// expect: {"a":1,"b":2}
+print Json.to_string({});
+// expect: {}
+print Json.to_string({"quote\"key": "back\\slash"});
+// expect: {"quote\"key":"back\\slash"}
+
+// JSON has no NaN or Infinity.
+print Json.to_string(Math.sqrt(-1));
+// expect: null
+print Json.to_string(1e308 * 10);
+// expect: null
+
+// Sets serialize as objects of key: count, matching older behavior.
+var set = Set();
+set.add("a");
+set.add("b");
+print Json.to_string(set);
+// expect: {"a":1,"b":1}
+
+// Objects without a json representation become null.
+class Widget {
+  init() {
+    this.x = 1;
+  }
+}
+print Json.to_string(Widget());
+// expect: null
+
+// Circular references are reported instead of recursing forever.
+var cyclic = [];
+cyclic.push(cyclic);
+try {
+  Json.to_string(cyclic);
+} catch (e) {
+  print e.message.contains("circular");
+}
+// expect: true
+
+print "json stringify ok";
+// expect: json stringify ok

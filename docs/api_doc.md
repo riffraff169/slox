@@ -622,24 +622,45 @@ Call the callbacks with data.
 ---
 
 ## Class: Json
-Json class. Supports most json data.
+Parse and serialize json. Supports objects, arrays, strings, numbers,
+booleans, and null. JSON objects become Maps, arrays become Arrays, and JSON
+null becomes nil. The parser is strict and never evaluates its input as Lox
+code, so strings such as `"${1 + 1}"` stay literal.
 
 ### Methods
 
 #### `Json.parse(jsonstr)`
-Parse json into native data structures.
+Parse json into native data structures. Returns nil if the input is malformed,
+not a string, or nil. Because JSON null also becomes nil, use parseOrThrow()
+when you need to distinguish invalid input from a null value.
 
 **Required Arguments:**
   - `String: jsonstr`
 
 **Returns:**
-  - `String`
+  - `Value`
+
+#### `Json.parseOrThrow(jsonstr)`
+Strict variant of parse(). Throws Error with a message and byte offset when the
+input is malformed. Also available as `parse_or_throw()`.
+
+**Required Arguments:**
+  - `String: jsonstr`
+
+**Returns:**
+  - `Value`
 
 #### `Json.to_string(obj)`
-Return printable json string.
+Return printable json string. Object keys are written in sorted order so output
+is deterministic. Non-finite floats (NaN and Infinity) are written as null,
+since json cannot represent them. Circular references and nesting deeper than
+100 levels throw Error.
 
 **Required Arguments:**
   - `Value: obj`
+
+**Returns:**
+  - `String`
 
 ---
 

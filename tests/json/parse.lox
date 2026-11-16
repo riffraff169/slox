@@ -1,0 +1,191 @@
+require("json.lox");
+
+// Objects, arrays, whitespace, and all json value types.
+var v = Json.parse("{ \"name\": \"slox\", \"nums\": [1, 2.5, -3e2], \"ok\": true, \"no\": false, \"none\": null, \"nested\": {\"null\": null} }");
+print v["name"];
+// expect: slox
+print v["nums"][0];
+// expect: 1
+print typeof(v["nums"][0]);
+// expect: Integer
+print v["nums"][1];
+// expect: 2.5
+print typeof(v["nums"][1]);
+// expect: Float
+print v["nums"][2];
+// expect: -300
+print v["ok"];
+// expect: true
+print v["no"];
+// expect: false
+print v["none"];
+// expect: nil
+print v["nested"]["null"];
+// expect: nil
+
+// null values after newlines and spaces used to defeat the eval-based parser.
+var nulls = Json.parse("[\n  null,\n  null\n]");
+print nulls.length();
+// expect: 2
+print nulls[0] == nil;
+// expect: true
+print nulls[1] == nil;
+// expect: true
+print Json.parse("[ null, 1 ]")[0] == nil;
+// expect: true
+
+// The parser must not rewrite text inside strings.
+var text = Json.parse("{\"a\": \": null [null ,null\"}");
+print text["a"];
+// expect: : null [null ,null
+
+// json strings are literal data, not Lox interpolation.
+var interp = chr(36) + "{1 + 1}";
+var payload = Json.parse("{\"s\": \"" + interp + "\"}");
+print payload["s"] == interp;
+// expect: true
+
+// String escapes.
+var esc = Json.parse("\"a\\bb\\fc\\nd\\re\\tf\\\\g\\\"h\\/i\"");
+print esc.length();
+// expect: 17
+print esc[1];
+// expect: 8
+print esc[3];
+// expect: 12
+print esc[5];
+// expect: 10
+print esc[7];
+// expect: 13
+print esc[9];
+// expect: 9
+print esc[11];
+// expect: 92
+print esc[13];
+// expect: 34
+print esc[15];
+// expect: 47
+
+// \u escapes become UTF-8.
+var cafe = Json.parse("\"caf\\u00e9\"");
+print cafe;
+// expect: café
+print cafe.length();
+// expect: 5
+print cafe.length_utf8();
+// expect: 4
+
+var emoji = Json.parse("\"\\ud83d\\ude00\"");
+print emoji.length();
+// expect: 4
+print emoji.length_utf8();
+// expect: 1
+print emoji == Json.parse("\"\\ud83d\\ude00\"");
+// expect: true
+
+// Lone surrogates become the replacement character.
+var lone = Json.parse("\"\\ud800\"");
+print lone.length();
+// expect: 3
+print lone == Json.parse("\"\\ufffd\"");
+// expect: true
+
+// Numbers.
+var nums = Json.parse("[0, -0, -0.5, 12, 1e2, 2.5E-1, 9223372036854775807]");
+print nums.length();
+// expect: 7
+print nums[0];
+// expect: 0
+print nums[2];
+// expect: -0.5
+print nums[3];
+// expect: 12
+print nums[4];
+// expect: 100
+print typeof(nums[4]);
+// expect: Float
+print nums[5];
+// expect: 0.25
+print nums[6];
+// expect: 9223372036854775807
+
+// Later duplicate keys win, matching common json behavior.
+print Json.parse("{\"a\": 1, \"a\": 2}")["a"];
+// expect: 2
+
+// A UTF-8 byte order mark is skipped.
+print Json.parse("\xEF\xBB\xBF[7]")[0];
+// expect: 7
+
+// Top-level scalars and empty containers.
+print Json.parse("true");
+// expect: true
+print Json.parse("false");
+// expect: false
+print Json.parse("\"hi\"");
+// expect: hi
+print Json.parse("null") == nil;
+// expect: true
+print Json.to_string(Json.parse("{}"));
+// expect: {}
+print Json.to_string(Json.parse("[]"));
+// expect: []
+
+// Invalid json returns nil and does not print compiler diagnostics.
+print Json.parse("") == nil;
+// expect: true
+print Json.parse("[1,]") == nil;
+// expect: true
+print Json.parse("{\"a\": 1,}") == nil;
+// expect: true
+print Json.parse("[1 2]") == nil;
+// expect: true
+print Json.parse("{\"a\" 1}") == nil;
+// expect: true
+print Json.parse("['a']") == nil;
+// expect: true
+print Json.parse("[1 + 2]") == nil;
+// expect: true
+print Json.parse("[1] [2]") == nil;
+// expect: true
+print Json.parse("01") == nil;
+// expect: true
+print Json.parse("1.") == nil;
+// expect: true
+print Json.parse(".5") == nil;
+// expect: true
+print Json.parse("1e") == nil;
+// expect: true
+print Json.parse("tru") == nil;
+// expect: true
+print Json.parse("trueX") == nil;
+// expect: true
+print Json.parse("\"unterminated") == nil;
+// expect: true
+print Json.parse("\"bad \\q\"") == nil;
+// expect: true
+print Json.parse("[\"a\nb\"]") == nil;
+// expect: true
+
+// parseOrThrow reports why parsing failed.
+try {
+  Json.parseOrThrow("{\"a\": 1,}");
+} catch (e) {
+  print e.message.contains("expected a string key");
+}
+// expect: true
+try {
+  Json.parseOrThrow(nil);
+} catch (e) {
+  print e.message;
+}
+// expect: Json.parse: expected a string, got nil
+try {
+  Json.parseOrThrow(42);
+} catch (e) {
+  print e.message.contains("got Integer");
+}
+// expect: true
+
+print "json parse ok";
+// expect: json parse ok

@@ -1,81 +1,481 @@
 //@ Json
-// Json class. Supports most json data.
-class Json {
-  //: parse
-  // Parse json into native data structures.
-  // Requires:
-  //   String: jsonstr
-  // Returns:
-  //   String
-  static parse(jsonstr) {
-    if (jsonstr == nil or jsonstr.length() == 0) return nil;
+// Json parser and serializer. Supports standard json values: objects,
+// arrays, strings, numbers, booleans, and null (returned as nil).
+//
+// The parser is a strict recursive-descent parser. It never evaluates the
+// input as Lox code, so strings such as "${1 + 1}" stay literal.
 
-    var code = jsonstr;
+// ---------------------------------------------------------------------------
+// Small character helpers. slox string indexing returns byte values, so these
+// all work on Integers.
+// ---------------------------------------------------------------------------
 
-    code = stringReplaceAll(code, ": null", ": nil");
-    code = stringReplaceAll(code, ":null", ":nil");
-    code = stringReplaceAll(code, "[null", "[nil");
-    code = stringReplaceAll(code, ",null", ",nil");
-    code = stringReplaceAll(code, ", null", ", nil");
+fun _json_is_digit(code) {
+  return code >= '0' and code <= '9';
+}
 
-    try {
-      eval("var __json_res = " + code + ";");
-    } catch (Error e) {
-      //print "[Json.parse Error] " + e.message;
-      return nil;
-    } catch (e) {
-      //print "[Json.parse Error] " + e;
-      return nil;
+fun _json_is_hex(code) {
+  return (code >= '0' and code <= '9') or
+      (code >= 'a' and code <= 'f') or
+      (code >= 'A' and code <= 'F');
+}
+
+fun _json_hex_value(code) {
+  if (code >= '0' and code <= '9') return code - '0';
+  if (code >= 'a' and code <= 'f') return code - 'a' + 10;
+  return code - 'A' + 10;
+}
+
+// Encode a Unicode code point as UTF-8 bytes. chr() only accepts 0..255, so
+// this builds multi-byte sequences one byte at a time.
+fun _json_utf8(codePoint) {
+  if (codePoint < 0x80) return chr(codePoint);
+  if (codePoint < 0x800) {
+    return chr(0xC0 | (codePoint >> 6)) +
+        chr(0x80 | (codePoint & 0x3F));
+  }
+  if (codePoint < 0x10000) {
+    return chr(0xE0 | (codePoint >> 12)) +
+        chr(0x80 | ((codePoint >> 6) & 0x3F)) +
+        chr(0x80 | (codePoint & 0x3F));
+  }
+  return chr(0xF0 | (codePoint >> 18)) +
+      chr(0x80 | ((codePoint >> 12) & 0x3F)) +
+      chr(0x80 | ((codePoint >> 6) & 0x3F)) +
+      chr(0x80 | (codePoint & 0x3F));
+}
+
+fun _json_hex_digit(value) {
+  if (value < 10) return chr('0' + value);
+  return chr('a' + value - 10);
+}
+
+fun _json_hex_pair(value) {
+  return _json_hex_digit((value >> 4) & 15) + _json_hex_digit(value & 15);
+}
+
+// Quote a string as a json string literal. Bytes above 0x7f are passed through
+// unchanged so valid UTF-8 input stays valid UTF-8.
+fun _json_quote(text) {
+  var out = "\"";
+  var start = 0;
+
+  for (var i = 0; i < text.length(); i += 1) {
+    var c = text[i];
+    var escape = nil;
+    if (c == '"') escape = "\\\"";
+    else if (c == '\\') escape = "\\\\";
+    else if (c == 8) escape = "\\b";
+    else if (c == 9) escape = "\\t";
+    else if (c == 10) escape = "\\n";
+    else if (c == 12) escape = "\\f";
+    else if (c == 13) escape = "\\r";
+    else if (c < 32) escape = "\\u00" + _json_hex_pair(c);
+
+    if (escape != nil) {
+      if (i > start) out += text.slice(start, i);
+      out += escape;
+      start = i + 1;
     }
-    // let error bubble up
-    //eval("var __json_res = " + code + ";");
-    var result = __json_res;
-
-    __json_res = nil;
-
-    return result;
   }
 
-  //: to_string
-  // Return printable json string.
-  // Requires:
-  //   Value: obj
-  static to_string(obj) {
-    if (obj == nil) return "null";
-    var klass = obj.class();
+  if (start < text.length()) out += text.slice(start, text.length());
+  return out + "\"";
+}
 
-    if (klass == Bool) return obj ? "true" : "false";
-    if (klass == Integer or klass == Float or klass == Number) return String(obj);
+fun _json_compare_strings(left, right) {
+  var limit = left.length();
+  if (right.length() < limit) limit = right.length();
+  for (var i = 0; i < limit; i += 1) {
+    if (left[i] < right[i]) return -1;
+    if (left[i] > right[i]) return 1;
+  }
+  if (left.length() < right.length()) return -1;
+  if (left.length() > right.length()) return 1;
+  return 0;
+}
 
-    if (klass == String) {
-      var s = stringReplaceAll(obj, "\\", "\\\\");
-      s = stringReplaceAll(s, "\"", "\\\"");
-      s = stringReplaceAll(s, "\n", "\\n");
-      s = stringReplaceAll(s, "\r", "\\r");
-      s = stringReplaceAll(s, "\t", "\\t");
-      return "\"" + s + "\"";
+fun _json_stringify(value, depth) {
+  if (depth > 100) {
+    throw Error("Json.to_string: maximum nesting depth exceeded (circular reference?)");
+  }
+
+  if (value == nil) return "null";
+  var klass = value.class();
+
+  if (klass == Bool) {
+    if (value) return "true";
+    return "false";
+  }
+
+  if (klass == Integer or klass == Float or klass == Number) {
+    if (klass == Float) {
+      // JSON has no NaN or Infinity representation.
+      if (value != value) return "null";
+      if (value > 1.7976931348623157e308 or
+          value < -1.7976931348623157e308) return "null";
     }
+    return String(value);
+  }
 
-    if (klass == Array) {
-      var res = "[";
-      for (var i = 0; i < obj.len(); i += 1) {
-        res = res + Json.to_string(obj[i]);
-        if (i < obj.length() - 1) res = res + ",";
+  if (klass == String) return _json_quote(value);
+
+  if (klass == Array) {
+    var parts = [];
+    for (var i = 0; i < value.length(); i += 1) {
+      parts.push(_json_stringify(value[i], depth + 1));
+    }
+    return "[" + parts.join(",") + "]";
+  }
+
+  if (klass == Map or klass == Set) {
+    var keys = value.keys();
+    var items = [];
+    for (var i = 0; i < keys.length(); i += 1) {
+      items.push([keys[i], String(keys[i])]);
+    }
+    // slox maps are hash tables, so sort keys to make the output stable.
+    items.sort(fun(a, b) {
+      return _json_compare_strings(a[1], b[1]);
+    });
+
+    var parts = [];
+    for (var i = 0; i < items.length(); i += 1) {
+      parts.push(_json_quote(items[i][1]) + ":" +
+          _json_stringify(value[items[i][0]], depth + 1));
+    }
+    return "{" + parts.join(",") + "}";
+  }
+
+  return "null";
+}
+
+// Internal parser state. One instance parses one string.
+class _JsonParser {
+  init(source) {
+    this.source = source;
+    this.length = source.length();
+    this.pos = 0;
+  }
+
+  atEnd() {
+    return this.pos >= this.length;
+  }
+
+  peek(offset = 0) {
+    var index = this.pos + offset;
+    if (index < 0 or index >= this.length) return -1;
+    return this.source[index];
+  }
+
+  fail(message) {
+    throw Error("Json.parse: " + message + " at byte " + this.pos);
+  }
+
+  skipWhitespace() {
+    while (!this.atEnd()) {
+      var c = this.source[this.pos];
+      if (c == ' ' or c == '\t' or c == '\n' or c == '\r') {
+        this.pos += 1;
+      } else {
+        break;
       }
-      return res + "]";
+    }
+  }
+
+  parseTopLevel() {
+    // Tolerate a UTF-8 byte order mark, which some editors add.
+    if (this.length >= 3 and this.source[0] == 0xEF and
+        this.source[1] == 0xBB and this.source[2] == 0xBF) {
+      this.pos = 3;
     }
 
-    if (klass == Map or klass == Set) {
-      var keys = obj.keys();
-      var res = "{";
-      for (var i = 0; i < keys.length(); i += 1) {
-        var k = keys[i];
-        res = res + Json.to_string(String(k)) + ":" + Json.to_string(obj[k]);
-        if (i < keys.length() - 1) res = res + ",";
-      }
-      return res + "}";
+    var value = this.parseValue(0);
+    this.skipWhitespace();
+    if (!this.atEnd()) this.fail("unexpected trailing characters");
+    return value;
+  }
+
+  parseValue(depth) {
+    if (depth > 100) this.fail("maximum nesting depth exceeded");
+    this.skipWhitespace();
+    if (this.atEnd()) this.fail("unexpected end of input");
+
+    var c = this.source[this.pos];
+    if (c == '"') return this.parseString();
+    if (c == '{') return this.parseObject(depth + 1);
+    if (c == '[') return this.parseArray(depth + 1);
+    if (c == 't') return this.parseKeyword("true", true);
+    if (c == 'f') return this.parseKeyword("false", false);
+    if (c == 'n') return this.parseKeyword("null", nil);
+    if (c == '-' or _json_is_digit(c)) return this.parseNumber();
+
+    this.fail("unexpected character " + _json_quote(chr(c)));
+  }
+
+  parseKeyword(word, value) {
+    var end = this.pos + word.length();
+    if (end > this.length or this.source.slice(this.pos, end) != word) {
+      this.fail("expected '" + word + "'");
     }
-    return "null";
+    this.pos = end;
+    return value;
+  }
+
+  parseNumber() {
+    var start = this.pos;
+
+    if (this.source[this.pos] == '-') {
+      this.pos += 1;
+      if (this.atEnd()) this.fail("expected a digit after '-'");
+    }
+
+    var c = this.source[this.pos];
+    if (c == '0') {
+      this.pos += 1;
+    } else if (c >= '1' and c <= '9') {
+      this.pos += 1;
+      while (!this.atEnd() and _json_is_digit(this.source[this.pos])) {
+        this.pos += 1;
+      }
+    } else {
+      this.fail("expected a digit");
+    }
+
+    if (!this.atEnd() and this.source[this.pos] == '.') {
+      this.pos += 1;
+      if (this.atEnd() or !_json_is_digit(this.source[this.pos])) {
+        this.fail("expected a digit after '.'");
+      }
+      while (!this.atEnd() and _json_is_digit(this.source[this.pos])) {
+        this.pos += 1;
+      }
+    }
+
+    if (!this.atEnd() and
+        (this.source[this.pos] == 'e' or this.source[this.pos] == 'E')) {
+      this.pos += 1;
+      if (!this.atEnd() and
+          (this.source[this.pos] == '+' or this.source[this.pos] == '-')) {
+        this.pos += 1;
+      }
+      if (this.atEnd() or !_json_is_digit(this.source[this.pos])) {
+        this.fail("expected a digit in exponent");
+      }
+      while (!this.atEnd() and _json_is_digit(this.source[this.pos])) {
+        this.pos += 1;
+      }
+    }
+
+    return this.source.slice(start, this.pos).parse();
+  }
+
+  parseString() {
+    this.pos += 1;
+    var chunks = [];
+    var start = this.pos;
+
+    while (true) {
+      if (this.atEnd()) this.fail("unterminated string");
+      var c = this.source[this.pos];
+
+      if (c == '"') {
+        if (this.pos > start) {
+          chunks.push(this.source.slice(start, this.pos));
+        }
+        this.pos += 1;
+        return chunks.join("");
+      }
+
+      if (c == '\\') {
+        if (this.pos > start) {
+          chunks.push(this.source.slice(start, this.pos));
+        }
+
+        this.pos += 1;
+        if (this.atEnd()) this.fail("unterminated escape sequence");
+        var escape = this.source[this.pos];
+
+        if (escape == '"') chunks.push("\"");
+        else if (escape == '\\') chunks.push("\\");
+        else if (escape == '/') chunks.push("/");
+        else if (escape == 'b') chunks.push(chr(8));
+        else if (escape == 'f') chunks.push(chr(12));
+        else if (escape == 'n') chunks.push(chr(10));
+        else if (escape == 'r') chunks.push(chr(13));
+        else if (escape == 't') chunks.push(chr(9));
+        else if (escape == 'u') {
+          this.pos += 1;
+          chunks.push(this.parseUnicodeEscape());
+          start = this.pos;
+          continue;
+        } else {
+          this.fail("invalid escape sequence");
+        }
+
+        this.pos += 1;
+        start = this.pos;
+        continue;
+      }
+
+      if (c < 32) this.fail("unescaped control character in string");
+      this.pos += 1;
+    }
+  }
+
+  readHex4() {
+    var value = 0;
+    for (var i = 0; i < 4; i += 1) {
+      var c = this.peek();
+      if (c < 0 or !_json_is_hex(c)) this.fail("invalid \\u escape");
+      value = value * 16 + _json_hex_value(c);
+      this.pos += 1;
+    }
+    return value;
+  }
+
+  parseUnicodeEscape() {
+    var codePoint = this.readHex4();
+
+    if (codePoint >= 0xD800 and codePoint <= 0xDBFF) {
+      // High surrogate: combine with a following low surrogate when present.
+      if (this.peek() == '\\' and this.peek(1) == 'u') {
+        var saved = this.pos;
+        this.pos += 2;
+        var low = this.readHex4();
+        if (low >= 0xDC00 and low <= 0xDFFF) {
+          codePoint = 0x10000 + ((codePoint - 0xD800) << 10) +
+              (low - 0xDC00);
+        } else {
+          this.pos = saved;
+          codePoint = 0xFFFD;
+        }
+      } else {
+        codePoint = 0xFFFD;
+      }
+    } else if (codePoint >= 0xDC00 and codePoint <= 0xDFFF) {
+      // Lone low surrogate.
+      codePoint = 0xFFFD;
+    }
+
+    return _json_utf8(codePoint);
+  }
+
+  parseArray(depth) {
+    this.pos += 1; // '['
+    this.skipWhitespace();
+
+    var result = [];
+    if (!this.atEnd() and this.source[this.pos] == ']') {
+      this.pos += 1;
+      return result;
+    }
+
+    while (true) {
+      result.push(this.parseValue(depth));
+      this.skipWhitespace();
+      if (this.atEnd()) this.fail("unterminated array");
+
+      var c = this.source[this.pos];
+      if (c == ',') {
+        this.pos += 1;
+        continue;
+      }
+      if (c == ']') {
+        this.pos += 1;
+        return result;
+      }
+      this.fail("expected ',' or ']' in array");
+    }
+  }
+
+  parseObject(depth) {
+    this.pos += 1; // '{'
+    this.skipWhitespace();
+
+    var result = {};
+    if (!this.atEnd() and this.source[this.pos] == '}') {
+      this.pos += 1;
+      return result;
+    }
+
+    while (true) {
+      this.skipWhitespace();
+      if (this.atEnd()) this.fail("unterminated object");
+      if (this.source[this.pos] != '"') this.fail("expected a string key");
+
+      var key = this.parseString();
+      this.skipWhitespace();
+      if (this.atEnd() or this.source[this.pos] != ':') {
+        this.fail("expected ':' after object key");
+      }
+      this.pos += 1;
+
+      result[key] = this.parseValue(depth);
+      this.skipWhitespace();
+      if (this.atEnd()) this.fail("unterminated object");
+
+      var c = this.source[this.pos];
+      if (c == ',') {
+        this.pos += 1;
+        continue;
+      }
+      if (c == '}') {
+        this.pos += 1;
+        return result;
+      }
+      this.fail("expected ',' or '}' in object");
+    }
   }
 }
 
+class Json {
+  //: parse
+  // Parse json into native data structures. Returns nil when the input is
+  // malformed or is not a string. JSON null is returned as nil as well, so use
+  // parseOrThrow() when you need to tell those cases apart.
+  // Requires:
+  //   String: jsonstr
+  // Returns:
+  //   Value
+  static parse(jsonstr) {
+    try {
+      return Json.parseOrThrow(jsonstr);
+    } catch (e) {
+      return nil;
+    }
+  }
+
+  //: parseOrThrow
+  // Strict variant of parse(). Throws Error with a message and byte offset
+  // when the input is malformed.
+  // Requires:
+  //   String: jsonstr
+  // Returns:
+  //   Value
+  static parseOrThrow(jsonstr) {
+    if (jsonstr == nil) {
+      throw Error("Json.parse: expected a string, got nil");
+    }
+    if (typeof(jsonstr) != "String") {
+      throw Error("Json.parse: expected a string, got " + typeof(jsonstr));
+    }
+    return _JsonParser(jsonstr).parseTopLevel();
+  }
+
+  static parse_or_throw(jsonstr) {
+    return Json.parseOrThrow(jsonstr);
+  }
+
+  //: to_string
+  // Return printable json string. Object keys are written in sorted order so
+  // the output is deterministic. Non-finite floats (NaN and Infinity) are
+  // written as null because json cannot represent them.
+  // Requires:
+  //   Value: obj
+  // Returns:
+  //   String
+  static to_string(obj) {
+    return _json_stringify(obj, 0);
+  }
+}

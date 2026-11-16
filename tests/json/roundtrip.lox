@@ -1,0 +1,28 @@
+require("json.lox");
+
+var source = "{\"quote\":\"a\\\"b\",\"ctrl\":\"\\u0001\",\"unicode\":\"caf\\u00e9\",\"emoji\":\"\\ud83d\\ude00\",\"nums\":[0,-0.5,2e3],\"nested\":{\"nil\":null,\"ok\":false}}";
+var parsed = Json.parse(source);
+print Json.to_string(parsed);
+// expect: {"ctrl":"\u0001","emoji":"😀","nested":{"nil":null,"ok":false},"nums":[0,-0.5,2000],"quote":"a\"b","unicode":"café"}
+
+var again = Json.parse(Json.to_string(parsed));
+print Json.to_string(again) == Json.to_string(parsed);
+// expect: true
+
+// Round-tripping never executes interpolation-looking strings.
+var interp = chr(36) + "{1 + 1}";
+var round = Json.parse(Json.to_string({"text": interp}));
+print round["text"] == interp;
+// expect: true
+
+// A typical JSON-RPC message from the language server.
+var rpc = Json.parse("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}");
+print rpc["method"];
+// expect: initialize
+print rpc["id"];
+// expect: 1
+print typeof(rpc["params"]["capabilities"]);
+// expect: Map
+
+print "json roundtrip ok";
+// expect: json roundtrip ok
