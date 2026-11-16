@@ -1,0 +1,197 @@
+// X11 + Cairo calculator built entirely from Canvas widgets. Run from the
+// repository root:
+//
+//   ./bin/slox examples/canvas_calc.lox
+//   ./bin/slox examples/canvas_calc.lox --png calc.png
+require("canvas.lox");
+
+var pngMode = System.ARGS.length() > 0 and System.ARGS[0] == "--png";
+var pngPath = "canvas_calc.png";
+if (pngMode and System.ARGS.length() > 1) pngPath = System.ARGS[1];
+
+var display = "0";
+var accumulator = 0.0;
+var pending = nil;
+var fresh = true;
+
+fun reset() {
+  display = "0";
+  accumulator = 0.0;
+  pending = nil;
+  fresh = true;
+}
+
+fun compute() {
+  if (pending == nil) return;
+  var right = Float(display);
+  if (pending == "+") accumulator = accumulator + right;
+  else if (pending == "-") accumulator = accumulator - right;
+  else if (pending == "*") accumulator = accumulator * right;
+  else if (pending == "/") {
+    if (right == 0) {
+      display = "Error";
+      pending = nil;
+      fresh = true;
+      return;
+    }
+    accumulator = accumulator / right;
+  }
+  display = "" + accumulator;
+}
+
+fun press(label) {
+  if (label == "C") {
+    reset();
+    return;
+  }
+
+  if (label == "+/-") {
+    if (display == "0" or display == "Error") return;
+    if (display[0] == "-") display = display.slice(1, display.length());
+    else display = "-" + display;
+    return;
+  }
+
+  if (label == "Back") {
+    if (display == "Error") {
+      reset();
+      return;
+    }
+    display = display.slice(0, display.length() - 1);
+    if (display == "") display = "0";
+    return;
+  }
+
+  if (label == "+" or label == "-" or label == "*" or label == "/") {
+    try {
+      if (pending != nil) compute();
+      accumulator = Float(display);
+    } catch (e) {
+      display = "Error";
+      pending = nil;
+      fresh = true;
+      return;
+    }
+    pending = label;
+    fresh = true;
+    return;
+  }
+
+  if (label == "=") {
+    try {
+      compute();
+    } catch (e) {
+      display = "Error";
+    }
+    pending = nil;
+    fresh = true;
+    return;
+  }
+
+  if (fresh) {
+    display = label;
+    fresh = false;
+  } else {
+    if (label == "." and display.contains(".")) return;
+    if (display == "Error") display = label;
+    else display = display + label;
+  }
+}
+
+var canvas;
+if (pngMode) {
+  canvas = Canvas.offscreen(360, 560);
+} else {
+  canvas = Canvas.window(360, 560, "slox calculator");
+}
+
+var labels = [
+  ["C", "+/-", "/", "*"],
+  ["7", "8", "9", "-"],
+  ["4", "5", "6", "+"],
+  ["1", "2", "3", "="],
+  ["0", ".", "Back", nil]
+];
+
+var rows = 5;
+var cols = 4;
+var left = 20;
+var top = 116;
+var gap = 8;
+var buttonWidth = 72;
+var buttonHeight = 52;
+
+for (var row = 0; row < rows; row += 1) {
+  for (var col = 0; col < cols; col += 1) {
+    var label = labels[row][col];
+    if (label == nil) continue;
+    var x = left + col * (buttonWidth + gap);
+    var y = top + row * (buttonHeight + gap);
+    var width = buttonWidth;
+    if (label == "0") width = buttonWidth * 2 + gap;
+    var color = [0.17, 0.19, 0.25];
+    if (label == "=") color = [0.08, 0.55, 0.72];
+    else if (label == "C" or label == "+/-" or label == "Back") {
+      color = [0.25, 0.17, 0.20];
+    } else if (label == "+" or label == "-" or label == "*" or label == "/") {
+      color = [0.14, 0.28, 0.38];
+    }
+    var button = Button(x, y, width, buttonHeight, label,
+        fun() { press(label); },
+        {"color": color, "fontSize": 16.0});
+    canvas.add(button);
+  }
+}
+
+fun keyboard(c, event) {
+  var keysym = event["keysym"];
+  var text = event["text"];
+  if (keysym == X11.XK_Return or keysym == X11.XK_KP_Enter) {
+    press("=");
+  } else if (keysym == X11.XK_BackSpace) {
+    press("Back");
+  } else if (keysym == X11.XK_Escape) {
+    press("C");
+  } else if (text != nil and text.length() > 0) {
+    var ch = text[0];
+    if (ch == "+" or ch == "-" or ch == "*" or ch == "/" or ch == "." or
+        (ch >= "0" and ch <= "9")) {
+      press(ch);
+    }
+  }
+}
+
+if (pngMode) {
+  display = "42";
+  pending = "*";
+  accumulator = 2.0;
+} else {
+  canvas.on("keypress", keyboard);
+}
+
+fun draw(c) {
+  c.clear([0.055, 0.060, 0.085]);
+  c.textTop(20, 16, "slox calculator", [0.92, 0.95, 1.0], 18.0);
+  c.textTop(20, 40, "Canvas + Cairo buttons", [0.55, 0.60, 0.70], 11.0);
+
+  c.fillRect(20, 62, 320, 44, [0.04, 0.05, 0.07]);
+  c.strokeRect(20, 62, 320, 44, [0.22, 0.26, 0.34], 1.0);
+
+  var shown = display;
+  var width = c.textWidth(shown, 28.0, "Monospace");
+  c.text(336 - width, 94, shown, [0.95, 0.97, 1.0], 28.0, "Monospace");
+
+  var status = "";
+  if (pending != nil) status = "" + accumulator + " " + pending;
+  c.textTop(20, 550, status, [0.55, 0.60, 0.70], 11.0);
+}
+
+if (pngMode) {
+  canvas.render(draw);
+  var status = canvas.savePng(pngPath);
+  print "wrote " + pngPath + " (status " + status + ")";
+  canvas.close();
+} else {
+  canvas.run(draw, {"fps": 60});
+  canvas.close();
+}

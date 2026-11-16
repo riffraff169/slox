@@ -2,6 +2,8 @@ clox implementation from https://craftinginterpreters.com
 
 See docs/api_docs.md for class api.
 
+For the X11 + Cairo drawing and plotting library, see docs/canvas.md.
+
 Several features have been added:
 #### `has_method()`
 See if a class has a method

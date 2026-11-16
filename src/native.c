@@ -7307,6 +7307,7 @@ Value structPackNative(int argCount, Value* args) {
             uint64_t num = IS_INT(val)
                 ? (uint64_t)AS_INT(val)
                 : (uint64_t)(int64_t)AS_FLOAT(val);
+            double real = IS_INT(val) ? (double)AS_INT(val) : AS_FLOAT(val);
 
             switch (type) {
                 case 'b':
@@ -7358,6 +7359,44 @@ Value structPackNative(int argCount, Value* args) {
                         } else {
                             for (int i = 0; i < 8; i++) {
                                 bytes[i] = (num >> (i * 8)) & 0xff;
+                            }
+                        }
+                        bufWriteBytes(&buf, bytes, 8);
+                        break;
+                    }
+                case 'f':
+                    {
+                        float value = (float)real;
+                        uint32_t bits;
+                        memcpy(&bits, &value, sizeof(bits));
+                        uint8_t bytes[4];
+                        if (bigend) {
+                            bytes[0] = (bits >> 24) & 0xff;
+                            bytes[1] = (bits >> 16) & 0xff;
+                            bytes[2] = (bits >> 8) & 0xff;
+                            bytes[3] = bits & 0xff;
+                        } else {
+                            bytes[0] = bits & 0xff;
+                            bytes[1] = (bits >> 8) & 0xff;
+                            bytes[2] = (bits >> 16) & 0xff;
+                            bytes[3] = (bits >> 24) & 0xff;
+                        }
+                        bufWriteBytes(&buf, bytes, 4);
+                        break;
+                    }
+                case 'd':
+                    {
+                        double value = real;
+                        uint64_t bits;
+                        memcpy(&bits, &value, sizeof(bits));
+                        uint8_t bytes[8];
+                        if (bigend) {
+                            for (int i = 7; i >= 0; i--) {
+                                bytes[7 - i] = (bits >> (i * 8)) & 0xff;
+                            }
+                        } else {
+                            for (int i = 0; i < 8; i++) {
+                                bytes[i] = (bits >> (i * 8)) & 0xff;
                             }
                         }
                         bufWriteBytes(&buf, bytes, 8);
@@ -7484,6 +7523,8 @@ Value structUnpackNative(int argCount, Value* args) {
             case 'I': elemSize = 4; break;
             case 'q':
             case 'Q': elemSize = 8; break;
+            case 'f': elemSize = 4; break;
+            case 'd': elemSize = 8; break;
             case 's': elemSize = hasWidth ? width : (bufferlen - offset); break;
             default:
                       pop();
@@ -7584,6 +7625,44 @@ Value structUnpackNative(int argCount, Value* args) {
                                 }
                             }
                             valObj = INT_VAL((int64_t)u64);
+                            offset += 8;
+                            break;
+                        }
+                    case 'f':
+                        {
+                            uint32_t bits = 0;
+                            if (bigend) {
+                                bits = ((uint32_t)buffer[offset] << 24) |
+                                    ((uint32_t)buffer[offset + 1] << 16) |
+                                    ((uint32_t)buffer[offset + 2] << 8) |
+                                    (uint32_t)buffer[offset + 3];
+                            } else {
+                                bits = (uint32_t)buffer[offset] |
+                                    ((uint32_t)buffer[offset + 1] << 8) |
+                                    ((uint32_t)buffer[offset + 2] << 16) |
+                                    ((uint32_t)buffer[offset + 3] << 24);
+                            }
+                            float value;
+                            memcpy(&value, &bits, sizeof(value));
+                            valObj = FLOAT_VAL((double)value);
+                            offset += 4;
+                            break;
+                        }
+                    case 'd':
+                        {
+                            uint64_t bits = 0;
+                            if (bigend) {
+                                for (int i = 0; i < 8; i++) {
+                                    bits = (bits << 8) | (uint64_t)buffer[offset + i];
+                                }
+                            } else {
+                                for (int i = 7; i >= 0; i--) {
+                                    bits |= ((uint64_t)buffer[offset + i]) << (i * 8);
+                                }
+                            }
+                            double value;
+                            memcpy(&value, &bits, sizeof(value));
+                            valObj = FLOAT_VAL(value);
                             offset += 8;
                             break;
                         }

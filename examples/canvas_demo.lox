@@ -1,0 +1,95 @@
+// X11 + Cairo canvas demo. Run from the repository root:
+//
+//   ./bin/slox examples/canvas_demo.lox
+//   ./bin/slox examples/canvas_demo.lox --png canvas_demo.png
+//
+// The --png form renders to an offscreen image surface, so it also works
+// without a display.
+require("canvas.lox");
+
+var pngMode = System.ARGS.length() > 0 and System.ARGS[0] == "--png";
+var pngPath = "canvas_demo.png";
+if (pngMode and System.ARGS.length() > 1) pngPath = System.ARGS[1];
+
+var canvas;
+if (pngMode) {
+  canvas = Canvas.offscreen(820, 600);
+} else {
+  canvas = Canvas.window(820, 600, "slox canvas demo");
+}
+
+var showSine = true;
+var showPoly = true;
+var statusMessage = "Ready";
+
+var graph = Graph(canvas, -6.283185307179586, 6.283185307179586, -2.5, 2.5, {
+  "marginLeft": 70,
+  "marginRight": 24,
+  "marginTop": 70,
+  "marginBottom": 70,
+  "fontSize": 11.0
+});
+
+var sineButton = Button(20, 530, 120, 32, "Sine", fun() {
+  showSine = !showSine;
+  statusMessage = "Sine " + (showSine ? "on" : "off");
+});
+var polyButton = Button(150, 530, 120, 32, "Polynomial", fun() {
+  showPoly = !showPoly;
+  statusMessage = "Polynomial " + (showPoly ? "on" : "off");
+});
+var resetButton = Button(280, 530, 120, 32, "Reset", fun() {
+  showSine = true;
+  showPoly = true;
+  statusMessage = "Both curves on";
+});
+var fileButton = Button(720, 530, 80, 32, "File", fun() {
+  fileMenu.open(620, 380);
+});
+
+var fileMenu = Menu(620, 380, 180, [
+  {"label": "Save PNG", "callback": fun() {
+    var status = canvas.savePng(pngPath);
+    statusMessage = "Saved " + pngPath + " (" + status + ")";
+  }},
+  {"label": "Quit", "callback": fun() {
+    canvas.close();
+  }}
+], nil, {"title": "Canvas"});
+
+canvas.add(sineButton);
+canvas.add(polyButton);
+canvas.add(resetButton);
+canvas.add(fileButton);
+canvas.add(fileMenu);
+
+fun polynomial(x) {
+  return 0.075 * x * x * x - x;
+}
+
+fun draw(c) {
+  c.clear([0.055, 0.065, 0.095]);
+
+  c.textTop(20, 16, "slox X11 + Cairo canvas", [0.92, 0.95, 1.0], 20.0);
+  c.textTop(20, 44, "sine wave and cubic polynomial, drawn with Cairo", [0.55, 0.60, 0.70], 12.0);
+
+  graph.draw();
+  if (showSine) {
+    graph.plot(fun(x) { return Math.sin(x); }, [0.10, 0.80, 1.00], 2.0);
+  }
+  if (showPoly) {
+    graph.plot(polynomial, [1.00, 0.62, 0.18], 2.0);
+  }
+
+  c.textTop(20, 505, statusMessage, [0.62, 0.68, 0.78], 12.0);
+}
+
+if (pngMode) {
+  canvas.render(draw);
+  var status = canvas.savePng(pngPath);
+  print "wrote " + pngPath + " (status " + status + ")";
+  canvas.close();
+} else {
+  canvas.run(draw, {"fps": 60});
+  canvas.close();
+}

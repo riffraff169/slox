@@ -2,49 +2,185 @@ import "ffi";
 require("multiffi.lox");
 
 //@ Cairo
-// Cairo canvas ffi bindings
+// Cairo 2D canvas FFI bindings.
+//
+// The low-level API mirrors cairo's C API and accepts the raw pointers returned
+// by the surface and context constructors. On top of it, a handful of helpers
+// make simple canvas code shorter. Higher-level drawing lives in canvas.lox.
 class Cairo {
   const FONT_SLANT_NORMAL = 0;
+  const FONT_SLANT_ITALIC = 1;
+  const FONT_SLANT_OBLIQUE = 2;
+
   const FONT_WEIGHT_NORMAL = 0;
   const FONT_WEIGHT_BOLD = 1;
+
+  const FORMAT_ARGB32 = 0;
+  const FORMAT_RGB24 = 1;
+  const FORMAT_A8 = 2;
+  const FORMAT_A8_RGB32 = 3;
+
+  const LINE_CAP_BUTT = 0;
+  const LINE_CAP_ROUND = 1;
+  const LINE_CAP_SQUARE = 2;
+
+  const LINE_JOIN_MITER = 0;
+  const LINE_JOIN_ROUND = 1;
+  const LINE_JOIN_BEVEL = 2;
+
   init() {
     this.ffi = MultiFFI([
         "libcairo.so.2",
         "libcairo.so"
     ]);
 
+    // Surfaces and contexts.
+    this.fnImageSurfaceCreate = this.ffi.bind(
+        "cairo_image_surface_create",
+        "pointer",
+        ["int32", "int32", "int32"]
+        );
     this.fnXlibSurfaceCreate = this.ffi.bind(
         "cairo_xlib_surface_create",
         "pointer",
         ["pointer", "uint64", "pointer", "int32", "int32"]
         );
-    this.fnSurfaceDestroy    = this.ffi.bind("cairo_surface_destroy", "void", ["pointer"]);
-    this.fnCreate            = this.ffi.bind("cairo_create", "pointer", ["pointer"]);
-    this.fnDestroy           = this.ffi.bind("cairo_destroy", "void", ["pointer"]);
-    this.fnXlibSurfaceSetSize= this.ffi.bind("cairo_xlib_surface_set_size", "void", ["pointer", "int32", "int32"]);
+    this.fnSurfaceDestroy = this.ffi.bind("cairo_surface_destroy", "void", ["pointer"]);
+    this.fnSurfaceFlush = this.ffi.bind("cairo_surface_flush", "void", ["pointer"]);
+    this.fnSurfaceWriteToPng = this.ffi.bind(
+        "cairo_surface_write_to_png",
+        "int32",
+        ["pointer", "string"]
+        );
+    this.fnImageSurfaceGetWidth = this.ffi.bind(
+        "cairo_image_surface_get_width",
+        "int32",
+        ["pointer"]
+        );
+    this.fnImageSurfaceGetHeight = this.ffi.bind(
+        "cairo_image_surface_get_height",
+        "int32",
+        ["pointer"]
+        );
+    this.fnCreate = this.ffi.bind("cairo_create", "pointer", ["pointer"]);
+    this.fnDestroy = this.ffi.bind("cairo_destroy", "void", ["pointer"]);
+    this.fnXlibSurfaceSetSize = this.ffi.bind(
+        "cairo_xlib_surface_set_size",
+        "void",
+        ["pointer", "int32", "int32"]
+        );
 
-    // Vector Drawing
-    this.fnSetSourceRGB   = this.ffi.bind("cairo_set_source_rgb", "void", ["pointer", "double", "double", "double"]);
-    this.fnSetLineWidth   = this.ffi.bind("cairo_set_line_width", "void", ["pointer", "double"]);
-    this.fnMoveTo         = this.ffi.bind("cairo_move_to", "void", ["pointer", "double", "double"]);
-    this.fnLineTo         = this.ffi.bind("cairo_line_to", "void", ["pointer", "double", "double"]);
-    this.fnArc            = this.ffi.bind("cairo_arc", "void", ["pointer", "double", "double", "double", "double", "double"]);
-    this.fnStroke         = this.ffi.bind("cairo_stroke", "void", ["pointer"]);
-    this.fnFill           = this.ffi.bind("cairo_fill", "void", ["pointer"]);
-    this.fnPaint          = this.ffi.bind("cairo_paint", "void", ["pointer"]);
+    // State and transforms.
+    this.fnSave = this.ffi.bind("cairo_save", "void", ["pointer"]);
+    this.fnRestore = this.ffi.bind("cairo_restore", "void", ["pointer"]);
+    this.fnTranslate = this.ffi.bind("cairo_translate", "void", ["pointer", "double", "double"]);
+    this.fnScale = this.ffi.bind("cairo_scale", "void", ["pointer", "double", "double"]);
+    this.fnRotate = this.ffi.bind("cairo_rotate", "void", ["pointer", "double"]);
+    this.fnSetSourceRGB = this.ffi.bind(
+        "cairo_set_source_rgb",
+        "void",
+        ["pointer", "double", "double", "double"]
+        );
+    this.fnSetSourceRGBA = this.ffi.bind(
+        "cairo_set_source_rgba",
+        "void",
+        ["pointer", "double", "double", "double", "double"]
+        );
+    this.fnSetLineWidth = this.ffi.bind("cairo_set_line_width", "void", ["pointer", "double"]);
+    this.fnSetLineCap = this.ffi.bind("cairo_set_line_cap", "void", ["pointer", "int32"]);
+    this.fnSetLineJoin = this.ffi.bind("cairo_set_line_join", "void", ["pointer", "int32"]);
+    this.fnSetDash = this.ffi.bind(
+        "cairo_set_dash",
+        "void",
+        ["pointer", "pointer", "int32", "double"]
+        );
 
-    // Text & Fonts
-    this.fnSelectFontFace = this.ffi.bind("cairo_select_font_face", "void", ["pointer", "string", "int32", "int32"]);
-    this.fnSetFontSize   = this.ffi.bind("cairo_set_font_size", "void", ["pointer", "double"]);
-    this.fnShowText       = this.ffi.bind("cairo_show_text", "void", ["pointer", "string"]);
+    // Paths and painting.
+    this.fnMoveTo = this.ffi.bind("cairo_move_to", "void", ["pointer", "double", "double"]);
+    this.fnLineTo = this.ffi.bind("cairo_line_to", "void", ["pointer", "double", "double"]);
+    this.fnRelMoveTo = this.ffi.bind("cairo_rel_move_to", "void", ["pointer", "double", "double"]);
+    this.fnRelLineTo = this.ffi.bind("cairo_rel_line_to", "void", ["pointer", "double", "double"]);
+    this.fnCurveTo = this.ffi.bind(
+        "cairo_curve_to",
+        "void",
+        ["pointer", "double", "double", "double", "double", "double", "double"]
+        );
+    this.fnArc = this.ffi.bind(
+        "cairo_arc",
+        "void",
+        ["pointer", "double", "double", "double", "double", "double"]
+        );
+    this.fnArcNegative = this.ffi.bind(
+        "cairo_arc_negative",
+        "void",
+        ["pointer", "double", "double", "double", "double", "double"]
+        );
+    this.fnRectangle = this.ffi.bind(
+        "cairo_rectangle",
+        "void",
+        ["pointer", "double", "double", "double", "double"]
+        );
+    this.fnClosePath = this.ffi.bind("cairo_close_path", "void", ["pointer"]);
+    this.fnNewPath = this.ffi.bind("cairo_new_path", "void", ["pointer"]);
+    this.fnNewSubPath = this.ffi.bind("cairo_new_sub_path", "void", ["pointer"]);
+    this.fnStroke = this.ffi.bind("cairo_stroke", "void", ["pointer"]);
+    this.fnStrokePreserve = this.ffi.bind("cairo_stroke_preserve", "void", ["pointer"]);
+    this.fnFill = this.ffi.bind("cairo_fill", "void", ["pointer"]);
+    this.fnFillPreserve = this.ffi.bind("cairo_fill_preserve", "void", ["pointer"]);
+    this.fnClip = this.ffi.bind("cairo_clip", "void", ["pointer"]);
+    this.fnResetClip = this.ffi.bind("cairo_reset_clip", "void", ["pointer"]);
+    this.fnPaint = this.ffi.bind("cairo_paint", "void", ["pointer"]);
+    this.fnPaintWithAlpha = this.ffi.bind(
+        "cairo_paint_with_alpha",
+        "void",
+        ["pointer", "double"]
+        );
+
+    // Text.
+    this.fnSelectFontFace = this.ffi.bind(
+        "cairo_select_font_face",
+        "void",
+        ["pointer", "string", "int32", "int32"]
+        );
+    this.fnSetFontSize = this.ffi.bind("cairo_set_font_size", "void", ["pointer", "double"]);
+    this.fnShowText = this.ffi.bind("cairo_show_text", "void", ["pointer", "string"]);
+    this.fnTextExtents = this.ffi.bind(
+        "cairo_text_extents",
+        "void",
+        ["pointer", "string", "buffer"]
+        );
   }
 
+  //: imageSurfaceCreate
+  // Create an offscreen image surface.
+  imageSurfaceCreate(format, width, height) {
+    return this.fnImageSurfaceCreate(format, width, height);
+  }
+
+  //: xlibSurfaceCreate
+  // Create a surface that draws directly into an X11 window.
   xlibSurfaceCreate(dpy, window, visual, width, height) {
     return this.fnXlibSurfaceCreate(dpy, window, visual, width, height);
   }
 
   surfaceDestroy(surface) {
     this.fnSurfaceDestroy(surface);
+  }
+
+  surfaceFlush(surface) {
+    this.fnSurfaceFlush(surface);
+  }
+
+  surfaceWriteToPng(surface, filename) {
+    return this.fnSurfaceWriteToPng(surface, filename);
+  }
+
+  imageSurfaceGetWidth(surface) {
+    return this.fnImageSurfaceGetWidth(surface);
+  }
+
+  imageSurfaceGetHeight(surface) {
+    return this.fnImageSurfaceGetHeight(surface);
   }
 
   create(surface) {
@@ -59,12 +195,53 @@ class Cairo {
     this.fnXlibSurfaceSetSize(surface, width, height);
   }
 
+  save(cr) {
+    this.fnSave(cr);
+  }
+
+  restore(cr) {
+    this.fnRestore(cr);
+  }
+
+  translate(cr, x, y) {
+    this.fnTranslate(cr, x, y);
+  }
+
+  scale(cr, sx, sy) {
+    this.fnScale(cr, sx, sy);
+  }
+
+  rotate(cr, angle) {
+    this.fnRotate(cr, angle);
+  }
+
   setSourceRGB(cr, r, g, b) {
     this.fnSetSourceRGB(cr, r, g, b);
   }
 
+  setSourceRGBA(cr, r, g, b, a) {
+    this.fnSetSourceRGBA(cr, r, g, b, a);
+  }
+
   setLineWidth(cr, width) {
     this.fnSetLineWidth(cr, width);
+  }
+
+  setLineCap(cr, cap) {
+    this.fnSetLineCap(cr, cap);
+  }
+
+  setLineJoin(cr, join) {
+    this.fnSetLineJoin(cr, join);
+  }
+
+  setDash(cr, dashes, offset = 0.0) {
+    var pattern = Struct.pack("<" + "d" * dashes.length(), dashes);
+    this.fnSetDash(cr, pattern, dashes.length(), offset);
+  }
+
+  clearDash(cr) {
+    this.fnSetDash(cr, nil, 0, 0.0);
   }
 
   moveTo(cr, x, y) {
@@ -75,20 +252,72 @@ class Cairo {
     this.fnLineTo(cr, x, y);
   }
 
+  relMoveTo(cr, x, y) {
+    this.fnRelMoveTo(cr, x, y);
+  }
+
+  relLineTo(cr, x, y) {
+    this.fnRelLineTo(cr, x, y);
+  }
+
+  curveTo(cr, x1, y1, x2, y2, x3, y3) {
+    this.fnCurveTo(cr, x1, y1, x2, y2, x3, y3);
+  }
+
   arc(cr, xc, yc, radius, angle1, angle2) {
     this.fnArc(cr, xc, yc, radius, angle1, angle2);
+  }
+
+  arcNegative(cr, xc, yc, radius, angle1, angle2) {
+    this.fnArcNegative(cr, xc, yc, radius, angle1, angle2);
+  }
+
+  rectangle(cr, x, y, width, height) {
+    this.fnRectangle(cr, x, y, width, height);
+  }
+
+  closePath(cr) {
+    this.fnClosePath(cr);
+  }
+
+  newPath(cr) {
+    this.fnNewPath(cr);
+  }
+
+  newSubPath(cr) {
+    this.fnNewSubPath(cr);
   }
 
   stroke(cr) {
     this.fnStroke(cr);
   }
 
+  strokePreserve(cr) {
+    this.fnStrokePreserve(cr);
+  }
+
   fill(cr) {
     this.fnFill(cr);
   }
 
+  fillPreserve(cr) {
+    this.fnFillPreserve(cr);
+  }
+
+  clip(cr) {
+    this.fnClip(cr);
+  }
+
+  resetClip(cr) {
+    this.fnResetClip(cr);
+  }
+
   paint(cr) {
     this.fnPaint(cr);
+  }
+
+  paintWithAlpha(cr, alpha) {
+    this.fnPaintWithAlpha(cr, alpha);
   }
 
   selectFontFace(cr, family, slant, weight) {
@@ -102,4 +331,70 @@ class Cairo {
   showText(cr, text) {
     this.fnShowText(cr, text);
   }
+
+  //: textExtents
+  // Measure text in the current font. Returns a Map with x_bearing, y_bearing,
+  // width, height, x_advance and y_advance.
+  textExtents(cr, text) {
+    var buffer = Buffer.alloc(48);
+    this.fnTextExtents(cr, text, buffer);
+    var values = Struct.unpack("<6d", buffer);
+    return {
+      "x_bearing": values[0],
+      "y_bearing": values[1],
+      "width": values[2],
+      "height": values[3],
+      "x_advance": values[4],
+      "y_advance": values[5]
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // snake_case aliases. These match cairo's C names and the style used by
+  // older examples.
+  // -----------------------------------------------------------------------
+
+  image_surface_create(format, width, height) {
+    return this.imageSurfaceCreate(format, width, height);
+  }
+
+  xlib_surface_create(dpy, window, visual, width, height) {
+    return this.xlibSurfaceCreate(dpy, window, visual, width, height);
+  }
+
+  surface_destroy(surface) { this.surfaceDestroy(surface); }
+  surface_flush(surface) { this.surfaceFlush(surface); }
+  surface_write_to_png(surface, filename) { return this.surfaceWriteToPng(surface, filename); }
+  xlib_surface_set_size(surface, width, height) { this.xlibSurfaceSetSize(surface, width, height); }
+
+  set_source_rgb(cr, r, g, b) { this.setSourceRGB(cr, r, g, b); }
+  set_source_rgba(cr, r, g, b, a) { this.setSourceRGBA(cr, r, g, b, a); }
+  set_line_width(cr, width) { this.setLineWidth(cr, width); }
+  set_line_cap(cr, cap) { this.setLineCap(cr, cap); }
+  set_line_join(cr, join) { this.setLineJoin(cr, join); }
+  set_dash(cr, dashes, offset = 0.0) { this.setDash(cr, dashes, offset); }
+  clear_dash(cr) { this.clearDash(cr); }
+
+  move_to(cr, x, y) { this.moveTo(cr, x, y); }
+  line_to(cr, x, y) { this.lineTo(cr, x, y); }
+  rel_move_to(cr, x, y) { this.relMoveTo(cr, x, y); }
+  rel_line_to(cr, x, y) { this.relLineTo(cr, x, y); }
+  curve_to(cr, x1, y1, x2, y2, x3, y3) { this.curveTo(cr, x1, y1, x2, y2, x3, y3); }
+  arc_negative(cr, xc, yc, radius, angle1, angle2) {
+    this.arcNegative(cr, xc, yc, radius, angle1, angle2);
+  }
+  close_path(cr) { this.closePath(cr); }
+  new_path(cr) { this.newPath(cr); }
+  new_sub_path(cr) { this.newSubPath(cr); }
+  stroke_preserve(cr) { this.strokePreserve(cr); }
+  fill_preserve(cr) { this.fillPreserve(cr); }
+  reset_clip(cr) { this.resetClip(cr); }
+  paint_with_alpha(cr, alpha) { this.paintWithAlpha(cr, alpha); }
+
+  select_font_face(cr, family, slant, weight) {
+    this.selectFontFace(cr, family, slant, weight);
+  }
+  set_font_size(cr, size) { this.setFontSize(cr, size); }
+  show_text(cr, text) { this.showText(cr, text); }
+  text_extents(cr, text) { return this.textExtents(cr, text); }
 }

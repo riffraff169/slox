@@ -115,6 +115,9 @@ Draw the current pixel data to a KittyCanvas at an offset
 ## Class: Cairo
 Cairo canvas ffi bindings
 
+The higher-level `Canvas`, `Graph`, `Button`, `Menu`, and `TextInput` classes
+are documented in [canvas.md](canvas.md).
+
 ---
 
 ## Class: Color
@@ -3054,8 +3057,9 @@ little endian mode.
 
 #### `Struct.unpack(format, values, [bigendian])`
 Unpacks a string into an array based on format. x = null, s = string, b = byte,
-h = 2 bytes, i = 4 bytes, q = 8 bytes. Optional width specifier at beginning. Also can
-specify endianness with < or > at the beginning, or optional argument.
+h = 2 bytes, i = 4 bytes, q = 8 bytes, f = 4-byte float, d = 8-byte double.
+Optional width specifier at beginning. Also can specify endianness with < or >
+at the beginning, or optional argument.
 
 **Required Arguments:**
   - `String: format`

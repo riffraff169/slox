@@ -1,0 +1,1446 @@
+require("x11.lox");
+require("cairo.lox");
+
+// Canvas helpers are plain functions so they can be used before an instance
+// exists. The prefix keeps them out of the way of user code.
+
+fun _canvas_option(options, key, fallback) {
+  if (options != nil and typeof(options) == "Map" and options.has(key)) {
+    var value = options[key];
+    if (value != nil) return value;
+  }
+  return fallback;
+}
+
+fun _canvas_copy_map(source) {
+  var result = {};
+  if (source == nil or typeof(source) != "Map") return result;
+  var keys = source.keys();
+  for (var i = 0; i < keys.length(); i += 1) {
+    result[keys[i]] = source[keys[i]];
+  }
+  return result;
+}
+
+fun _canvas_env(name) {
+  if (!System.ENV.has(name)) return "";
+  var value = System.ENV[name];
+  if (value == nil) return "";
+  return value;
+}
+
+fun _canvas_clamp(value, low, high) {
+  if (value < low) return low;
+  if (value > high) return high;
+  return value;
+}
+
+//: _canvas_rgba
+// Convert an integer 0xRRGGBB, a "#rrggbb" string, or a 3/4 element array into
+// normalized [r, g, b, a] components. Array components may be either 0..1 or
+// 0..255; the larger range wins.
+fun _canvas_rgba(color, fallback = nil) {
+  if (color == nil) color = fallback;
+  if (color == nil) return [1.0, 1.0, 1.0, 1.0];
+
+  if (typeof(color) == "Integer") {
+    var r = ((color >> 16) & 255) / 255.0;
+    var g = ((color >> 8) & 255) / 255.0;
+    var b = (color & 255) / 255.0;
+    return [r, g, b, 1.0];
+  }
+
+  if (typeof(color) == "String") {
+    var text = color;
+    if (text.length() > 0 and text[0] == "#") {
+      text = text.slice(1, text.length());
+    }
+    if (text.length() == 6) {
+      var r = Math.parse(text.slice(0, 2), 16) / 255.0;
+      var g = Math.parse(text.slice(2, 4), 16) / 255.0;
+      var b = Math.parse(text.slice(4, 6), 16) / 255.0;
+      return [r, g, b, 1.0];
+    }
+    if (text.length() == 8) {
+      var r = Math.parse(text.slice(0, 2), 16) / 255.0;
+      var g = Math.parse(text.slice(2, 4), 16) / 255.0;
+      var b = Math.parse(text.slice(4, 6), 16) / 255.0;
+      var a = Math.parse(text.slice(6, 8), 16) / 255.0;
+      return [r, g, b, a];
+    }
+    return [1.0, 1.0, 1.0, 1.0];
+  }
+
+  if (typeof(color) == "Array" and color.length() >= 3) {
+    var r = color[0];
+    var g = color[1];
+    var b = color[2];
+    var a = 1.0;
+    if (color.length() > 3) a = color[3];
+
+    if (r > 1.0 or g > 1.0 or b > 1.0) {
+      r = r / 255.0;
+      g = g / 255.0;
+      b = b / 255.0;
+    }
+    if (a > 1.0) a = a / 255.0;
+    return [_canvas_clamp(r, 0.0, 1.0), _canvas_clamp(g, 0.0, 1.0),
+        _canvas_clamp(b, 0.0, 1.0), _canvas_clamp(a, 0.0, 1.0)];
+  }
+
+  return [1.0, 1.0, 1.0, 1.0];
+}
+
+// Pick a 1/2/5 times a power of ten step near targetSteps divisions.
+fun _canvas_nice_step(range, targetSteps = 8) {
+  if (range.abs() < 1e-12) return 1.0;
+  var raw = range / targetSteps;
+  if (raw < 0) raw = -raw;
+  var magnitude = 1.0;
+  while (raw >= 10.0) {
+    raw = raw / 10.0;
+    magnitude = magnitude * 10.0;
+  }
+  while (raw < 1.0) {
+    raw = raw * 10.0;
+    magnitude = magnitude / 10.0;
+  }
+  var nice = 10.0;
+  if (raw < 1.5) nice = 1.0;
+  else if (raw < 3.5) nice = 2.0;
+  else if (raw < 7.5) nice = 5.0;
+  return nice * magnitude;
+}
+
+fun _canvas_tick_decimals(step) {
+  var value = step;
+  if (value < 0) value = -value;
+  var decimals = 0;
+  while (value < 1.0 and decimals < 4) {
+    value = value * 10.0;
+    decimals = decimals + 1;
+  }
+  return decimals;
+}
+
+fun _canvas_tick_label(value, step) {
+  if (value.abs() < step * 1e-6) value = 0;
+  var decimals = _canvas_tick_decimals(step);
+  if (value.abs() >= 100000 or (value != 0 and value.abs() < 0.0001)) {
+    return "" + value;
+  }
+  return Math.to_fixed(value, decimals);
+}
+
+//@ Canvas
+// A Cairo-backed drawing surface. With a display and a title it opens an X11
+// window; otherwise it draws to an offscreen image surface that can be written
+// to PNG. Coordinates are in pixels with the origin at the top left.
+//
+// Requires:
+//   Integer: width
+//   Integer: height
+// Optional:
+//   String: title
+//   Map: options
+//
+// Options:
+//   Bool: offscreen        Force an image surface (default false)
+//   Integer: x, y          Window position (default 80, 80)
+//   String: fontFamily     Default font family (default "Sans")
+//   Number: fontSize       Default font size (default 14)
+//   Array|Integer|String: background
+class Canvas {
+  const BG      = [0.08, 0.09, 0.12];
+  const PANEL   = [0.13, 0.14, 0.19];
+  const FG      = [0.92, 0.94, 0.98];
+  const MUTED   = [0.55, 0.59, 0.68];
+  const ACCENT  = [0.10, 0.78, 1.00];
+  const GRID    = [0.20, 0.22, 0.29];
+  const AXIS    = [0.55, 0.60, 0.72];
+  const BORDER  = [0.30, 0.34, 0.44];
+  const DANGER  = [1.00, 0.32, 0.32];
+
+  init(width, height, title = nil, options = nil) {
+    this.width = width;
+    this.height = height;
+    this.title = title;
+    this.options = _canvas_copy_map(options);
+    this.fontFamily = _canvas_option(options, "fontFamily", "Sans");
+    this.fontSize = _canvas_option(options, "fontSize", 14.0);
+    this.background = _canvas_option(options, "background", Canvas.BG);
+    this.offscreen = _canvas_option(options, "offscreen", false);
+    this.closed = false;
+    this.running = false;
+    this.callbacks = {};
+    this.widgets = [];
+    this.eventBuffer = nil;
+    this.surface = nil;
+    this.cr = nil;
+    this.dpy = nil;
+    this.win = nil;
+    this.visual = nil;
+    this.x11 = nil;
+
+    if (!this.offscreen and title == nil and _canvas_env("DISPLAY") == "") {
+      this.offscreen = true;
+    }
+
+    this.cairo = Cairo();
+    if (this.offscreen) {
+      this._open_offscreen();
+    } else {
+      this._open_window();
+    }
+  }
+
+  //: offscreen
+  // Create an image surface canvas. This never opens an X11 display.
+  static offscreen(width, height, options = nil) {
+    var merged = _canvas_copy_map(options);
+    merged["offscreen"] = true;
+    return Canvas(width, height, nil, merged);
+  }
+
+  //: window
+  // Create a window canvas. Falls back to an image surface if no display can
+  // be opened.
+  static window(width, height, title = "slox canvas", options = nil) {
+    var merged = _canvas_copy_map(options);
+    merged["offscreen"] = false;
+    return Canvas(width, height, title, merged);
+  }
+
+  _open_offscreen() {
+    this.surface = this.cairo.imageSurfaceCreate(Cairo.FORMAT_ARGB32, this.width, this.height);
+    this.cr = this.cairo.create(this.surface);
+    this.offscreen = true;
+  }
+
+  _open_window() {
+    this.x11 = X11();
+    this.dpy = this.x11.openDisplay(nil);
+    if (this.dpy == nil) {
+      this.offscreen = true;
+      this._open_offscreen();
+      return;
+    }
+
+    var screen = this.x11.defaultScreen(this.dpy);
+    var root = this.x11.rootWindow(this.dpy, screen);
+    this.visual = this.x11.defaultVisual(this.dpy, screen);
+    var winX = _canvas_option(this.options, "x", 80);
+    var winY = _canvas_option(this.options, "y", 80);
+
+    this.win = this.x11.createSimpleWindow(this.dpy, root, winX, winY,
+        this.width, this.height, 0, 0, 0x101018);
+    if (this.win == 0) {
+      this.x11.closeDisplay(this.dpy);
+      this.dpy = nil;
+      this.x11 = nil;
+      this.offscreen = true;
+      this._open_offscreen();
+      return;
+    }
+
+    this.x11.storeName(this.dpy, this.win, this.title);
+    this.x11.set_delete_protocol(this.dpy, this.win);
+    this.x11.selectInput(this.dpy, this.win,
+        X11.ExposureMask | X11.KeyPressMask | X11.KeyReleaseMask |
+        X11.ButtonPressMask | X11.ButtonReleaseMask |
+        X11.PointerMotionMask | X11.EnterWindowMask | X11.LeaveWindowMask |
+        X11.StructureNotifyMask);
+    this.x11.mapWindow(this.dpy, this.win);
+    this.x11.flush(this.dpy);
+
+    this.surface = this.cairo.xlibSurfaceCreate(this.dpy, this.win, this.visual,
+        this.width, this.height);
+    this.cr = this.cairo.create(this.surface);
+    this.eventBuffer = this.x11.event_buffer(192);
+    this.offscreen = false;
+  }
+
+  //: on
+  // Register an event callback. Callbacks receive (canvas, event).
+  // Names: "event", "keypress", "keyrelease", "buttonpress", "buttonrelease",
+  // "motion", "expose", "resize", "close", "enter", "leave".
+  on(name, callback) {
+    if (!this.callbacks.has(name)) this.callbacks[name] = [];
+    this.callbacks[name].push(callback);
+    return this;
+  }
+
+  _emit(name, event = nil) {
+    if (!this.callbacks.has(name)) return;
+    var list = this.callbacks[name];
+    for (var i = 0; i < list.length(); i += 1) {
+      list[i](this, event);
+    }
+  }
+
+  //: add
+  // Register a widget (Button, Menu, TextInput). Added widgets are drawn after
+  // the run/render draw callback and receive events in reverse add order, so the
+  // most recently added widget gets the first chance to consume an event.
+  add(widget) {
+    this.widgets.push(widget);
+    return widget;
+  }
+
+  remove(widget) {
+    var remaining = [];
+    for (var i = 0; i < this.widgets.length(); i += 1) {
+      if (this.widgets[i] != widget) remaining.push(this.widgets[i]);
+    }
+    this.widgets = remaining;
+    return this;
+  }
+
+  //: drawWidgets
+  // Draw every widget registered with add().
+  drawWidgets() {
+    for (var i = 0; i < this.widgets.length(); i += 1) {
+      this.widgets[i].draw(this);
+    }
+    return this;
+  }
+
+  _dispatchWidgets(event) {
+    for (var i = this.widgets.length() - 1; i >= 0; i -= 1) {
+      if (this.widgets[i].handle(event, this)) return true;
+    }
+    return false;
+  }
+
+  //: isOpen
+  isOpen() {
+    return !this.closed;
+  }
+
+  //: isOffscreen
+  isOffscreen() {
+    return this.offscreen;
+  }
+
+  //: surfaceInfo
+  // Return a Map describing the backing surface.
+  surfaceInfo() {
+    return {
+      "width": this.width,
+      "height": this.height,
+      "offscreen": this.offscreen,
+      "window": this.win,
+      "display": this.dpy
+    };
+  }
+
+  //: setColor
+  // Set the current Cairo source color. Accepts 0xRRGGBB, "#rrggbb",
+  // "#rrggbbaa", or an [r, g, b(, a)] array in either 0..1 or 0..255 units.
+  setColor(color, fallback = nil) {
+    var rgba = _canvas_rgba(color, fallback);
+    this.cairo.setSourceRGBA(this.cr, rgba[0], rgba[1], rgba[2], rgba[3]);
+    return rgba;
+  }
+
+  //: clear
+  // Fill the whole canvas with a color (the configured background by default).
+  clear(color = nil) {
+    this.setColor(color, this.background);
+    this.cairo.paint(this.cr);
+    this.cairo.newPath(this.cr);
+  }
+
+  setLineWidth(width) {
+    this.cairo.setLineWidth(this.cr, width);
+  }
+
+  //: line
+  // Draw a straight line.
+  line(x1, y1, x2, y2, color = nil, width = nil) {
+    if (color != nil) this.setColor(color, Canvas.FG);
+    if (width != nil) this.setLineWidth(width);
+    this.cairo.moveTo(this.cr, x1, y1);
+    this.cairo.lineTo(this.cr, x2, y2);
+    this.cairo.stroke(this.cr);
+  }
+
+  //: polyline
+  // Draw connected line segments through an array of [x, y] points.
+  polyline(points, color = nil, width = nil) {
+    if (points == nil or points.length() < 2) return;
+    if (color != nil) this.setColor(color, Canvas.FG);
+    if (width != nil) this.setLineWidth(width);
+    this.cairo.moveTo(this.cr, points[0][0], points[0][1]);
+    for (var i = 1; i < points.length(); i += 1) {
+      this.cairo.lineTo(this.cr, points[i][0], points[i][1]);
+    }
+    this.cairo.stroke(this.cr);
+  }
+
+  //: fillRect
+  fillRect(x, y, width, height, color = nil) {
+    this.setColor(color, Canvas.PANEL);
+    this.cairo.rectangle(this.cr, x, y, width, height);
+    this.cairo.fill(this.cr);
+  }
+
+  //: strokeRect
+  strokeRect(x, y, width, height, color = nil, lineWidth = nil) {
+    if (color != nil) this.setColor(color, Canvas.BORDER);
+    if (lineWidth != nil) this.setLineWidth(lineWidth);
+    this.cairo.rectangle(this.cr, x, y, width, height);
+    this.cairo.stroke(this.cr);
+  }
+
+  //: rect
+  // Draw a rectangle; pass true for fill to fill it.
+  rect(x, y, width, height, color = nil, fill = false, lineWidth = nil) {
+    if (fill) this.fillRect(x, y, width, height, color);
+    else this.strokeRect(x, y, width, height, color, lineWidth);
+  }
+
+  //: circle
+  // Draw a circle; pass true for fill to fill it.
+  circle(cx, cy, radius, color = nil, fill = false, lineWidth = nil) {
+    this.setColor(color, Canvas.FG);
+    if (lineWidth != nil) this.setLineWidth(lineWidth);
+    this.cairo.arc(this.cr, cx, cy, radius, 0, 6.283185307179586);
+    if (fill) this.cairo.fill(this.cr);
+    else this.cairo.stroke(this.cr);
+  }
+
+  //: ellipse
+  // Draw an axis-aligned ellipse using a scaled circle.
+  ellipse(cx, cy, rx, ry, color = nil, fill = false, lineWidth = nil) {
+    this.save();
+    this.cairo.translate(this.cr, cx, cy);
+    this.cairo.scale(this.cr, rx, ry);
+    this.circle(0, 0, 1, color, fill, lineWidth);
+    this.restore();
+  }
+
+  //: arc
+  // Stroke an arc given in radians.
+  arc(cx, cy, radius, angle1, angle2, color = nil, lineWidth = nil) {
+    this.setColor(color, Canvas.FG);
+    if (lineWidth != nil) this.setLineWidth(lineWidth);
+    this.cairo.arc(this.cr, cx, cy, radius, angle1, angle2);
+    this.cairo.stroke(this.cr);
+  }
+
+  //: setFont
+  // Change the default font used by text helpers and widgets.
+  setFont(family = nil, size = nil) {
+    if (family != nil) this.fontFamily = family;
+    if (size != nil) this.fontSize = size;
+  }
+
+  _applyFont(size = nil, family = nil) {
+    var actualSize = size;
+    var actualFamily = family;
+    if (actualSize == nil) actualSize = this.fontSize;
+    if (actualFamily == nil) actualFamily = this.fontFamily;
+    this.cairo.selectFontFace(this.cr, actualFamily,
+        Cairo.FONT_SLANT_NORMAL, Cairo.FONT_WEIGHT_NORMAL);
+    this.cairo.setFontSize(this.cr, actualSize);
+    return [actualFamily, actualSize];
+  }
+
+  //: text
+  // Draw text with (x, y) at the baseline, matching cairo_show_text.
+  text(x, y, text, color = nil, size = nil, family = nil) {
+    if (color != nil) this.setColor(color, Canvas.FG);
+    this._applyFont(size, family);
+    this.cairo.moveTo(this.cr, x, y);
+    this.cairo.showText(this.cr, text);
+  }
+
+  //: textTop
+  // Draw text with (x, y) at the top-left corner of its bounding box.
+  textTop(x, y, text, color = nil, size = nil, family = nil) {
+    var ext = this.textExtents(text, size, family);
+    return this.text(x, y - ext["y_bearing"], text, color, size, family);
+  }
+
+  //: textCentered
+  // Draw text horizontally centered on cx with y as its baseline.
+  textCentered(cx, y, text, color = nil, size = nil, family = nil) {
+    var width = this.textWidth(text, size, family);
+    this.text(cx - width / 2.0, y, text, color, size, family);
+  }
+
+  //: textMiddle
+  // Center text horizontally and vertically inside a box.
+  textMiddle(x, y, width, height, text, color = nil, size = nil, family = nil) {
+    var ext = this.textExtents(text, size, family);
+    var baseline = y + (height - ext["height"]) / 2.0 - ext["y_bearing"];
+    this.text(x + (width - ext["x_advance"]) / 2.0, baseline, text, color, size, family);
+  }
+
+  //: textExtents
+  // Measure text; returns x_bearing, y_bearing, width, height, x_advance,
+  // y_advance.
+  textExtents(text, size = nil, family = nil) {
+    this._applyFont(size, family);
+    return this.cairo.textExtents(this.cr, text);
+  }
+
+  //: textWidth
+  textWidth(text, size = nil, family = nil) {
+    return this.textExtents(text, size, family)["x_advance"];
+  }
+
+  //: textHeight
+  textHeight(text = "Ag", size = nil, family = nil) {
+    return this.textExtents(text, size, family)["height"];
+  }
+
+  //: setDash
+  setDash(dashes, offset = 0.0) {
+    this.cairo.setDash(this.cr, dashes, offset);
+  }
+
+  clearDash() {
+    this.cairo.clearDash(this.cr);
+  }
+
+  save() {
+    this.cairo.save(this.cr);
+  }
+
+  restore() {
+    this.cairo.restore(this.cr);
+  }
+
+  translate(x, y) {
+    this.cairo.translate(this.cr, x, y);
+  }
+
+  scale(x, y) {
+    this.cairo.scale(this.cr, x, y);
+  }
+
+  rotate(angle) {
+    this.cairo.rotate(this.cr, angle);
+  }
+
+  newPath() {
+    this.cairo.newPath(this.cr);
+  }
+
+  //: clipRect
+  // Intersect the current clip with a rectangle. Pair with save()/restore().
+  clipRect(x, y, width, height) {
+    this.cairo.rectangle(this.cr, x, y, width, height);
+    this.cairo.clip(this.cr);
+  }
+
+  //: present
+  // Flush Cairo and X11 so the window shows the current frame.
+  present() {
+    if (this.surface != nil) this.cairo.surfaceFlush(this.surface);
+    if (!this.offscreen and this.dpy != nil) this.x11.flush(this.dpy);
+  }
+
+  //: flush
+  flush() {
+    this.present();
+  }
+
+  //: sync
+  sync() {
+    if (!this.offscreen and this.dpy != nil) this.x11.sync(this.dpy, false);
+  }
+
+  //: savePng
+  // Write the surface to a PNG file. Returns cairo's status code (0 is OK).
+  savePng(path) {
+    if (this.surface == nil) return -1;
+    if (!this.offscreen) this.cairo.surfaceFlush(this.surface);
+    return this.cairo.surfaceWriteToPng(this.surface, path);
+  }
+
+  save_png(path) {
+    return this.savePng(path);
+  }
+
+  //: handleEvents
+  // Process all pending X11 events. Returns the number of events handled.
+  handleEvents() {
+    var count = 0;
+    while (true) {
+      var event = this.pollEvent();
+      if (event == nil) break;
+      count = count + 1;
+    }
+    return count;
+  }
+
+  //: pollEvent
+  // Process one pending X11 event and return its parsed Map, or nil.
+  pollEvent() {
+    if (this.offscreen or this.closed or this.x11 == nil) return nil;
+    if (this.x11.pending(this.dpy) <= 0) return nil;
+
+    this.x11.nextEvent(this.dpy, this.eventBuffer);
+    var event = this.x11.parse_event(this.eventBuffer);
+    var type = event["type"];
+
+    if (type == X11.KeyPress or type == X11.KeyRelease) {
+      var lookup = this.x11.lookup_string(this.eventBuffer);
+      event["text"] = lookup["text"];
+      event["keysym"] = lookup["keysym"];
+    } else if (type == X11.ConfigureNotify) {
+      var newWidth = event["width"];
+      var newHeight = event["height"];
+      if (newWidth > 0 and newHeight > 0 and
+          (newWidth != this.width or newHeight != this.height)) {
+        this.width = newWidth;
+        this.height = newHeight;
+        this.cairo.xlibSurfaceSetSize(this.surface, newWidth, newHeight);
+        this._emit("resize", event);
+      }
+    }
+
+    if (this.x11.is_delete_message(event)) {
+      event["close"] = true;
+      this.running = false;
+      this._emit("close", event);
+      return event;
+    }
+
+    this._dispatchWidgets(event);
+    this._emit("event", event);
+
+    if (type == X11.KeyPress) this._emit("keypress", event);
+    else if (type == X11.KeyRelease) this._emit("keyrelease", event);
+    else if (type == X11.ButtonPress) this._emit("buttonpress", event);
+    else if (type == X11.ButtonRelease) this._emit("buttonrelease", event);
+    else if (type == X11.MotionNotify) this._emit("motion", event);
+    else if (type == X11.Expose) this._emit("expose", event);
+    else if (type == X11.EnterNotify) this._emit("enter", event);
+    else if (type == X11.LeaveNotify) this._emit("leave", event);
+
+    return event;
+  }
+
+  poll_event() {
+    return this.pollEvent();
+  }
+
+  handle_events() {
+    return this.handleEvents();
+  }
+
+  //: render
+  // Call once for offscreen canvases, then savePng(). For windows this is the
+  // same as draw + present.
+  render(draw = nil) {
+    if (draw != nil) draw(this);
+    this.drawWidgets();
+    this.present();
+    return this;
+  }
+
+  //: run
+  // Window event/draw loop. options may contain fps (default 60) and maxFrames
+  // (default 0, meaning run until the window closes). Returns when closed.
+  run(draw = nil, options = nil) {
+    if (this.offscreen) {
+      if (draw != nil) draw(this);
+      this.drawWidgets();
+      this.present();
+      return this;
+    }
+
+    var fps = _canvas_option(options, "fps", 60);
+    var maxFrames = _canvas_option(options, "maxFrames", 0);
+    var interval = 1.0 / fps;
+    var frame = 0;
+    this.running = true;
+
+    while (this.running and !this.closed) {
+      this.handleEvents();
+      if (!this.running or this.closed) break;
+      if (draw != nil) draw(this);
+      this.drawWidgets();
+      this.present();
+      frame = frame + 1;
+      if (maxFrames > 0 and frame >= maxFrames) break;
+      System.sleep(interval);
+    }
+
+    this.running = false;
+    return this;
+  }
+
+  //: close
+  // Destroy the Cairo objects, X11 window, and display connection.
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.running = false;
+
+    if (this.cr != nil) {
+      this.cairo.destroy(this.cr);
+      this.cr = nil;
+    }
+    if (this.surface != nil) {
+      this.cairo.surfaceDestroy(this.surface);
+      this.surface = nil;
+    }
+    if (!this.offscreen and this.x11 != nil) {
+      if (this.win != nil) {
+        this.x11.destroyWindow(this.dpy, this.win);
+        this.win = nil;
+      }
+      if (this.dpy != nil) {
+        this.x11.closeDisplay(this.dpy);
+        this.dpy = nil;
+      }
+    }
+  }
+}
+
+//@ Graph
+// Maps world coordinates onto a Canvas and helps draw axes, grids, and plotted
+// functions. The plot area is recomputed from the canvas size, so window
+// resizing works without recreating the Graph.
+//
+// Requires:
+//   Canvas: canvas
+// Optional:
+//   Number: xMin, xMax, yMin, yMax
+//   Map: options
+//
+// Options:
+//   Number: marginLeft, marginRight, marginTop, marginBottom
+//   Array|Integer|String: gridColor, axisColor
+class Graph {
+  init(canvas, xMin = nil, xMax = nil, yMin = nil, yMax = nil, options = nil) {
+    this.canvas = canvas;
+    this.xMin = xMin == nil ? -10.0 : xMin;
+    this.xMax = xMax == nil ? 10.0 : xMax;
+    this.yMin = yMin == nil ? -3.0 : yMin;
+    this.yMax = yMax == nil ? 3.0 : yMax;
+    this.options = options;
+    this.marginLeft = _canvas_option(options, "marginLeft", 56);
+    this.marginRight = _canvas_option(options, "marginRight", 20);
+    this.marginTop = _canvas_option(options, "marginTop", 20);
+    this.marginBottom = _canvas_option(options, "marginBottom", 38);
+    this.gridColor = _canvas_option(options, "gridColor", Canvas.GRID);
+    this.axisColor = _canvas_option(options, "axisColor", Canvas.AXIS);
+    this.labelColor = _canvas_option(options, "labelColor", Canvas.MUTED);
+    this.frameColor = _canvas_option(options, "frameColor", Canvas.BORDER);
+    this.fontSize = _canvas_option(options, "fontSize", 11.0);
+    this.update();
+  }
+
+  //: update
+  // Recompute the pixel rectangle used for the plot.
+  update() {
+    this.plotLeft = this.marginLeft;
+    this.plotTop = this.marginTop;
+    this.plotRight = this.canvas.width - this.marginRight;
+    this.plotBottom = this.canvas.height - this.marginBottom;
+    return this;
+  }
+
+  //: setBounds
+  setBounds(xMin, xMax, yMin, yMax) {
+    this.xMin = xMin;
+    this.xMax = xMax;
+    this.yMin = yMin;
+    this.yMax = yMax;
+    return this;
+  }
+
+  mapX(x) {
+    if (this.xMax == this.xMin) return this.plotLeft;
+    return this.plotLeft + (x - this.xMin) / (this.xMax - this.xMin) *
+        (this.plotRight - this.plotLeft);
+  }
+
+  mapY(y) {
+    if (this.yMax == this.yMin) return this.plotBottom;
+    return this.plotBottom - (y - this.yMin) / (this.yMax - this.yMin) *
+        (this.plotBottom - this.plotTop);
+  }
+
+  unmapX(px) {
+    return this.xMin + (px - this.plotLeft) / (this.plotRight - this.plotLeft) *
+        (this.xMax - this.xMin);
+  }
+
+  unmapY(py) {
+    return this.yMin + (this.plotBottom - py) / (this.plotBottom - this.plotTop) *
+        (this.yMax - this.yMin);
+  }
+
+  //: drawGrid
+  // Draw a grid using automatic or explicit step sizes.
+  drawGrid(stepX = nil, stepY = nil, color = nil) {
+    this.update();
+    if (stepX == nil) stepX = _canvas_nice_step(this.xMax - this.xMin);
+    if (stepY == nil) stepY = _canvas_nice_step(this.yMax - this.yMin);
+    if (color == nil) color = this.gridColor;
+
+    var xStart = Math.floor(this.xMin / stepX) * stepX;
+    var x = xStart;
+    var guard = 0;
+    while (x <= this.xMax + stepX * 0.5 and guard < 2000) {
+      var px = this.mapX(x);
+      if (px >= this.plotLeft - 0.5 and px <= this.plotRight + 0.5) {
+        this.canvas.line(px, this.plotTop, px, this.plotBottom, color, 1.0);
+      }
+      x = x + stepX;
+      guard = guard + 1;
+    }
+
+    var yStart = Math.floor(this.yMin / stepY) * stepY;
+    var y = yStart;
+    guard = 0;
+    while (y <= this.yMax + stepY * 0.5 and guard < 2000) {
+      var py = this.mapY(y);
+      if (py >= this.plotTop - 0.5 and py <= this.plotBottom + 0.5) {
+        this.canvas.line(this.plotLeft, py, this.plotRight, py, color, 1.0);
+      }
+      y = y + stepY;
+      guard = guard + 1;
+    }
+    return this;
+  }
+
+  //: drawAxes
+  // Draw the x and y axes (when they are inside the plot bounds).
+  drawAxes(color = nil) {
+    this.update();
+    if (color == nil) color = this.axisColor;
+    if (this.yMin <= 0 and this.yMax >= 0) {
+      var py = this.mapY(0);
+      this.canvas.line(this.plotLeft, py, this.plotRight, py, color, 1.5);
+    }
+    if (this.xMin <= 0 and this.xMax >= 0) {
+      var px = this.mapX(0);
+      this.canvas.line(px, this.plotTop, px, this.plotBottom, color, 1.5);
+    }
+    return this;
+  }
+
+  //: drawFrame
+  // Draw the border around the plot area.
+  drawFrame(color = nil) {
+    this.update();
+    if (color == nil) color = this.frameColor;
+    this.canvas.strokeRect(this.plotLeft, this.plotTop,
+        this.plotRight - this.plotLeft, this.plotBottom - this.plotTop,
+        color, 1.0);
+    return this;
+  }
+
+  //: drawLabels
+  // Draw numeric tick labels around the plot.
+  drawLabels(stepX = nil, stepY = nil, color = nil) {
+    this.update();
+    if (stepX == nil) stepX = _canvas_nice_step(this.xMax - this.xMin);
+    if (stepY == nil) stepY = _canvas_nice_step(this.yMax - this.yMin);
+    if (color == nil) color = this.labelColor;
+
+    var xStart = Math.floor(this.xMin / stepX) * stepX;
+    var x = xStart;
+    var guard = 0;
+    while (x <= this.xMax + stepX * 0.5 and guard < 2000) {
+      var px = this.mapX(x);
+      if (px >= this.plotLeft and px <= this.plotRight) {
+        this.canvas.textCentered(px, this.plotBottom + this.fontSize + 4,
+            _canvas_tick_label(x, stepX), color, this.fontSize);
+      }
+      x = x + stepX;
+      guard = guard + 1;
+    }
+
+    var yStart = Math.floor(this.yMin / stepY) * stepY;
+    var y = yStart;
+    guard = 0;
+    while (y <= this.yMax + stepY * 0.5 and guard < 2000) {
+      var py = this.mapY(y);
+      if (py >= this.plotTop and py <= this.plotBottom) {
+        var label = _canvas_tick_label(y, stepY);
+        var width = this.canvas.textWidth(label, this.fontSize);
+        this.canvas.text(this.plotLeft - width - 6, py + this.fontSize * 0.35,
+            label, color, this.fontSize);
+      }
+      y = y + stepY;
+      guard = guard + 1;
+    }
+    return this;
+  }
+
+  //: draw
+  // Grid + axes + frame + labels.
+  draw(stepX = nil, stepY = nil) {
+    this.drawGrid(stepX, stepY);
+    this.drawAxes();
+    this.drawFrame();
+    this.drawLabels(stepX, stepY);
+    return this;
+  }
+
+  //: plot
+  // Plot y = fn(x) across the visible x range. Samples defaults to one per
+  // horizontal pixel. Discontinuities and exceptions break the line.
+  plot(fn, color = nil, lineWidth = nil, samples = nil) {
+    this.update();
+    if (color == nil) color = Canvas.ACCENT;
+    if (lineWidth == nil) lineWidth = 2.0;
+    if (samples == nil) samples = this.plotRight - this.plotLeft;
+    if (samples < 2) samples = 2;
+
+    this.canvas.save();
+    this.canvas.clipRect(this.plotLeft, this.plotTop,
+        this.plotRight - this.plotLeft, this.plotBottom - this.plotTop);
+    this.canvas.setColor(color, Canvas.ACCENT);
+    this.canvas.setLineWidth(lineWidth);
+
+    var started = false;
+    for (var i = 0; i <= samples; i += 1) {
+      var wx = this.xMin + (this.xMax - this.xMin) * i / samples;
+      var wy = nil;
+      var ok = false;
+      try {
+        wy = fn(wx);
+        ok = true;
+      } catch (e) {
+        ok = false;
+      }
+
+      if (!ok or wy == nil) {
+        started = false;
+        continue;
+      }
+      var kind = typeof(wy);
+      if (kind != "Integer" and kind != "Float") {
+        started = false;
+        continue;
+      }
+      if (wy != wy) {
+        started = false;
+        continue;
+      }
+
+      var px = this.mapX(wx);
+      var py = this.mapY(wy);
+      if (!started) {
+        this.canvas.cairo.moveTo(this.canvas.cr, px, py);
+        started = true;
+      } else {
+        this.canvas.cairo.lineTo(this.canvas.cr, px, py);
+      }
+    }
+    this.canvas.cairo.stroke(this.canvas.cr);
+    this.canvas.restore();
+    return this;
+  }
+
+  //: plotPoints
+  // Plot an array of [x, y] world-coordinate points.
+  plotPoints(points, color = nil, lineWidth = nil) {
+    this.update();
+    var screen = [];
+    for (var i = 0; i < points.length(); i += 1) {
+      screen.push([this.mapX(points[i][0]), this.mapY(points[i][1])]);
+    }
+    this.canvas.polyline(screen, color, lineWidth);
+    return this;
+  }
+
+  //: plotParametric
+  // Plot x = fx(t), y = fy(t) for t in [tMin, tMax].
+  plotParametric(fx, fy, tMin, tMax, steps = nil, color = nil, lineWidth = nil) {
+    this.update();
+    if (steps == nil) steps = 512;
+    this.canvas.save();
+    this.canvas.clipRect(this.plotLeft, this.plotTop,
+        this.plotRight - this.plotLeft, this.plotBottom - this.plotTop);
+    this.canvas.setColor(color, Canvas.ACCENT);
+    this.canvas.setLineWidth(lineWidth == nil ? 2.0 : lineWidth);
+
+    var started = false;
+    for (var i = 0; i <= steps; i += 1) {
+      var t = tMin + (tMax - tMin) * i / steps;
+      var wx = fx(t);
+      var wy = fy(t);
+      if (wx == nil or wy == nil or wx != wx or wy != wy) {
+        started = false;
+        continue;
+      }
+      var px = this.mapX(wx);
+      var py = this.mapY(wy);
+      if (!started) {
+        this.canvas.cairo.moveTo(this.canvas.cr, px, py);
+        started = true;
+      } else {
+        this.canvas.cairo.lineTo(this.canvas.cr, px, py);
+      }
+    }
+    this.canvas.cairo.stroke(this.canvas.cr);
+    this.canvas.restore();
+    return this;
+  }
+
+  //: plotPoint
+  // Draw a marker at a world coordinate.
+  plotPoint(x, y, color = nil, radius = 4.0) {
+    this.update();
+    this.canvas.circle(this.mapX(x), this.mapY(y), radius, color, true);
+    return this;
+  }
+}
+
+//@ Button
+// A small clickable button drawn on a Canvas. Callback is invoked with no
+// arguments when the button is released inside its bounds.
+//
+// Requires:
+//   Integer: x, y, width, height
+//   String: label
+// Optional:
+//   Function: callback
+//   Map: options
+//
+// Options:
+//   Number: fontSize
+//   Array|Integer|String: color, textColor, hoverColor, pressedColor
+class Button {
+  init(x, y, width, height, label, callback = nil, options = nil) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.label = label;
+    this.callback = callback;
+    this.options = options;
+    this.fontSize = _canvas_option(options, "fontSize", 14.0);
+    this.color = _canvas_option(options, "color", Canvas.PANEL);
+    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
+    this.hoverColor = _canvas_option(options, "hoverColor", [0.19, 0.22, 0.30]);
+    this.pressedColor = _canvas_option(options, "pressedColor", [0.08, 0.48, 0.66]);
+    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
+    this.disabled = _canvas_option(options, "disabled", false);
+    this.hover = false;
+    this.pressed = false;
+  }
+
+  contains(px, py) {
+    return px >= this.x and px <= this.x + this.width and
+        py >= this.y and py <= this.y + this.height;
+  }
+
+  //: draw
+  draw(canvas) {
+    var background = this.color;
+    if (this.pressed) background = this.pressedColor;
+    else if (this.hover) background = this.hoverColor;
+
+    canvas.fillRect(this.x, this.y, this.width, this.height, background);
+    canvas.strokeRect(this.x, this.y, this.width, this.height,
+        this.borderColor, 1.0);
+    var textColor = this.disabled ? Canvas.MUTED : this.textColor;
+    canvas.textMiddle(this.x, this.y, this.width, this.height,
+        this.label, textColor, this.fontSize);
+  }
+
+  //: handle
+  // Process a parsed X11 event. Returns true when the event was consumed.
+  handle(event, canvas = nil) {
+    if (this.disabled) return false;
+    var type = event["type"];
+
+    if (type == X11.ButtonPress and event["button"] == 1) {
+      if (this.contains(event["x"], event["y"])) {
+        this.pressed = true;
+        return true;
+      }
+    } else if (type == X11.ButtonRelease and event["button"] == 1) {
+      if (this.pressed) {
+        this.pressed = false;
+        if (this.contains(event["x"], event["y"]) and this.callback != nil) {
+          this.callback();
+        }
+        return true;
+      }
+    } else if (type == X11.MotionNotify) {
+      this.hover = this.contains(event["x"], event["y"]);
+    }
+    return false;
+  }
+}
+
+//@ Menu
+// A simple dropdown menu. Items may be Strings or Maps with "label",
+// "callback", and optional "enabled" keys. Item callbacks are invoked with no
+// arguments. Call open() to show the menu at its configured position or at a
+// new position.
+//
+// Requires:
+//   Integer: x, y, width
+//   Array: items
+// Optional:
+//   Function: callback (called after an item is chosen)
+//   Map: options
+//
+// Options:
+//   Number: rowHeight, fontSize
+//   String: title
+class Menu {
+  init(x, y, width, items, callback = nil, options = nil) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.items = items;
+    this.callback = callback;
+    this.options = options;
+    this.rowHeight = _canvas_option(options, "rowHeight", 28);
+    this.fontSize = _canvas_option(options, "fontSize", 13.0);
+    this.title = _canvas_option(options, "title", "");
+    this.background = _canvas_option(options, "background", Canvas.PANEL);
+    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
+    this.hoverColor = _canvas_option(options, "hoverColor", [0.18, 0.42, 0.55]);
+    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
+    this.visible = false;
+    this.selected = -1;
+    this.padding = 6;
+  }
+
+  itemLabel(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map") return item["label"];
+    return "" + item;
+  }
+
+  itemEnabled(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map" and item.has("enabled")) return item["enabled"];
+    return true;
+  }
+
+  itemCallback(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map" and item.has("callback")) return item["callback"];
+    return nil;
+  }
+
+  headerHeight() {
+    if (this.title == nil or this.title == "") return 0;
+    return this.rowHeight;
+  }
+
+  totalHeight() {
+    return this.padding * 2 + this.headerHeight() +
+        this.items.length() * this.rowHeight;
+  }
+
+  contains(px, py) {
+    return px >= this.x and px <= this.x + this.width and
+        py >= this.y and py <= this.y + this.totalHeight();
+  }
+
+  //: open
+  // Show the menu, optionally moving it first.
+  open(x = nil, y = nil) {
+    if (x != nil) this.x = x;
+    if (y != nil) this.y = y;
+    this.visible = true;
+    this.selected = 0;
+    return this;
+  }
+
+  close() {
+    this.visible = false;
+    this.selected = -1;
+    return this;
+  }
+
+  indexAt(px, py) {
+    if (!this.contains(px, py)) return -1;
+    var top = this.y + this.padding + this.headerHeight();
+    if (py < top or py >= top + this.items.length() * this.rowHeight) return -1;
+    return Integer((py - top) / this.rowHeight);
+  }
+
+  //: draw
+  draw(canvas) {
+    if (!this.visible) return this;
+    var height = this.totalHeight();
+
+    canvas.fillRect(this.x, this.y, this.width, height, this.background);
+    canvas.strokeRect(this.x, this.y, this.width, height, this.borderColor, 1.0);
+
+    var top = this.y + this.padding;
+    if (this.headerHeight() > 0) {
+      canvas.textMiddle(this.x, top, this.width, this.rowHeight,
+          this.title, Canvas.MUTED, this.fontSize);
+      top = top + this.headerHeight();
+      canvas.line(this.x + this.padding, top, this.x + this.width - this.padding,
+          top, this.borderColor, 1.0);
+    }
+
+    for (var i = 0; i < this.items.length(); i += 1) {
+      var rowY = top + i * this.rowHeight;
+      if (i == this.selected and this.itemEnabled(i)) {
+        canvas.fillRect(this.x + 2, rowY + 1, this.width - 4,
+            this.rowHeight - 2, this.hoverColor);
+      }
+      var color = this.textColor;
+      if (!this.itemEnabled(i)) color = Canvas.MUTED;
+      canvas.text(this.x + this.padding * 2,
+          rowY + this.rowHeight * 0.5 + this.fontSize * 0.35,
+          this.itemLabel(i), color, this.fontSize);
+    }
+    return this;
+  }
+
+  //: handle
+  // Process a parsed X11 event. Returns true when the event was consumed.
+  handle(event, canvas = nil) {
+    if (!this.visible) return false;
+    var type = event["type"];
+
+    if (type == X11.ButtonPress and event["button"] == 1) {
+      var index = this.indexAt(event["x"], event["y"]);
+      if (index >= 0 and this.itemEnabled(index)) {
+        this.selected = index;
+        return true;
+      }
+      if (!this.contains(event["x"], event["y"])) {
+        this.close();
+      }
+      return true;
+    }
+
+    if (type == X11.ButtonRelease and event["button"] == 1) {
+      var index = this.indexAt(event["x"], event["y"]);
+      if (index >= 0 and index == this.selected and this.itemEnabled(index)) {
+        var itemCallback = this.itemCallback(index);
+        var item = this.items[index];
+        this.close();
+        if (itemCallback != nil) itemCallback();
+        if (this.callback != nil) this.callback(item, index);
+        return true;
+      }
+      return true;
+    }
+
+    if (type == X11.MotionNotify) {
+      var index = this.indexAt(event["x"], event["y"]);
+      if (index >= 0 and this.itemEnabled(index)) this.selected = index;
+      return true;
+    }
+
+    if (type == X11.KeyPress) {
+      if (event["keysym"] == X11.XK_Escape) {
+        this.close();
+        return true;
+      }
+      if (event["keysym"] == X11.XK_Up and this.selected > 0) {
+        this.selected = this.selected - 1;
+        return true;
+      }
+      if (event["keysym"] == X11.XK_Down and this.selected < this.items.length() - 1) {
+        this.selected = this.selected + 1;
+        return true;
+      }
+      if (event["keysym"] == X11.XK_Return or event["keysym"] == X11.XK_KP_Enter) {
+        var itemCallback = this.itemCallback(this.selected);
+        var item = this.items[this.selected];
+        this.close();
+        if (itemCallback != nil) itemCallback();
+        if (this.callback != nil) this.callback(item, this.selected);
+        return true;
+      }
+    }
+
+    return true;
+  }
+}
+
+//@ TextInput
+// A single-line text field with cursor movement, selection-free editing, and
+// an optional submit callback (invoked with no arguments on Return).
+//
+// Requires:
+//   Integer: x, y, width, height
+// Optional:
+//   Map: options
+//
+// Options:
+//   String: text, placeholder
+//   Number: fontSize
+//   Bool: focused
+class TextInput {
+  init(x, y, width, height, options = nil) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.options = options;
+    this.text = _canvas_option(options, "text", "");
+    this.placeholder = _canvas_option(options, "placeholder", "");
+    this.fontSize = _canvas_option(options, "fontSize", 14.0);
+    this.focused = _canvas_option(options, "focused", false);
+    this.onSubmit = _canvas_option(options, "onSubmit", nil);
+    this.onChange = _canvas_option(options, "onChange", nil);
+    this.padding = _canvas_option(options, "padding", 8);
+    this.cursor = this.text.length();
+    this.background = _canvas_option(options, "background", [0.07, 0.08, 0.11]);
+    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
+    this.focusColor = _canvas_option(options, "focusColor", Canvas.ACCENT);
+    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
+    this.placeholderColor = _canvas_option(options, "placeholderColor", Canvas.MUTED);
+    this.cursorColor = _canvas_option(options, "cursorColor", Canvas.FG);
+  }
+
+  contains(px, py) {
+    return px >= this.x and px <= this.x + this.width and
+        py >= this.y and py <= this.y + this.height;
+  }
+
+  getText() {
+    return this.text;
+  }
+
+  setText(text) {
+    this.text = text;
+    this.cursor = text.length();
+    return this;
+  }
+
+  clearText() {
+    return this.setText("");
+  }
+
+  _cursorX(canvas) {
+    if (this.cursor <= 0) return this.x + this.padding;
+    var prefix = this.text.slice(0, this.cursor);
+    return this.x + this.padding + canvas.textWidth(prefix, this.fontSize);
+  }
+
+  //: draw
+  draw(canvas) {
+    var border = this.focused ? this.focusColor : this.borderColor;
+    canvas.fillRect(this.x, this.y, this.width, this.height, this.background);
+    canvas.strokeRect(this.x, this.y, this.width, this.height, border,
+        this.focused ? 2.0 : 1.0);
+
+    var baseline = this.y + this.height * 0.5 + this.fontSize * 0.35;
+    if (this.text == "") {
+      canvas.text(this.x + this.padding, baseline, this.placeholder,
+          this.placeholderColor, this.fontSize);
+    } else {
+      canvas.text(this.x + this.padding, baseline, this.text,
+          this.textColor, this.fontSize);
+    }
+
+    if (this.focused) {
+      var cursorX = this._cursorX(canvas);
+      canvas.line(cursorX, this.y + this.height * 0.22,
+          cursorX, this.y + this.height * 0.78, this.cursorColor, 1.5);
+    }
+  }
+
+  _setCursorFromClick(canvas, px) {
+    var target = px - (this.x + this.padding);
+    var best = 0;
+    var bestDistance = 1e100;
+    for (var i = 0; i <= this.text.length(); i += 1) {
+      var width = canvas.textWidth(this.text.slice(0, i), this.fontSize);
+      var distance = (width - target).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = i;
+      }
+    }
+    this.cursor = best;
+  }
+
+  _changed() {
+    if (this.onChange != nil) this.onChange();
+  }
+
+  //: handle
+  // Process a parsed X11 event. Returns true when the event was consumed.
+  handle(event, canvas = nil) {
+    var type = event["type"];
+
+    if (type == X11.ButtonPress and event["button"] == 1) {
+      var inside = this.contains(event["x"], event["y"]);
+      this.focused = inside;
+      if (inside and canvas != nil) this._setCursorFromClick(canvas, event["x"]);
+      return inside;
+    }
+
+    if (type != X11.KeyPress or !this.focused) return false;
+    var keysym = event["keysym"];
+
+    if (keysym == X11.XK_BackSpace) {
+      if (this.cursor > 0) {
+        this.text = this.text.slice(0, this.cursor - 1) +
+            this.text.slice(this.cursor, this.text.length());
+        this.cursor = this.cursor - 1;
+        this._changed();
+      }
+      return true;
+    }
+
+    if (keysym == X11.XK_Delete) {
+      if (this.cursor < this.text.length()) {
+        this.text = this.text.slice(0, this.cursor) +
+            this.text.slice(this.cursor + 1, this.text.length());
+        this._changed();
+      }
+      return true;
+    }
+
+    if (keysym == X11.XK_Left) {
+      if (this.cursor > 0) this.cursor = this.cursor - 1;
+      return true;
+    }
+
+    if (keysym == X11.XK_Right) {
+      if (this.cursor < this.text.length()) this.cursor = this.cursor + 1;
+      return true;
+    }
+
+    if (keysym == X11.XK_Home) {
+      this.cursor = 0;
+      return true;
+    }
+
+    if (keysym == X11.XK_End) {
+      this.cursor = this.text.length();
+      return true;
+    }
+
+    if (keysym == X11.XK_Return or keysym == X11.XK_KP_Enter) {
+      if (this.onSubmit != nil) this.onSubmit();
+      return true;
+    }
+
+    if (keysym == X11.XK_Escape or keysym == X11.XK_Tab) {
+      this.focused = false;
+      return true;
+    }
+
+    var input = event["text"];
+    if (input != nil and input.length() > 0) {
+      this.text = this.text.slice(0, this.cursor) + input +
+          this.text.slice(this.cursor, this.text.length());
+      this.cursor = this.cursor + input.length();
+      this._changed();
+      return true;
+    }
+
+    return false;
+  }
+}

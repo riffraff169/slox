@@ -1,0 +1,28 @@
+// Struct float/double support is used by the Cairo bindings for dash arrays
+// and text extents.
+var packedDoubles = Struct.pack("<3d", [1.5, -2.25, 3.125]);
+var doubles = Struct.unpack("<3d", packedDoubles);
+print doubles[0];
+// expect: 1.5
+print doubles[1];
+// expect: -2.25
+print doubles[2];
+// expect: 3.125
+
+var packedFloats = Struct.pack("<2f", [1.5, -2.25]);
+var floats = Struct.unpack("<2f", packedFloats);
+print floats[0];
+// expect: 1.5
+print floats[1];
+// expect: -2.25
+
+var bigDoubles = Struct.unpack(">2d", Struct.pack(">2d", [0.5, 8.25]));
+print bigDoubles[0];
+// expect: 0.5
+print bigDoubles[1];
+// expect: 8.25
+
+print Struct.unpack("<f", Struct.pack("<f", [2.5]))[0];
+// expect: 2.5
+print "struct floats ok";
+// expect: struct floats ok

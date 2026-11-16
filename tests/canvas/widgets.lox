@@ -1,0 +1,131 @@
+require("canvas.lox");
+
+var canvas = Canvas.offscreen(240, 180);
+print canvas.isOffscreen();
+// expect: true
+
+// Static constructors copy their options instead of mutating the caller's map.
+var userOptions = {};
+var extra = Canvas.offscreen(20, 10, userOptions);
+print userOptions.has("offscreen");
+// expect: false
+extra.close();
+print canvas.width + "x" + canvas.height;
+// expect: 240x180
+
+canvas.clear([0.05, 0.06, 0.09]);
+canvas.fillRect(4, 4, 60, 20, [0.2, 0.3, 0.4]);
+canvas.strokeRect(4, 4, 60, 20, "#00ffaa", 1.0);
+canvas.line(0, 0, 240, 180, 0x102030, 1.0);
+canvas.circle(120, 90, 25, [0.9, 0.3, 0.2], true);
+canvas.text(10, 40, "canvas", [1, 1, 1], 14.0);
+canvas.textMiddle(70, 4, 60, 20, "ok", [1, 1, 1], 12.0);
+print canvas.textWidth("canvas", 14.0) > 0;
+// expect: true
+
+// Graph coordinate mapping with fixed margins: plot is (56,20)-(220,142).
+var graph = Graph(canvas, -1, 1, -1, 1);
+print graph.mapX(0) > 137.9 and graph.mapX(0) < 138.1;
+// expect: true
+print graph.mapY(0) > 80.9 and graph.mapY(0) < 81.1;
+// expect: true
+print graph.unmapX(graph.mapX(0.5)) > 0.49;
+// expect: true
+graph.draw();
+graph.plot(fun(x) { return x * x; }, [0.1, 0.9, 1.0], 2.0, 32);
+graph.plot(fun(x) { return Math.sin(x * 20) / 0; }, [1.0, 0.5, 0.2], 1.0, 16);
+graph.plot(fun(x) { throw Error("bad"); }, [1.0, 0.1, 0.1], 1.0, 8);
+graph.plotPoint(0.5, 0.5, [1.0, 1.0, 0.0], 3.0);
+
+var clicks = 0;
+var button = Button(10, 150, 70, 24, "Click", fun() { clicks = clicks + 1; });
+print button.contains(20, 160);
+// expect: true
+print button.contains(5, 160);
+// expect: false
+var press = {"type": X11.ButtonPress, "button": 1, "x": 20, "y": 160};
+var release = {"type": X11.ButtonRelease, "button": 1, "x": 20, "y": 160};
+var motion = {"type": X11.MotionNotify, "button": 0, "x": 20, "y": 160};
+print button.handle(motion);
+// expect: false
+print button.handle(press);
+// expect: true
+print button.handle(release);
+// expect: true
+print clicks;
+// expect: 1
+button.draw(canvas);
+
+var chosen = -1;
+var menu = Menu(90, 60, 110,
+    ["One", {"label": "Two", "callback": fun() { chosen = 2; }},
+     {"label": "Off", "enabled": false}],
+    fun(item, index) { chosen = index; },
+    {"title": "Pick", "rowHeight": 24, "fontSize": 12.0});
+menu.open();
+print menu.visible;
+// expect: true
+print menu.indexAt(100, 60 + 6 + 24 + 2 * 24 + 10);
+// expect: 2
+print menu.totalHeight();
+// expect: 108
+var menuPress = {"type": X11.ButtonPress, "button": 1, "x": 100,
+    "y": 60 + 6 + 24 + 1 * 24 + 10};
+var menuRelease = {"type": X11.ButtonRelease, "button": 1, "x": 100,
+    "y": 60 + 6 + 24 + 1 * 24 + 10};
+print menu.handle(menuPress);
+// expect: true
+print menu.handle(menuRelease);
+// expect: true
+print chosen;
+// expect: 1
+print menu.visible;
+// expect: false
+menu.draw(canvas);
+
+var submitted = 0;
+var input = TextInput(10, 130, 100, 26,
+    {"text": "ab", "focused": true, "onSubmit": fun() { submitted = submitted + 1; }});
+input.draw(canvas);
+var backspace = {"type": X11.KeyPress, "keysym": X11.XK_BackSpace, "text": ""};
+var typed = {"type": X11.KeyPress, "keysym": 99, "text": "c"};
+var enter = {"type": X11.KeyPress, "keysym": X11.XK_Return, "text": ""};
+var left = {"type": X11.KeyPress, "keysym": X11.XK_Left, "text": ""};
+print input.handle(backspace);
+// expect: true
+print input.getText();
+// expect: a
+print input.handle(typed);
+// expect: true
+print input.getText();
+// expect: ac
+print input.handle(left);
+// expect: true
+print input.handle(backspace);
+// expect: true
+print input.getText();
+// expect: c
+print input.handle(enter);
+// expect: true
+print submitted;
+// expect: 1
+
+canvas.add(button);
+canvas.add(input);
+print canvas.widgets.length();
+// expect: 2
+canvas.drawWidgets();
+canvas.remove(button);
+print canvas.widgets.length();
+// expect: 1
+
+var path = Dir.tempdir() + "/slox_canvas_test.png";
+print canvas.savePng(path);
+// expect: 0
+print File.exists(path);
+// expect: true
+File.unlink(path);
+
+canvas.close();
+print "canvas widgets ok";
+// expect: canvas widgets ok

@@ -1,7 +1,56 @@
 import "ffi";
 require("multiffi.lox");
 
+//@ X11
+// Minimal Xlib bindings used by the Cairo canvas. Event buffers are ordinary
+// Lox Buffers, and parse_event/lookup_string decode the fields used by most
+// applications.
 class X11 {
+  const KeyPressMask        = 1;          // 1L << 0
+  const KeyReleaseMask      = 2;          // 1L << 1
+  const ButtonPressMask     = 4;          // 1L << 2
+  const ButtonReleaseMask   = 8;          // 1L << 3
+  const EnterWindowMask     = 16;         // 1L << 4
+  const LeaveWindowMask     = 32;         // 1L << 5
+  const PointerMotionMask   = 64;         // 1L << 6
+  const ExposureMask        = 32768;      // 1L << 15
+  const StructureNotifyMask = 131072;     // 1L << 17
+
+  // Common event types.
+  const KeyPress         = 2;
+  const KeyRelease       = 3;
+  const ButtonPress      = 4;
+  const ButtonRelease    = 5;
+  const MotionNotify     = 6;
+  const EnterNotify      = 7;
+  const LeaveNotify      = 8;
+  const FocusIn          = 9;
+  const FocusOut         = 10;
+  const Expose           = 12;
+  const ConfigureNotify  = 22;
+  const ClientMessage    = 33;
+  const DestroyNotify    = 17;
+
+  // Keysyms used by the event helper and simple text inputs.
+  const XK_BackSpace = 0xFF08;
+  const XK_Tab       = 0xFF09;
+  const XK_Return    = 0xFF0D;
+  const XK_Escape    = 0xFF1B;
+  const XK_Home      = 0xFF50;
+  const XK_Left      = 0xFF51;
+  const XK_Up        = 0xFF52;
+  const XK_Right     = 0xFF53;
+  const XK_Down      = 0xFF54;
+  const XK_Page_Up   = 0xFF55;
+  const XK_Page_Down = 0xFF56;
+  const XK_End       = 0xFF57;
+  const XK_Insert    = 0xFF63;
+  const XK_KP_Enter  = 0xFF8D;
+  const XK_Delete    = 0xFFFF;
+
+  const RevertToParent = 2;
+  const CurrentTime = 0;
+
   init() {
     this.ffi = MultiFFI([
         "libX11.so.6",
@@ -11,61 +60,63 @@ class X11 {
     this.fnOpenDisplay = this.ffi.bind("XOpenDisplay", "pointer", ["string"]);
     this.fnCloseDisplay = this.ffi.bind("XCloseDisplay", "int32", ["pointer"]);
     this.fnDefaultScreen = this.ffi.bind("XDefaultScreen", "int32", ["pointer"]);
-    //this.fnDefaultRootWindow = this.ffi.bind("XDefaultRootWindow", "uint64", ["pointer"]);
     this.fnDefaultVisual = this.ffi.bind("XDefaultVisual", "pointer", ["pointer", "int32"]);
-
     this.fnScreenOfDisplay = this.ffi.bind("XScreenOfDisplay", "pointer", ["pointer", "int32"]);
     this.fnRootWindowOfScreen = this.ffi.bind("XRootWindowOfScreen", "uint64", ["pointer"]);
+    this.fnDisplayWidth = this.ffi.bind("XDisplayWidth", "int32", ["pointer", "int32"]);
+    this.fnDisplayHeight = this.ffi.bind("XDisplayHeight", "int32", ["pointer", "int32"]);
     this.fnFlush = this.ffi.bind("XFlush", "int32", ["pointer"]);
+    this.fnSync = this.ffi.bind("XSync", "int32", ["pointer", "int32"]);
 
     this.fnCreateSimpleWindow = this.ffi.bind(
         "XCreateSimpleWindow",
         "uint64",
         [
         "pointer",  // Display* dpy
-        "uint64", // Window parent (root)
-        "int32", // int x
-        "int32", // int y
-        "uint32", // unsigned int width
-        "uint32", // unsigned int height
-        "uint32", // unsigned int border_width
-        "uint64", // unsigned long border
-        "uint64" // unsigned long background
+        "uint64",   // Window parent (root)
+        "int32",    // int x
+        "int32",    // int y
+        "uint32",   // unsigned int width
+        "uint32",   // unsigned int height
+        "uint32",   // unsigned int border_width
+        "uint64",   // unsigned long border
+        "uint64"    // unsigned long background
         ]
         );
 
     this.fnMapWindow = this.ffi.bind("XMapWindow", "int32", ["pointer", "uint64"]);
+    this.fnMapRaised = this.ffi.bind("XMapRaised", "int32", ["pointer", "uint64"]);
     this.fnUnmapWindow = this.ffi.bind("XUnmapWindow", "int32", ["pointer", "uint64"]);
     this.fnDestroyWindow = this.ffi.bind("XDestroyWindow", "int32", ["pointer", "uint64"]);
+    this.fnStoreName = this.ffi.bind("XStoreName", "int32", ["pointer", "uint64", "string"]);
 
     this.fnSelectInput = this.ffi.bind("XSelectInput", "int32", ["pointer", "uint64", "int64"]);
     this.fnNextEvent = this.ffi.bind("XNextEvent", "int32", ["pointer", "pointer"]);
     this.fnPending = this.ffi.bind("XPending", "int32", ["pointer"]);
+    this.fnLookupString = this.ffi.bind(
+        "XLookupString",
+        "int32",
+        ["pointer", "buffer", "int32", "buffer", "buffer"]
+        );
+    this.fnSetInputFocus = this.ffi.bind(
+        "XSetInputFocus",
+        "int32",
+        ["pointer", "uint64", "int32", "uint64"]
+        );
 
     this.fnInternAtom = this.ffi.bind("XInternAtom", "uint64", ["pointer", "string", "int32"]);
-    this.fnSetWMProtocols = this.ffi.bind("XSetWMProtocols", "int32", ["pointer", "pointer", "pointer", "int32"]);
-
-    // Common Event Masks
-    this.KeyPressMask        = 1;          // 1L << 0
-    this.KeyReleaseMask      = 2;          // 1L << 1
-    this.ButtonPressMask     = 4;          // 1L << 2
-    this.ButtonReleaseMask   = 8;          // 1L << 3
-    this.ExposureMask        = 32768;      // 1L << 15
-    this.StructureNotifyMask = 131072;     // 1L << 17
-
-    // Common Event Types
-    this.KeyPress         = 2;
-    this.KeyRelease       = 3;
-    this.ButtonPress      = 4;
-    this.ButtonRelease    = 5;
-    this.Expose           = 12;
-    this.DestroyNotify    = 17;
-    this.ClientMessage    = 33;
+    this.fnSetWMProtocols = this.ffi.bind(
+        "XSetWMProtocols",
+        "int32",
+        ["pointer", "uint64", "pointer", "int32"]
+        );
+    this.fnFree = this.ffi.bind("XFree", "int32", ["pointer"]);
 
     this.dpy = nil;
+    this.wmDeleteAtom = nil;
   }
 
-  openDisplay(name) {
+  openDisplay(name = nil) {
     this.dpy = this.fnOpenDisplay(name);
     return this.dpy;
   }
@@ -92,6 +143,14 @@ class X11 {
     return this.rootWindowOfScreen(scrPtr);
   }
 
+  displayWidth(dpy) {
+    return this.fnDisplayWidth(dpy, this.fnDefaultScreen(dpy));
+  }
+
+  displayHeight(dpy) {
+    return this.fnDisplayHeight(dpy, this.fnDefaultScreen(dpy));
+  }
+
   flush(dpy = nil) {
     if (dpy != nil) {
       this.fnFlush(dpy);
@@ -99,12 +158,11 @@ class X11 {
       this.fnFlush(this.dpy);
     }
   }
-  /*
 
-  defaultRootWindow(dpy) {
-    return this.fnDefaultRootWindow(dpy);
+  sync(dpy = nil, discard = false) {
+    if (dpy == nil) dpy = this.dpy;
+    if (dpy != nil) this.fnSync(dpy, discard ? 1 : 0);
   }
-  */
 
   defaultVisual(dpy, screen) {
     return this.fnDefaultVisual(dpy, screen);
@@ -122,17 +180,184 @@ class X11 {
     return this.fnMapWindow(dpy, win);
   }
 
+  mapRaised(dpy, win) {
+    return this.fnMapRaised(dpy, win);
+  }
+
+  unmapWindow(dpy, win) {
+    return this.fnUnmapWindow(dpy, win);
+  }
+
+  destroyWindow(dpy, win) {
+    return this.fnDestroyWindow(dpy, win);
+  }
+
+  storeName(dpy, win, name) {
+    return this.fnStoreName(dpy, win, name);
+  }
+
+  setInputFocus(dpy, win, revertTo = nil, time = nil) {
+    if (revertTo == nil) revertTo = X11.RevertToParent;
+    if (time == nil) time = X11.CurrentTime;
+    return this.fnSetInputFocus(dpy, win, revertTo, time);
+  }
+
+  pending(dpy = nil) {
+    if (dpy == nil) dpy = this.dpy;
+    return this.fnPending(dpy);
+  }
+
   nextEvent(dpy, eventBuffer) {
     return this.fnNextEvent(dpy, eventBuffer);
   }
 
-  internAtom(dpy, name, onlyIfExists = true) {
+  //: event_buffer
+  // Allocate a buffer large enough for any XEvent.
+  event_buffer(size = 192) {
+    return Buffer.alloc(size);
+  }
+
+  //: parse_event
+  // Decode the parts of an XEvent most applications need.
+  parse_event(eventBuffer) {
+    var eventType = Struct.unpack("<i", eventBuffer)[0];
+    var event = {
+      "type": eventType,
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0,
+      "button": 0,
+      "keycode": 0,
+      "state": 0,
+      "window": 0,
+      "message_type": 0,
+      "data0": 0
+    };
+
+    if (eventType == X11.KeyPress or eventType == X11.KeyRelease or
+        eventType == X11.ButtonPress or eventType == X11.ButtonRelease or
+        eventType == X11.MotionNotify) {
+      // XKeyEvent / XButtonEvent / XMotionEvent share this layout.
+      var fields = Struct.unpack(
+          "<i 4x q i 4x Q Q Q Q Q i i i i I I i", eventBuffer);
+      event["serial"] = fields[1];
+      event["send_event"] = fields[2];
+      event["display"] = fields[3];
+      event["window"] = fields[4];
+      event["root"] = fields[5];
+      event["subwindow"] = fields[6];
+      event["time"] = fields[7];
+      event["x"] = fields[8];
+      event["y"] = fields[9];
+      event["x_root"] = fields[10];
+      event["y_root"] = fields[11];
+      event["state"] = fields[12];
+      if (eventType == X11.ButtonPress or eventType == X11.ButtonRelease) {
+        event["button"] = fields[13];
+      } else {
+        event["keycode"] = fields[13];
+      }
+      event["same_screen"] = fields[14];
+    } else if (eventType == X11.Expose) {
+      var fields = Struct.unpack("<i 4x q i 4x Q Q i i i i i", eventBuffer);
+      event["serial"] = fields[1];
+      event["send_event"] = fields[2];
+      event["display"] = fields[3];
+      event["window"] = fields[4];
+      event["x"] = fields[5];
+      event["y"] = fields[6];
+      event["width"] = fields[7];
+      event["height"] = fields[8];
+      event["count"] = fields[9];
+    } else if (eventType == X11.ConfigureNotify) {
+      var fields = Struct.unpack("<i 4x q i 4x Q Q Q i i i i i 4x Q i", eventBuffer);
+      event["serial"] = fields[1];
+      event["send_event"] = fields[2];
+      event["display"] = fields[3];
+      event["window"] = fields[5];
+      event["x"] = fields[6];
+      event["y"] = fields[7];
+      event["width"] = fields[8];
+      event["height"] = fields[9];
+      event["border_width"] = fields[10];
+      event["above"] = fields[11];
+      event["override_redirect"] = fields[12];
+    } else if (eventType == X11.ClientMessage) {
+      var fields = Struct.unpack("<i 4x q i 4x Q Q Q i 4x q", eventBuffer);
+      event["serial"] = fields[1];
+      event["send_event"] = fields[2];
+      event["display"] = fields[3];
+      event["window"] = fields[4];
+      event["message_type"] = fields[5];
+      event["format"] = fields[6];
+      event["data0"] = fields[7];
+    }
+
+    return event;
+  }
+
+  // Convenience accessors for code that has not moved to parse_event()'s Map.
+  eventType(eventBuffer) {
+    return Struct.unpack("<i", eventBuffer)[0];
+  }
+
+  eventX(eventBuffer) {
+    return this.parse_event(eventBuffer)["x"];
+  }
+
+  eventY(eventBuffer) {
+    return this.parse_event(eventBuffer)["y"];
+  }
+
+  //: lookup_string
+  // Convert a key event into text, a keysym, and the number of bytes read.
+  lookup_string(eventBuffer, maxBytes = 32) {
+    var textBuffer = Buffer.alloc(maxBytes);
+    var keysymBuffer = Buffer.alloc(8);
+    var statusBuffer = Buffer.alloc(8);
+
+    var bytesRead = this.fnLookupString(eventBuffer, textBuffer, maxBytes,
+        keysymBuffer, statusBuffer);
+    var keysym = Struct.unpack("<Q", keysymBuffer)[0];
+    var text = "";
+    if (bytesRead > 0) {
+      text = textBuffer.slice(0, bytesRead).to_string();
+    }
+
+    return {
+      "text": text,
+      "keysym": keysym,
+      "bytes_read": bytesRead
+    };
+  }
+
+  internAtom(dpy, name, onlyIfExists = false) {
     return this.fnInternAtom(dpy, name, onlyIfExists ? 1 : 0);
   }
 
   setWMProtocols(dpy, win, protocolsArrayPtr, count) {
     return this.fnSetWMProtocols(dpy, win, protocolsArrayPtr, count);
   }
+
+  //: set_delete_protocol
+  // Ask the window manager to send a ClientMessage when the window closes.
+  set_delete_protocol(dpy, win) {
+    this.wmDeleteAtom = this.internAtom(dpy, "WM_DELETE_WINDOW", false);
+    var atoms = Buffer.alloc(8);
+    atoms.write_uint64(0, this.wmDeleteAtom);
+    return this.setWMProtocols(dpy, win, atoms, 1);
+  }
+
+  //: is_delete_message
+  // True when parse_event() returned the WM_DELETE_WINDOW client message.
+  is_delete_message(event) {
+    return event["type"] == X11.ClientMessage and
+        this.wmDeleteAtom != nil and
+        event["data0"] == this.wmDeleteAtom;
+  }
+
+  free(pointer) {
+    return this.fnFree(pointer);
+  }
 }
-
-

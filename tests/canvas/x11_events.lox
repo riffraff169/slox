@@ -1,0 +1,86 @@
+require("x11.lox");
+
+// Build synthetic XEvent buffers with the same 64-bit layouts Xlib uses on
+// Linux. This exercises parse_event without needing a display.
+var x11 = X11();
+
+var keyBuffer = Struct.pack("<i 4x q i 4x Q Q Q Q Q i i i i I I i",
+    [2, 42, 1, 0x1000, 0x2000, 0x3000, 0x4000, 123456,
+     11, 22, 111, 222, 4, 38, 1]);
+var key = x11.parse_event(keyBuffer);
+print key["type"];
+// expect: 2
+print key["serial"];
+// expect: 42
+print key["display"];
+// expect: 4096
+print key["window"];
+// expect: 8192
+print key["x"] + "," + key["y"];
+// expect: 11,22
+print key["state"];
+// expect: 4
+print key["keycode"];
+// expect: 38
+
+var buttonBuffer = Struct.pack("<i 4x q i 4x Q Q Q Q Q i i i i I I i",
+    [4, 7, 0, 0, 0, 0, 0, 0, 3, 4, 5, 6, 0, 1, 1]);
+var button = x11.parse_event(buttonBuffer);
+print button["type"];
+// expect: 4
+print button["button"];
+// expect: 1
+print button["x"] + "," + button["y"];
+// expect: 3,4
+
+var motionBuffer = Struct.pack("<i 4x q i 4x Q Q Q Q Q i i i i I I i",
+    [6, 8, 0, 0, 0, 0, 0, 0, 9, 10, 0, 0, 0, 0, 1]);
+var motion = x11.parse_event(motionBuffer);
+print motion["type"];
+// expect: 6
+print motion["x"] + "," + motion["y"];
+// expect: 9,10
+
+var exposeBuffer = Struct.pack("<i 4x q i 4x Q Q i i i i i",
+    [12, 3, 0, 0, 0, 5, 6, 70, 80, 1]);
+var expose = x11.parse_event(exposeBuffer);
+print expose["type"];
+// expect: 12
+print expose["x"] + "," + expose["y"];
+// expect: 5,6
+print expose["width"] + "x" + expose["height"];
+// expect: 70x80
+print expose["count"];
+// expect: 1
+
+var configureBuffer = Struct.pack("<i 4x q i 4x Q Q Q i i i i i 4x Q i",
+    [22, 4, 0, 0, 400, 500, 7, 8, 300, 200, 0, 0, 0]);
+var configure = x11.parse_event(configureBuffer);
+print configure["type"];
+// expect: 22
+print configure["window"];
+// expect: 500
+print configure["x"] + "," + configure["y"];
+// expect: 7,8
+print configure["width"] + "x" + configure["height"];
+// expect: 300x200
+
+var clientBuffer = Struct.pack("<i 4x q i 4x Q Q Q i 4x q",
+    [33, 5, 0, 0, 600, 77, 32, 123456789]);
+var client = x11.parse_event(clientBuffer);
+print client["type"];
+// expect: 33
+print client["window"];
+// expect: 600
+print client["message_type"];
+// expect: 77
+print client["format"];
+// expect: 32
+print client["data0"];
+// expect: 123456789
+
+var buffer = x11.event_buffer();
+print buffer.size();
+// expect: 192
+print "x11 events ok";
+// expect: x11 events ok

@@ -1,0 +1,58 @@
+require("cairo.lox");
+
+// Cairo image surfaces work without an X11 display, which makes this test safe
+// to run in headless environments.
+var cairo = Cairo();
+var surface = cairo.imageSurfaceCreate(cairo.FORMAT_ARGB32, 96, 64);
+var cr = cairo.create(surface);
+
+print cairo.imageSurfaceGetWidth(surface);
+// expect: 96
+print cairo.imageSurfaceGetHeight(surface);
+// expect: 64
+
+cairo.setSourceRGB(cr, 0.05, 0.06, 0.09);
+cairo.paint(cr);
+
+cairo.setSourceRGB(cr, 0.1, 0.8, 1.0);
+cairo.setLineWidth(cr, 3.0);
+cairo.moveTo(cr, 4, 4);
+cairo.lineTo(cr, 92, 60);
+cairo.stroke(cr);
+
+cairo.setSourceRGBA(cr, 1.0, 0.4, 0.2, 0.75);
+cairo.arc(cr, 48, 32, 20, 0, 6.283185307179586);
+cairo.fill(cr);
+
+cairo.setSourceRGB(cr, 1, 1, 1);
+cairo.selectFontFace(cr, "Monospace", cairo.FONT_SLANT_NORMAL,
+    cairo.FONT_WEIGHT_BOLD);
+cairo.setFontSize(cr, 14.0);
+cairo.moveTo(cr, 6, 20);
+cairo.showText(cr, "Hi");
+
+var extents = cairo.textExtents(cr, "Hi");
+print extents["width"] > 0;
+// expect: true
+print extents["height"] > 0;
+// expect: true
+print extents["x_advance"] > 0;
+// expect: true
+
+// Dash arrays exercise Struct.pack's double support.
+cairo.setDash(cr, [4.0, 2.0], 0.0);
+cairo.rectangle(cr, 8, 40, 30, 16);
+cairo.stroke(cr);
+cairo.clearDash(cr);
+
+var path = Dir.tempdir() + "/slox_cairo_test.png";
+print cairo.surfaceWriteToPng(surface, path);
+// expect: 0
+print File.exists(path);
+// expect: true
+File.unlink(path);
+
+cairo.destroy(cr);
+cairo.surfaceDestroy(surface);
+print "cairo ok";
+// expect: cairo ok
