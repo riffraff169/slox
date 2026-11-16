@@ -43,7 +43,7 @@ fun tokenize(source) {
         numStr = numStr + chr(source[i]);
         i = i + 1;
       }
-      tokens.push(Token("NUMBER", numStr, Number(numStr)));
+      tokens.push(Token("NUMBER", numStr, Float(numStr)));
     } else if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_') {
       var identStr = "";
       while (i < len and ((source[i] >= 'a' and source[i] <= 'z') or (source[i] >= 'A' and source[i] <= 'Z') or (source[i] >= '0' and source[i] <= '9') or source[i] == '_')) {
