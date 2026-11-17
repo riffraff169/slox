@@ -178,10 +178,18 @@ Useful methods:
 | `refreshFromPixels()` | Upload direct array edits to the Cairo surface. |
 | `refresh()` | Reload pixels from the underlying `Image` object. |
 | `syncImage()` | Copy Slox pixel edits back into the `Image` object. |
-| `draw(canvas, x, y, width, height)` | Draw the surface, scaled to the rectangle. |
+| `draw(canvas, x, y, width, height, filter = nil)` | Draw the surface, scaled to the rectangle. `filter` is a `Cairo.FILTER_*` constant or `"nearest"`, `"fast"`, `"good"`, `"best"`, `"bilinear"`, or `"gaussian"`; the default is nearest. |
 | `save(path)` | Save the image after syncing pixel edits. |
 | `cairoSurface()` | Return the raw Cairo surface pointer. |
-| `close()` | Destroy the surface and close the canvas. |
+| `release()` | Destroy only the Cairo surface and buffer, leaving the canvas open. |
+| `dispose()` | Alias for `release()`. |
+| `close()` | Release the surface and close the canvas. |
+
+For a viewer that keeps one window open while swapping images, call
+`view.release()` (or `view.dispose()`) before dropping a view and reuse the same
+`Canvas`; call `view.refresh()` on a retained view to rebuild its surface after
+a release. Use `Cairo.FILTER_NEAREST` for pixel-art or integer zoom and
+`"bilinear"`/`Cairo.FILTER_GOOD` for smooth scaling.
 
 The conversion from RGBA to Cairo's premultiplied ARGB32 is handled by the
 library, so filters can be written in plain Lox:

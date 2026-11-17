@@ -37,6 +37,20 @@ fun _view_fit_size(view, width, height) {
   return [width, height];
 }
 
+fun _view_filter(filter) {
+  if (filter == nil) return Cairo.FILTER_NEAREST;
+  if (typeof(filter) != "String") return filter;
+
+  var name = filter.to_lower();
+  if (name == "nearest") return Cairo.FILTER_NEAREST;
+  if (name == "fast") return Cairo.FILTER_FAST;
+  if (name == "good") return Cairo.FILTER_GOOD;
+  if (name == "best") return Cairo.FILTER_BEST;
+  if (name == "bilinear") return Cairo.FILTER_BILINEAR;
+  if (name == "gaussian") return Cairo.FILTER_GAUSSIAN;
+  throw Error("ImageView: unknown filter '" + filter + "'.");
+}
+
 class ImageView {
   //: init
   // Wrap an Image.load() result in a Cairo-backed view.
@@ -114,13 +128,16 @@ class ImageView {
 
   //: draw
   // Draw the current pixels onto a Canvas, optionally scaled to a rectangle.
+  // filter may be a Cairo.FILTER_* constant or one of the strings "nearest",
+  // "fast", "good", "best", "bilinear", or "gaussian".
   // Optional args:
   //   Canvas: canvas
   //   Number: x
   //   Number: y
   //   Number: width
   //   Number: height
-  draw(canvas = nil, x = 0, y = 0, width = nil, height = nil) {
+  //   Integer|String: filter
+  draw(canvas = nil, x = 0, y = 0, width = nil, height = nil, filter = nil) {
     if (canvas == nil) canvas = this.canvas;
     if (canvas == nil) throw Error("ImageView.draw(): no Canvas was supplied.");
     if (this.surface == nil) throw Error("ImageView.draw(): surface is closed.");
@@ -136,7 +153,7 @@ class ImageView {
     canvas.cairo.setSourceSurface(canvas.cr, this.surface, 0.0, 0.0);
     var pattern = canvas.cairo.getSource(canvas.cr);
     if (pattern != nil) {
-      canvas.cairo.patternSetFilter(pattern, Cairo.FILTER_NEAREST);
+      canvas.cairo.patternSetFilter(pattern, _view_filter(filter));
     }
     canvas.cairo.paint(canvas.cr);
     canvas.restore();
@@ -239,18 +256,33 @@ class ImageView {
     return this.surface;
   }
 
-  //: close
-  // Destroy the Cairo surface and close the associated Canvas, if any.
-  close() {
+  //: release
+  // Destroy only the Cairo surface and its buffer. The Canvas stays open, so
+  // the same window can be reused for another ImageView. Call refresh() to
+  // rebuild the surface from this view's image again.
+  release() {
     if (this.surface != nil) {
       this.cairo.surfaceDestroy(this.surface);
       this.surface = nil;
     }
+    this.buffer = nil;
+    return this;
+  }
+
+  //: dispose
+  // Alias for release().
+  dispose() {
+    return this.release();
+  }
+
+  //: close
+  // Release the surface and close the associated Canvas, if any.
+  close() {
+    this.release();
     if (this.canvas != nil) {
       this.canvas.close();
       this.canvas = nil;
     }
-    this.buffer = nil;
     return this;
   }
 
