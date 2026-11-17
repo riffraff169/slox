@@ -42,20 +42,23 @@ cat << EOF > src/version.h
 #endif
 EOF
 
-# 2. Update slox.spec Version line
+# 2. Update the spec Version/Release lines
 sed -i "s/^Version:.*/Version: $NEW_VER/" slox.spec
 sed -i "s/^Release:.*/Release: $NEW_REL%{?dist}/" slox.spec
+sed -i "s/^Version:.*/Version: $NEW_VER/" slox-all.spec
+sed -i "s/^Release:.*/Release: $NEW_REL%{?dist}/" slox-all.spec
 
-# 3. Add the Git-sourced RPM changelog entry we built earlier
+# 3. Add the Git-sourced RPM changelog entry to both specs
 CHG_DATE=$(date "+%a  %b %d %Y")
 USER_EMAIL="Lance Dillon <riffraff169@yahoo.com>"
 GIT_CHANGES=$(git log -1 --format="- %s")
 
-printf "* %s %s - %s-1\n%s\n\n" "$CHG_DATE" "$USER_EMAIL" "$NEW_VER-$NEW_REL" "$GIT_CHANGES" > changelog.tmp
+printf "* %s %s - %s\n%s\n\n" "$CHG_DATE" "$USER_EMAIL" "$NEW_VER-$NEW_REL" "$GIT_CHANGES" > changelog.tmp
 sed -i '/^%changelog/r changelog.tmp' slox.spec
+sed -i '/^%changelog/r changelog.tmp' slox-all.spec
 rm changelog.tmp
 
-git add src/version.h slox.spec
+git add src/version.h slox.spec slox-all.spec
 git commit -m "Bump version to $NEW_VER-$NEW_REL"
 git push origin HEAD
 

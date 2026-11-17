@@ -1,21 +1,18 @@
 Name:           slox-all
-Version:        1.1.0
+Version:        1.11.2
 Release:        1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
 BuildArch:      noarch
 
-# Meta-package dependencies
+# Meta-package dependencies. slox-vim is noarch; the other component
+# packages are arch-specific.
 Requires:       slox
-Requires:       slox-vim
 Requires:       slox-gtk
 Requires:       slox-postgres
 Requires:       slox-sqlite
+Requires:       slox-vim
 Requires:       slox-yaml
-Requires:       slox-notcurses
-# Add any other subpackages here:
-# Requires:       slox-stdlib
-# Requires:       slox-tools
 
 %description
 Slox-all is a meta-package that installs the Slox runtime along with 
@@ -34,6 +31,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Tue Nov 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.2-1
+- Track the slox 1.11.2 component packages.
+
 * Thu  Aug 13 2026 Lance Dillon <riffraff169@yahoo.com> - 1.0.0-1
 - initial creation
 
