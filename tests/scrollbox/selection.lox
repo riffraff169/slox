@@ -1,0 +1,87 @@
+require("scrollbox.lox");
+
+class MockPlane {
+  init() {
+    this.lines = {};
+  }
+
+  create_child(y, x, rows, cols) {
+    return MockPlane();
+  }
+
+  erase() {
+    this.lines = {};
+  }
+
+  put_str(y, x, text) {
+    this.lines[y] = text;
+  }
+
+  destroy() {
+  }
+
+  line(y) {
+    return this.lines[y] ?? "";
+  }
+}
+
+fun makeBox(items) {
+  return Scrollbox(nil, MockPlane(), 0, 0, 24, 3, items.dup());
+}
+
+var box = makeBox(["a", "b", "c"]);
+
+box.handleInput(" ");
+print "checkbox selected=" + box.getSelectedItems().join(",");
+box.handleInput("Down");
+box.handleInput(" ");
+print "checkbox selected=" + box.getSelectedItems().join(",");
+box.deselectItem("a");
+print "checkbox selected=" + box.getSelectedItems().join(",");
+box.render();
+print "line0=" + box.plane.line(0);
+print "line1=" + box.plane.line(1);
+
+var hide = makeBox(["a", "b", "c", "d"]);
+hide.showSelected = false;
+hide.enableCheckboxes = false;
+hide.selectItem("b");
+print "hide visible=" + hide.getVisibleItems().join(",");
+hide.handleInput(" ");
+print "hide visible=" + hide.getVisibleItems().join(",");
+print "hide selected=" + hide.getSelectedItems().join(",");
+hide.deselectItem("b");
+print "hide visible=" + hide.getVisibleItems().join(",");
+
+var nav = makeBox(["a", "b", "c", "d"]);
+nav.showSelected = false;
+nav.selectItem("b");
+nav.update_scroll();
+nav.handleInput("End");
+print "nav item=" + nav.getVisibleItems()[nav.cursor];
+
+var empty = makeBox(["a", "b"]);
+empty.showSelected = false;
+empty.selectAll(true);
+print "all hidden visible=" + empty.getVisibleItems().length();
+print "all selected=" + empty.getSelectedItems().join(",");
+
+// Fractional terminal dimensions must be normalized before slicing labels.
+var fractional = Scrollbox(nil, MockPlane(), 0, 0, 20.5, 2, ["abcdefghijklmnopqrst"]);
+fractional.enableCheckboxes = false;
+fractional.render();
+print "fractional=" + fractional.plane.line(0);
+
+// expect: checkbox selected=a
+// expect: checkbox selected=a,b
+// expect: checkbox selected=b
+// expect: line0=  [ ] a
+// expect: line1=> [X] b
+// expect: hide visible=a,c,d
+// expect: hide visible=c,d
+// expect: hide selected=a,b
+// expect: hide visible=b,c,d
+// expect: nav item=d
+// expect: all hidden visible=0
+// expect: all selected=a,b
+// expect: fractional=> abcdefghijklmno...

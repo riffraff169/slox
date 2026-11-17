@@ -1,0 +1,233 @@
+// Two-pane playlist builder. Move tracks from the library (left) to the
+// queue (right) with Space or Enter. Usage:
+//   ./bin/slox examples/playlist_manager.lox <music-directory>
+require("notcurses.lox");
+require("scrollbox.lox");
+
+var musicExts = ["mp3", "flac", "m4a", "ogg",
+    "wav", "mkv", "webm", "mp4", "acc", "opus"];
+
+fun isAudioFile(filename) {
+  for (var i = 0; i < musicExts.length(); i += 1) {
+    if (filename.slice(-(musicExts[i].length())) == musicExts[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+fun scanDirectory(dirPath) {
+  var results = [];
+  var entries = Dir.list(dirPath).unwrap();
+
+  if (entries == nil) return results;
+
+  for (var i = 0; i < entries.length(); i += 1) {
+    var entry = entries[i];
+
+    if (entry == "." or entry == ".." or (entry[0] == '.' and entry.length() > 1)) continue;
+
+    var fullPath = dirPath;
+    if (fullPath[fullPath.length() - 1] != '/') {
+      fullPath = fullPath + "/";
+    }
+    fullPath = fullPath + entry;
+
+    if (Dir.isdir(fullPath)) {
+      //print "Found dir: " + fullPath;
+      var subFiles = scanDirectory(fullPath);
+      //print "Number of files in subdir: " + subFiles.length();
+      results = results + subFiles;
+    } else if (isAudioFile(entry)) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+fun exportM3U(items, dirname, outputPath) {
+  if (items.length() == 0) return 0;
+
+  var prefix = dirname;
+  if (prefix[prefix.length() - 1] != '/') {
+    prefix = prefix + "/";
+  }
+
+  var lines = items.map(fun(item) {
+      return prefix + item;
+      });
+  var content = (["#EXTM3U"] + lines).join("\n") + "\n";
+  File.save(outputPath, content);
+
+  return items.length();
+}
+
+fun drawMainFrame(nc, plane, title = "") {
+  var dim = plane.get_dim();
+  var h = dim[0];
+  var w = dim[1];
+
+  plane.erase();
+  plane.box();
+
+  if (title.length() > 0) {
+    var titleText = " " + title + " ";
+    var startX = (w - titleText.length()) / 2;
+    plane.put_str(0, startX, titleText);
+  }
+  nc.render();
+}
+
+var musicDir = ".";
+if (System.ARGS.length() > 0) {
+  musicDir = System.ARGS[0];
+}
+
+if (musicDir.length() == 0 or musicDir[musicDir.length() - 1] != '/') {
+  musicDir = musicDir + "/";
+}
+
+print "Scanning " + musicDir + "...";
+var audioFiles = scanDirectory(musicDir).sort();
+
+if (audioFiles.length() == 0) {
+  print "No audio files found in " + musicDir;
+  exit(0);
+}
+
+print "Number of music files: " + audioFiles.length();
+
+var pathlen = musicDir.length();
+var displayNames = audioFiles.map(fun(path) {
+    return path.slice(pathlen);
+    });
+
+//pp(displayNames);
+//exit(0);
+
+var nc = Notcurses();
+var stdplane = nc.get_stdplane();
+drawMainFrame(nc, stdplane, " SMPlayer Playlist Manager ");
+nc.render();
+
+var dim = stdplane.get_dim();
+var activePane = 0; // 0 = library (let), 1 = queue (right)
+var leftWidth = (dim[1] / 2) - 2;
+var rightWidth = (dim[1] / 2) - 2;
+var paneHeight = dim[0] - 6;
+
+var libraryBox = Scrollbox(nc, stdplane, 3, 2, leftWidth, paneHeight, displayNames);
+var queueBox = Scrollbox(nc, stdplane, 3, leftWidth + 4, rightWidth, paneHeight, []);
+
+// The library hides tracks once they are queued. The queue is a plain list.
+libraryBox.showSelected = false;
+libraryBox.enableCheckboxes = false;
+queueBox.enableCheckboxes = false;
+
+fun addToQueue(box, item = nil) {
+  if (item == nil) return;
+  box.items.push(item);
+  box.update_scroll();
+}
+
+fun removeFromQueue(box, index) {
+  if (box.items.length() == 0 or index < 0 or index >= box.items.length()) return;
+
+  var removed = box.items[index];
+  var newItems = [];
+  for (var i = 0; i < box.items.length(); i += 1) {
+    if (i != index) newItems.push(box.items[i]);
+  }
+
+  box.items = newItems;
+  box.update_scroll();
+
+  // Bring the track back into the library view.
+  libraryBox.deselectItem(removed);
+}
+
+fun moveQueueItem(box, index, dir = 0) {
+  var newIndex = index + dir;
+  if (newIndex < 0 or newIndex >= box.items.length()) return;
+
+  var temp = box.items[index];
+  box.items[index] = box.items[newIndex];
+  box.items[newIndex] = temp;
+  box.cursor = newIndex;
+  box.update_scroll();
+}
+
+libraryBox
+.onKey(" ", fun(ctx) {
+    var item = ctx["item"];
+    if (item == nil) return;
+    addToQueue(queueBox, item);
+    ctx["box"].selectItem(item);
+  })
+.onKey("Enter", fun(ctx) {
+    var item = ctx["item"];
+    if (item == nil) return;
+    addToQueue(queueBox, item);
+    ctx["box"].selectItem(item);
+  })
+.onKey("a", fun(ctx) {
+    libraryBox.selectAll(true);
+    queueBox.items = libraryBox.items.dup();
+    queueBox.update_scroll();
+  });
+
+queueBox
+.onKey(" ", fun(ctx) {
+    removeFromQueue(ctx["box"], ctx["index"]);
+  })
+.onKey("Delete", fun(ctx) {
+    removeFromQueue(ctx["box"], ctx["index"]);
+  })
+.onKey("K", fun(ctx) {
+    moveQueueItem(ctx["box"], ctx["index"], -1);
+  })
+.onKey("J", fun(ctx) {
+    moveQueueItem(ctx["box"], ctx["index"], 1);
+  })
+.onKey("c", fun(ctx) {
+    queueBox.items = [];
+    queueBox.clearSelection();
+    queueBox.update_scroll();
+    libraryBox.clearSelection();
+  });
+
+var boxes = [libraryBox, queueBox];
+var statusMsg = "";
+var running = true;
+
+while (running) {
+  libraryBox.setFocus(activePane == 0);
+  queueBox.setFocus(activePane == 1);
+
+  //stdplane.erase();
+  drawMainFrame(nc, stdplane, " SMPlayer Playlist Manager ");
+  libraryBox.render();
+  queueBox.render();
+  if (statusMsg != "") {
+    stdplane.put_str(dim[0] - 2, 2, statusMsg);
+  }
+  nc.render();
+
+  var key = nc.get_key();
+
+  if (key == "Tab") {
+    activePane = (activePane + 1) % 2;
+  } else if (key == "s" or key == "S") {
+    var saved = exportM3U(queueBox.items, musicDir, "playlist.m3u");
+    statusMsg = "Saved " + saved + " tracks to playlist.m3u!";
+  } else if (key == "q" or key == "Q") {
+    running = false;
+  } else {
+    boxes[activePane].handleInput(key);
+  }
+}
+
+nc.stop();
+
+//print dim;
+//print "Left: " + leftWidth + " Right: " + rightWidth + " Height: " + paneHeight;

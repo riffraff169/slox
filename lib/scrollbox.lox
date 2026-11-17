@@ -3,6 +3,12 @@ require("notcurses.lox");
 //@ Scrollbox
 // Scrollbox class
 // Creates a box for scrolling lists
+//
+// Selection display is controlled by two public fields:
+//   showSelected: when true (the default), all items stay visible and selected
+//     items can show a checkbox marker. When false, selected items are hidden
+//     from the display but remain in the items list.
+//   enableCheckboxes: when true and showSelected is true, draws [X]/[ ] markers.
 // Requires:
 //   Notcurses: nc
 //   Plane: parentPlane
@@ -15,10 +21,10 @@ class Scrollbox {
   init(nc, parentPlane, y, x, width, height, items) {
     this.nc = nc;
     this.parentPlane = parentPlane;
-    this.y = y;
-    this.x = x;
-    this.width = width;
-    this.height = height;
+    this.y = y.floor();
+    this.x = x.floor();
+    this.width = width.floor();
+    this.height = height.floor();
 
     this.plane = this.parentPlane.create_child(y, x, height, width);
 
@@ -28,8 +34,12 @@ class Scrollbox {
     this.cursor = 0;
     this.scrollOffset = 0;
     this.focused = true;
+
+    // When true, selected items stay visible and show [X]/[ ] markers.
+    // Set to false to omit selected items from the display while keeping them
+    // in this.items.
+    this.showSelected = true;
     this.enableCheckboxes = true;
-    this.showSelected = false;
     this.keyCallbacks = {};
   }
 
@@ -53,16 +63,21 @@ class Scrollbox {
   }
 
   //: getVisibleItems
-  // Get list of items that have been selected
+  // Get the items currently displayed. When showSelected is true all items
+  // are returned; otherwise selected items are omitted (but remain in items).
   // Returns:
   //   Array
   getVisibleItems() {
     if (this.showSelected) {
       return this.items;
     }
-    return this.items.filter(fun(item) {
-        return !this.selections.has(item);
-    });
+
+    var visible = [];
+    for (var i = 0; i < this.items.length(); i += 1) {
+      var item = this.items[i];
+      if (!this.selections[item]) visible.push(item);
+    }
+    return visible;
   }
 
   //: selectItem
@@ -71,6 +86,7 @@ class Scrollbox {
   //   String: item
   selectItem(item) {
     this.selections[item] = true;
+    this.update_scroll();
   }
 
   //: deselectItem
@@ -78,14 +94,15 @@ class Scrollbox {
   // Requires:
   //   String: item
   deselectItem(item) {
-    //this.selected.delete(item);
     this.selections[item] = false;
+    this.update_scroll();
   }
 
   //: clearSelection
   // Clear selection list
   clearSelection() {
     this.selections = {};
+    this.update_scroll();
   }
 
   //: setFocus
@@ -102,6 +119,7 @@ class Scrollbox {
   //   Bool: state
   selectAll(state) {
     this.items.each(fun(w) { this.selections[w] = state; });
+    this.update_scroll();
   }
 
   //: getSelectedItems
@@ -109,7 +127,12 @@ class Scrollbox {
   // Returns:
   //   Array
   getSelectedItems() {
-    getVisibleItems();
+    var selected = [];
+    for (var i = 0; i < this.items.length(); i += 1) {
+      var item = this.items[i];
+      if (this.selections[item]) selected.push(item);
+    }
+    return selected;
   }
 
   //: render
@@ -119,27 +142,28 @@ class Scrollbox {
 
     this.plane.erase();
 
-    var totalItems = this.items.length();
+    var visible = this.getVisibleItems();
+    var totalItems = visible.length();
     var visibleRows = this.height;
 
     for (var i = 0; i < visibleRows; i += 1) {
       var idx = this.scrollOffset + i;
       if (idx >= totalItems) break;
 
+      var item = visible[idx];
       var prefix = "  ";
       if (this.focused and idx == this.cursor) {
         prefix = "> ";
       }
 
       var mark = "";
-      if (this.enableCheckboxes) {
-        var item = this.items[idx];
+      if (this.enableCheckboxes and this.showSelected) {
         mark = this.selections[item] ? "[X] " : "[ ] ";
       }
 
-      var label = this.items[idx];
-      var maxLabelLen = this.width - prefix.length() - mark.length();
-      if (label.length() > maxLabelLen) {
+      var label = item;
+      var maxLabelLen = (this.width - prefix.length() - mark.length()).floor();
+      if (maxLabelLen > 3 and label.length() > maxLabelLen) {
         label = label.slice(0, maxLabelLen - 3) + "...";
       }
 
@@ -148,16 +172,33 @@ class Scrollbox {
   }
 
   //: update_scroll
-  // Update scroll list
+  // Keep the cursor and scroll offset inside the visible item list.
   update_scroll() {
-    var visible_rows = this.height;
-    if (this.items.length() == 0) return;
+    var visibleRows = this.height;
+    if (visibleRows < 1) visibleRows = 1;
+
+    var visibleItems = this.getVisibleItems();
+    var totalItems = visibleItems.length();
+
+    if (totalItems == 0) {
+      this.cursor = 0;
+      this.scrollOffset = 0;
+      return;
+    }
+
+    if (this.cursor < 0) this.cursor = 0;
+    if (this.cursor >= totalItems) this.cursor = totalItems - 1;
 
     if (this.cursor < this.scrollOffset) {
       this.scrollOffset = this.cursor;
-    } else if (this.cursor >= this.scrollOffset + visible_rows) {
-      this.scrollOffset = this.cursor - visible_rows + 1;
+    } else if (this.cursor >= this.scrollOffset + visibleRows) {
+      this.scrollOffset = this.cursor - visibleRows + 1;
     }
+
+    var maxOffset = totalItems - visibleRows;
+    if (maxOffset < 0) maxOffset = 0;
+    if (this.scrollOffset > maxOffset) this.scrollOffset = maxOffset;
+    if (this.scrollOffset < 0) this.scrollOffset = 0;
   }
 
   //: handleInput
@@ -170,12 +211,16 @@ class Scrollbox {
   handleInput(key) {
     if (!this.focused) return false;
 
-    var totalItems = this.items.length();
-    if (totalItems == 0) return false;
+    this.update_scroll();
+
+    var visible = this.getVisibleItems();
+    var totalItems = visible.length();
 
     if (this.keyCallbacks.has(key)) {
-      var visible = this.getVisibleItems();
-      var current = visible[this.cursor];
+      var current = nil;
+      if (this.cursor >= 0 and this.cursor < totalItems) {
+        current = visible[this.cursor];
+      }
 
       var ctx = {
         "box": this,
@@ -190,6 +235,8 @@ class Scrollbox {
       this.keyCallbacks[key](ctx);
       return true;
     }
+
+    if (totalItems == 0) return false;
 
     if (key == "Up" or key == "k") {
       if (this.cursor > 0) {
@@ -234,16 +281,15 @@ class Scrollbox {
     }
 
     if (key == " " or key == "Space") {
-      if (this.enableCheckboxes) {
-        var item = this.items[this.cursor];
-        this.selections[item] = !this.selections[item];
-      }
+      var item = visible[this.cursor];
+      this.selections[item] = !this.selections[item];
+      this.update_scroll();
       return true;
     }
 
     if (key == "a" or key == "A") {
       var selectedCount = this.getSelectedItems().length();
-      var allSelected = (selectedCount == totalItems);
+      var allSelected = (selectedCount == this.items.length());
       this.selectAll(!allSelected);
       return true;
     }

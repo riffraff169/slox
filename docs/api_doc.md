@@ -1855,6 +1855,11 @@ Read a line with a prompt
 ## Class: Scrollbox
 Scrollbox class
 Creates a box for scrolling lists
+Selection display is controlled by two public fields.
+showSelected: when true (the default), all items stay visible and selected
+items can show a checkbox marker. When false, selected items are hidden
+from the display but remain in the items list.
+enableCheckboxes: when true and showSelected is true, draws [X]/[ ] markers.
 
 **Required Arguments:**
   - `Notcurses: nc`
@@ -1878,7 +1883,8 @@ Set callback for specific keys
 Destroy scrollbox
 
 #### `Scrollbox.getVisibleItems()`
-Get list of items that have been selected
+Get the items currently displayed. When showSelected is true all items
+are returned; otherwise selected items are omitted (but remain in items).
 
 **Returns:**
   - `Array`
@@ -1919,7 +1925,7 @@ Get list of items that have been selected
 Render this box
 
 #### `Scrollbox.update_scroll()`
-Update scroll list
+Keep the cursor and scroll offset inside the visible item list.
 
 #### `Scrollbox.handleInput(key)`
 Handle input
