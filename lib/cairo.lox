@@ -28,6 +28,13 @@ class Cairo {
   const LINE_JOIN_ROUND = 1;
   const LINE_JOIN_BEVEL = 2;
 
+  const FILTER_FAST = 0;
+  const FILTER_GOOD = 1;
+  const FILTER_BEST = 2;
+  const FILTER_NEAREST = 3;
+  const FILTER_BILINEAR = 4;
+  const FILTER_GAUSSIAN = 5;
+
   init() {
     this.ffi = MultiFFI([
         "libcairo.so.2",
@@ -60,6 +67,26 @@ class Cairo {
     this.fnImageSurfaceGetHeight = this.ffi.bind(
         "cairo_image_surface_get_height",
         "int32",
+        ["pointer"]
+        );
+    this.fnImageSurfaceCreateForData = this.ffi.bind(
+        "cairo_image_surface_create_for_data",
+        "pointer",
+        ["buffer", "int32", "int32", "int32", "int32"]
+        );
+    this.fnImageSurfaceGetStride = this.ffi.bind(
+        "cairo_image_surface_get_stride",
+        "int32",
+        ["pointer"]
+        );
+    this.fnImageSurfaceGetData = this.ffi.bind(
+        "cairo_image_surface_get_data",
+        "pointer",
+        ["pointer"]
+        );
+    this.fnSurfaceMarkDirty = this.ffi.bind(
+        "cairo_surface_mark_dirty",
+        "void",
         ["pointer"]
         );
     this.fnCreate = this.ffi.bind("cairo_create", "pointer", ["pointer"]);
@@ -135,6 +162,17 @@ class Cairo {
         "void",
         ["pointer", "double"]
         );
+    this.fnSetSourceSurface = this.ffi.bind(
+        "cairo_set_source_surface",
+        "void",
+        ["pointer", "pointer", "double", "double"]
+        );
+    this.fnGetSource = this.ffi.bind("cairo_get_source", "pointer", ["pointer"]);
+    this.fnPatternSetFilter = this.ffi.bind(
+        "cairo_pattern_set_filter",
+        "void",
+        ["pointer", "int32"]
+        );
 
     // Text.
     this.fnSelectFontFace = this.ffi.bind(
@@ -181,6 +219,37 @@ class Cairo {
 
   imageSurfaceGetHeight(surface) {
     return this.fnImageSurfaceGetHeight(surface);
+  }
+
+  //: imageSurfaceCreateForData
+  // Create an image surface backed by a writable Buffer. The buffer must stay
+  // alive for as long as the surface is used.
+  imageSurfaceCreateForData(buffer, format, width, height, stride) {
+    return this.fnImageSurfaceCreateForData(buffer, format, width, height, stride);
+  }
+
+  imageSurfaceGetStride(surface) {
+    return this.fnImageSurfaceGetStride(surface);
+  }
+
+  imageSurfaceGetData(surface) {
+    return this.fnImageSurfaceGetData(surface);
+  }
+
+  surfaceMarkDirty(surface) {
+    this.fnSurfaceMarkDirty(surface);
+  }
+
+  setSourceSurface(cr, surface, x, y) {
+    this.fnSetSourceSurface(cr, surface, x, y);
+  }
+
+  getSource(cr) {
+    return this.fnGetSource(cr);
+  }
+
+  patternSetFilter(pattern, filter) {
+    this.fnPatternSetFilter(pattern, filter);
   }
 
   create(surface) {
@@ -357,6 +426,17 @@ class Cairo {
   image_surface_create(format, width, height) {
     return this.imageSurfaceCreate(format, width, height);
   }
+
+  image_surface_create_for_data(buffer, format, width, height, stride) {
+    return this.imageSurfaceCreateForData(buffer, format, width, height, stride);
+  }
+
+  image_surface_get_stride(surface) { return this.imageSurfaceGetStride(surface); }
+  image_surface_get_data(surface) { return this.imageSurfaceGetData(surface); }
+  surface_mark_dirty(surface) { this.surfaceMarkDirty(surface); }
+  set_source_surface(cr, surface, x, y) { this.setSourceSurface(cr, surface, x, y); }
+  get_source(cr) { return this.getSource(cr); }
+  pattern_set_filter(pattern, filter) { this.patternSetFilter(pattern, filter); }
 
   xlib_surface_create(dpy, window, visual, width, height) {
     return this.xlibSurfaceCreate(dpy, window, visual, width, height);

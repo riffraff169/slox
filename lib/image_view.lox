@@ -1,0 +1,284 @@
+require("canvas.lox");
+import "image";
+
+//@ ImageView
+// Display an Image module image on a Canvas and keep its RGBA bytes available
+// to Slox code. Image.get_bytes() returns a binary String, so it is converted
+// to a mutable array here. Pixels are ordinary 0..255 RGBA arrays, so filters
+// and other effects can be written directly in Lox and pushed back with
+// refreshFromPixels().
+
+fun _view_byte(value) {
+  if (value < 0) return 0;
+  if (value > 255) return 255;
+  return Math.floor(value + 0.5);
+}
+
+fun _view_write_pixel(buffer, offset, rgba) {
+  var red = _view_byte(rgba[0]);
+  var green = _view_byte(rgba[1]);
+  var blue = _view_byte(rgba[2]);
+  var alpha = 255;
+  if (rgba.length() > 3) alpha = _view_byte(rgba[3]);
+
+  // Cairo's ARGB32 surface uses premultiplied BGRA bytes on little-endian
+  // hosts. The stb image module gives us non-premultiplied RGBA bytes.
+  var factor = alpha / 255.0;
+  buffer.write_uint8(offset, _view_byte(blue * factor));
+  buffer.write_uint8(offset + 1, _view_byte(green * factor));
+  buffer.write_uint8(offset + 2, _view_byte(red * factor));
+  buffer.write_uint8(offset + 3, alpha);
+}
+
+fun _view_fit_size(view, width, height) {
+  if (width == nil and height == nil) return [view.width, view.height];
+  if (width == nil) return [Math.floor(view.width * height / view.height), height];
+  if (height == nil) return [width, Math.floor(view.height * width / view.width)];
+  return [width, height];
+}
+
+class ImageView {
+  //: init
+  // Wrap an Image.load() result in a Cairo-backed view.
+  // Required args:
+  //   Image: image
+  // Optional args:
+  //   Map: options
+  init(image, options = nil) {
+    if (image == nil) throw Error("ImageView: image is nil.");
+    if (image.width <= 0 or image.height <= 0) {
+      throw Error("ImageView: image dimensions must be positive.");
+    }
+
+    this.image = image;
+    this.width = image.width;
+    this.height = image.height;
+    this.options = options;
+    var bytes = image.get_bytes();
+    if (bytes == nil) throw Error("ImageView: could not read image bytes.");
+    this.pixels = bytes.to_array();
+    if (this.pixels.length() != this.width * this.height * 4) {
+      throw Error("ImageView: expected one RGBA byte per channel.");
+    }
+
+    this.cairo = Cairo();
+    this.canvas = nil;
+    this.buffer = nil;
+    this.surface = nil;
+    this.stride = this.width * 4;
+    this._rebuild_surface();
+  }
+
+  //: fromFile
+  // Load an image file and wrap it in an ImageView.
+  // Required args:
+  //   String: path
+  // Optional args:
+  //   Map: options
+  static fromFile(path, options = nil) {
+    var image = Image.load(path);
+    if (image == nil) throw Error("ImageView: could not load '" + path + "'.");
+    return ImageView(image, options);
+  }
+
+  //: window
+  // Open a Canvas window sized to the image and return its ImageView.
+  // Required args:
+  //   String: path
+  // Optional args:
+  //   Integer: width
+  //   Integer: height
+  //   String: title
+  //   Map: options
+  static window(path, width = nil, height = nil, title = "slox image", options = nil) {
+    var view = ImageView.fromFile(path, options);
+    var size = _view_fit_size(view, width, height);
+    view.canvas = Canvas.window(size[0], size[1], title, options);
+    return view;
+  }
+
+  //: offscreen
+  // Create an offscreen Canvas and ImageView, useful for headless rendering.
+  // Required args:
+  //   String: path
+  // Optional args:
+  //   Integer: width
+  //   Integer: height
+  //   Map: options
+  static offscreen(path, width = nil, height = nil, options = nil) {
+    var view = ImageView.fromFile(path, options);
+    var size = _view_fit_size(view, width, height);
+    view.canvas = Canvas.offscreen(size[0], size[1], options);
+    return view;
+  }
+
+  //: draw
+  // Draw the current pixels onto a Canvas, optionally scaled to a rectangle.
+  // Optional args:
+  //   Canvas: canvas
+  //   Number: x
+  //   Number: y
+  //   Number: width
+  //   Number: height
+  draw(canvas = nil, x = 0, y = 0, width = nil, height = nil) {
+    if (canvas == nil) canvas = this.canvas;
+    if (canvas == nil) throw Error("ImageView.draw(): no Canvas was supplied.");
+    if (this.surface == nil) throw Error("ImageView.draw(): surface is closed.");
+
+    var targetWidth = width;
+    var targetHeight = height;
+    if (targetWidth == nil) targetWidth = this.width;
+    if (targetHeight == nil) targetHeight = this.height;
+
+    canvas.save();
+    canvas.translate(x, y);
+    canvas.scale(targetWidth / this.width, targetHeight / this.height);
+    canvas.cairo.setSourceSurface(canvas.cr, this.surface, 0.0, 0.0);
+    var pattern = canvas.cairo.getSource(canvas.cr);
+    if (pattern != nil) {
+      canvas.cairo.patternSetFilter(pattern, Cairo.FILTER_NEAREST);
+    }
+    canvas.cairo.paint(canvas.cr);
+    canvas.restore();
+    return this;
+  }
+
+  //: getPixel
+  // Return [r, g, b, a] at x, y from the Slox-owned pixel array.
+  // Required args:
+  //   Integer: x
+  //   Integer: y
+  getPixel(x, y) {
+    this._check_bounds(x, y);
+    var i = (y * this.width + x) * 4;
+    return [this.pixels[i], this.pixels[i + 1], this.pixels[i + 2], this.pixels[i + 3]];
+  }
+
+  //: setPixel
+  // Set [r, g, b, a] at x, y and update the Cairo surface.
+  // Required args:
+  //   Integer: x
+  //   Integer: y
+  //   Array: rgba
+  setPixel(x, y, rgba) {
+    this._check_bounds(x, y);
+    if (typeof(rgba) != "Array" or rgba.length() < 3) {
+      throw Error("ImageView.setPixel() expects an [r, g, b, a] array.");
+    }
+
+    var color = [_view_byte(rgba[0]), _view_byte(rgba[1]), _view_byte(rgba[2]), 255];
+    if (rgba.length() > 3) color[3] = _view_byte(rgba[3]);
+
+    var i = (y * this.width + x) * 4;
+    this.pixels[i] = color[0];
+    this.pixels[i + 1] = color[1];
+    this.pixels[i + 2] = color[2];
+    this.pixels[i + 3] = color[3];
+
+    this.image.set_pixel(x, y, color);
+    _view_write_pixel(this.buffer, i, color);
+    if (this.surface != nil) this.cairo.surfaceMarkDirty(this.surface);
+    return this;
+  }
+
+  //: getPixels
+  // Return the raw 0..255 RGBA array. Mutate it, then call refreshFromPixels().
+  getPixels() {
+    return this.pixels;
+  }
+
+  //: refreshFromPixels
+  // Re-upload getPixels() to the Cairo surface after direct array edits.
+  refreshFromPixels() {
+    if (this.pixels.length() != this.width * this.height * 4) {
+      throw Error("ImageView: RGBA array has the wrong length.");
+    }
+    this._write_pixels_to_buffer();
+    if (this.surface != nil) this.cairo.surfaceMarkDirty(this.surface);
+    return this;
+  }
+
+  //: refresh
+  // Reload pixels from the Image object and rebuild the surface.
+  refresh() {
+    if (this.image.width != this.width or this.image.height != this.height) {
+      this.width = this.image.width;
+      this.height = this.image.height;
+      this.stride = this.width * 4;
+    }
+    this.pixels = this.image.get_bytes().to_array();
+    this._rebuild_surface();
+    return this;
+  }
+
+  //: syncImage
+  // Copy Slox-owned pixels back into the Image object.
+  syncImage() {
+    for (var y = 0; y < this.height; y += 1) {
+      for (var x = 0; x < this.width; x += 1) {
+        var i = (y * this.width + x) * 4;
+        this.image.set_pixel(x, y,
+            [this.pixels[i], this.pixels[i + 1], this.pixels[i + 2], this.pixels[i + 3]]);
+      }
+    }
+    return this;
+  }
+
+  //: save
+  // Save the Image object to a file, syncing direct pixel edits first.
+  // Required args:
+  //   String: path
+  save(path) {
+    this.syncImage();
+    return this.image.save(path);
+  }
+
+  //: cairoSurface
+  // Return the raw Cairo image surface pointer for advanced use.
+  cairoSurface() {
+    return this.surface;
+  }
+
+  //: close
+  // Destroy the Cairo surface and close the associated Canvas, if any.
+  close() {
+    if (this.surface != nil) {
+      this.cairo.surfaceDestroy(this.surface);
+      this.surface = nil;
+    }
+    if (this.canvas != nil) {
+      this.canvas.close();
+      this.canvas = nil;
+    }
+    this.buffer = nil;
+    return this;
+  }
+
+  _check_bounds(x, y) {
+    if (x < 0 or x >= this.width or y < 0 or y >= this.height) {
+      throw Error("ImageView: pixel coordinates out of bounds.");
+    }
+  }
+
+  _write_pixels_to_buffer() {
+    for (var i = 0; i < this.pixels.length(); i += 4) {
+      _view_write_pixel(this.buffer, i,
+          [this.pixels[i], this.pixels[i + 1], this.pixels[i + 2], this.pixels[i + 3]]);
+    }
+  }
+
+  _rebuild_surface() {
+    if (this.surface != nil) {
+      this.cairo.surfaceDestroy(this.surface);
+      this.surface = nil;
+    }
+
+    this.buffer = Buffer.alloc(this.width * this.height * 4);
+    this._write_pixels_to_buffer();
+    this.surface = this.cairo.imageSurfaceCreateForData(this.buffer,
+        Cairo.FORMAT_ARGB32, this.width, this.height, this.stride);
+    if (this.surface == nil) {
+      throw Error("ImageView: could not create Cairo image surface.");
+    }
+  }
+}

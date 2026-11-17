@@ -1,0 +1,39 @@
+require("image_view.lox");
+
+var view = ImageView.fromFile("tests/image/fixture.png");
+print view.width;
+// expect: 2
+print view.height;
+// expect: 2
+print view.getPixel(0, 0);
+// expect: [255, 0, 0, 255]
+print view.getPixel(0, 1);
+// expect: [0, 0, 255, 128]
+
+view.setPixel(1, 1, [10, 20, 30, 200]);
+print view.getPixel(1, 1);
+// expect: [10, 20, 30, 200]
+print view.image.get_pixel(1, 1);
+// expect: [10, 20, 30, 200]
+
+var pixels = view.getPixels();
+pixels[0] = 7;
+view.refreshFromPixels();
+print view.getPixel(0, 0);
+// expect: [7, 0, 0, 255]
+
+var canvas = Canvas.offscreen(4, 4);
+canvas.clear();
+view.draw(canvas, 0, 0, 4, 4);
+print canvas.savePng("/tmp/slox_image_view_test.png");
+// expect: 0
+
+view.syncImage();
+print view.image.get_pixel(0, 0);
+// expect: [7, 0, 0, 255]
+
+canvas.close();
+view.close();
+System.gc();
+print "done";
+// expect: done

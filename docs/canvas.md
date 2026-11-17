@@ -139,6 +139,68 @@ Options: `marginLeft`, `marginRight`, `marginTop`, `marginBottom`,
 `gridColor`, `axisColor`, `labelColor`, `frameColor`, `fontSize`.
 Coordinates are mapped with `mapX`/`mapY` and `unmapX`/`unmapY`.
 
+## Displaying images
+
+`require("image_view.lox")` connects the native `image` module (stb image
+loading) to a Cairo-backed `Canvas`. It loads an image into a mutable Slox RGBA
+array, builds a Cairo image surface from that array, and can draw it scaled to
+any rectangle.
+
+```lox
+require("image_view.lox");
+
+var view = ImageView.window("photo.jpg", 800, 600, "photo");
+var canvas = view.canvas;
+
+canvas.on("keypress", fun(c, event) {
+  if (event["text"] == "q") c.close();
+});
+
+canvas.run(fun(c) {
+  c.clear(Canvas.BG);
+  view.draw(c, 0, 0, c.width, c.height);
+});
+view.close();
+```
+
+`ImageView.fromFile(path, options)` wraps an `Image.load()` result without
+opening a window. `ImageView.window(path, width, height, title, options)` and
+`ImageView.offscreen(path, width, height, options)` create a canvas too; a
+window canvas falls back to offscreen rendering when no X11 display is
+available.
+
+Useful methods:
+
+| Method | Description |
+| --- | --- |
+| `getPixel(x, y)`, `setPixel(x, y, [r, g, b, a])` | Read/write one pixel. Values are 0..255. |
+| `getPixels()` | Return the mutable RGBA byte array. |
+| `refreshFromPixels()` | Upload direct array edits to the Cairo surface. |
+| `refresh()` | Reload pixels from the underlying `Image` object. |
+| `syncImage()` | Copy Slox pixel edits back into the `Image` object. |
+| `draw(canvas, x, y, width, height)` | Draw the surface, scaled to the rectangle. |
+| `save(path)` | Save the image after syncing pixel edits. |
+| `cairoSurface()` | Return the raw Cairo surface pointer. |
+| `close()` | Destroy the surface and close the canvas. |
+
+The conversion from RGBA to Cairo's premultiplied ARGB32 is handled by the
+library, so filters can be written in plain Lox:
+
+```lox
+var pixels = view.getPixels();
+for (var i = 0; i < pixels.length(); i += 4) {
+  pixels[i] = 255 - pixels[i];
+  pixels[i + 1] = 255 - pixels[i + 1];
+  pixels[i + 2] = 255 - pixels[i + 2];
+}
+view.refreshFromPixels();
+```
+
+The tracked `examples/image_view_demo.lox` shows a complete program. It opens a
+window when `DISPLAY` is available and otherwise renders one frame to
+`image_view_demo.png`. Press `i` to invert, `g` to grayscale, `r` to reset, and
+`q` to quit.
+
 ## Low-level Cairo and X11
 
 `require("cairo.lox")` creates a `Cairo` object with FFI bindings and both
@@ -156,6 +218,13 @@ cairo.surfaceWriteToPng(surface, "out.png");
 cairo.destroy(cr);
 cairo.surfaceDestroy(surface);
 ```
+
+`cairo.imageSurfaceCreateForData(buffer, format, width, height, stride)` wraps a
+writable `Buffer`; keep the buffer alive while the surface exists. Pixel data
+can be refreshed with `cairo.surfaceMarkDirty(surface)`. To draw one surface
+onto another, use `cairo.setSourceSurface(cr, surface, x, y)`; the pattern
+filter can be set with `cairo.patternSetFilter(cairo.getSource(cr),
+Cairo.FILTER_NEAREST)`.
 
 `require("x11.lox")` creates an `X11` object. `parse_event(buffer)` returns a
 Map for key, button, motion, expose, configure, and client-message events;

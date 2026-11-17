@@ -1,0 +1,62 @@
+#!/usr/bin/env slox
+// Display an image with ImageView and manipulate its RGBA bytes from Lox.
+// Usage: slox image_view_demo.lox [path/to/image.png]
+//
+// Keys in a window: i invert, g grayscale, r reset, q quit.
+// With no DISPLAY, one frame is rendered to image_view_demo.png instead.
+
+require("image_view.lox");
+
+var path = "tests/image/fixture.png";
+if (System.ARGS.length() > 1) path = System.ARGS[1];
+
+var view = ImageView.window(path, 640, 480, "slox image view");
+var canvas = view.canvas;
+
+fun invert_pixels(target) {
+  var pixels = target.getPixels();
+  for (var i = 0; i < pixels.length(); i += 4) {
+    pixels[i] = 255 - pixels[i];
+    pixels[i + 1] = 255 - pixels[i + 1];
+    pixels[i + 2] = 255 - pixels[i + 2];
+  }
+  target.refreshFromPixels();
+}
+
+fun grayscale_pixels(target) {
+  var pixels = target.getPixels();
+  for (var i = 0; i < pixels.length(); i += 4) {
+    var lum = Math.floor(0.299 * pixels[i] +
+                         0.587 * pixels[i + 1] +
+                         0.114 * pixels[i + 2] + 0.5);
+    pixels[i] = lum;
+    pixels[i + 1] = lum;
+    pixels[i + 2] = lum;
+  }
+  target.refreshFromPixels();
+}
+
+fun draw(c) {
+  c.clear(Canvas.BG);
+  view.draw(c, 0, 0, c.width, c.height);
+}
+
+canvas.on("keypress", fun(c, event) {
+  var key = event["text"];
+  if (key == nil) return;
+  if (key == "i") invert_pixels(view);
+  else if (key == "g") grayscale_pixels(view);
+  else if (key == "r") view.refresh();
+  else if (key == "q") c.close();
+});
+
+if (canvas.offscreen) {
+  canvas.render(draw);
+  print "No display available; wrote image_view_demo.png";
+  print canvas.savePng("image_view_demo.png");
+} else {
+  print "i = invert, g = grayscale, r = reset, q = quit";
+  canvas.run(draw);
+}
+
+view.close();
