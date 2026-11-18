@@ -334,6 +334,57 @@ class Canvas {
     };
   }
 
+  //: setTitle
+  // Change the title of an X11 window. Ignored for offscreen canvases.
+  setTitle(title) {
+    this.title = title;
+    if (!this.offscreen and this.x11 != nil and this.dpy != nil and this.win != nil) {
+      this.x11.storeName(this.dpy, this.win, title);
+      this.x11.flush(this.dpy);
+    }
+    return this;
+  }
+
+  //: resize
+  // Resize the canvas and its backing surface. X11 windows receive a
+  // XResizeWindow request; offscreen canvases get a fresh image surface.
+  // Required args:
+  //   Integer: width
+  //   Integer: height
+  resize(width, height) {
+    if (width <= 0 or height <= 0) {
+      throw Error("Canvas.resize(): dimensions must be positive.");
+    }
+    if (this.closed) return this;
+    if (width == this.width and height == this.height) return this;
+
+    if (this.offscreen) {
+      if (this.cr != nil) {
+        this.cairo.destroy(this.cr);
+        this.cr = nil;
+      }
+      if (this.surface != nil) {
+        this.cairo.surfaceDestroy(this.surface);
+        this.surface = nil;
+      }
+      this.width = width;
+      this.height = height;
+      this._open_offscreen();
+      return this;
+    }
+
+    this.width = width;
+    this.height = height;
+    if (this.x11 != nil and this.dpy != nil and this.win != nil) {
+      this.x11.resizeWindow(this.dpy, this.win, width, height);
+      this.x11.flush(this.dpy);
+    }
+    if (this.surface != nil) {
+      this.cairo.xlibSurfaceSetSize(this.surface, width, height);
+    }
+    return this;
+  }
+
   //: setColor
   // Set the current Cairo source color. Accepts 0xRRGGBB, "#rrggbb",
   // "#rrggbbaa", or an [r, g, b(, a)] array in either 0..1 or 0..255 units.

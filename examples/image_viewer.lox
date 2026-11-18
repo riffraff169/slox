@@ -3,7 +3,8 @@
 // Usage: slox examples/image_viewer.lox <image>
 //
 // Options are intentionally limited to the built-in -h/--help.
-// Press q to quit. With no DISPLAY, one frame is rendered to image_viewer.png.
+// Press q to quit, +/- to zoom in/out, and 0 to restore 100%. With no
+// DISPLAY, one frame is rendered to image_viewer.png.
 
 require("argparser.lox");
 require("image_view.lox");
@@ -21,10 +22,11 @@ if (parsed.args.length() < 1) {
 }
 
 var filename = parsed.args[0];
+var title = "slox image view - " + filename;
 var view;
 
 try {
-  view = ImageView.window(filename, nil, nil, "slox image view - " + filename);
+  view = ImageView.window(filename, nil, nil, title);
 } catch (e) {
   print "Error: Could not open '" + filename + "': " + e.message;
   System.exit(1);
@@ -32,9 +34,26 @@ try {
 
 var canvas = view.canvas;
 
+fun updateTitle() {
+  canvas.setTitle(title + " - " + (view.zoomStep * 10) + "%");
+}
+
 canvas.on("keypress", fun(c, event) {
   var key = event["text"];
-  if (key == "q" or key == "Q") c.close();
+  if (key == nil) return;
+
+  if (key == "q" or key == "Q") {
+    c.close();
+  } else if (key == "+" or key == "=") {
+    view.zoomIn();
+    updateTitle();
+  } else if (key == "-" or key == "_") {
+    view.zoomOut();
+    updateTitle();
+  } else if (key == "0") {
+    view.zoomReset();
+    updateTitle();
+  }
 });
 
 fun draw(c) {
@@ -47,7 +66,7 @@ if (canvas.offscreen) {
   print "No display available; wrote image_viewer.png";
   print canvas.savePng("image_viewer.png");
 } else {
-  print "q = quit";
+  print "q = quit, +/- = zoom, 0 = normal";
   canvas.run(draw);
 }
 

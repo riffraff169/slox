@@ -52,6 +52,11 @@ fun _view_filter(filter) {
 }
 
 class ImageView {
+  // Zoom is stored as tenths so zoom-in followed by zoom-out is exact.
+  const MIN_ZOOM_STEP = 1;
+  const MAX_ZOOM_STEP = 100;
+  const NORMAL_ZOOM_STEP = 10;
+
   //: init
   // Wrap an Image.load() result in a Cairo-backed view.
   // Required args:
@@ -67,6 +72,9 @@ class ImageView {
     this.image = image;
     this.width = image.width;
     this.height = image.height;
+    this.originalWidth = image.width;
+    this.originalHeight = image.height;
+    this.zoomStep = ImageView.NORMAL_ZOOM_STEP;
     this.options = options;
     var bytes = image.get_bytes();
     if (bytes == nil) throw Error("ImageView: could not read image bytes.");
@@ -160,6 +168,68 @@ class ImageView {
     return this;
   }
 
+  //: zoomFactor
+  // Current zoom multiplier. 1.0 is the original image size.
+  zoomFactor() {
+    return this.zoomStep / ImageView.NORMAL_ZOOM_STEP;
+  }
+
+  //: zoomSize
+  // Size of the displayed image at the current zoom. This is always derived
+  // from the original image dimensions, never from a previously scaled view.
+  zoomSize() {
+    var factor = this.zoomFactor();
+    return [
+      Math.max(1, Math.floor(this.originalWidth * factor + 0.5)),
+      Math.max(1, Math.floor(this.originalHeight * factor + 0.5))
+    ];
+  }
+
+  //: zoomTo
+  // Set an arbitrary zoom multiplier and resize the Canvas, if any. The image,
+  // pixel array, and Cairo source surface are left untouched.
+  zoomTo(factor) {
+    if (typeof(factor) != "Integer" and typeof(factor) != "Float") {
+      throw Error("ImageView.zoomTo() expects a number.");
+    }
+    if (factor <= 0 or factor != factor) {
+      throw Error("ImageView.zoomTo() expects a positive number.");
+    }
+
+    var step = Math.floor(factor * ImageView.NORMAL_ZOOM_STEP + 0.5);
+    this.zoomStep = _canvas_clamp(step, ImageView.MIN_ZOOM_STEP, ImageView.MAX_ZOOM_STEP);
+    return this._applyZoom();
+  }
+
+  //: zoomIn
+  // Increase zoom by 10% of the original image size and resize the Canvas.
+  zoomIn() {
+    if (this.zoomStep < ImageView.MAX_ZOOM_STEP) this.zoomStep = this.zoomStep + 1;
+    return this._applyZoom();
+  }
+
+  //: zoomOut
+  // Decrease zoom by 10% of the original image size and resize the Canvas.
+  zoomOut() {
+    if (this.zoomStep > ImageView.MIN_ZOOM_STEP) this.zoomStep = this.zoomStep - 1;
+    return this._applyZoom();
+  }
+
+  //: zoomReset
+  // Restore 100% zoom and resize the Canvas to the original image size.
+  zoomReset() {
+    this.zoomStep = ImageView.NORMAL_ZOOM_STEP;
+    return this._applyZoom();
+  }
+
+  _applyZoom() {
+    if (this.canvas != nil) {
+      var size = this.zoomSize();
+      this.canvas.resize(size[0], size[1]);
+    }
+    return this;
+  }
+
   //: getPixel
   // Return [r, g, b, a] at x, y from the Slox-owned pixel array.
   // Required args:
@@ -221,6 +291,8 @@ class ImageView {
     if (this.image.width != this.width or this.image.height != this.height) {
       this.width = this.image.width;
       this.height = this.image.height;
+      this.originalWidth = this.image.width;
+      this.originalHeight = this.image.height;
       this.stride = this.width * 4;
     }
     this.pixels = this.image.get_bytes().to_array();

@@ -119,6 +119,14 @@ canvas.remove(button);
 print canvas.widgets.length();
 // expect: 1
 
+canvas.resize(320, 200);
+print canvas.width + "x" + canvas.height;
+// expect: 320x200
+print canvas.cairo.imageSurfaceGetWidth(canvas.surface);
+// expect: 320
+print canvas.cairo.imageSurfaceGetHeight(canvas.surface);
+// expect: 200
+
 var path = Dir.tempdir() + "/slox_canvas_test.png";
 print canvas.savePng(path);
 // expect: 0

@@ -62,6 +62,8 @@ Drawing methods:
 | `setDash(dashes, offset)`, `clearDash()` | Dashed strokes |
 | `save()`, `restore()`, `translate()`, `scale()`, `rotate()` | Cairo state/transforms |
 | `clipRect(x, y, w, h)` | Clip (pair with save/restore) |
+| `resize(width, height)` | Resize the window or offscreen surface |
+| `setTitle(title)` | Change the X11 window title |
 | `present()`, `flush()`, `sync()` | Push drawing to the window |
 | `savePng(path)` | Write the surface as PNG |
 
@@ -181,9 +183,20 @@ Useful methods:
 | `draw(canvas, x, y, width, height, filter = nil)` | Draw the surface, scaled to the rectangle. `filter` is a `Cairo.FILTER_*` constant or `"nearest"`, `"fast"`, `"good"`, `"best"`, `"bilinear"`, or `"gaussian"`; the default is nearest. |
 | `save(path)` | Save the image after syncing pixel edits. |
 | `cairoSurface()` | Return the raw Cairo surface pointer. |
+| `zoomFactor()`, `zoomSize()` | Current multiplier and display size. |
+| `zoomIn()`, `zoomOut()`, `zoomReset()`, `zoomTo(factor)` | Change zoom by 10% steps (or set it, rounded to 10%), resizing the Canvas. |
 | `release()` | Destroy only the Cairo surface and buffer, leaving the canvas open. |
 | `dispose()` | Alias for `release()`. |
 | `close()` | Release the surface and close the canvas. |
+
+Zoom never changes the image's pixel array or Cairo source surface. `draw()`
+scales that original surface to the zoomed rectangle on each frame, so zooming
+out and back in does not resample an already-resampled image. Zoom steps are
+stored as integer tenths, so zoom in followed by zoom out returns to exactly
+100%.
+
+`examples/image_viewer.lox` uses `+`/`=` to zoom in, `-`/`_` to zoom out, and
+`0` to reset.
 
 For a viewer that keeps one window open while swapping images, call
 `view.release()` (or `view.dispose()`) before dropping a view and reuse the same

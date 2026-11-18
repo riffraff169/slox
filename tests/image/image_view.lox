@@ -1,5 +1,16 @@
 require("image_view.lox");
 
+class FakeZoomImage {
+  init(width, height) {
+    this.width = width;
+    this.height = height;
+    this.bytes = Buffer.alloc(width * height * 4);
+  }
+
+  get_bytes() { return this.bytes; }
+  has_method(name) { return false; }
+}
+
 var view = ImageView.fromFile("tests/image/fixture.png");
 print view.width;
 // expect: 2
@@ -48,8 +59,46 @@ view.refresh();
 print view.cairoSurface() != nil;
 // expect: true
 
+var zoomView = ImageView(FakeZoomImage(100, 50));
+var zoomCanvas = Canvas.offscreen(100, 50);
+zoomView.canvas = zoomCanvas;
+print zoomView.zoomSize();
+// expect: [100, 50]
+zoomView.zoomIn();
+print zoomView.zoomSize();
+// expect: [110, 55]
+print zoomCanvas.width + "x" + zoomCanvas.height;
+// expect: 110x55
+print zoomView.width + "x" + zoomView.height;
+// expect: 100x50
+print zoomView.image.width + "x" + zoomView.image.height;
+// expect: 100x50
+print zoomView.cairoSurface() != nil;
+// expect: true
+zoomView.zoomOut();
+print zoomView.zoomSize();
+// expect: [100, 50]
+zoomView.zoomIn();
+zoomView.zoomIn();
+zoomView.zoomIn();
+zoomView.zoomOut();
+zoomView.zoomOut();
+zoomView.zoomOut();
+print zoomView.zoomSize();
+// expect: [100, 50]
+zoomView.zoomTo(0.5);
+print zoomView.zoomSize();
+// expect: [50, 25]
+zoomView.zoomReset();
+print zoomView.zoomSize();
+// expect: [100, 50]
+print zoomCanvas.width + "x" + zoomCanvas.height;
+// expect: 100x50
+
 canvas.close();
 view.close();
+zoomCanvas.close();
+zoomView.close();
 System.gc();
 print "done";
 // expect: done

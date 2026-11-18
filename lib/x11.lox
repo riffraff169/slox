@@ -84,6 +84,11 @@ class X11 {
         ]
         );
 
+    this.fnResizeWindow = this.ffi.bind(
+        "XResizeWindow",
+        "int32",
+        ["pointer", "uint64", "uint32", "uint32"]
+        );
     this.fnMapWindow = this.ffi.bind("XMapWindow", "int32", ["pointer", "uint64"]);
     this.fnMapRaised = this.ffi.bind("XMapRaised", "int32", ["pointer", "uint64"]);
     this.fnUnmapWindow = this.ffi.bind("XUnmapWindow", "int32", ["pointer", "uint64"]);
@@ -170,6 +175,10 @@ class X11 {
 
   createSimpleWindow(dpy, parent, x, y, width, height, borderWidth, border, background) {
     return this.fnCreateSimpleWindow(dpy, parent, x, y, width, height, borderWidth, border, background);
+  }
+
+  resizeWindow(dpy, win, width, height) {
+    return this.fnResizeWindow(dpy, win, width, height);
   }
 
   selectInput(dpy, win, mask) {
