@@ -1,6 +1,6 @@
 Name:           slox-all
-Version:        1.11.2
-Release:        1%{?dist}
+Version: 1.11.3
+Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
 BuildArch:      noarch
@@ -31,6 +31,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.3-1
+- Add ImageView filtering and canvas reuse hooks
+
 * Tue Nov 17 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.2-1
 - Track the slox 1.11.2 component packages.
 
