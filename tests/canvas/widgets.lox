@@ -83,6 +83,62 @@ print menu.visible;
 // expect: false
 menu.draw(canvas);
 
+var itemPicked = -1;
+var listPicked = -1;
+var list = ListWidget(10, 20, 90, 36, ["Alpha", "Beta",
+    {"label": "Gamma", "callback": fun() { itemPicked = 9; }},
+    {"label": "Off", "enabled": false}],
+    fun(item, index) { listPicked = index; },
+    {"rowHeight": 12, "selected": 1, "fontSize": 11.0,
+     "emptyText": "empty"});
+print list.selectedIndex();
+// expect: 1
+print list.selectedItem();
+// expect: Beta
+print list.indexAt(20, 20 + 2 * 12 + 3);
+// expect: 2
+print list.handle({"type": X11.KeyPress, "keysym": X11.XK_Down, "text": ""});
+// expect: true
+print list.selectedIndex();
+// expect: 2
+print list.handle({"type": X11.KeyPress, "keysym": X11.XK_Return, "text": ""});
+// expect: true
+print itemPicked;
+// expect: 9
+print listPicked;
+// expect: 2
+listPicked = -1;
+print list.handle({"type": X11.KeyPress, "keysym": X11.XK_Down, "text": ""});
+// expect: true
+print list.selectedIndex();
+// expect: 2
+print list.handle({"type": X11.KeyPress, "keysym": X11.XK_Home, "text": ""});
+// expect: true
+print list.selectedIndex();
+// expect: 0
+var listPress = {"type": X11.ButtonPress, "button": 1, "x": 20,
+    "y": 20 + 3};
+var listRelease = {"type": X11.ButtonRelease, "button": 1, "x": 20,
+    "y": 20 + 3};
+print list.handle(listPress);
+// expect: true
+print list.handle(listRelease);
+// expect: true
+print listPicked;
+// expect: 0
+print list.handle({"type": X11.ButtonPress, "button": 5, "x": 20, "y": 30});
+// expect: true
+print list.selectedIndex();
+// expect: 2
+list.draw(canvas);
+list.setItems(["Only", {"label": "No", "enabled": false}], 0);
+print list.selectedItem();
+// expect: Only
+list.setItems([], nil);
+print list.selectedIndex();
+// expect: -1
+list.draw(canvas);
+
 var submitted = 0;
 var input = TextInput(10, 130, 100, 26,
     {"text": "ab", "focused": true, "onSubmit": fun() { submitted = submitted + 1; }});

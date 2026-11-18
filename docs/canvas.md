@@ -99,7 +99,8 @@ instead of entering a loop.
 Widgets are added with `canvas.add(widget)`. Added widgets are drawn
 automatically after the `draw` callback and receive events in reverse add
 order, so later widgets (menus) get the first chance to consume an event.
-Widget trigger callbacks are invoked with no arguments.
+Button callbacks take no arguments; Menu and ListWidget callbacks receive
+`(item, index)`.
 
 ```lox
 var button = Button(20, 20, 120, 32, "Save", fun() {
@@ -111,6 +112,12 @@ var menu = Menu(20, 60, 180, [
   {"label": "Quit", "callback": fun() { canvas.close(); }}
 ], nil, {"title": "File"});
 
+var list = ListWidget(20, 150, 180, 120,
+    ["First", "Second", {"label": "Disabled", "enabled": false}],
+    fun(item, index) { print "" + index + ": " + item; },
+    {"rowHeight": 24, "selected": 0});
+
+canvas.add(list);
 canvas.add(button);
 canvas.add(menu);
 ```
@@ -121,6 +128,16 @@ canvas.add(menu);
 - `Menu(x, y, w, items, callback = nil, options = nil)` supports string items
   or maps with `label`, `callback`, and `enabled`. `open(x, y)` and `close()`
   show/hide it. Options include `title`, `rowHeight`, and `fontSize`.
+- `ListWidget(x, y, w, h, items, callback = nil, options = nil)` is a
+  scrollable selection list. Items may be strings or maps with `label`,
+  `enabled`, and `callback`. It handles Up/Down, Page Up/Down, Home/End, wheel,
+  and click; Return/Space activates the selection. Options include `rowHeight`,
+  `fontSize`, `padding`, `selected`, `emptyText`, `scrollbar`,
+  `activateOnClick`, `background`, `textColor`, `selectedColor`,
+  `selectedTextColor`, and `borderColor`. Use `setItems(items, selected)`,
+  `select(index)`, `move(delta)`, `selectedIndex()`, `selectedItem()`, and
+  `activate()` to drive it from code. Call `handle(event, canvas)` and
+  `draw(canvas)` directly if you are not using `canvas.add()`.
 - `TextInput(x, y, w, h, options = nil)` supports `text`, `placeholder`,
   `focused`, `onSubmit`, and `onChange`. Call
   `input.handle(event, canvas)` directly if you are not using `canvas.add()`
@@ -235,6 +252,10 @@ the mouse wheel to move, Enter/Space or a click to open an entry, and Esc (or th
 window manager close button) to close the browser. The first image is selected
 by default; directories are listed first, hidden files are skipped, and `..`
 navigates to the parent directory.
+
+`FileBrowser` is a thin adapter over `ListWidget`: it scans directories and
+supplies labeled rows, while the widget owns selection, scrolling, and drawing.
+The underlying widget is available as `browser.list`.
 
 ```lox
 require("file_browser.lox");

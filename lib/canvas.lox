@@ -35,6 +35,31 @@ fun _canvas_clamp(value, low, high) {
   return value;
 }
 
+// Lox strings do not support comparison, so compare their bytes explicitly.
+fun _canvas_compare_text(a, b) {
+  var left = a.to_array();
+  var right = b.to_array();
+  var limit = left.length();
+  if (right.length() < limit) limit = right.length();
+  for (var i = 0; i < limit; i += 1) {
+    if (left[i] < right[i]) return -1;
+    if (left[i] > right[i]) return 1;
+  }
+  if (left.length() < right.length()) return -1;
+  if (left.length() > right.length()) return 1;
+  return 0;
+}
+
+fun _canvas_truncate_text(canvas, text, maxWidth, fontSize) {
+  if (canvas.textWidth(text, fontSize) <= maxWidth) return text;
+  var result = text;
+  while (result.length() > 0 and
+         canvas.textWidth(result + "...", fontSize) > maxWidth) {
+    result = result.slice(0, result.length() - 1);
+  }
+  return result + "...";
+}
+
 //: _canvas_rgba
 // Convert an integer 0xRRGGBB, a "#rrggbb" string, or a 3/4 element array into
 // normalized [r, g, b, a] components. Array components may be either 0..1 or
@@ -279,7 +304,7 @@ class Canvas {
   }
 
   //: add
-  // Register a widget (Button, Menu, TextInput). Added widgets are drawn after
+  // Register a widget (Button, Menu, ListWidget, TextInput). Added widgets are drawn after
   // the run/render draw callback and receive events in reverse add order, so the
   // most recently added widget gets the first chance to consume an event.
   add(widget) {
@@ -1313,6 +1338,321 @@ class Menu {
     }
 
     return true;
+  }
+}
+
+//@ ListWidget
+// A scrollable, selectable list. Items may be Strings or Maps with "label",
+// "enabled", and "callback" keys. The widget draws only its own rectangle, so
+// callers can place headers, footers, or other widgets around it. Key and
+// wheel events move the selection; Return/Space activates it. A left click
+// selects on press and activates on release, unless activateOnClick is set.
+//
+// Requires:
+//   Integer: x, y, width, height
+//   Array: items
+// Optional:
+//   Function: callback (called as callback(item, index))
+//   Map: options
+//
+// Options:
+//   Number: rowHeight, fontSize, padding
+//   Integer: selected
+//   Bool: scrollbar, activateOnClick
+//   String: emptyText
+//   Array|Integer|String: background, textColor, selectedColor,
+//     selectedTextColor, borderColor
+class ListWidget {
+  init(x, y, width, height, items, callback = nil, options = nil) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.options = options;
+    this.items = items;
+    this.callback = callback;
+    if (this.callback == nil) this.callback = _canvas_option(options, "onSelect", nil);
+    this.rowHeight = _canvas_option(options, "rowHeight", 24);
+    this.fontSize = _canvas_option(options, "fontSize", 13.0);
+    this.padding = _canvas_option(options, "padding", 8);
+    this.background = _canvas_option(options, "background", Canvas.PANEL);
+    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
+    this.selectedColor = _canvas_option(options, "selectedColor",
+        [0.14, 0.34, 0.45]);
+    this.selectedTextColor = _canvas_option(options, "selectedTextColor",
+        Canvas.FG);
+    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
+    this.emptyText = _canvas_option(options, "emptyText", "");
+    this.scrollbar = _canvas_option(options, "scrollbar", true);
+    this.activateOnClick = _canvas_option(options, "activateOnClick", false);
+    this.selected = -1;
+    this.scrollTop = 0;
+    this._pressedIndex = -1;
+    this.setItems(items, _canvas_option(options, "selected", -1));
+  }
+
+  setBounds(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    if (this.height < 0) this.height = 0;
+    return this._ensureVisible();
+  }
+
+  itemLabel(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map") {
+      if (item.has("label") and item["label"] != nil) return "" + item["label"];
+      if (item.has("text") and item["text"] != nil) return "" + item["text"];
+      return "[item]";
+    }
+    return "" + item;
+  }
+
+  itemEnabled(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map" and item.has("enabled")) return item["enabled"];
+    return true;
+  }
+
+  itemCallback(index) {
+    var item = this.items[index];
+    if (typeof(item) == "Map" and item.has("callback")) return item["callback"];
+    return nil;
+  }
+
+  contains(px, py) {
+    return px >= this.x and px <= this.x + this.width and
+        py >= this.y and py <= this.y + this.height;
+  }
+
+  indexAt(px, py) {
+    if (!this.contains(px, py)) return -1;
+    var row = Integer((py - this.y) / this.rowHeight);
+    var index = this.scrollTop + row;
+    if (index < 0 or index >= this.items.length()) return -1;
+    return index;
+  }
+
+  visibleRows() {
+    var rows = Integer(this.height / this.rowHeight);
+    if (rows < 1) rows = 1;
+    return rows;
+  }
+
+  selectedIndex() {
+    return this.selected;
+  }
+
+  selectedItem() {
+    if (this.selected < 0 or this.selected >= this.items.length()) return nil;
+    return this.items[this.selected];
+  }
+
+  _findEnabled(start, step) {
+    var index = start;
+    while (index >= 0 and index < this.items.length()) {
+      if (this.itemEnabled(index)) return index;
+      index = index + step;
+    }
+    return -1;
+  }
+
+  _ensureVisible() {
+    if (this.items.length() == 0 or this.selected < 0) {
+      this.scrollTop = 0;
+      return this;
+    }
+    var rows = this.visibleRows();
+    if (this.scrollTop > this.selected) this.scrollTop = this.selected;
+    if (this.selected >= this.scrollTop + rows) {
+      this.scrollTop = this.selected - rows + 1;
+    }
+    if (this.scrollTop < 0) this.scrollTop = 0;
+    var maxScroll = this.items.length() - rows;
+    if (maxScroll < 0) maxScroll = 0;
+    if (this.scrollTop > maxScroll) this.scrollTop = maxScroll;
+    return this;
+  }
+
+  //: setItems
+  // Replace the list contents, optionally selecting a specific index.
+  setItems(items, selected = nil) {
+    this.items = items;
+    if (selected == nil) selected = this.selected;
+    if (items.length() == 0) {
+      this.selected = -1;
+    } else {
+      var start = Integer(_canvas_clamp(selected, 0, items.length() - 1));
+      var chosen = this._findEnabled(start, 1);
+      if (chosen < 0) chosen = this._findEnabled(start - 1, -1);
+      this.selected = chosen;
+    }
+    this.scrollTop = 0;
+    this._pressedIndex = -1;
+    return this._ensureVisible();
+  }
+
+  //: select
+  // Highlight an index and scroll it into view.
+  select(index) {
+    if (this.items.length() == 0) {
+      this.selected = -1;
+      return this;
+    }
+    var start = Integer(_canvas_clamp(index, 0, this.items.length() - 1));
+    var chosen = this._findEnabled(start, 1);
+    if (chosen < 0) chosen = this._findEnabled(start - 1, -1);
+    if (chosen >= 0) this.selected = chosen;
+    return this._ensureVisible();
+  }
+
+  //: move
+  // Move the selection by delta enabled entries.
+  move(delta) {
+    if (this.items.length() == 0) return this;
+    var step = delta < 0 ? -1 : 1;
+    var count = delta;
+    if (count < 0) count = -count;
+    var next = this.selected;
+    while (count > 0) {
+      next = next + step;
+      if (next < 0 or next >= this.items.length()) {
+        next = Integer(_canvas_clamp(next, 0, this.items.length() - 1));
+        break;
+      }
+      if (this.itemEnabled(next)) count = count - 1;
+    }
+    var chosen = this._findEnabled(next, step);
+    if (chosen < 0) chosen = this._findEnabled(next - step, -step);
+    if (chosen >= 0) this.selected = chosen;
+    return this._ensureVisible();
+  }
+
+  //: activate
+  // Invoke the callback for the selected entry.
+  activate() {
+    if (this.selected < 0 or this.selected >= this.items.length()) return false;
+    if (!this.itemEnabled(this.selected)) return false;
+    var index = this.selected;
+    var item = this.items[index];
+    var itemCallback = this.itemCallback(index);
+    if (itemCallback != nil) itemCallback();
+    if (this.callback != nil) this.callback(item, index);
+    return true;
+  }
+
+  //: draw
+  // Render the list onto a Canvas.
+  draw(canvas) {
+    canvas.fillRect(this.x, this.y, this.width, this.height, this.background);
+    canvas.save();
+    canvas.clipRect(this.x, this.y, this.width, this.height);
+
+    var rows = this.visibleRows();
+    if (this.items.length() == 0) {
+      if (this.emptyText != nil and this.emptyText != "") {
+        canvas.textTop(this.x + this.padding, this.y + this.padding,
+            _canvas_truncate_text(canvas, this.emptyText,
+                this.width - this.padding * 2, this.fontSize),
+            Canvas.MUTED, this.fontSize);
+      }
+    } else {
+      for (var i = 0; i < rows; i += 1) {
+        var index = this.scrollTop + i;
+        if (index >= this.items.length()) break;
+        var rowY = this.y + i * this.rowHeight;
+        if (index == this.selected) {
+          canvas.fillRect(this.x + 1, rowY + 1, this.width - 2,
+              this.rowHeight - 2, this.selectedColor);
+        }
+        var color = this.textColor;
+        if (index == this.selected) color = this.selectedTextColor;
+        else if (!this.itemEnabled(index)) color = Canvas.MUTED;
+        var label = _canvas_truncate_text(canvas, this.itemLabel(index),
+            this.width - this.padding * 2, this.fontSize);
+        canvas.text(this.x + this.padding,
+            rowY + this.rowHeight * 0.5 + this.fontSize * 0.35,
+            label, color, this.fontSize);
+      }
+    }
+
+    if (this.scrollbar and this.items.length() > rows) {
+      var thumbHeight = Integer(this.height * rows / this.items.length());
+      if (thumbHeight < 12) thumbHeight = 12;
+      if (thumbHeight > this.height) thumbHeight = this.height;
+      var maxScroll = this.items.length() - rows;
+      var thumbY = this.y;
+      if (maxScroll > 0) {
+        thumbY = this.y + Integer((this.height - thumbHeight) *
+            this.scrollTop / maxScroll);
+      }
+      canvas.fillRect(this.x + this.width - 5, thumbY, 3, thumbHeight,
+          Canvas.MUTED);
+    }
+
+    canvas.restore();
+    if (this.borderColor != nil) {
+      canvas.strokeRect(this.x, this.y, this.width, this.height,
+          this.borderColor, 1.0);
+    }
+    return this;
+  }
+
+  //: handle
+  // Process a parsed X11 event. Returns true when the event was consumed.
+  handle(event, canvas = nil) {
+    var type = event["type"];
+
+    if (type == X11.ButtonPress) {
+      var button = event["button"];
+      if (button == 4 or button == 5) {
+        if (!this.contains(event["x"], event["y"])) return false;
+        if (button == 4) this.move(-3);
+        else this.move(3);
+        return true;
+      }
+      if (button == 1) {
+        var index = this.indexAt(event["x"], event["y"]);
+        if (index < 0 or !this.itemEnabled(index)) return false;
+        this.select(index);
+        if (this.activateOnClick) return this.activate();
+        this._pressedIndex = index;
+        return true;
+      }
+      return false;
+    }
+
+    if (type == X11.ButtonRelease) {
+      if (event["button"] != 1 or this._pressedIndex < 0) return false;
+      var pressed = this._pressedIndex;
+      this._pressedIndex = -1;
+      var index = this.indexAt(event["x"], event["y"]);
+      if (index == pressed and this.itemEnabled(index)) return this.activate();
+      return true;
+    }
+
+    if (type == X11.KeyPress) {
+      var key = event["keysym"];
+      if (key == X11.XK_Up) this.move(-1);
+      else if (key == X11.XK_Down) this.move(1);
+      else if (key == X11.XK_Page_Up) this.move(-this.visibleRows());
+      else if (key == X11.XK_Page_Down) this.move(this.visibleRows());
+      else if (key == X11.XK_Home) this.select(0);
+      else if (key == X11.XK_End) this.select(this.items.length() - 1);
+      else if (key == X11.XK_Return or key == X11.XK_KP_Enter or
+               key == X11.XK_space) return this.activate();
+      else return false;
+      return true;
+    }
+
+    if (type == X11.ConfigureNotify) {
+      this._ensureVisible();
+      return false;
+    }
+
+    return false;
   }
 }
 

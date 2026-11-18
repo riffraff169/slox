@@ -17,6 +17,10 @@ var browser = FileBrowser(dir, canvas, fun(path) { chosen = path; }, {
 
 print browser.entries.length();
 // expect: 5
+print typeof(browser.list) == "ListWidget";
+// expect: true
+print browser.list.selectedIndex() == 2;
+// expect: true
 print browser.selectedEntry()["name"];
 // expect: a.jpg
 
