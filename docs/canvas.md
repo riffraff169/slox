@@ -226,6 +226,47 @@ window when `DISPLAY` is available and otherwise renders one frame to
 `image_view_demo.png`. Press `i` to invert, `g` to grayscale, `r` to reset, and
 `q` to quit.
 
+## Browsing for images
+
+`require("file_browser.lox")` adds a Canvas-based directory browser. When
+`examples/image_viewer.lox` is given a directory instead of an image, it opens a
+second window listing subdirectories and supported image files. Use Up/Down or
+the mouse wheel to move, Enter/Space or a click to open an entry, and Esc (or the
+window manager close button) to close the browser. The first image is selected
+by default; directories are listed first, hidden files are skipped, and `..`
+navigates to the parent directory.
+
+```lox
+require("file_browser.lox");
+
+var browserCanvas = Canvas.window(520, 640, "Select image");
+var browser = FileBrowser(dir, browserCanvas, fun(path) {
+  print "selected: " + path;
+}, {
+  "title": "slox image browser",
+  "onClose": fun(browser) { browserCanvas.close(); }
+});
+
+browserCanvas.on("event", fun(c, event) {
+  browser.handleEvent(event, c);
+});
+browserCanvas.run(fun(c) {
+  browser.draw(c);
+});
+```
+
+`FileBrowser(directory, canvas, onSelect, options = nil)` reads the directory
+with `Dir.list()` and calls `onSelect(path)` when an image is activated. It does
+not load the image itself. Supported extensions are `png`, `jpg`, `jpeg`, `bmp`,
+`gif`, `tga`, `pnm`, `ppm`, `pgm`, and `pbm` (case-insensitive). Options are
+`title`, `rowHeight`, `fontSize`, and `onClose`; `onClose(browser)` is called
+once when the browser is closed. Useful methods are `refresh()`,
+`navigate(path)`, `moveSelection(delta)`, `selectedEntry()`, `handleEvent(event)`,
+`draw()`, and `close()`.
+
+With no X11 display, the viewer's directory mode renders the browser once to
+`file_browser.png`; selecting an image there renders it to `image_viewer.png`.
+
 ## Low-level Cairo and X11
 
 `require("cairo.lox")` creates a `Cairo` object with FFI bindings and both

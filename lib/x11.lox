@@ -32,6 +32,7 @@ class X11 {
   const DestroyNotify    = 17;
 
   // Keysyms used by the event helper and simple text inputs.
+  const XK_space     = 0x0020;
   const XK_BackSpace = 0xFF08;
   const XK_Tab       = 0xFF09;
   const XK_Return    = 0xFF0D;

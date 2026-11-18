@@ -1,0 +1,344 @@
+require("canvas.lox");
+
+// A small Canvas-based image browser. It lists directories and supported image
+// files, supports keyboard and mouse selection, and calls onSelect(path) when
+// an image is activated. It does not load or display the image itself.
+
+var _fb_image_exts = ["png", "jpg", "jpeg", "bmp", "gif", "tga",
+    "pnm", "ppm", "pgm", "pbm"];
+
+fun _fb_option(options, key, fallback) {
+  if (options != nil and typeof(options) == "Map" and options.has(key)) {
+    var value = options[key];
+    if (value != nil) return value;
+  }
+  return fallback;
+}
+
+fun _fb_join(dir, name) {
+  var base = dir;
+  while (base.length() > 1 and base[base.length() - 1] == "/") {
+    base = base.slice(0, base.length() - 1);
+  }
+  if (base == "" or base == ".") return name;
+  if (base == "/") return "/" + name;
+  return base + "/" + name;
+}
+
+fun _fb_parent(path) {
+  var base = path;
+  while (base.length() > 1 and base[base.length() - 1] == "/") {
+    base = base.slice(0, base.length() - 1);
+  }
+  var slash = base.rfind("/");
+  if (slash < 0) return ".";
+  if (slash == 0) return "/";
+  return base.slice(0, slash);
+}
+
+fun _fb_is_image(name) {
+  var dot = name.rfind(".");
+  if (dot < 0) return false;
+  var ext = name.slice(dot + 1, name.length()).to_lower();
+  for (var i = 0; i < _fb_image_exts.length(); i += 1) {
+    if (ext == _fb_image_exts[i]) return true;
+  }
+  return false;
+}
+
+fun _fb_compare_text(a, b) {
+  var left = a.to_array();
+  var right = b.to_array();
+  var limit = left.length();
+  if (right.length() < limit) limit = right.length();
+  for (var i = 0; i < limit; i += 1) {
+    if (left[i] < right[i]) return -1;
+    if (left[i] > right[i]) return 1;
+  }
+  if (left.length() < right.length()) return -1;
+  if (left.length() > right.length()) return 1;
+  return 0;
+}
+
+fun _fb_truncate(canvas, text, maxWidth, fontSize) {
+  if (canvas.textWidth(text, fontSize) <= maxWidth) return text;
+  var result = text;
+  while (result.length() > 0 and
+         canvas.textWidth(result + "...", fontSize) > maxWidth) {
+    result = result.slice(0, result.length() - 1);
+  }
+  return result + "...";
+}
+
+class FileBrowser {
+  // Required args:
+  //   String: directory
+  //   Canvas: canvas
+  //   Function: onSelect
+  // Optional args:
+  //   Map: options
+  //
+  // Options:
+  //   String: title
+  //   Integer: rowHeight
+  //   Number: fontSize
+  //   Function: onClose
+  init(directory, canvas, onSelect, options = nil) {
+    this.path = directory;
+    this.canvas = canvas;
+    this.onSelect = onSelect;
+    this.options = options;
+    this.title = _fb_option(options, "title", "Select an image");
+    this.rowHeight = _fb_option(options, "rowHeight", 24);
+    this.fontSize = _fb_option(options, "fontSize", 13.0);
+    this.onClose = _fb_option(options, "onClose", nil);
+    this.headerHeight = 34;
+    this.footerHeight = 30;
+    this.entries = [];
+    this.selected = -1;
+    this.scrollTop = 0;
+    this.message = nil;
+    this.closed = false;
+    this.refresh();
+  }
+
+  //: refresh
+  // Re-read the current directory. The first image is selected by default.
+  refresh() {
+    var listed = Dir.list(this.path).unwrap();
+    var entries = [];
+    var parent = _fb_parent(this.path);
+    if (parent != this.path) {
+      entries.push({"name": "..", "path": parent, "isDir": true,
+          "sortName": ".."});
+    }
+
+    if (listed != nil) {
+      for (var i = 0; i < listed.length(); i += 1) {
+        var name = listed[i];
+        if (name == "." or name == "..") continue;
+        if (name.length() > 1 and name[0] == ".") continue;
+
+        var fullPath = _fb_join(this.path, name);
+        if (Dir.isdir(fullPath)) {
+          entries.push({"name": name, "path": fullPath, "isDir": true,
+              "sortName": name.to_lower()});
+        } else if (_fb_is_image(name)) {
+          entries.push({"name": name, "path": fullPath, "isDir": false,
+              "sortName": name.to_lower()});
+        }
+      }
+    }
+
+    entries.sort(fun(a, b) {
+      if (a["isDir"] != b["isDir"]) return a["isDir"] ? -1 : 1;
+      return _fb_compare_text(a["sortName"], b["sortName"]);
+    });
+
+    this.entries = entries;
+    this.selected = -1;
+    for (var i = 0; i < entries.length(); i += 1) {
+      if (!entries[i]["isDir"]) {
+        this.selected = i;
+        break;
+      }
+    }
+    if (this.selected < 0 and entries.length() > 0) this.selected = 0;
+    this.scrollTop = 0;
+    this.message = (entries.length() == 0) ?
+        "No images found in " + this.path : nil;
+
+    if (this.canvas != nil and !this.canvas.offscreen and this.title != nil) {
+      this.canvas.setTitle(this.title + " - " + this.path);
+    }
+    return this;
+  }
+
+  //: navigate
+  // Browse a different directory.
+  navigate(path) {
+    this.path = path;
+    return this.refresh();
+  }
+
+  //: selectedEntry
+  // Return the current entry Map, or nil when the list is empty.
+  selectedEntry() {
+    if (this.selected < 0 or this.selected >= this.entries.length()) return nil;
+    return this.entries[this.selected];
+  }
+
+  //: moveSelection
+  // Move the highlighted row by delta entries.
+  moveSelection(delta, canvas = nil) {
+    if (canvas == nil) canvas = this.canvas;
+    if (this.entries.length() == 0) return this;
+
+    var next = this.selected + delta;
+    if (next < 0) next = 0;
+    if (next >= this.entries.length()) next = this.entries.length() - 1;
+    this.selected = next;
+    this._ensureVisible(canvas);
+    return this;
+  }
+
+  //: activate
+  // Enter the selected directory, or report the selected image via onSelect.
+  activate() {
+    var entry = this.selectedEntry();
+    if (entry == nil) return false;
+
+    if (entry["isDir"]) {
+      this.navigate(entry["path"]);
+      return true;
+    }
+
+    if (this.onSelect != nil) this.onSelect(entry["path"]);
+    return true;
+  }
+
+  //: rowAt
+  // Return the entry index under a mouse position, or -1 outside the list.
+  rowAt(canvas, x, y) {
+    if (x < 0 or x > canvas.width) return -1;
+    if (y < this.headerHeight or y > canvas.height - this.footerHeight) return -1;
+    var row = Math.floor((y - this.headerHeight) / this.rowHeight) + this.scrollTop;
+    if (row < 0 or row >= this.entries.length()) return -1;
+    return row;
+  }
+
+  //: handleEvent
+  // Process a parsed Canvas event. Returns true when the event was used.
+  handleEvent(event, canvas = nil) {
+    if (canvas == nil) canvas = this.canvas;
+    if (event == nil or this.closed) return false;
+
+    if (event["close"]) {
+      this.close();
+      return true;
+    }
+
+    var type = event["type"];
+    if (type == X11.KeyPress) {
+      var keysym = event["keysym"];
+      if (keysym == X11.XK_Up) return this.moveSelection(-1, canvas) != nil;
+      if (keysym == X11.XK_Down) return this.moveSelection(1, canvas) != nil;
+      if (keysym == X11.XK_Return or keysym == X11.XK_KP_Enter or
+          keysym == X11.XK_space) {
+        return this.activate();
+      }
+      if (keysym == X11.XK_Escape) {
+        this.close();
+        return true;
+      }
+      return false;
+    }
+
+    if (type == X11.ButtonPress) {
+      var button = event["button"];
+      if (button == 4) return this.moveSelection(-3, canvas) != nil;
+      if (button == 5) return this.moveSelection(3, canvas) != nil;
+      if (button == 1) {
+        var row = this.rowAt(canvas, event["x"], event["y"]);
+        if (row < 0) return false;
+        this.selected = row;
+        this._ensureVisible(canvas);
+        return this.activate();
+      }
+    }
+
+    if (type == X11.ConfigureNotify) {
+      this._ensureVisible(canvas);
+    }
+
+    return false;
+  }
+
+  //: draw
+  // Render the browser onto its Canvas.
+  draw(canvas = nil) {
+    if (canvas == nil) canvas = this.canvas;
+    this._ensureVisible(canvas);
+    canvas.clear(Canvas.BG);
+
+    canvas.fillRect(0, 0, canvas.width, this.headerHeight, Canvas.PANEL);
+    canvas.textTop(10, 7, this.title, Canvas.FG, this.fontSize + 2.0);
+    canvas.textTop(10, this.headerHeight - this.fontSize - 3,
+        _fb_truncate(canvas, this.path, canvas.width - 20, this.fontSize),
+        Canvas.MUTED, this.fontSize);
+
+    canvas.fillRect(0, canvas.height - this.footerHeight, canvas.width,
+        this.footerHeight, Canvas.PANEL);
+    canvas.textTop(10, canvas.height - this.footerHeight + 7,
+        "Up/Down: move  Enter/Space: open  Click: open  Esc: close",
+        Canvas.MUTED, this.fontSize - 1.0);
+
+    canvas.save();
+    canvas.clipRect(0, this.headerHeight, canvas.width,
+        canvas.height - this.headerHeight - this.footerHeight);
+
+    if (this.entries.length() == 0) {
+      var message = this.message;
+      if (message == nil) message = "No images found";
+      canvas.textTop(12, this.headerHeight + 8, message, Canvas.MUTED,
+          this.fontSize);
+    } else {
+      var visible = this._visibleRows(canvas);
+      for (var i = 0; i < visible; i += 1) {
+        var index = this.scrollTop + i;
+        if (index >= this.entries.length()) break;
+
+        var entry = this.entries[index];
+        var y = this.headerHeight + i * this.rowHeight;
+        if (index == this.selected) {
+          canvas.fillRect(0, y, canvas.width, this.rowHeight, [0.14, 0.34, 0.45]);
+        }
+
+        var prefix = entry["isDir"] ? "[dir] " : "      ";
+        var color = entry["isDir"] ? Canvas.ACCENT : Canvas.FG;
+        if (index == this.selected) color = Canvas.FG;
+        var label = prefix + entry["name"];
+        canvas.textTop(10, y + (this.rowHeight - this.fontSize) / 2.0,
+            _fb_truncate(canvas, label, canvas.width - 20, this.fontSize),
+            color, this.fontSize);
+      }
+    }
+
+    canvas.restore();
+    return this;
+  }
+
+  //: close
+  // Close the browser window and invoke onClose once.
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.canvas != nil and this.canvas.isOpen()) this.canvas.close();
+    if (this.onClose != nil) this.onClose(this);
+  }
+
+  _visibleRows(canvas) {
+    var rows = Math.floor((canvas.height - this.headerHeight -
+        this.footerHeight) / this.rowHeight);
+    if (rows < 1) rows = 1;
+    return rows;
+  }
+
+  _ensureVisible(canvas) {
+    if (canvas == nil) return;
+    if (this.entries.length() == 0) {
+      this.scrollTop = 0;
+      return;
+    }
+
+    var rows = this._visibleRows(canvas);
+    if (this.scrollTop > this.selected) this.scrollTop = this.selected;
+    if (this.selected >= this.scrollTop + rows) {
+      this.scrollTop = this.selected - rows + 1;
+    }
+    if (this.scrollTop < 0) this.scrollTop = 0;
+    var maxScroll = this.entries.length() - rows;
+    if (maxScroll < 0) maxScroll = 0;
+    if (this.scrollTop > maxScroll) this.scrollTop = maxScroll;
+  }
+}

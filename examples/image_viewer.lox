@@ -1,73 +1,151 @@
 #!/usr/bin/env slox
-// Minimal image viewer: open the first non-option argument in a window.
-// Usage: slox examples/image_viewer.lox <image>
+// Minimal image viewer: open the first non-option argument, or browse a
+// directory and choose an image from a second Canvas window.
+// Usage: slox examples/image_viewer.lox <image-or-directory>
 //
 // Options are intentionally limited to the built-in -h/--help.
-// Press q to quit, +/- to zoom in/out, and 0 to restore 100%. With no
-// DISPLAY, one frame is rendered to image_viewer.png.
+// Viewer keys: q quit, +/- zoom, 0 reset zoom. With no DISPLAY, one frame is
+// rendered to image_viewer.png.
 
 require("argparser.lox");
 require("image_view.lox");
+require("file_browser.lox");
 
 var parser = ArgParser("slox examples/image_viewer.lox",
-                       "Display an image in a window.");
+                       "Display an image in a window, or browse a directory.");
 var parsed = parser.parse(System.ARGS);
 
 if (parsed == nil) System.exit(0);
 
 if (parsed.args.length() < 1) {
   print "Error: Missing image filename.";
-  print "Usage: slox examples/image_viewer.lox <image>";
+  print "Usage: slox examples/image_viewer.lox <image-or-directory>";
   System.exit(1);
 }
 
 var filename = parsed.args[0];
-var title = "slox image view - " + filename;
-var view;
+var view = nil;
+var canvas = nil;
+var browser = nil;
+var browserCanvas = nil;
+var running = true;
 
-try {
-  view = ImageView.window(filename, nil, nil, title);
-} catch (e) {
-  print "Error: Could not open '" + filename + "': " + e.message;
-  System.exit(1);
+fun windowOpen(target) {
+  return target != nil and target.isOpen();
 }
-
-var canvas = view.canvas;
 
 fun updateTitle() {
-  canvas.setTitle(title + " - " + (view.zoomStep * 10) + "%");
+  if (view == nil or canvas == nil) return;
+  canvas.setTitle("slox image view - " + view.image.width + "x" +
+      view.image.height + " - " + (view.zoomStep * 10) + "%");
 }
 
-canvas.on("keypress", fun(c, event) {
-  var key = event["text"];
-  if (key == nil) return;
+fun registerViewerEvents(target) {
+  target.on("keypress", fun(c, event) {
+    var key = event["text"];
+    if (key == nil) return;
 
-  if (key == "q" or key == "Q") {
-    c.close();
-  } else if (key == "+" or key == "=") {
-    view.zoomIn();
-    updateTitle();
-  } else if (key == "-" or key == "_") {
-    view.zoomOut();
-    updateTitle();
-  } else if (key == "0") {
-    view.zoomReset();
-    updateTitle();
-  }
-});
+    if (key == "q" or key == "Q") {
+      c.close();
+    } else if (key == "+" or key == "=") {
+      view.zoomIn();
+      updateTitle();
+    } else if (key == "-" or key == "_") {
+      view.zoomOut();
+      updateTitle();
+    } else if (key == "0") {
+      view.zoomReset();
+      updateTitle();
+    }
+  });
+}
 
-fun draw(c) {
+fun drawImage(c) {
   c.clear(Canvas.BG);
   view.draw(c, 0, 0, c.width, c.height);
 }
 
-if (canvas.offscreen) {
-  canvas.render(draw);
-  print "No display available; wrote image_viewer.png";
-  print canvas.savePng("image_viewer.png");
-} else {
-  print "q = quit, +/- = zoom, 0 = normal";
-  canvas.run(draw);
+fun drawBrowser(c) {
+  if (browser != nil) browser.draw(c);
 }
 
-view.close();
+fun renderOffscreenImage() {
+  canvas.render(drawImage);
+  print "No display available; wrote image_viewer.png";
+  print canvas.savePng("image_viewer.png");
+  running = false;
+}
+
+fun openImage(path) {
+  var nextView;
+  try {
+    nextView = ImageView.window(path, nil, nil, "slox image view - " + path);
+  } catch (e) {
+    print "Error: Could not open '" + path + "': " + e.message;
+    return false;
+  }
+
+  if (view != nil) view.close();
+  view = nextView;
+  canvas = view.canvas;
+  registerViewerEvents(canvas);
+  updateTitle();
+
+  if (canvas.offscreen) renderOffscreenImage();
+  return true;
+}
+
+fun openBrowser(path) {
+  browserCanvas = Canvas.window(520, 640, "Select image", {"x": 100, "y": 80});
+  browser = FileBrowser(path, browserCanvas, fun(selected) {
+    if (!openImage(selected)) return;
+    if (browser != nil) browser.close();
+    browser = nil;
+  }, {
+    "title": "slox image browser",
+    "onClose": fun(b) {
+      if (view == nil) running = false;
+    }
+  });
+
+  browserCanvas.on("event", fun(c, event) {
+    if (browser != nil) browser.handleEvent(event, c);
+  });
+
+  if (browserCanvas.offscreen) {
+    browserCanvas.render(drawBrowser);
+    print "No display available; wrote file_browser.png";
+    print browserCanvas.savePng("file_browser.png");
+    running = false;
+  } else {
+    print "Up/Down = move, Enter/Space = open, click = open, Esc = close";
+  }
+}
+
+// Yields to both windows because Canvas.run() only pumps one canvas at a time.
+fun runWindows() {
+  while (running and (windowOpen(browserCanvas) or windowOpen(canvas))) {
+    if (windowOpen(browserCanvas)) {
+      browserCanvas.handleEvents();
+      if (windowOpen(browserCanvas)) browserCanvas.render(drawBrowser);
+    }
+
+    if (windowOpen(canvas)) {
+      canvas.handleEvents();
+      if (windowOpen(canvas)) canvas.render(drawImage);
+    }
+
+    System.sleep(1.0 / 60.0);
+  }
+}
+
+if (Dir.isdir(filename)) {
+  openBrowser(filename);
+} else if (!openImage(filename)) {
+  System.exit(1);
+}
+
+runWindows();
+
+if (view != nil) view.close();
+if (browser != nil) browser.close();

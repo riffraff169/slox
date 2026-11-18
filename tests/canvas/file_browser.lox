@@ -1,0 +1,72 @@
+require("file_browser.lox");
+
+var dir = Dir.mktemp(Dir.tempdir() + "/slox_file_browser_XXXXXX").unwrap();
+var sub = dir + "/sub";
+Dir.mkdir(sub);
+File.save(dir + "/b.png", "b");
+File.save(dir + "/a.jpg", "a");
+File.save(dir + "/C.PNG", "c");
+File.save(dir + "/notes.txt", "x");
+
+var canvas = Canvas.offscreen(400, 300);
+var chosen = nil;
+var closed = 0;
+var browser = FileBrowser(dir, canvas, fun(path) { chosen = path; }, {
+    "onClose": fun(b) { closed = closed + 1; }
+});
+
+print browser.entries.length();
+// expect: 5
+print browser.selectedEntry()["name"];
+// expect: a.jpg
+
+var down = {"type": X11.KeyPress, "keysym": X11.XK_Down, "text": ""};
+var up = {"type": X11.KeyPress, "keysym": X11.XK_Up, "text": ""};
+var enter = {"type": X11.KeyPress, "keysym": X11.XK_Return, "text": ""};
+var space = {"type": X11.KeyPress, "keysym": X11.XK_space, "text": " "};
+
+browser.handleEvent(down, canvas);
+print browser.selectedEntry()["name"];
+// expect: b.png
+browser.handleEvent(enter, canvas);
+print Dir.basename(chosen);
+// expect: b.png
+
+browser.handleEvent(up, canvas);
+browser.handleEvent(space, canvas);
+print Dir.basename(chosen);
+// expect: a.jpg
+
+var clickY = browser.headerHeight + 4 * browser.rowHeight + 5;
+var click = {"type": X11.ButtonPress, "button": 1, "x": 20, "y": clickY};
+browser.handleEvent(click, canvas);
+print Dir.basename(chosen);
+// expect: C.PNG
+
+var subClickY = browser.headerHeight + 1 * browser.rowHeight + 5;
+var subClick = {"type": X11.ButtonPress, "button": 1, "x": 20, "y": subClickY};
+browser.handleEvent(subClick, canvas);
+print browser.path == sub;
+// expect: true
+browser.navigate(dir);
+
+browser.draw(canvas);
+print canvas.savePng(Dir.tempdir() + "/slox_file_browser_test.png");
+// expect: 0
+
+var escape = {"type": X11.KeyPress, "keysym": X11.XK_Escape, "text": ""};
+browser.handleEvent(escape, canvas);
+print browser.closed;
+// expect: true
+print closed;
+// expect: 1
+print canvas.isOpen();
+// expect: false
+
+File.unlink(dir + "/b.png");
+File.unlink(dir + "/a.jpg");
+File.unlink(dir + "/C.PNG");
+File.unlink(dir + "/notes.txt");
+File.unlink(Dir.tempdir() + "/slox_file_browser_test.png");
+Dir.rmdir(sub);
+Dir.rmdir(dir);
