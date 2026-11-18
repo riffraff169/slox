@@ -192,7 +192,11 @@ a release. Use `Cairo.FILTER_NEAREST` for pixel-art or integer zoom and
 `"bilinear"`/`Cairo.FILTER_GOOD` for smooth scaling.
 
 The conversion from RGBA to Cairo's premultiplied ARGB32 is handled by the
-library, so filters can be written in plain Lox:
+library. Initial surface construction and `refresh()` use the image module's
+native `Image.Data.copy_bgra_to()` fast path when available;
+`refreshFromPixels()` uses `Image.copy_bgra_from_array()` for direct
+`getPixels()` edits. Fallbacks are written in Lox. Filters can be written in
+plain Lox:
 
 ```lox
 var pixels = view.getPixels();

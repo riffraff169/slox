@@ -80,7 +80,7 @@ class ImageView {
     this.buffer = nil;
     this.surface = nil;
     this.stride = this.width * 4;
-    this._rebuild_surface();
+    this._rebuild_surface(true);
   }
 
   //: fromFile
@@ -224,7 +224,7 @@ class ImageView {
       this.stride = this.width * 4;
     }
     this.pixels = this.image.get_bytes().to_array();
-    this._rebuild_surface();
+    this._rebuild_surface(true);
     return this;
   }
 
@@ -293,20 +293,31 @@ class ImageView {
   }
 
   _write_pixels_to_buffer() {
+    if (this.buffer != nil and Image.get_field("copy_bgra_from_array") != nil) {
+      Image.copy_bgra_from_array(this.pixels, this.buffer);
+      return;
+    }
+
     for (var i = 0; i < this.pixels.length(); i += 4) {
       _view_write_pixel(this.buffer, i,
           [this.pixels[i], this.pixels[i + 1], this.pixels[i + 2], this.pixels[i + 3]]);
     }
   }
 
-  _rebuild_surface() {
+  _rebuild_surface(fromImage = false) {
     if (this.surface != nil) {
       this.cairo.surfaceDestroy(this.surface);
       this.surface = nil;
     }
 
     this.buffer = Buffer.alloc(this.width * this.height * 4);
-    this._write_pixels_to_buffer();
+    if (fromImage and this.image.has_method("copy_bgra_to")) {
+      // The native image module swizzles and premultiplies in C. The Lox loop
+      // remains the fallback for older modules.
+      this.image.copy_bgra_to(this.buffer);
+    } else {
+      this._write_pixels_to_buffer();
+    }
     this.surface = this.cairo.imageSurfaceCreateForData(this.buffer,
         Cairo.FORMAT_ARGB32, this.width, this.height, this.stride);
     if (this.surface == nil) {

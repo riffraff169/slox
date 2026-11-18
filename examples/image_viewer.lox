@@ -1,0 +1,54 @@
+#!/usr/bin/env slox
+// Minimal image viewer: open the first non-option argument in a window.
+// Usage: slox examples/image_viewer.lox <image>
+//
+// Options are intentionally limited to the built-in -h/--help.
+// Press q to quit. With no DISPLAY, one frame is rendered to image_viewer.png.
+
+require("argparser.lox");
+require("image_view.lox");
+
+var parser = ArgParser("slox examples/image_viewer.lox",
+                       "Display an image in a window.");
+var parsed = parser.parse(System.ARGS);
+
+if (parsed == nil) System.exit(0);
+
+if (parsed.args.length() < 1) {
+  print "Error: Missing image filename.";
+  print "Usage: slox examples/image_viewer.lox <image>";
+  System.exit(1);
+}
+
+var filename = parsed.args[0];
+var view;
+
+try {
+  view = ImageView.window(filename, nil, nil, "slox image view - " + filename);
+} catch (e) {
+  print "Error: Could not open '" + filename + "': " + e.message;
+  System.exit(1);
+}
+
+var canvas = view.canvas;
+
+canvas.on("keypress", fun(c, event) {
+  var key = event["text"];
+  if (key == "q" or key == "Q") c.close();
+});
+
+fun draw(c) {
+  c.clear(Canvas.BG);
+  view.draw(c, 0, 0, c.width, c.height);
+}
+
+if (canvas.offscreen) {
+  canvas.render(draw);
+  print "No display available; wrote image_viewer.png";
+  print canvas.savePng("image_viewer.png");
+} else {
+  print "q = quit";
+  canvas.run(draw);
+}
+
+view.close();

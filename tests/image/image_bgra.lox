@@ -1,0 +1,46 @@
+import "image";
+
+var img = Image.load("tests/image/fixture.png");
+var buf = Buffer.alloc(img.width * img.height * 4);
+
+print img.has_method("copy_bgra_to");
+// expect: true
+print img.copy_bgra_to(buf) == buf;
+// expect: true
+
+var bytes = buf.to_array();
+for (var i = 0; i < 16; i += 1) print bytes[i];
+// expect: 0
+// expect: 0
+// expect: 255
+// expect: 255
+// expect: 0
+// expect: 255
+// expect: 0
+// expect: 255
+// expect: 128
+// expect: 0
+// expect: 0
+// expect: 128
+// expect: 0
+// expect: 0
+// expect: 0
+// expect: 0
+
+img.set_pixel(0, 0, [10, 20, 30, 200]);
+img.copy_bgra_to(buf);
+bytes = buf.to_array();
+print bytes[0];
+// expect: 24
+print bytes[1];
+// expect: 16
+print bytes[2];
+// expect: 8
+print bytes[3];
+// expect: 200
+
+var small = Buffer.alloc(4);
+print Image.copy_bgra_from_array([10, 20, 30, 200], small) == small;
+// expect: true
+print small.to_array();
+// expect: [24, 16, 8, 200]

@@ -260,6 +260,106 @@ static Value nxGetRawBytes(int argCount, Value* args) {
     return OBJ_VAL(rawString);
 }
 
+//@ Image.Data
+//: copy_bgra_to
+// Write premultiplied BGRA bytes into a Buffer sized for a Cairo ARGB32 surface.
+// Requires:
+//   Buffer: destination
+// Returns:
+//   Buffer: destination
+static Value nxImageCopyBgraTo(int argCount, Value* args) {
+    if (argCount < 1 || !IS_BUFFER(args[0])) {
+        runtimeError("copy_bgra_to() expects a Buffer.");
+        return NIL_VAL;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(args[-1]);
+    ImageBuffer* img = image_buffer_for(instance, "copy BGRA pixels");
+    if (img == NULL) {
+        return NIL_VAL;
+    }
+
+    ObjBuffer* buffer = AS_BUFFER(args[0]);
+    if (buffer->size < img->size) {
+        runtimeError("copy_bgra_to() destination Buffer is too small (need %zu bytes).",
+                     img->size);
+        return NIL_VAL;
+    }
+
+    const unsigned char* src = img->pixels;
+    uint8_t* dst = buffer->bytes;
+    for (size_t i = 0; i < img->size; i += 4) {
+        unsigned int alpha = src[i + 3];
+        dst[i]      = (uint8_t)((src[i + 2] * alpha + 127) / 255);
+        dst[i + 1]  = (uint8_t)((src[i + 1] * alpha + 127) / 255);
+        dst[i + 2]  = (uint8_t)((src[i] * alpha + 127) / 255);
+        dst[i + 3]  = (uint8_t)alpha;
+    }
+
+    return args[0];
+}
+
+static bool array_byte(Value value, unsigned int* out) {
+    double number;
+    if (IS_INT(value)) {
+        number = (double)AS_INT(value);
+    } else if (IS_FLOAT(value)) {
+        number = AS_FLOAT(value);
+    } else {
+        return false;
+    }
+
+    if (!(number > 0.0)) *out = 0;
+    else if (!(number < 255.0)) *out = 255;
+    else *out = (unsigned int)(number + 0.5);
+    return true;
+}
+
+//@ Image
+//: copy_bgra_from_array
+// Write a mutable Lox RGBA byte array into a Buffer as premultiplied BGRA.
+// Requires:
+//   Array: rgba bytes
+//   Buffer: destination
+// Returns:
+//   Buffer: destination
+static Value nxImageCopyBgraFromArray(int argCount, Value* args) {
+    if (argCount < 2 || !IS_ARRAY(args[0]) || !IS_BUFFER(args[1])) {
+        runtimeError("copy_bgra_from_array() expects an RGBA Array and a Buffer.");
+        return NIL_VAL;
+    }
+
+    ObjArray* pixels = AS_ARRAY(args[0]);
+    ObjBuffer* buffer = AS_BUFFER(args[1]);
+    if (buffer->size < pixels->count) {
+        runtimeError("copy_bgra_from_array() destination Buffer is too small (need %zu bytes).",
+                     pixels->count);
+        return NIL_VAL;
+    }
+    if (pixels->count % 4 != 0) {
+        runtimeError("copy_bgra_from_array() expects a multiple of four RGBA bytes.");
+        return NIL_VAL;
+    }
+
+    uint8_t* dst = buffer->bytes;
+    for (size_t i = 0; i < pixels->count; i += 4) {
+        unsigned int r, g, b, a;
+        if (!array_byte(pixels->values[i], &r) ||
+            !array_byte(pixels->values[i + 1], &g) ||
+            !array_byte(pixels->values[i + 2], &b) ||
+            !array_byte(pixels->values[i + 3], &a)) {
+            runtimeError("copy_bgra_from_array() pixel components must be numbers.");
+            return NIL_VAL;
+        }
+        dst[i]      = (uint8_t)((b * a + 127) / 255);
+        dst[i + 1]  = (uint8_t)((g * a + 127) / 255);
+        dst[i + 2]  = (uint8_t)((r * a + 127) / 255);
+        dst[i + 3]  = (uint8_t)a;
+    }
+
+    return args[1];
+}
+
 static Value nxImageLoad(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
         runtimeError("load() expects a path string.");
@@ -431,6 +531,15 @@ void lox_module_init(VM* vm) {
     pop(); // [2] string
     pop(); // [1] native
 
+    // bulk RGBA Array -> premultiplied BGRA Buffer
+    ObjNative* copyBgraArrayFn = newNative(nxImageCopyBgraFromArray);
+    push(OBJ_VAL(copyBgraArrayFn));
+    ObjString* copyBgraArrayStr = copyString("copy_bgra_from_array", 20);
+    push(OBJ_VAL(copyBgraArrayStr));
+    tableSet(&imageModule->fields, copyBgraArrayStr, OBJ_VAL(copyBgraArrayFn));
+    pop();
+    pop();
+
     // get_pixel
     ObjNative* getPixelFn = newNative(nxGetPixel);
     push(OBJ_VAL(getPixelFn));
@@ -445,6 +554,11 @@ void lox_module_init(VM* vm) {
     ObjNative* getRawBytesFn = newNative(nxGetRawBytes);
     push(OBJ_VAL(getRawBytesFn));
     tableSet(&imageDataClass->methods, copyString("get_bytes", 9), OBJ_VAL(getRawBytesFn));
+    pop();
+
+    ObjNative* copyBgraFn = newNative(nxImageCopyBgraTo);
+    push(OBJ_VAL(copyBgraFn));
+    tableSet(&imageDataClass->methods, copyString("copy_bgra_to", 12), OBJ_VAL(copyBgraFn));
     pop();
 
     ObjNative* scaleFn = newNative(nxImageScale);
