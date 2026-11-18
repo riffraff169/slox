@@ -488,6 +488,17 @@ void imageDestructor(ObjInstance* instance) {
     instance->foreignPtr = NULL;
 }
 
+static void defineImageDataMethod(ObjClass* klass, const char* name, int length,
+                                  NativeFn function) {
+    ObjNative* method = newNative(function);
+    push(OBJ_VAL(method));
+    ObjString* methodName = copyString(name, length);
+    push(OBJ_VAL(methodName));
+    tableSet(&klass->methods, methodName, OBJ_VAL(method));
+    pop();
+    pop();
+}
+
 void lox_module_init(VM* vm) {
     ObjInstance* imageModule = newInstance(vm->moduleClass);
     push(OBJ_VAL(imageModule)); // [1] instance
@@ -540,39 +551,12 @@ void lox_module_init(VM* vm) {
     pop();
     pop();
 
-    // get_pixel
-    ObjNative* getPixelFn = newNative(nxGetPixel);
-    push(OBJ_VAL(getPixelFn));
-    tableSet(&imageDataClass->methods, copyString("get_pixel", 9), OBJ_VAL(getPixelFn));
-    pop();
-
-    ObjNative* setPixelFn = newNative(nxSetPixel);
-    push(OBJ_VAL(setPixelFn));
-    tableSet(&imageDataClass->methods, copyString("set_pixel", 9), OBJ_VAL(setPixelFn));
-    pop();
-
-    ObjNative* getRawBytesFn = newNative(nxGetRawBytes);
-    push(OBJ_VAL(getRawBytesFn));
-    tableSet(&imageDataClass->methods, copyString("get_bytes", 9), OBJ_VAL(getRawBytesFn));
-    pop();
-
-    ObjNative* copyBgraFn = newNative(nxImageCopyBgraTo);
-    push(OBJ_VAL(copyBgraFn));
-    tableSet(&imageDataClass->methods, copyString("copy_bgra_to", 12), OBJ_VAL(copyBgraFn));
-    pop();
-
-    ObjNative* scaleFn = newNative(nxImageScale);
-    push(OBJ_VAL(scaleFn));
-    tableSet(&imageDataClass->methods, copyString("scale", 5), OBJ_VAL(scaleFn));
-    pop();
-
-    ObjNative* saveFn = newNative(nxImageSave);
-    push(OBJ_VAL(saveFn));
-    tableSet(&imageDataClass->methods, copyString("save", 4), OBJ_VAL(saveFn));
-    pop();
-
-    ObjNative* clearFn = newNative(nxImageClear);
-    push(OBJ_VAL(clearFn));
-    tableSet(&imageDataClass->methods, copyString("clear", 5), OBJ_VAL(clearFn));
-    pop();
+    // Image.Data methods
+    defineImageDataMethod(imageDataClass, "get_pixel", 9, nxGetPixel);
+    defineImageDataMethod(imageDataClass, "set_pixel", 9, nxSetPixel);
+    defineImageDataMethod(imageDataClass, "get_bytes", 9, nxGetRawBytes);
+    defineImageDataMethod(imageDataClass, "copy_bgra_to", 12, nxImageCopyBgraTo);
+    defineImageDataMethod(imageDataClass, "scale", 5, nxImageScale);
+    defineImageDataMethod(imageDataClass, "save", 4, nxImageSave);
+    defineImageDataMethod(imageDataClass, "clear", 5, nxImageClear);
 }
