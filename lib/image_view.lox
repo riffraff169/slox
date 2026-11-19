@@ -197,7 +197,7 @@ class ImageView {
     }
 
     var step = Math.floor(factor * ImageView.NORMAL_ZOOM_STEP + 0.5);
-    this.zoomStep = _canvas_clamp(step, ImageView.MIN_ZOOM_STEP, ImageView.MAX_ZOOM_STEP);
+    this.zoomStep = Canvas.clamp(step, ImageView.MIN_ZOOM_STEP, ImageView.MAX_ZOOM_STEP);
     return this._applyZoom();
   }
 

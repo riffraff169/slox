@@ -1,162 +1,6 @@
 require("x11.lox");
 require("cairo.lox");
 
-// Canvas helpers are plain functions so they can be used before an instance
-// exists. The prefix keeps them out of the way of user code.
-
-fun _canvas_option(options, key, fallback) {
-  if (options != nil and typeof(options) == "Map" and options.has(key)) {
-    var value = options[key];
-    if (value != nil) return value;
-  }
-  return fallback;
-}
-
-fun _canvas_copy_map(source) {
-  var result = {};
-  if (source == nil or typeof(source) != "Map") return result;
-  var keys = source.keys();
-  for (var i = 0; i < keys.length(); i += 1) {
-    result[keys[i]] = source[keys[i]];
-  }
-  return result;
-}
-
-fun _canvas_env(name) {
-  if (!System.ENV.has(name)) return "";
-  var value = System.ENV[name];
-  if (value == nil) return "";
-  return value;
-}
-
-fun _canvas_clamp(value, low, high) {
-  if (value < low) return low;
-  if (value > high) return high;
-  return value;
-}
-
-// Lox strings do not support comparison, so compare their bytes explicitly.
-fun _canvas_compare_text(a, b) {
-  var left = a.to_array();
-  var right = b.to_array();
-  var limit = left.length();
-  if (right.length() < limit) limit = right.length();
-  for (var i = 0; i < limit; i += 1) {
-    if (left[i] < right[i]) return -1;
-    if (left[i] > right[i]) return 1;
-  }
-  if (left.length() < right.length()) return -1;
-  if (left.length() > right.length()) return 1;
-  return 0;
-}
-
-fun _canvas_truncate_text(canvas, text, maxWidth, fontSize) {
-  if (canvas.textWidth(text, fontSize) <= maxWidth) return text;
-  var result = text;
-  while (result.length() > 0 and
-         canvas.textWidth(result + "...", fontSize) > maxWidth) {
-    result = result.slice(0, result.length() - 1);
-  }
-  return result + "...";
-}
-
-//: _canvas_rgba
-// Convert an integer 0xRRGGBB, a "#rrggbb" string, or a 3/4 element array into
-// normalized [r, g, b, a] components. Array components may be either 0..1 or
-// 0..255; the larger range wins.
-fun _canvas_rgba(color, fallback = nil) {
-  if (color == nil) color = fallback;
-  if (color == nil) return [1.0, 1.0, 1.0, 1.0];
-
-  if (typeof(color) == "Integer") {
-    var r = ((color >> 16) & 255) / 255.0;
-    var g = ((color >> 8) & 255) / 255.0;
-    var b = (color & 255) / 255.0;
-    return [r, g, b, 1.0];
-  }
-
-  if (typeof(color) == "String") {
-    var text = color;
-    if (text.length() > 0 and text[0] == "#") {
-      text = text.slice(1, text.length());
-    }
-    if (text.length() == 6) {
-      var r = Math.parse(text.slice(0, 2), 16) / 255.0;
-      var g = Math.parse(text.slice(2, 4), 16) / 255.0;
-      var b = Math.parse(text.slice(4, 6), 16) / 255.0;
-      return [r, g, b, 1.0];
-    }
-    if (text.length() == 8) {
-      var r = Math.parse(text.slice(0, 2), 16) / 255.0;
-      var g = Math.parse(text.slice(2, 4), 16) / 255.0;
-      var b = Math.parse(text.slice(4, 6), 16) / 255.0;
-      var a = Math.parse(text.slice(6, 8), 16) / 255.0;
-      return [r, g, b, a];
-    }
-    return [1.0, 1.0, 1.0, 1.0];
-  }
-
-  if (typeof(color) == "Array" and color.length() >= 3) {
-    var r = color[0];
-    var g = color[1];
-    var b = color[2];
-    var a = 1.0;
-    if (color.length() > 3) a = color[3];
-
-    if (r > 1.0 or g > 1.0 or b > 1.0) {
-      r = r / 255.0;
-      g = g / 255.0;
-      b = b / 255.0;
-    }
-    if (a > 1.0) a = a / 255.0;
-    return [_canvas_clamp(r, 0.0, 1.0), _canvas_clamp(g, 0.0, 1.0),
-        _canvas_clamp(b, 0.0, 1.0), _canvas_clamp(a, 0.0, 1.0)];
-  }
-
-  return [1.0, 1.0, 1.0, 1.0];
-}
-
-// Pick a 1/2/5 times a power of ten step near targetSteps divisions.
-fun _canvas_nice_step(range, targetSteps = 8) {
-  if (range.abs() < 1e-12) return 1.0;
-  var raw = range / targetSteps;
-  if (raw < 0) raw = -raw;
-  var magnitude = 1.0;
-  while (raw >= 10.0) {
-    raw = raw / 10.0;
-    magnitude = magnitude * 10.0;
-  }
-  while (raw < 1.0) {
-    raw = raw * 10.0;
-    magnitude = magnitude / 10.0;
-  }
-  var nice = 10.0;
-  if (raw < 1.5) nice = 1.0;
-  else if (raw < 3.5) nice = 2.0;
-  else if (raw < 7.5) nice = 5.0;
-  return nice * magnitude;
-}
-
-fun _canvas_tick_decimals(step) {
-  var value = step;
-  if (value < 0) value = -value;
-  var decimals = 0;
-  while (value < 1.0 and decimals < 4) {
-    value = value * 10.0;
-    decimals = decimals + 1;
-  }
-  return decimals;
-}
-
-fun _canvas_tick_label(value, step) {
-  if (value.abs() < step * 1e-6) value = 0;
-  var decimals = _canvas_tick_decimals(step);
-  if (value.abs() >= 100000 or (value != 0 and value.abs() < 0.0001)) {
-    return "" + value;
-  }
-  return Math.to_fixed(value, decimals);
-}
-
 //@ Canvas
 // A Cairo-backed drawing surface. With a display and a title it opens an X11
 // window; otherwise it draws to an offscreen image surface that can be written
@@ -186,15 +30,169 @@ class Canvas {
   const BORDER  = [0.30, 0.34, 0.44];
   const DANGER  = [1.00, 0.32, 0.32];
 
+  // Shared helpers used by Canvas and the Canvas widgets.
+  static option(options, key, fallback) {
+    if (options != nil and typeof(options) == "Map" and options.has(key)) {
+      var value = options[key];
+      if (value != nil) return value;
+    }
+    return fallback;
+  }
+
+  static copyMap(source) {
+    var result = {};
+    if (source == nil or typeof(source) != "Map") return result;
+    var keys = source.keys();
+    for (var i = 0; i < keys.length(); i += 1) {
+      result[keys[i]] = source[keys[i]];
+    }
+    return result;
+  }
+
+  static env(name) {
+    if (!System.ENV.has(name)) return "";
+    var value = System.ENV[name];
+    if (value == nil) return "";
+    return value;
+  }
+
+  static clamp(value, low, high) {
+    if (value < low) return low;
+    if (value > high) return high;
+    return value;
+  }
+
+  // Lox strings do not support comparison, so compare their bytes explicitly.
+  static compareText(a, b) {
+    var left = a.to_array();
+    var right = b.to_array();
+    var limit = left.length();
+    if (right.length() < limit) limit = right.length();
+    for (var i = 0; i < limit; i += 1) {
+      if (left[i] < right[i]) return -1;
+      if (left[i] > right[i]) return 1;
+    }
+    if (left.length() < right.length()) return -1;
+    if (left.length() > right.length()) return 1;
+    return 0;
+  }
+
+  static truncateText(canvas, text, maxWidth, fontSize) {
+    if (canvas.textWidth(text, fontSize) <= maxWidth) return text;
+    var result = text;
+    while (result.length() > 0 and
+           canvas.textWidth(result + "...", fontSize) > maxWidth) {
+      result = result.slice(0, result.length() - 1);
+    }
+    return result + "...";
+  }
+
+  //: rgba
+  // Convert an integer 0xRRGGBB, a "#rrggbb" string, or a 3/4 element array into
+  // normalized [r, g, b, a] components. Array components may be either 0..1 or
+  // 0..255; the larger range wins.
+  static rgba(color, fallback = nil) {
+    if (color == nil) color = fallback;
+    if (color == nil) return [1.0, 1.0, 1.0, 1.0];
+
+    if (typeof(color) == "Integer") {
+      var r = ((color >> 16) & 255) / 255.0;
+      var g = ((color >> 8) & 255) / 255.0;
+      var b = (color & 255) / 255.0;
+      return [r, g, b, 1.0];
+    }
+
+    if (typeof(color) == "String") {
+      var text = color;
+      if (text.length() > 0 and text[0] == "#") {
+        text = text.slice(1, text.length());
+      }
+      if (text.length() == 6) {
+        var r = Math.parse(text.slice(0, 2), 16) / 255.0;
+        var g = Math.parse(text.slice(2, 4), 16) / 255.0;
+        var b = Math.parse(text.slice(4, 6), 16) / 255.0;
+        return [r, g, b, 1.0];
+      }
+      if (text.length() == 8) {
+        var r = Math.parse(text.slice(0, 2), 16) / 255.0;
+        var g = Math.parse(text.slice(2, 4), 16) / 255.0;
+        var b = Math.parse(text.slice(4, 6), 16) / 255.0;
+        var a = Math.parse(text.slice(6, 8), 16) / 255.0;
+        return [r, g, b, a];
+      }
+      return [1.0, 1.0, 1.0, 1.0];
+    }
+
+    if (typeof(color) == "Array" and color.length() >= 3) {
+      var r = color[0];
+      var g = color[1];
+      var b = color[2];
+      var a = 1.0;
+      if (color.length() > 3) a = color[3];
+
+      if (r > 1.0 or g > 1.0 or b > 1.0) {
+        r = r / 255.0;
+        g = g / 255.0;
+        b = b / 255.0;
+      }
+      if (a > 1.0) a = a / 255.0;
+      return [Canvas.clamp(r, 0.0, 1.0), Canvas.clamp(g, 0.0, 1.0),
+          Canvas.clamp(b, 0.0, 1.0), Canvas.clamp(a, 0.0, 1.0)];
+    }
+
+    return [1.0, 1.0, 1.0, 1.0];
+  }
+
+  // Pick a 1/2/5 times a power of ten step near targetSteps divisions.
+  static niceStep(range, targetSteps = 8) {
+    if (range.abs() < 1e-12) return 1.0;
+    var raw = range / targetSteps;
+    if (raw < 0) raw = -raw;
+    var magnitude = 1.0;
+    while (raw >= 10.0) {
+      raw = raw / 10.0;
+      magnitude = magnitude * 10.0;
+    }
+    while (raw < 1.0) {
+      raw = raw * 10.0;
+      magnitude = magnitude / 10.0;
+    }
+    var nice = 10.0;
+    if (raw < 1.5) nice = 1.0;
+    else if (raw < 3.5) nice = 2.0;
+    else if (raw < 7.5) nice = 5.0;
+    return nice * magnitude;
+  }
+
+  static tickDecimals(step) {
+    var value = step;
+    if (value < 0) value = -value;
+    var decimals = 0;
+    while (value < 1.0 and decimals < 4) {
+      value = value * 10.0;
+      decimals = decimals + 1;
+    }
+    return decimals;
+  }
+
+  static tickLabel(value, step) {
+    if (value.abs() < step * 1e-6) value = 0;
+    var decimals = Canvas.tickDecimals(step);
+    if (value.abs() >= 100000 or (value != 0 and value.abs() < 0.0001)) {
+      return "" + value;
+    }
+    return Math.to_fixed(value, decimals);
+  }
+
   init(width, height, title = nil, options = nil) {
     this.width = width;
     this.height = height;
     this.title = title;
-    this.options = _canvas_copy_map(options);
-    this.fontFamily = _canvas_option(options, "fontFamily", "Sans");
-    this.fontSize = _canvas_option(options, "fontSize", 14.0);
-    this.background = _canvas_option(options, "background", Canvas.BG);
-    this.offscreen = _canvas_option(options, "offscreen", false);
+    this.options = Canvas.copyMap(options);
+    this.fontFamily = Canvas.option(options, "fontFamily", "Sans");
+    this.fontSize = Canvas.option(options, "fontSize", 14.0);
+    this.background = Canvas.option(options, "background", Canvas.BG);
+    this.offscreen = Canvas.option(options, "offscreen", false);
     this.closed = false;
     this.running = false;
     this.callbacks = {};
@@ -207,7 +205,7 @@ class Canvas {
     this.visual = nil;
     this.x11 = nil;
 
-    if (!this.offscreen and title == nil and _canvas_env("DISPLAY") == "") {
+    if (!this.offscreen and title == nil and Canvas.env("DISPLAY") == "") {
       this.offscreen = true;
     }
 
@@ -222,7 +220,7 @@ class Canvas {
   //: offscreen
   // Create an image surface canvas. This never opens an X11 display.
   static offscreen(width, height, options = nil) {
-    var merged = _canvas_copy_map(options);
+    var merged = Canvas.copyMap(options);
     merged["offscreen"] = true;
     return Canvas(width, height, nil, merged);
   }
@@ -231,7 +229,7 @@ class Canvas {
   // Create a window canvas. Falls back to an image surface if no display can
   // be opened.
   static window(width, height, title = "slox canvas", options = nil) {
-    var merged = _canvas_copy_map(options);
+    var merged = Canvas.copyMap(options);
     merged["offscreen"] = false;
     return Canvas(width, height, title, merged);
   }
@@ -254,8 +252,8 @@ class Canvas {
     var screen = this.x11.defaultScreen(this.dpy);
     var root = this.x11.rootWindow(this.dpy, screen);
     this.visual = this.x11.defaultVisual(this.dpy, screen);
-    var winX = _canvas_option(this.options, "x", 80);
-    var winY = _canvas_option(this.options, "y", 80);
+    var winX = Canvas.option(this.options, "x", 80);
+    var winY = Canvas.option(this.options, "y", 80);
 
     this.win = this.x11.createSimpleWindow(this.dpy, root, winX, winY,
         this.width, this.height, 0, 0, 0x101018);
@@ -414,7 +412,7 @@ class Canvas {
   // Set the current Cairo source color. Accepts 0xRRGGBB, "#rrggbb",
   // "#rrggbbaa", or an [r, g, b(, a)] array in either 0..1 or 0..255 units.
   setColor(color, fallback = nil) {
-    var rgba = _canvas_rgba(color, fallback);
+    var rgba = Canvas.rgba(color, fallback);
     this.cairo.setSourceRGBA(this.cr, rgba[0], rgba[1], rgba[2], rgba[3]);
     return rgba;
   }
@@ -730,8 +728,8 @@ class Canvas {
       return this;
     }
 
-    var fps = _canvas_option(options, "fps", 60);
-    var maxFrames = _canvas_option(options, "maxFrames", 0);
+    var fps = Canvas.option(options, "fps", 60);
+    var maxFrames = Canvas.option(options, "maxFrames", 0);
     var interval = 1.0 / fps;
     var frame = 0;
     this.running = true;
@@ -801,15 +799,15 @@ class Graph {
     this.yMin = yMin == nil ? -3.0 : yMin;
     this.yMax = yMax == nil ? 3.0 : yMax;
     this.options = options;
-    this.marginLeft = _canvas_option(options, "marginLeft", 56);
-    this.marginRight = _canvas_option(options, "marginRight", 20);
-    this.marginTop = _canvas_option(options, "marginTop", 20);
-    this.marginBottom = _canvas_option(options, "marginBottom", 38);
-    this.gridColor = _canvas_option(options, "gridColor", Canvas.GRID);
-    this.axisColor = _canvas_option(options, "axisColor", Canvas.AXIS);
-    this.labelColor = _canvas_option(options, "labelColor", Canvas.MUTED);
-    this.frameColor = _canvas_option(options, "frameColor", Canvas.BORDER);
-    this.fontSize = _canvas_option(options, "fontSize", 11.0);
+    this.marginLeft = Canvas.option(options, "marginLeft", 56);
+    this.marginRight = Canvas.option(options, "marginRight", 20);
+    this.marginTop = Canvas.option(options, "marginTop", 20);
+    this.marginBottom = Canvas.option(options, "marginBottom", 38);
+    this.gridColor = Canvas.option(options, "gridColor", Canvas.GRID);
+    this.axisColor = Canvas.option(options, "axisColor", Canvas.AXIS);
+    this.labelColor = Canvas.option(options, "labelColor", Canvas.MUTED);
+    this.frameColor = Canvas.option(options, "frameColor", Canvas.BORDER);
+    this.fontSize = Canvas.option(options, "fontSize", 11.0);
     this.update();
   }
 
@@ -858,8 +856,8 @@ class Graph {
   // Draw a grid using automatic or explicit step sizes.
   drawGrid(stepX = nil, stepY = nil, color = nil) {
     this.update();
-    if (stepX == nil) stepX = _canvas_nice_step(this.xMax - this.xMin);
-    if (stepY == nil) stepY = _canvas_nice_step(this.yMax - this.yMin);
+    if (stepX == nil) stepX = Canvas.niceStep(this.xMax - this.xMin);
+    if (stepY == nil) stepY = Canvas.niceStep(this.yMax - this.yMin);
     if (color == nil) color = this.gridColor;
 
     var xStart = Math.floor(this.xMin / stepX) * stepX;
@@ -919,8 +917,8 @@ class Graph {
   // Draw numeric tick labels around the plot.
   drawLabels(stepX = nil, stepY = nil, color = nil) {
     this.update();
-    if (stepX == nil) stepX = _canvas_nice_step(this.xMax - this.xMin);
-    if (stepY == nil) stepY = _canvas_nice_step(this.yMax - this.yMin);
+    if (stepX == nil) stepX = Canvas.niceStep(this.xMax - this.xMin);
+    if (stepY == nil) stepY = Canvas.niceStep(this.yMax - this.yMin);
     if (color == nil) color = this.labelColor;
 
     var xStart = Math.floor(this.xMin / stepX) * stepX;
@@ -930,7 +928,7 @@ class Graph {
       var px = this.mapX(x);
       if (px >= this.plotLeft and px <= this.plotRight) {
         this.canvas.textCentered(px, this.plotBottom + this.fontSize + 4,
-            _canvas_tick_label(x, stepX), color, this.fontSize);
+            Canvas.tickLabel(x, stepX), color, this.fontSize);
       }
       x = x + stepX;
       guard = guard + 1;
@@ -942,7 +940,7 @@ class Graph {
     while (y <= this.yMax + stepY * 0.5 and guard < 2000) {
       var py = this.mapY(y);
       if (py >= this.plotTop and py <= this.plotBottom) {
-        var label = _canvas_tick_label(y, stepY);
+        var label = Canvas.tickLabel(y, stepY);
         var width = this.canvas.textWidth(label, this.fontSize);
         this.canvas.text(this.plotLeft - width - 6, py + this.fontSize * 0.35,
             label, color, this.fontSize);
@@ -1097,13 +1095,13 @@ class Button {
     this.label = label;
     this.callback = callback;
     this.options = options;
-    this.fontSize = _canvas_option(options, "fontSize", 14.0);
-    this.color = _canvas_option(options, "color", Canvas.PANEL);
-    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
-    this.hoverColor = _canvas_option(options, "hoverColor", [0.19, 0.22, 0.30]);
-    this.pressedColor = _canvas_option(options, "pressedColor", [0.08, 0.48, 0.66]);
-    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
-    this.disabled = _canvas_option(options, "disabled", false);
+    this.fontSize = Canvas.option(options, "fontSize", 14.0);
+    this.color = Canvas.option(options, "color", Canvas.PANEL);
+    this.textColor = Canvas.option(options, "textColor", Canvas.FG);
+    this.hoverColor = Canvas.option(options, "hoverColor", [0.19, 0.22, 0.30]);
+    this.pressedColor = Canvas.option(options, "pressedColor", [0.08, 0.48, 0.66]);
+    this.borderColor = Canvas.option(options, "borderColor", Canvas.BORDER);
+    this.disabled = Canvas.option(options, "disabled", false);
     this.hover = false;
     this.pressed = false;
   }
@@ -1177,13 +1175,13 @@ class Menu {
     this.items = items;
     this.callback = callback;
     this.options = options;
-    this.rowHeight = _canvas_option(options, "rowHeight", 28);
-    this.fontSize = _canvas_option(options, "fontSize", 13.0);
-    this.title = _canvas_option(options, "title", "");
-    this.background = _canvas_option(options, "background", Canvas.PANEL);
-    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
-    this.hoverColor = _canvas_option(options, "hoverColor", [0.18, 0.42, 0.55]);
-    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
+    this.rowHeight = Canvas.option(options, "rowHeight", 28);
+    this.fontSize = Canvas.option(options, "fontSize", 13.0);
+    this.title = Canvas.option(options, "title", "");
+    this.background = Canvas.option(options, "background", Canvas.PANEL);
+    this.textColor = Canvas.option(options, "textColor", Canvas.FG);
+    this.hoverColor = Canvas.option(options, "hoverColor", [0.18, 0.42, 0.55]);
+    this.borderColor = Canvas.option(options, "borderColor", Canvas.BORDER);
     this.visible = false;
     this.selected = -1;
     this.padding = 6;
@@ -1371,24 +1369,24 @@ class ListWidget {
     this.options = options;
     this.items = items;
     this.callback = callback;
-    if (this.callback == nil) this.callback = _canvas_option(options, "onSelect", nil);
-    this.rowHeight = _canvas_option(options, "rowHeight", 24);
-    this.fontSize = _canvas_option(options, "fontSize", 13.0);
-    this.padding = _canvas_option(options, "padding", 8);
-    this.background = _canvas_option(options, "background", Canvas.PANEL);
-    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
-    this.selectedColor = _canvas_option(options, "selectedColor",
+    if (this.callback == nil) this.callback = Canvas.option(options, "onSelect", nil);
+    this.rowHeight = Canvas.option(options, "rowHeight", 24);
+    this.fontSize = Canvas.option(options, "fontSize", 13.0);
+    this.padding = Canvas.option(options, "padding", 8);
+    this.background = Canvas.option(options, "background", Canvas.PANEL);
+    this.textColor = Canvas.option(options, "textColor", Canvas.FG);
+    this.selectedColor = Canvas.option(options, "selectedColor",
         [0.14, 0.34, 0.45]);
-    this.selectedTextColor = _canvas_option(options, "selectedTextColor",
+    this.selectedTextColor = Canvas.option(options, "selectedTextColor",
         Canvas.FG);
-    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
-    this.emptyText = _canvas_option(options, "emptyText", "");
-    this.scrollbar = _canvas_option(options, "scrollbar", true);
-    this.activateOnClick = _canvas_option(options, "activateOnClick", false);
+    this.borderColor = Canvas.option(options, "borderColor", Canvas.BORDER);
+    this.emptyText = Canvas.option(options, "emptyText", "");
+    this.scrollbar = Canvas.option(options, "scrollbar", true);
+    this.activateOnClick = Canvas.option(options, "activateOnClick", false);
     this.selected = -1;
     this.scrollTop = 0;
     this._pressedIndex = -1;
-    this.setItems(items, _canvas_option(options, "selected", -1));
+    this.setItems(items, Canvas.option(options, "selected", -1));
   }
 
   setBounds(x, y, width, height) {
@@ -1484,7 +1482,7 @@ class ListWidget {
     if (items.length() == 0) {
       this.selected = -1;
     } else {
-      var start = Integer(_canvas_clamp(selected, 0, items.length() - 1));
+      var start = Integer(Canvas.clamp(selected, 0, items.length() - 1));
       var chosen = this._findEnabled(start, 1);
       if (chosen < 0) chosen = this._findEnabled(start - 1, -1);
       this.selected = chosen;
@@ -1501,7 +1499,7 @@ class ListWidget {
       this.selected = -1;
       return this;
     }
-    var start = Integer(_canvas_clamp(index, 0, this.items.length() - 1));
+    var start = Integer(Canvas.clamp(index, 0, this.items.length() - 1));
     var chosen = this._findEnabled(start, 1);
     if (chosen < 0) chosen = this._findEnabled(start - 1, -1);
     if (chosen >= 0) this.selected = chosen;
@@ -1519,7 +1517,7 @@ class ListWidget {
     while (count > 0) {
       next = next + step;
       if (next < 0 or next >= this.items.length()) {
-        next = Integer(_canvas_clamp(next, 0, this.items.length() - 1));
+        next = Integer(Canvas.clamp(next, 0, this.items.length() - 1));
         break;
       }
       if (this.itemEnabled(next)) count = count - 1;
@@ -1554,7 +1552,7 @@ class ListWidget {
     if (this.items.length() == 0) {
       if (this.emptyText != nil and this.emptyText != "") {
         canvas.textTop(this.x + this.padding, this.y + this.padding,
-            _canvas_truncate_text(canvas, this.emptyText,
+            Canvas.truncateText(canvas, this.emptyText,
                 this.width - this.padding * 2, this.fontSize),
             Canvas.MUTED, this.fontSize);
       }
@@ -1570,7 +1568,7 @@ class ListWidget {
         var color = this.textColor;
         if (index == this.selected) color = this.selectedTextColor;
         else if (!this.itemEnabled(index)) color = Canvas.MUTED;
-        var label = _canvas_truncate_text(canvas, this.itemLabel(index),
+        var label = Canvas.truncateText(canvas, this.itemLabel(index),
             this.width - this.padding * 2, this.fontSize);
         canvas.text(this.x + this.padding,
             rowY + this.rowHeight * 0.5 + this.fontSize * 0.35,
@@ -1676,20 +1674,20 @@ class TextInput {
     this.width = width;
     this.height = height;
     this.options = options;
-    this.text = _canvas_option(options, "text", "");
-    this.placeholder = _canvas_option(options, "placeholder", "");
-    this.fontSize = _canvas_option(options, "fontSize", 14.0);
-    this.focused = _canvas_option(options, "focused", false);
-    this.onSubmit = _canvas_option(options, "onSubmit", nil);
-    this.onChange = _canvas_option(options, "onChange", nil);
-    this.padding = _canvas_option(options, "padding", 8);
+    this.text = Canvas.option(options, "text", "");
+    this.placeholder = Canvas.option(options, "placeholder", "");
+    this.fontSize = Canvas.option(options, "fontSize", 14.0);
+    this.focused = Canvas.option(options, "focused", false);
+    this.onSubmit = Canvas.option(options, "onSubmit", nil);
+    this.onChange = Canvas.option(options, "onChange", nil);
+    this.padding = Canvas.option(options, "padding", 8);
     this.cursor = this.text.length();
-    this.background = _canvas_option(options, "background", [0.07, 0.08, 0.11]);
-    this.borderColor = _canvas_option(options, "borderColor", Canvas.BORDER);
-    this.focusColor = _canvas_option(options, "focusColor", Canvas.ACCENT);
-    this.textColor = _canvas_option(options, "textColor", Canvas.FG);
-    this.placeholderColor = _canvas_option(options, "placeholderColor", Canvas.MUTED);
-    this.cursorColor = _canvas_option(options, "cursorColor", Canvas.FG);
+    this.background = Canvas.option(options, "background", [0.07, 0.08, 0.11]);
+    this.borderColor = Canvas.option(options, "borderColor", Canvas.BORDER);
+    this.focusColor = Canvas.option(options, "focusColor", Canvas.ACCENT);
+    this.textColor = Canvas.option(options, "textColor", Canvas.FG);
+    this.placeholderColor = Canvas.option(options, "placeholderColor", Canvas.MUTED);
+    this.cursorColor = Canvas.option(options, "cursorColor", Canvas.FG);
   }
 
   contains(px, py) {

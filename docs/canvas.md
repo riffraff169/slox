@@ -42,6 +42,11 @@ Canvas.offscreen(width, height, options = nil)
 
 Options: `offscreen`, `x`, `y`, `fontFamily`, `fontSize`, `background`.
 
+Shared helpers are static methods on `Canvas`: `option`, `copyMap`, `env`,
+`clamp`, `compareText`, `truncateText`, `rgba`, `niceStep`, `tickDecimals`, and
+`tickLabel`. Keeping them on `Canvas` makes it clear where they are defined and
+lets other Canvas widgets call them without global helper functions.
+
 Drawing methods:
 
 | Method | Description |

@@ -56,10 +56,10 @@ class FileBrowser {
     this.canvas = canvas;
     this.onSelect = onSelect;
     this.options = options;
-    this.title = _canvas_option(options, "title", "Select an image");
-    this.rowHeight = _canvas_option(options, "rowHeight", 24);
-    this.fontSize = _canvas_option(options, "fontSize", 13.0);
-    this.onClose = _canvas_option(options, "onClose", nil);
+    this.title = Canvas.option(options, "title", "Select an image");
+    this.rowHeight = Canvas.option(options, "rowHeight", 24);
+    this.fontSize = Canvas.option(options, "fontSize", 13.0);
+    this.onClose = Canvas.option(options, "onClose", nil);
     this.headerHeight = 34;
     this.footerHeight = 30;
     this.entries = [];
@@ -110,7 +110,7 @@ class FileBrowser {
 
     entries.sort(fun(a, b) {
       if (a["isDir"] != b["isDir"]) return a["isDir"] ? -1 : 1;
-      return _canvas_compare_text(a["sortName"], b["sortName"]);
+      return Canvas.compareText(a["sortName"], b["sortName"]);
     });
 
     var labels = [];
@@ -229,7 +229,7 @@ class FileBrowser {
     canvas.fillRect(0, 0, canvas.width, this.headerHeight, Canvas.PANEL);
     canvas.textTop(10, 7, this.title, Canvas.FG, this.fontSize + 2.0);
     canvas.textTop(10, this.headerHeight - this.fontSize - 3,
-        _canvas_truncate_text(canvas, this.path, canvas.width - 20,
+        Canvas.truncateText(canvas, this.path, canvas.width - 20,
             this.fontSize), Canvas.MUTED, this.fontSize);
 
     canvas.fillRect(0, canvas.height - this.footerHeight, canvas.width,
