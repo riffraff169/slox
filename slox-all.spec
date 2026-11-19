@@ -5,10 +5,16 @@ Summary:        Metapackage for the complete Slox environment
 License:        MIT
 BuildArch:      noarch
 
-# Meta-package dependencies. slox-vim is noarch; the other component
-# packages are arch-specific.
+# Meta-package dependencies. slox and the native module packages are
+# arch-specific; the rest are noarch.
 Requires:       slox
+Requires:       slox-apps
+Requires:       slox-canvas
+Requires:       slox-examples
 Requires:       slox-gtk
+Requires:       slox-libs
+Requires:       slox-lsp
+Requires:       slox-notcurses
 Requires:       slox-postgres
 Requires:       slox-sqlite
 Requires:       slox-vim
@@ -32,6 +38,7 @@ editor plugins, standard libraries, and associated tools.
 
 %changelog
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
+- Track the new shared library, feature, app, and example packages
 - Extract reusable Canvas list widget
 
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.3-1

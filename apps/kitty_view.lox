@@ -92,11 +92,11 @@ fun displayImage(filepath) {
   print stream;
 }
 
-var parser = ArgParser("kitty_view.lox", "kitty protocol viewer");
+var parser = ArgParser("slox-kitty-view", "kitty protocol viewer");
 var opts = parser.parse(System.ARGS);
 
 if (opts.args.length() < 1) {
-  print "Usage: kitty_view.lox [options] <input_file>";
+  print "Usage: slox-kitty-view [options] <input_file>";
   System.exit(1);
 }
 

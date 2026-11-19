@@ -245,7 +245,7 @@ fun runXXD(opts) {
   }
 }
 
-var parser = ArgParser("xxd.lox", "xxd in slox");
+var parser = ArgParser("slox-xxd", "xxd in slox");
 parser.addOption("output", "o", "STDOUT", "Output file (default: stdout)");
 parser.addOption("groupsize", "g", 4, "Bytes per group");
 parser.addFlag("little-endian", "e", "Little-endian dump");
@@ -256,7 +256,7 @@ parser.addFlag("nocolor", "n", "Turn off color");
 var opts = parser.parse(System.ARGS);
 
 if (opts.args.length() < 1) {
-  print "Usage: xxd [options] <input_file>";
+  print "Usage: slox-xxd [options] <input_file>";
   System.exit(1);
 }
 

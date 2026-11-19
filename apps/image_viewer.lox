@@ -2,7 +2,7 @@
 // Minimal image viewer: open the first non-option argument, or browse a
 // directory and choose images from a second Canvas window. The browser stays
 // open after a selection so another image can be chosen.
-// Usage: slox examples/image_viewer.lox <image-or-directory>
+// Usage: slox-image-viewer <image-or-directory>
 //
 // Options are intentionally limited to the built-in -h/--help.
 // Viewer keys: q quit, n/p next/previous image, +/- zoom, 0 reset zoom,
@@ -13,7 +13,7 @@ require("argparser.lox");
 require("image_view.lox");
 require("file_browser.lox");
 
-var parser = ArgParser("slox examples/image_viewer.lox",
+var parser = ArgParser("slox-image-viewer",
                        "Display an image in a window, or browse a directory.");
 var parsed = parser.parse(System.ARGS);
 
@@ -21,7 +21,7 @@ if (parsed == nil) System.exit(0);
 
 if (parsed.args.length() < 1) {
   print "Error: Missing image filename.";
-  print "Usage: slox examples/image_viewer.lox <image-or-directory>";
+  print "Usage: slox-image-viewer <image-or-directory>";
   System.exit(1);
 }
 
