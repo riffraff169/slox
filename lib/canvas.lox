@@ -57,13 +57,16 @@ class Canvas {
   }
 
   //: displaySize
-  // Return [width, height] for the default X11 screen, or nil without a display.
+  // Return [width, height] for the primary monitor, or nil without a display.
+  // Xrandr monitor geometry is preferred because the X root can be a virtual
+  // screen spanning several monitors; root dimensions are only a fallback.
   static displaySize() {
     if (Canvas.env("DISPLAY") == "") return nil;
     var x11 = X11();
     var dpy = x11.openDisplay(nil);
     if (dpy == nil) return nil;
-    var size = [x11.displayWidth(dpy), x11.displayHeight(dpy)];
+    var size = x11.monitorSize(dpy);
+    if (size == nil) size = [x11.displayWidth(dpy), x11.displayHeight(dpy)];
     x11.closeDisplay(dpy);
     return size;
   }

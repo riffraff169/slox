@@ -120,6 +120,8 @@ class X11 {
 
     this.dpy = nil;
     this.wmDeleteAtom = nil;
+    this.randr = nil;
+    this.libc = nil;
   }
 
   openDisplay(name = nil) {
@@ -155,6 +157,85 @@ class X11 {
 
   displayHeight(dpy) {
     return this.fnDisplayHeight(dpy, this.fnDefaultScreen(dpy));
+  }
+
+  //: monitor_size
+  // Return [width, height] for the primary Xrandr monitor, or the largest
+  // monitor when none is primary. Returns nil if Xrandr is unavailable. This
+  // avoids sizing windows to the virtual root used by multi-head setups.
+  monitorSize(dpy = nil) {
+    if (dpy == nil) dpy = this.dpy;
+    if (dpy == nil) return nil;
+
+    try {
+      if (this.randr == nil) {
+        var randr = MultiFFI([
+            "libXrandr.so.2",
+            "libXrandr.so",
+            "libXrandr.2.dylib"
+            ]);
+        var getMonitors = randr.bind(
+            "XRRGetMonitors",
+            "pointer",
+            ["pointer", "uint64", "int32", "buffer"]
+            );
+        var freeMonitors = randr.bind("XRRFreeMonitors", "int32", ["pointer"]);
+        this.randr = randr;
+        this.fnGetMonitors = getMonitors;
+        this.fnFreeMonitors = freeMonitors;
+      }
+
+      if (this.libc == nil) {
+        var libc = MultiFFI(["libc.so.6", "libc.dylib"]);
+        var memcpy = libc.bind("memcpy", "pointer", ["buffer", "pointer", "size_t"]);
+        this.libc = libc;
+        this.fnMemcpy = memcpy;
+      }
+
+      var screen = this.fnDefaultScreen(dpy);
+      var root = this.rootWindow(dpy, screen);
+      var countBuffer = Buffer.alloc(8);
+      countBuffer.fill(0);
+      var monitors = this.fnGetMonitors(dpy, root, 1, countBuffer);
+      if (monitors == nil) return nil;
+
+      var count = Struct.unpack("<i", countBuffer)[0];
+      var ptrSize = Buffer.alloc(1).get_ptr().length();
+      var beforeOutputs = ptrSize + 9 * 4;
+      var padding = 0;
+      if (beforeOutputs % ptrSize != 0) {
+        padding = ptrSize - beforeOutputs % ptrSize;
+      }
+      var structSize = beforeOutputs + padding + ptrSize;
+      var format = "<" + ptrSize + "x i i i i i i i";
+      var info = Buffer.alloc(structSize);
+
+      var primarySize = nil;
+      var largestSize = nil;
+      var largestArea = 0;
+      for (var i = 0; i < count; i += 1) {
+        info.fill(0);
+        this.fnMemcpy(info, monitors + i * structSize, structSize);
+        var fields = Struct.unpack(format, info);
+        var isPrimary = fields[0] != 0;
+        var width = fields[5];
+        var height = fields[6];
+        if (width <= 0 or height <= 0) continue;
+
+        if (isPrimary and primarySize == nil) primarySize = [width, height];
+        var area = width * height;
+        if (largestSize == nil or area > largestArea) {
+          largestSize = [width, height];
+          largestArea = area;
+        }
+      }
+
+      this.fnFreeMonitors(monitors);
+      if (primarySize != nil) return primarySize;
+      return largestSize;
+    } catch (e) {
+      return nil;
+    }
   }
 
   flush(dpy = nil) {

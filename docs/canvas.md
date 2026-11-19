@@ -45,7 +45,8 @@ Options: `offscreen`, `x`, `y`, `fontFamily`, `fontSize`, `background`.
 Shared helpers are static methods on `Canvas`: `option`, `copyMap`, `env`,
 `displaySize`, `clamp`, `compareText`, `truncateText`, `rgba`, `niceStep`,
 `tickDecimals`, and `tickLabel`. `displaySize()` returns `[width, height]` for
-the default X11 screen, or `nil` when no display is available. Keeping helpers
+the primary Xrandr monitor (falling back to the X root), or `nil` when no
+display is available. Keeping helpers
 on `Canvas` makes it clear where they are defined and lets other Canvas widgets
 call them without global helper functions.
 
@@ -194,7 +195,7 @@ opening a window. `ImageView.window(path, width, height, title, options)` and
 `ImageView.offscreen(path, width, height, options)` create a canvas too; a
 window canvas falls back to offscreen rendering when no X11 display is
 available. When no size is given, `ImageView.window()` scales large images down
-to fit the X11 screen with a small margin. The `maxWidth` and `maxHeight`
+to fit the primary monitor with a small margin. The `maxWidth` and `maxHeight`
 options override that limit; `ImageView.fitSize(w, h, maxWidth, maxHeight)`
 applies the same aspect-preserving scaling directly.
 
