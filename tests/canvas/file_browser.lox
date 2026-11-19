@@ -23,6 +23,19 @@ print browser.list.selectedIndex() == 2;
 // expect: true
 print browser.selectedEntry()["name"];
 // expect: a.jpg
+var imagePaths = browser.imagePaths();
+print imagePaths.length();
+// expect: 3
+print browser.selectPath(imagePaths[2]);
+// expect: true
+print browser.selectedEntry()["name"];
+// expect: C.PNG
+print browser.selectPath(imagePaths[0]);
+// expect: true
+print browser.selectedEntry()["name"];
+// expect: a.jpg
+print browser.selectPath(dir + "/missing.png");
+// expect: false
 
 var down = {"type": X11.KeyPress, "keysym": X11.XK_Down, "text": ""};
 var up = {"type": X11.KeyPress, "keysym": X11.XK_Up, "text": ""};

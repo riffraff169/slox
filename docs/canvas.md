@@ -212,8 +212,9 @@ out and back in does not resample an already-resampled image. Zoom steps are
 stored as integer tenths, so zoom in followed by zoom out returns to exactly
 100%.
 
-`examples/image_viewer.lox` uses `+`/`=` to zoom in, `-`/`_` to zoom out, and
-`0` to reset.
+`examples/image_viewer.lox` uses `+`/`=` to zoom in, `-`/`_` to zoom out, `0`
+to reset, and `n`/`p` to step through the images from the current directory.
+`q` quits both windows.
 
 For a viewer that keeps one window open while swapping images, call
 `view.release()` (or `view.dispose()`) before dropping a view and reuse the same
@@ -253,6 +254,10 @@ window manager close button) to close the browser. The first image is selected
 by default; directories are listed first, hidden files are skipped, and `..`
 navigates to the parent directory.
 
+Selecting an image leaves the browser open so another row can be chosen. In the
+viewer, `n` and `p` load the next and previous images from the browser's current
+directory and keep the browser highlight in sync; `q` quits both windows.
+
 `FileBrowser` is a thin adapter over `ListWidget`: it scans directories and
 supplies labeled rows, while the widget owns selection, scrolling, and drawing.
 The underlying widget is available as `browser.list`.
@@ -282,8 +287,8 @@ not load the image itself. Supported extensions are `png`, `jpg`, `jpeg`, `bmp`,
 `gif`, `tga`, `pnm`, `ppm`, `pgm`, and `pbm` (case-insensitive). Options are
 `title`, `rowHeight`, `fontSize`, and `onClose`; `onClose(browser)` is called
 once when the browser is closed. Useful methods are `refresh()`,
-`navigate(path)`, `moveSelection(delta)`, `selectedEntry()`, `handleEvent(event)`,
-`draw()`, and `close()`.
+`navigate(path)`, `moveSelection(delta)`, `selectedEntry()`, `imagePaths()`,
+`selectPath(path)`, `handleEvent(event)`, `draw()`, and `close()`.
 
 With no X11 display, the viewer's directory mode renders the browser once to
 `file_browser.png`; selecting an image there renders it to `image_viewer.png`.

@@ -149,6 +149,29 @@ class FileBrowser {
     return this.entries[index];
   }
 
+  //: imagePaths
+  // Return the paths of image entries in display order.
+  imagePaths() {
+    var paths = [];
+    for (var i = 0; i < this.entries.length(); i += 1) {
+      if (!this.entries[i]["isDir"]) paths.push(this.entries[i]["path"]);
+    }
+    return paths;
+  }
+
+  //: selectPath
+  // Highlight a currently listed path, if present.
+  selectPath(path) {
+    for (var i = 0; i < this.entries.length(); i += 1) {
+      if (this.entries[i]["path"] == path) {
+        this.list.select(i);
+        this.selected = i;
+        return true;
+      }
+    }
+    return false;
+  }
+
   //: moveSelection
   // Move the highlighted row by delta entries.
   moveSelection(delta, canvas = nil) {
