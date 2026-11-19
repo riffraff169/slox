@@ -24,11 +24,11 @@ C implementation of Lox (a bytecode VM derived from clox) with additional native
 
 ## Layout and conventions
 
-- `src/version.h` is the single version source. `scripts/bump-version.sh X.Y.Z [release]` updates version files, commits, creates tag `vX.Y.Z`, and pushes. Do not bump versions manually.
+- `src/version.h` is the single version source. `scripts/bump-version.sh X.Y.Z [release]` must run from `master`; it updates version files, commits, creates tag `vX.Y.Z`, and pushes `master` plus the tag to Gitea and GitHub. Do not bump versions manually.
 - The language extends Lox with raw strings: `r"..."` does not process escapes and ends at the next `"` (used for regex patterns such as `Regex(r"\d+")`).
 - Native functions use `Value nameNative(int argCount, Value* args)`; `args[-1]` is the receiver/callee and `args[0..]` are arguments. Report errors with `runtimeError(...)` and return a fallback value.
 - Callback-driven natives must stop when a callback throws; follow the `VM_CALLBACK_*` macros at the top of `src/native.c` and preserve `vm.exceptionThrown`/pending-unwind state instead of resetting the stack.
 - `src/native.h` is generated from `src/native.c` by `src/makeheaders.sh src/native.c`.
 - `tests/`, `examples/`, `lib/` (Lox standard library), and `docs/` are tracked. The API reference is `docs/api_doc.md`; the README link to `docs/api_docs.md` is stale.
 - Many scratch `.lox`, `.txt`, `.ppm`, and similar files in the repo root are not part of the source tree; leave them alone.
-- `origin` has two push URLs (Gitea and GitHub), so `git push origin` publishes to both.
+- `origin` is Gitea only and is used for PR branches/review. `github` is a separate remote for final `master` and tag mirrors; `scripts/bump-version.sh` pushes both.
