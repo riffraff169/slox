@@ -35,6 +35,8 @@ var fileList = [];
 var fileIndex = -1;
 var currentPath = nil;
 var fitMode = false;
+var imageDirty = false;
+var browserDirty = false;
 
 fun windowOpen(target) {
   return target != nil and target.isOpen();
@@ -68,6 +70,11 @@ fun indexOfPath(paths, path) {
 }
 
 fun registerViewerEvents(target) {
+  target.on("event", fun(c, event) {
+    var type = event["type"];
+    if (type == X11.Expose or type == X11.ConfigureNotify) imageDirty = true;
+  });
+
   target.on("keypress", fun(c, event) {
     var key = event["text"];
     if (key == nil) return;
@@ -95,6 +102,7 @@ fun registerViewerEvents(target) {
       view.fitToWindow(fitMode);
       updateTitle();
     }
+    imageDirty = true;
   });
 
   target.on("close", fun(c, event) { quit(); });
@@ -132,7 +140,11 @@ fun openImage(path) {
   registerViewerEvents(canvas);
   if (fitMode) view.fitToWindow();
   updateTitle();
-  if (browser != nil) browser.selectPath(path);
+  imageDirty = true;
+  if (browser != nil) {
+    browser.selectPath(path);
+    browserDirty = true;
+  }
 
   if (canvas.offscreen) renderOffscreenImage();
   return true;
@@ -173,9 +185,12 @@ fun openBrowser(path) {
       if (view == nil) running = false;
     }
   });
+  browserDirty = true;
 
   browserCanvas.on("event", fun(c, event) {
-    if (browser != nil) browser.handleEvent(event, c);
+    if (browser != nil and browser.handleEvent(event, c)) browserDirty = true;
+    var type = event["type"];
+    if (type == X11.Expose or type == X11.ConfigureNotify) browserDirty = true;
   });
 
   if (browserCanvas.offscreen) {
@@ -190,16 +205,24 @@ fun openBrowser(path) {
 }
 
 // Yields to both windows because Canvas.run() only pumps one canvas at a time.
+// Redraw only when something changes; clearing and repainting every frame made
+// large images flicker.
 fun runWindows() {
   while (running and (windowOpen(browserCanvas) or windowOpen(canvas))) {
     if (windowOpen(browserCanvas)) {
       browserCanvas.handleEvents();
-      if (windowOpen(browserCanvas)) browserCanvas.render(drawBrowser);
+      if (windowOpen(browserCanvas) and browserDirty) {
+        browserCanvas.render(drawBrowser);
+        browserDirty = false;
+      }
     }
 
     if (windowOpen(canvas)) {
       canvas.handleEvents();
-      if (windowOpen(canvas)) canvas.render(drawImage);
+      if (windowOpen(canvas) and imageDirty) {
+        canvas.render(drawImage);
+        imageDirty = false;
+      }
     }
 
     System.sleep(1.0 / 60.0);
