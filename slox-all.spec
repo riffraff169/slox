@@ -1,5 +1,5 @@
 Name:           slox-all
-Version: 1.11.3
+Version: 1.11.4
 Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
@@ -31,6 +31,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
+- Extract reusable Canvas list widget
+
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.3-1
 - Add ImageView filtering and canvas reuse hooks
 
