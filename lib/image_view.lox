@@ -37,6 +37,39 @@ fun _view_fit_size(view, width, height) {
   return [width, height];
 }
 
+fun _view_positive_limit(value) {
+  if (value == nil or value <= 0) return nil;
+  return Math.floor(value);
+}
+
+fun _view_scale_within(width, height, maxWidth, maxHeight) {
+  if (maxWidth == nil and maxHeight == nil) return [width, height];
+  var scale = 1.0;
+  if (maxWidth != nil) scale = Math.min(scale, maxWidth / width);
+  if (maxHeight != nil) scale = Math.min(scale, maxHeight / height);
+  if (scale >= 1.0) return [width, height];
+  return [
+    Math.max(1, Math.floor(width * scale)),
+    Math.max(1, Math.floor(height * scale))
+  ];
+}
+
+// Return [x, y, width, height] for the image centered inside a rectangle.
+fun _view_fit_rect(x, y, width, height, imageWidth, imageHeight) {
+  if (width <= 0 or height <= 0) return [x, y, 1, 1];
+  var scale = Math.min(width / imageWidth, height / imageHeight);
+  var drawWidth = Math.max(1, Math.floor(imageWidth * scale));
+  var drawHeight = Math.max(1, Math.floor(imageHeight * scale));
+  if (drawWidth > width) drawWidth = width;
+  if (drawHeight > height) drawHeight = height;
+  return [
+    x + Math.floor((width - drawWidth) / 2),
+    y + Math.floor((height - drawHeight) / 2),
+    drawWidth,
+    drawHeight
+  ];
+}
+
 fun _view_filter(filter) {
   if (filter == nil) return Cairo.FILTER_NEAREST;
   if (typeof(filter) != "String") return filter;
@@ -56,6 +89,8 @@ class ImageView {
   const MIN_ZOOM_STEP = 1;
   const MAX_ZOOM_STEP = 100;
   const NORMAL_ZOOM_STEP = 10;
+  const DISPLAY_MARGIN_X = 40;
+  const DISPLAY_MARGIN_Y = 80;
 
   //: init
   // Wrap an Image.load() result in a Cairo-backed view.
@@ -75,6 +110,7 @@ class ImageView {
     this.originalWidth = image.width;
     this.originalHeight = image.height;
     this.zoomStep = ImageView.NORMAL_ZOOM_STEP;
+    this.fitWindow = false;
     this.options = options;
     var bytes = image.get_bytes();
     if (bytes == nil) throw Error("ImageView: could not read image bytes.");
@@ -103,8 +139,17 @@ class ImageView {
     return ImageView(image, options);
   }
 
+  //: fitSize
+  // Scale width/height down to fit limits, preserving the aspect ratio.
+  static fitSize(width, height, maxWidth = nil, maxHeight = nil) {
+    return _view_scale_within(width, height,
+        _view_positive_limit(maxWidth), _view_positive_limit(maxHeight));
+  }
+
   //: window
-  // Open a Canvas window sized to the image and return its ImageView.
+  // Open a Canvas window sized to the image and return its ImageView. With no
+  // explicit size, the window is scaled down to fit the X11 screen. The options
+  // maxWidth and maxHeight override that screen-based limit.
   // Required args:
   //   String: path
   // Optional args:
@@ -115,6 +160,20 @@ class ImageView {
   static window(path, width = nil, height = nil, title = "slox image", options = nil) {
     var view = ImageView.fromFile(path, options);
     var size = _view_fit_size(view, width, height);
+    var maxWidth = _view_positive_limit(Canvas.option(options, "maxWidth", nil));
+    var maxHeight = _view_positive_limit(Canvas.option(options, "maxHeight", nil));
+    if (maxWidth == nil or maxHeight == nil) {
+      var display = Canvas.displaySize();
+      if (display != nil) {
+        if (maxWidth == nil) {
+          maxWidth = Math.max(1, display[0] - ImageView.DISPLAY_MARGIN_X);
+        }
+        if (maxHeight == nil) {
+          maxHeight = Math.max(1, display[1] - ImageView.DISPLAY_MARGIN_Y);
+        }
+      }
+    }
+    size = ImageView.fitSize(size[0], size[1], maxWidth, maxHeight);
     view.canvas = Canvas.window(size[0], size[1], title, options);
     return view;
   }
@@ -130,12 +189,17 @@ class ImageView {
   static offscreen(path, width = nil, height = nil, options = nil) {
     var view = ImageView.fromFile(path, options);
     var size = _view_fit_size(view, width, height);
+    size = ImageView.fitSize(size[0], size[1],
+        Canvas.option(options, "maxWidth", nil),
+        Canvas.option(options, "maxHeight", nil));
     view.canvas = Canvas.offscreen(size[0], size[1], options);
     return view;
   }
 
   //: draw
   // Draw the current pixels onto a Canvas, optionally scaled to a rectangle.
+  // In fit-to-window mode the image is centered inside that rectangle with its
+  // aspect ratio preserved; the surrounding area is left unchanged.
   // filter may be a Cairo.FILTER_* constant or one of the strings "nearest",
   // "fast", "good", "best", "bilinear", or "gaussian".
   // Optional args:
@@ -150,13 +214,24 @@ class ImageView {
     if (canvas == nil) throw Error("ImageView.draw(): no Canvas was supplied.");
     if (this.surface == nil) throw Error("ImageView.draw(): surface is closed.");
 
+    var targetX = x;
+    var targetY = y;
     var targetWidth = width;
     var targetHeight = height;
     if (targetWidth == nil) targetWidth = this.width;
     if (targetHeight == nil) targetHeight = this.height;
 
+    if (this.fitWindow) {
+      var rect = _view_fit_rect(targetX, targetY, targetWidth, targetHeight,
+          this.width, this.height);
+      targetX = rect[0];
+      targetY = rect[1];
+      targetWidth = rect[2];
+      targetHeight = rect[3];
+    }
+
     canvas.save();
-    canvas.translate(x, y);
+    canvas.translate(targetX, targetY);
     canvas.scale(targetWidth / this.width, targetHeight / this.height);
     canvas.cairo.setSourceSurface(canvas.cr, this.surface, 0.0, 0.0);
     var pattern = canvas.cairo.getSource(canvas.cr);
@@ -186,8 +261,9 @@ class ImageView {
   }
 
   //: zoomTo
-  // Set an arbitrary zoom multiplier and resize the Canvas, if any. The image,
-  // pixel array, and Cairo source surface are left untouched.
+  // Set an arbitrary zoom multiplier and resize the Canvas, if any. Exits
+  // fit-to-window mode. The image, pixel array, and Cairo source surface are
+  // left untouched.
   zoomTo(factor) {
     if (typeof(factor) != "Integer" and typeof(factor) != "Float") {
       throw Error("ImageView.zoomTo() expects a number.");
@@ -202,27 +278,53 @@ class ImageView {
   }
 
   //: zoomIn
-  // Increase zoom by 10% of the original image size and resize the Canvas.
+  // Increase zoom by 10% of the original image size, resize the Canvas, and
+  // exit fit-to-window mode.
   zoomIn() {
     if (this.zoomStep < ImageView.MAX_ZOOM_STEP) this.zoomStep = this.zoomStep + 1;
     return this._applyZoom();
   }
 
   //: zoomOut
-  // Decrease zoom by 10% of the original image size and resize the Canvas.
+  // Decrease zoom by 10% of the original image size, resize the Canvas, and
+  // exit fit-to-window mode.
   zoomOut() {
     if (this.zoomStep > ImageView.MIN_ZOOM_STEP) this.zoomStep = this.zoomStep - 1;
     return this._applyZoom();
   }
 
   //: zoomReset
-  // Restore 100% zoom and resize the Canvas to the original image size.
+  // Restore 100% zoom, resize the Canvas to the original image size, and exit
+  // fit-to-window mode.
   zoomReset() {
     this.zoomStep = ImageView.NORMAL_ZOOM_STEP;
     return this._applyZoom();
   }
 
+  //: fitToWindow
+  // Scale the image to the current Canvas without resizing the Canvas. The
+  // aspect ratio is preserved and any extra space is left as canvas background.
+  // Passing false (or calling any zoom method) restores the zoomed window size.
+  fitToWindow(enabled = true) {
+    this.fitWindow = enabled != false;
+    if (!this.fitWindow) return this._applyZoom();
+    return this;
+  }
+
+  //: isFitToWindow
+  // Whether draw() currently fits the image inside the Canvas.
+  isFitToWindow() {
+    return this.fitWindow;
+  }
+
+  //: fitRect
+  // Return [x, y, width, height] for the image centered inside a rectangle.
+  fitRect(x, y, width, height) {
+    return _view_fit_rect(x, y, width, height, this.width, this.height);
+  }
+
   _applyZoom() {
+    this.fitWindow = false;
     if (this.canvas != nil) {
       var size = this.zoomSize();
       this.canvas.resize(size[0], size[1]);

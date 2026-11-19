@@ -16,6 +16,9 @@ print Canvas.tickDecimals(0.01);
 // expect: 2
 print Canvas.tickLabel(0.5, 0.25);
 // expect: 0.5
+var display = Canvas.displaySize();
+print display == nil or (display.length() == 2 and display[0] > 0 and display[1] > 0);
+// expect: true
 
 var canvas = Canvas.offscreen(240, 180);
 print canvas.isOffscreen();

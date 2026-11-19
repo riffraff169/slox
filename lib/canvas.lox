@@ -56,6 +56,18 @@ class Canvas {
     return value;
   }
 
+  //: displaySize
+  // Return [width, height] for the default X11 screen, or nil without a display.
+  static displaySize() {
+    if (Canvas.env("DISPLAY") == "") return nil;
+    var x11 = X11();
+    var dpy = x11.openDisplay(nil);
+    if (dpy == nil) return nil;
+    var size = [x11.displayWidth(dpy), x11.displayHeight(dpy)];
+    x11.closeDisplay(dpy);
+    return size;
+  }
+
   static clamp(value, low, high) {
     if (value < low) return low;
     if (value > high) return high;

@@ -43,9 +43,11 @@ Canvas.offscreen(width, height, options = nil)
 Options: `offscreen`, `x`, `y`, `fontFamily`, `fontSize`, `background`.
 
 Shared helpers are static methods on `Canvas`: `option`, `copyMap`, `env`,
-`clamp`, `compareText`, `truncateText`, `rgba`, `niceStep`, `tickDecimals`, and
-`tickLabel`. Keeping them on `Canvas` makes it clear where they are defined and
-lets other Canvas widgets call them without global helper functions.
+`displaySize`, `clamp`, `compareText`, `truncateText`, `rgba`, `niceStep`,
+`tickDecimals`, and `tickLabel`. `displaySize()` returns `[width, height]` for
+the default X11 screen, or `nil` when no display is available. Keeping helpers
+on `Canvas` makes it clear where they are defined and lets other Canvas widgets
+call them without global helper functions.
 
 Drawing methods:
 
@@ -191,7 +193,10 @@ view.close();
 opening a window. `ImageView.window(path, width, height, title, options)` and
 `ImageView.offscreen(path, width, height, options)` create a canvas too; a
 window canvas falls back to offscreen rendering when no X11 display is
-available.
+available. When no size is given, `ImageView.window()` scales large images down
+to fit the X11 screen with a small margin. The `maxWidth` and `maxHeight`
+options override that limit; `ImageView.fitSize(w, h, maxWidth, maxHeight)`
+applies the same aspect-preserving scaling directly.
 
 Useful methods:
 
@@ -202,11 +207,13 @@ Useful methods:
 | `refreshFromPixels()` | Upload direct array edits to the Cairo surface. |
 | `refresh()` | Reload pixels from the underlying `Image` object. |
 | `syncImage()` | Copy Slox pixel edits back into the `Image` object. |
-| `draw(canvas, x, y, width, height, filter = nil)` | Draw the surface, scaled to the rectangle. `filter` is a `Cairo.FILTER_*` constant or `"nearest"`, `"fast"`, `"good"`, `"best"`, `"bilinear"`, or `"gaussian"`; the default is nearest. |
+| `draw(canvas, x, y, width, height, filter = nil)` | Draw the surface, scaled to the rectangle. In fit mode the image is centered in that rectangle with its aspect ratio preserved. `filter` is a `Cairo.FILTER_*` constant or `"nearest"`, `"fast"`, `"good"`, `"best"`, `"bilinear"`, or `"gaussian"`; the default is nearest. |
 | `save(path)` | Save the image after syncing pixel edits. |
 | `cairoSurface()` | Return the raw Cairo surface pointer. |
 | `zoomFactor()`, `zoomSize()` | Current multiplier and display size. |
-| `zoomIn()`, `zoomOut()`, `zoomReset()`, `zoomTo(factor)` | Change zoom by 10% steps (or set it, rounded to 10%), resizing the Canvas. |
+| `zoomIn()`, `zoomOut()`, `zoomReset()`, `zoomTo(factor)` | Change zoom by 10% steps (or set it, rounded to 10%), resizing the Canvas and exiting fit mode. |
+| `fitToWindow(enabled = true)`, `isFitToWindow()` | Fit the image into the current Canvas without resizing it; disable to restore the zoomed size. |
+| `fitRect(x, y, width, height)` | Return the letterboxed `[x, y, width, height]` used in fit mode. |
 | `release()` | Destroy only the Cairo surface and buffer, leaving the canvas open. |
 | `dispose()` | Alias for `release()`. |
 | `close()` | Release the surface and close the canvas. |
@@ -218,8 +225,9 @@ stored as integer tenths, so zoom in followed by zoom out returns to exactly
 100%.
 
 `examples/image_viewer.lox` uses `+`/`=` to zoom in, `-`/`_` to zoom out, `0`
-to reset, and `n`/`p` to step through the images from the current directory.
-`q` quits both windows.
+to reset, `n`/`p` to step through images from the current directory, and `f` to
+toggle fit-to-window (letterboxed, with the window size unchanged). Explicit
+zoom or reset leaves fit mode. `q` quits both windows.
 
 For a viewer that keeps one window open while swapping images, call
 `view.release()` (or `view.dispose()`) before dropping a view and reuse the same

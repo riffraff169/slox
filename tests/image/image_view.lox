@@ -95,6 +95,35 @@ print zoomView.zoomSize();
 print zoomCanvas.width + "x" + zoomCanvas.height;
 // expect: 100x50
 
+print ImageView.fitSize(100, 50, 40, 40);
+// expect: [40, 20]
+print ImageView.fitSize(100, 50, 200, 200);
+// expect: [100, 50]
+
+var fitCanvas = Canvas.offscreen(80, 80);
+zoomView.canvas = fitCanvas;
+print zoomView.isFitToWindow();
+// expect: false
+zoomView.fitToWindow();
+print zoomView.isFitToWindow();
+// expect: true
+print zoomView.fitRect(0, 0, 80, 80);
+// expect: [0, 20, 80, 40]
+zoomView.draw(fitCanvas, 0, 0, fitCanvas.width, fitCanvas.height);
+print fitCanvas.width + "x" + fitCanvas.height;
+// expect: 80x80
+zoomView.zoomIn();
+print zoomView.isFitToWindow();
+// expect: false
+print fitCanvas.width + "x" + fitCanvas.height;
+// expect: 110x55
+
+var limited = ImageView.offscreen("tests/image/fixture.png", nil, nil,
+    {"maxWidth": 1, "maxHeight": 1});
+print limited.canvas.width + "x" + limited.canvas.height;
+// expect: 1x1
+limited.close();
+
 canvas.close();
 view.close();
 zoomCanvas.close();

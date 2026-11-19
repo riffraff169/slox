@@ -5,8 +5,9 @@
 // Usage: slox examples/image_viewer.lox <image-or-directory>
 //
 // Options are intentionally limited to the built-in -h/--help.
-// Viewer keys: q quit, n/p next/previous image, +/- zoom, 0 reset zoom. With
-// no DISPLAY, one frame is rendered to image_viewer.png.
+// Viewer keys: q quit, n/p next/previous image, +/- zoom, 0 reset zoom,
+// f fit image to window (letterboxed). With no DISPLAY, one frame is rendered
+// to image_viewer.png.
 
 require("argparser.lox");
 require("image_view.lox");
@@ -33,6 +34,7 @@ var running = true;
 var fileList = [];
 var fileIndex = -1;
 var currentPath = nil;
+var fitMode = false;
 
 fun windowOpen(target) {
   return target != nil and target.isOpen();
@@ -42,8 +44,13 @@ fun updateTitle() {
   if (view == nil or canvas == nil) return;
   var name = "image";
   if (currentPath != nil) name = Dir.basename(currentPath);
+  var zoomLabel = "FIT";
+  if (!view.isFitToWindow()) {
+    var percent = Math.floor(canvas.width * 100.0 / view.image.width + 0.5);
+    zoomLabel = "" + percent + "%";
+  }
   canvas.setTitle("slox image view - " + name + " - " + view.image.width + "x" +
-      view.image.height + " - " + (view.zoomStep * 10) + "%");
+      view.image.height + " - " + zoomLabel);
 }
 
 fun quit() {
@@ -72,13 +79,20 @@ fun registerViewerEvents(target) {
     } else if (key == "p" or key == "P") {
       stepFile(-1);
     } else if (key == "+" or key == "=") {
+      fitMode = false;
       view.zoomIn();
       updateTitle();
     } else if (key == "-" or key == "_") {
+      fitMode = false;
       view.zoomOut();
       updateTitle();
     } else if (key == "0") {
+      fitMode = false;
       view.zoomReset();
+      updateTitle();
+    } else if (key == "f" or key == "F") {
+      fitMode = !fitMode;
+      view.fitToWindow(fitMode);
       updateTitle();
     }
   });
@@ -116,6 +130,7 @@ fun openImage(path) {
   canvas = view.canvas;
   currentPath = path;
   registerViewerEvents(canvas);
+  if (fitMode) view.fitToWindow();
   updateTitle();
   if (browser != nil) browser.selectPath(path);
 
@@ -170,7 +185,7 @@ fun openBrowser(path) {
     running = false;
   } else {
     print "Up/Down = move, Enter/Space = open, click = open, Esc = close";
-    print "Viewer: n/p = next/previous image, q = quit";
+    print "Viewer: n/p = next/previous, +/- zoom, 0 reset, f fit, q = quit";
   }
 }
 
