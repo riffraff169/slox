@@ -4,6 +4,13 @@ See docs/api_docs.md for class api.
 
 For the X11 + Cairo drawing and plotting library, see docs/canvas.md.
 
+RPM packages split the shared Lox libraries, feature libraries, examples, and
+applications into subpackages. Curated applications are installed under
+`/usr/share/slox/apps` with prefixed commands: `slox-xxd`, `slox-elf-info`,
+`slox-sanitize`, `slox-image-viewer`, `slox-kitty-view`, `slox-plotcalc`,
+`slox-playlist-manager`, and `slox-docgen`. Examples remain in
+`/usr/share/slox/examples`.
+
 Several features have been added:
 #### `has_method()`
 See if a class has a method

@@ -31,7 +31,7 @@ var sourceLines = [
   "fun floor(x) {}"
 ];
 
-var ap = ArgParser("docparser.lox", "Process document comments from files");
+var ap = ArgParser("slox-docgen", "Process document comments from files");
 ap.addOption("output", "o", "output_doc.md", "Outputfile");
 
 var args = ap.parse(System.ARGS);

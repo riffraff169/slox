@@ -28,6 +28,12 @@ Requires:   pcre2
 Requires:   libffi
 Requires:   ca-certificates
 
+%global core_libs stdlib.lox mkdir_p.lox process_ext.lox stats.lox timer.lox
+%global shared_libs argparser.lox benchmark.lox color.lox complex.lox csv.lox docparser.lox docparser_main.lox elf.lox event.lox json.lox lexer.lox logger.lox markdown.lox matrix.lox mdcat.lox multiffi.lox polynomial.lox queues.lox readline.lox sfmt.lox signal-manager.lox sloxcolorizer.lox template.lox test_runner.lox uuid.lox
+%global canvas_libs bmpparser.lox cairo.lox canvas.lox file_browser.lox image_view.lox kittycanvas.lox qrgen.lox x11.lox
+%global lsp_libs lsp.lox
+%global notcurses_libs notcurses.lox scrollbox.lox
+
 %description
 An optimized variant of the Lox VM featuring a recurseive descent serializer,
 custom native C modules, and a cascading search path for its standard library.
@@ -39,6 +45,7 @@ Summary:        GTK4 and GObject Introspection bindings for slox
 BuildRequires:  gobject-introspection-devel
 BuildRequires:  gtk4-devel
 Requires:       %{name}%{?_isa} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
 
 %description gtk
 Provideds the liblogx_gi.so native module for building graphical UI
@@ -51,6 +58,7 @@ applications using GTK4 in slox.
 Summary:        SQLite database bindings for slox
 BuildRequires:  sqlite-devel
 Requires:       %{name}%{?_isa} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
 
 %description sqlite
 Provides the liblox_sqlite.so native C module and sqlite_ext.lox
@@ -63,6 +71,7 @@ helper library for slox.
 Summary:        PostgreSQL database bindings for slox
 BuildRequires:  postgresql-devel
 Requires:       %{name}%{?_isa} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
 
 %description postgres
 Provides the liblox_pg.so native C module and pg_ext.lox
@@ -75,15 +84,77 @@ helper library for slox.
 Summary:        YAML parsing bindings for lox
 BuildRequires:  libyaml-devel
 Requires:       %{name}%{?_isa} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
 
 %description yaml
 Provides the liblox_yaml.so native module for reading and parsing
 YAML configuration files
 %endif
 
+%package libs
+Summary:        Shared pure-Lox libraries for slox
+Requires:       %{name} = %{version}-%{release}
+BuildArch:      noarch
+
+%description libs
+Reusable Lox libraries that are not part of the core runtime. Feature,
+example, and application packages depend on this package.
+
+%package canvas
+Summary:        Cairo and X11 canvas library for slox
+Requires:       %{name} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
+Requires:       cairo
+Requires:       libX11
+Requires:       libXrandr
+BuildArch:      noarch
+
+%description canvas
+Pure-Lox Cairo/X11 drawing, image view, file browser, and widget libraries.
+
+%package lsp
+Summary:        Language server library for slox
+Requires:       %{name} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
+BuildArch:      noarch
+
+%description lsp
+The Lox implementation of the slox language server.
+
+%package notcurses
+Summary:        Notcurses terminal UI library for slox
+Requires:       %{name} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
+Requires:       notcurses
+BuildArch:      noarch
+
+%description notcurses
+Pure-Lox Notcurses bindings and terminal widgets for slox.
+
+%package apps
+Summary:        Command line applications for slox
+Requires:       %{name} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
+Requires:       %{name}-canvas = %{version}-%{release}
+Requires:       %{name}-notcurses = %{version}-%{release}
+BuildArch:      noarch
+
+%description apps
+Curated slox applications with prefixed commands in %{_bindir}.
+
+%package examples
+Summary:        Example programs for slox
+Requires:       %{name} = %{version}-%{release}
+Requires:       %{name}-libs = %{version}-%{release}
+BuildArch:      noarch
+
+%description examples
+Language examples and small demos installed under %{_datadir}/slox/examples.
+
 %package vim
 Summary:        Vim support for the Lox programming language
 Requires:       vim-common
+Requires:       %{name}-libs = %{version}-%{release}
 BuildArch:      noarch
 
 %description vim
@@ -112,18 +183,40 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_libdir}/slox/modules
 mkdir -p %{buildroot}%{_libdir}/slox/lib
-mkdir -p %{buildroot}%{_libdir}/slox/examples
 mkdir -p %{buildroot}%{_libdir}/slox/tests
 mkdir -p %{buildroot}%{_libdir}/slox/scripts
+mkdir -p %{buildroot}%{_datadir}/slox/examples
+mkdir -p %{buildroot}%{_datadir}/slox/apps
 mkdir -p %{buildroot}%{_docdir}/slox/
 
 install -m 0775 bin/slox %{buildroot}%{_bindir}/slox
-install -m 0775 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules
-install -m 0775 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules
+install -m 0775 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0775 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
+install -m 0775 modules/liblox_ffi.so %{buildroot}%{_libdir}/slox/modules/
 
 if [ -f modules/liblox_ssl.so ]; then
     install -m 0775 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
 fi
+
+for lib in %{core_libs}; do
+    install -m 0644 lib/$lib %{buildroot}%{_libdir}/slox/lib/
+done
+
+for lib in %{shared_libs}; do
+    install -m 0644 lib/$lib %{buildroot}%{_libdir}/slox/lib/
+done
+
+for lib in %{canvas_libs}; do
+    install -m 0644 lib/$lib %{buildroot}%{_libdir}/slox/lib/
+done
+
+for lib in %{lsp_libs}; do
+    install -m 0644 lib/$lib %{buildroot}%{_libdir}/slox/lib/
+done
+
+for lib in %{notcurses_libs}; do
+    install -m 0644 lib/$lib %{buildroot}%{_libdir}/slox/lib/
+done
 
 %if %{with gtk}
 if [ -f modules/liblox_gi.so ]; then
@@ -134,59 +227,43 @@ fi
 %if %{with sqlite}
 if [ -f modules/liblox_sqlite.so ]; then
     install -m 0775 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
-    #if [ -f modules/sqlite_ext.lox ]; then
-    #    install -m 00644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
-    #fi
+    install -m 0644 lib/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
 fi
 %endif
-
 
 %if %{with postgres}
 if [ -f modules/liblox_pg.so ]; then
     install -m 0775 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
-    #if [ -f modules/pg_ext.lox ]; then
-    #    install -m 00644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
-    #fi
+    install -m 0644 lib/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
 fi
 %endif
 
 %if %{with yaml}
-[ -f modules/liblox_yaml.so ] && install -m 0775 modules/liblox_yaml.so  %{buildroot}%{_libdir}/slox/modules/
+[ -f modules/liblox_yaml.so ] && install -m 0775 modules/liblox_yaml.so %{buildroot}%{_libdir}/slox/modules/
 %endif
 
-%if %{with notcurses}
-if [ -f modules/liblox_notcurses.so ]; then
-    install -m 0775 modules/liblox_notcurses.so %{buildroot}%{_libdir}/slox/modules/
-fi
-%endif
-
-cp lib/*.lox %{buildroot}%{_libdir}/slox/lib/
-
-# Core modules (always built)
-install -m 0775 modules/liblox_sha1.so %{buildroot}%{_libdir}/slox/modules/
-install -m 0775 modules/liblox_image.so %{buildroot}%{_libdir}/slox/modules/
-install -m 0775 modules/liblox_ffi.so %{buildroot}%{_libdir}/slox/modules/
-
-[ -f modules/liblox_ssl.so ] && install -m 0775 modules/liblox_ssl.so %{buildroot}%{_libdir}/slox/modules/
-[ -f modules/liblox_gi.so ] && install -m 0775 modules/liblox_gi.so %{buildroot}%{_libdir}/slox/modules/
-
-# Database modules and Lox helpers
-if [ -f modules/liblox_sqlite.so ]; then
-    install -m 0775 modules/liblox_sqlite.so %{buildroot}%{_libdir}/slox/modules/
-    [ -f modules/sqlite_ext.lox ] && install -m 0644 modules/sqlite_ext.lox %{buildroot}%{_libdir}/slox/lib/
-fi
-
-
-if [ -f modules/liblox_pg.so ]; then
-    install -m 0775 modules/liblox_pg.so %{buildroot}%{_libdir}/slox/modules/
-    [ -f modules/pg_ext.lox ] && install -m 0644 modules/pg_ext.lox %{buildroot}%{_libdir}/slox/lib/
-fi
-#cp modules/*.so %{buildroot}/usr/local/lib/slox/modules
-
-cp examples/* %{buildroot}%{_libdir}/slox/examples/
+cp examples/* %{buildroot}%{_datadir}/slox/examples/
+cp apps/*.lox %{buildroot}%{_datadir}/slox/apps/
 cp -r tests/* %{buildroot}%{_libdir}/slox/tests/
 cp scripts/* %{buildroot}%{_libdir}/slox/scripts/
 cp docs/* %{buildroot}%{_docdir}/slox/
+
+_slox_wrapper() {
+    cat > "%{buildroot}%{_bindir}/$1" <<EOF
+#!/bin/sh
+exec %{_bindir}/slox "$2" "\$@"
+EOF
+    chmod 0755 "%{buildroot}%{_bindir}/$1"
+}
+
+_slox_wrapper slox-xxd %{_datadir}/slox/apps/xxd.lox
+_slox_wrapper slox-elf-info %{_datadir}/slox/apps/elf_info.lox
+_slox_wrapper slox-sanitize %{_datadir}/slox/apps/sanitize.lox
+_slox_wrapper slox-image-viewer %{_datadir}/slox/apps/image_viewer.lox
+_slox_wrapper slox-kitty-view %{_datadir}/slox/apps/kitty_view.lox
+_slox_wrapper slox-plotcalc %{_datadir}/slox/apps/plotcalc.lox
+_slox_wrapper slox-playlist-manager %{_datadir}/slox/apps/playlist_manager.lox
+_slox_wrapper slox-docgen %{_libdir}/slox/lib/docparser_main.lox
 
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftplugin
@@ -205,12 +282,73 @@ rm -rf %{buildroot}
 %{_libdir}/slox/modules/liblox_image.so
 %{_libdir}/slox/modules/liblox_ssl.so
 %{_libdir}/slox/modules/liblox_ffi.so
-%{_libdir}/slox/lib/
-%{_libdir}/slox/examples/
+%{_libdir}/slox/lib/stdlib.lox
+%{_libdir}/slox/lib/mkdir_p.lox
+%{_libdir}/slox/lib/process_ext.lox
+%{_libdir}/slox/lib/stats.lox
+%{_libdir}/slox/lib/timer.lox
 %{_libdir}/slox/tests/
 %{_libdir}/slox/scripts/
 %doc README.md
 %doc docs/*.md
+
+%files libs
+%{_libdir}/slox/lib/argparser.lox
+%{_libdir}/slox/lib/benchmark.lox
+%{_libdir}/slox/lib/color.lox
+%{_libdir}/slox/lib/complex.lox
+%{_libdir}/slox/lib/csv.lox
+%{_libdir}/slox/lib/docparser.lox
+%{_libdir}/slox/lib/docparser_main.lox
+%{_libdir}/slox/lib/elf.lox
+%{_libdir}/slox/lib/event.lox
+%{_libdir}/slox/lib/json.lox
+%{_libdir}/slox/lib/lexer.lox
+%{_libdir}/slox/lib/logger.lox
+%{_libdir}/slox/lib/markdown.lox
+%{_libdir}/slox/lib/matrix.lox
+%{_libdir}/slox/lib/mdcat.lox
+%{_libdir}/slox/lib/multiffi.lox
+%{_libdir}/slox/lib/polynomial.lox
+%{_libdir}/slox/lib/queues.lox
+%{_libdir}/slox/lib/readline.lox
+%{_libdir}/slox/lib/sfmt.lox
+%{_libdir}/slox/lib/signal-manager.lox
+%{_libdir}/slox/lib/sloxcolorizer.lox
+%{_libdir}/slox/lib/template.lox
+%{_libdir}/slox/lib/test_runner.lox
+%{_libdir}/slox/lib/uuid.lox
+
+%files canvas
+%{_libdir}/slox/lib/bmpparser.lox
+%{_libdir}/slox/lib/cairo.lox
+%{_libdir}/slox/lib/canvas.lox
+%{_libdir}/slox/lib/file_browser.lox
+%{_libdir}/slox/lib/image_view.lox
+%{_libdir}/slox/lib/kittycanvas.lox
+%{_libdir}/slox/lib/qrgen.lox
+%{_libdir}/slox/lib/x11.lox
+
+%files lsp
+%{_libdir}/slox/lib/lsp.lox
+
+%files notcurses
+%{_libdir}/slox/lib/notcurses.lox
+%{_libdir}/slox/lib/scrollbox.lox
+
+%files apps
+%{_bindir}/slox-xxd
+%{_bindir}/slox-elf-info
+%{_bindir}/slox-sanitize
+%{_bindir}/slox-image-viewer
+%{_bindir}/slox-kitty-view
+%{_bindir}/slox-plotcalc
+%{_bindir}/slox-playlist-manager
+%{_bindir}/slox-docgen
+%{_datadir}/slox/apps/
+
+%files examples
+%{_datadir}/slox/examples/
 
 %if %{with gtk}
 %files gtk
@@ -234,11 +372,6 @@ rm -rf %{buildroot}
 %{_libdir}/slox/modules/liblox_yaml.so
 %endif
 
-%if %{with notcurses}
-%files notcurses
-%{_libdir}/slox/modules/liblox_notcurses.so
-%endif
-
 %files vim
 %{_datadir}/vim/vimfiles/ftdetect/lox.vim
 %{_datadir}/vim/vimfiles/ftplugin/lox.vim
@@ -246,6 +379,7 @@ rm -rf %{buildroot}
 
 %changelog
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
+- Split libraries, examples, apps, and feature packs into subpackages
 - Extract reusable Canvas list widget
 
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.3-1

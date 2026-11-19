@@ -1,6 +1,6 @@
 #!/usr/bin/env slox
 // Display an image with ImageView and manipulate its RGBA bytes from Lox.
-// Usage: slox image_view_demo.lox [path/to/image.png]
+// Usage: slox apps/image_view_demo.lox [path/to/image.png]
 //
 // Keys in a window: i invert, g grayscale, r reset, q quit.
 // With no DISPLAY, one frame is rendered to image_view_demo.png instead.

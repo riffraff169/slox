@@ -1,6 +1,6 @@
 // Two-pane playlist builder. Move tracks from the library (left) to the
 // queue (right) with Space or Enter. Usage:
-//   ./bin/slox examples/playlist_manager.lox <music-directory>
+//   slox-playlist-manager <music-directory>
 require("notcurses.lox");
 require("scrollbox.lox");
 

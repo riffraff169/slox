@@ -1,0 +1,79 @@
+#!/usr/bin/env slox
+require("argparser.lox");
+
+// Sanitizes filenames by replacing spaces/punctuation and stripping
+// non-ascii characters
+fun sanitizeName(name) {
+  // 1. isolate the extension
+  var lastDot = name.rfind(".");
+
+  var base = name;
+  var ext = "";
+  if (lastDot != -1) {
+    base = name.slice(0, lastDot);
+    ext = name.slice(lastDot);
+  }
+
+  // 2. clean the base name
+  // strip spaces, commas, hashes, parentheses, plus signs, exclamation points, etc
+  var clean = base
+    .replace(" ", "_")
+    .tr(",()#+!", "______");
+
+  // 3. drop anything remaining non-ascii / high-bit characters byte-by-byte
+  var asciiBase = [];
+  var i = 0;
+  while (i < clean.length()) {
+    var c = clean[i];
+
+    if ((c >= '0' and c <= '9') or
+        (c >= 'A' and c <= 'Z') or
+        (c >= 'a' and c <= 'z') or
+        c == '-' or c == '_') {
+      asciiBase.push(c);
+    } else if (c == '.') {
+      asciiBase.push('_');
+    }
+    i += 1;
+  }
+
+  return asciiBase.to_string() + ext;
+}
+
+var parser = ArgParser("slox-sanitize", "Sanitize filenames");
+
+var args = parser.parse(System.ARGS);
+
+if (args.args.length() < 1) {
+  print "Usage: slox-sanitize <file1> [file2 ...]";
+  exit(1);
+}
+
+var k = 0;
+while (k < args.args.length()) {
+  var original = args.args[k];
+
+  if (!File.exists(original)) {
+    print "[!] Skip: '" + original + "' (Not found)";
+  } else if (Dir.isdir(original)) {
+    print "[-] Skip: '" + original + "' (Is a directory)";
+  } else {
+    var sanitized = sanitizeName(original);
+
+    if (original != sanitized) {
+      if (File.exists(sanitized)) {
+        print "[!] Error: Cannot rename '" + original + "' to '" + sanitized +  "' - target already exists.";
+      } else {
+        var success = File.rename(original, sanitized);
+        if (success) {
+          print "[+] Renamed: '" + original + "' -> '" + sanitized + "'";
+        } else {
+          print "[!] Error: Failed to rename '" + original + "'";
+        }
+      }
+    } else {
+      print "[-] Clean: '" + original + "'";
+    }
+  }
+  k += 1;
+}

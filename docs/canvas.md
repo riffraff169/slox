@@ -225,7 +225,7 @@ out and back in does not resample an already-resampled image. Zoom steps are
 stored as integer tenths, so zoom in followed by zoom out returns to exactly
 100%.
 
-`examples/image_viewer.lox` uses `+`/`=` to zoom in, `-`/`_` to zoom out, `0`
+`slox-image-viewer` uses `+`/`=` to zoom in, `-`/`_` to zoom out, `0`
 to reset, `n`/`p` to step through images from the current directory, and `f` to
 toggle fit-to-window (letterboxed, with the window size unchanged). Explicit
 zoom or reset leaves fit mode. `q` quits both windows.
@@ -253,7 +253,7 @@ for (var i = 0; i < pixels.length(); i += 4) {
 view.refreshFromPixels();
 ```
 
-The tracked `examples/image_view_demo.lox` shows a complete program. It opens a
+The tracked `apps/image_view_demo.lox` shows a complete program. It opens a
 window when `DISPLAY` is available and otherwise renders one frame to
 `image_view_demo.png`. Press `i` to invert, `g` to grayscale, `r` to reset, and
 `q` to quit.
@@ -261,7 +261,7 @@ window when `DISPLAY` is available and otherwise renders one frame to
 ## Browsing for images
 
 `require("file_browser.lox")` adds a Canvas-based directory browser. When
-`examples/image_viewer.lox` is given a directory instead of an image, it opens a
+`slox-image-viewer` is given a directory instead of an image, it opens a
 second window listing subdirectories and supported image files. Use Up/Down or
 the mouse wheel to move, Enter/Space or a click to open an entry, and Esc (or the
 window manager close button) to close the browser. The first image is selected
