@@ -1,5 +1,5 @@
 Name:           slox-all
-Version: 1.11.4
+Version: 1.12.0
 Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
@@ -37,6 +37,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Thu  Nov 19 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.0-1
+- Merge pull request 'Split RPM packages by library, feature, app, and example roles' (#3) from fix/rpm-package-layout into master
+
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
 - Track the new shared library, feature, app, and example packages
 - Extract reusable Canvas list widget

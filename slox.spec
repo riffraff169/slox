@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.11.4
+Version: 1.12.0
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -378,6 +378,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Thu  Nov 19 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.0-1
+- Merge pull request 'Split RPM packages by library, feature, app, and example roles' (#3) from fix/rpm-package-layout into master
+
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
 - Split libraries, examples, apps, and feature packs into subpackages
 - Extract reusable Canvas list widget
