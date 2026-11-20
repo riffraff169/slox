@@ -1,0 +1,39 @@
+class Base {
+  init(baseValue) {
+    this.baseValue = baseValue;
+  }
+}
+
+class User < Base {
+  include FieldIndex;
+
+  init(name, role) {
+    super.init("base");
+    this.name = name;
+    this.role = role;
+  }
+}
+
+var u = User("Lance", "Architect");
+
+print u["name"] == u.name;             // expect: true
+print u["role"] == "Architect";        // expect: true
+print u["baseValue"] == "base";        // expect: true
+
+var key = "role";
+print u[key] == u.role;                // expect: true
+
+u[key] = "Principal Architect";
+print u.role == "Principal Architect"; // expect: true
+
+u["title"] = "Chief";
+print u.title == "Chief";              // expect: true
+
+u["baseValue"] = "updated";
+print u.baseValue == "updated";        // expect: true
+
+print u["missing"] == nil;             // expect: true
+
+print u["name"] == u.get_field("name"); // expect: true
+u.set_field("role", "Lead");
+print u["role"] == "Lead";              // expect: true
