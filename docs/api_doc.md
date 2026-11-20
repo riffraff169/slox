@@ -4681,11 +4681,13 @@ Evaluates a string as slox code.
 ---
 
 ## `create_instance(class)`
-Creates a new instance from a class name.
-Does not run init()
+Creates a new instance from a class name or class object, running init() when present.
 
 **Required Arguments:**
-  - `String: class`
+  - `String|Class: class`
+
+**Optional Arguments:**
+  - `Value: arguments passed to init()`
 
 **Returns:**
   - `Instance: instance of class`

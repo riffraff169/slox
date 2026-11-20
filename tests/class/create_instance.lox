@@ -1,0 +1,30 @@
+class Vector {
+  init(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+}
+
+class Node {}
+
+var byName = create_instance("Vector", 10, 20, 30);
+print "name_type=" + typeof(byName); // expect: name_type=Vector
+print "name_fields=" + byName.x + "," + byName.y + "," + byName.z; // expect: name_fields=10,20,30
+
+var byClass = create_instance(Vector, 1, 2, 3);
+print "class_type=" + typeof(byClass); // expect: class_type=Vector
+print "class_fields=" + byClass.x + "," + byClass.y + "," + byClass.z; // expect: class_fields=1,2,3
+
+var node = create_instance("Node");
+print "no_init_type=" + typeof(node); // expect: no_init_type=Node
+print "no_init_string=" + node.to_string(); // expect: no_init_string=<Node instance>
+
+var extraArgs = create_instance("Node", 99, "unused");
+print "extra_args_type=" + typeof(extraArgs); // expect: extra_args_type=Node
+
+try {
+  create_instance("Missing");
+} catch (e) {
+  print "error=" + e.message; // expect: error=Class 'Missing' not found or is not a class.
+}
