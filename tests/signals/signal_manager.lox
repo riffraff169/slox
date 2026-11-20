@@ -1,0 +1,50 @@
+require("signal-manager.lox");
+
+class Target {}
+
+var manager = SignalManager();
+var target = Target();
+var other = Target();
+var calls = [];
+
+fun recorder(name) {
+  return fun(t, data) { calls.push(name + ":" + String(data)); };
+}
+
+var first = recorder("first");
+var second = recorder("second");
+
+print "connect_return=" + (manager.connect(target, "go", first) == first); // expect: connect_return=true
+manager.connect(target, "go", second);
+
+manager.emit(target, "go", "x");
+print "calls=" + calls.join(","); // expect: calls=first:x,second:x
+
+calls = [];
+manager.emit(target, "go");
+print "default_data=" + calls.join(","); // expect: default_data=first:nil,second:nil
+
+calls = [];
+manager.emit(target, "stop");
+print "other_signal=" + calls.len(); // expect: other_signal=0
+
+calls = [];
+manager.emit(other, "go", "z");
+print "other_target=" + calls.len(); // expect: other_target=0
+
+manager.disconnect(target, "go", first);
+calls = [];
+manager.emit(target, "go", "y");
+print "after_one=" + calls.join(","); // expect: after_one=second:y
+
+manager.disconnect(target, "go");
+calls = [];
+manager.emit(target, "go", "q");
+print "after_all=" + calls.len(); // expect: after_all=0
+
+manager.connect(target, "go", first);
+manager.connect(target, "stop", second);
+manager.disconnect(target, "go");
+calls = [];
+manager.emit(target, "stop", "s");
+print "other_kept=" + calls.join(","); // expect: other_kept=second:s

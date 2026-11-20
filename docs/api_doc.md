@@ -1972,12 +1972,14 @@ Connect a callback to an object's signal
 **Returns:**
   - `Value: callback`
 
-#### `SignalManager.disconnect(target, signalName, callback)`
-Disconnect a callback (or all callbacks for a target/signal)
+#### `SignalManager.disconnect(target, signalName, [callback])`
+Disconnect a callback, or all callbacks for a target/signal when omitted.
 
 **Required Arguments:**
   - `Value: target`
   - `String: signalName`
+
+**Optional Arguments:**
   - `Value: callback`
 
 #### `SignalManager.emit(target, signalName, [data])`

@@ -23,18 +23,19 @@ class SignalManager {
   }
 
   //: disconnect
-  // Disconnect a callback (or all callbacks for a target/signal)
+  // Disconnect a callback, or all callbacks for a target/signal when omitted.
   // Requires:
   //   Value: target
   //   String: signalName
+  // Optional:
   //   Value: callback
-  disconnect(target, signalName, callback) {
+  disconnect(target, signalName, callback = nil) {
     var remaining = [];
     for (var i = 0; i < this.listeners.length(); i += 1) {
       var l = this.listeners[i];
       var matchTarget = (l["target"] == target);
       var matchSignal = (l["signal"] == signalName);
-      var matchCb = (l["callback"] == callback);
+      var matchCb = (callback == nil or l["callback"] == callback);
 
       if (!(matchTarget and matchSignal and matchCb)) {
         remaining.push(l);
