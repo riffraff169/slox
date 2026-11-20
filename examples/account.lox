@@ -1,0 +1,17 @@
+//const ABC = 123;
+init() {
+  this._balance = 0;
+}
+
+balance(val) {
+  if (val < 0) {
+    this._balance = 0;
+    return;
+  }
+  this._balance = val;
+  return "ignored string";
+}
+
+balance {
+  return this._balance;
+}
