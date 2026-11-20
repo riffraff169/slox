@@ -4559,7 +4559,7 @@ static int defaultSortComparator(const void* a, const void* b) {
     }
 
     if (IS_STRING(valA) && IS_STRING(valB)) {
-        return strcmp(AS_CSTRING(valA), AS_CSTRING(valB));
+        return compareStrings(AS_STRING(valA), AS_STRING(valB));
     }
 
     if (IS_BOOL(valA) && IS_BOOL(valB)) {

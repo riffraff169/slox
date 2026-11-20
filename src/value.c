@@ -163,6 +163,17 @@ void printValue(FILE* stream, Value value) {
     }
 }
 
+int compareStrings(const ObjString* a, const ObjString* b) {
+    size_t minLength = (size_t)((a->length < b->length) ? a->length : b->length);
+    int result = memcmp(a->chars, b->chars, minLength);
+
+    if (result < 0) return -1;
+    if (result > 0) return 1;
+    if (a->length == b->length) return 0;
+
+    return a->length < b->length ? -1 : 1;
+}
+
 bool valuesEqual(Value a, Value b) {
     if (a.type != b.type) {
         // cross-type numeric equality coercion (eg 100 == 100.0)

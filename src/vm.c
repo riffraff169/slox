@@ -2715,6 +2715,10 @@ InterpretResult run() {
             double b = valueToDouble(pop()); \
             double a = valueToDouble(pop()); \
             push(BOOL_VAL(a op b)); \
+        } else if (IS_STRING(peek(0)) && IS_STRING(peek(1))) { \
+            ObjString* b = AS_STRING(pop()); \
+            ObjString* a = AS_STRING(pop()); \
+            push(BOOL_VAL(compareStrings(a, b) op 0)); \
         } else if (IS_INSTANCE(peek(1))) { \
             if (!invoke(method_str, 1)) { \
                 return INTERPRET_RUNTIME_ERROR; \

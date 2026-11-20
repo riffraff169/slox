@@ -20,7 +20,9 @@ See if a class has a method
   * `__add__`, `__sub__`, `__mul__`, `__div__`, `__neg__`: Math ops
   * `__lt__`, `__gt__`, `__le__`, `__ge__`, `__eq__`: Comparison
   * `__geti__`, `__seti__`: Index [] and []=
- 
+
+Strings are ordered lexicographically by byte value with `<`, `<=`, `>`, and `>=`.
+
 Example:
 ```
 class A { 

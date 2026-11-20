@@ -1,0 +1,22 @@
+var s1 = "fred";
+var s2 = "barney";
+
+print s1 < s2;  // expect: false
+print s1 > s2;  // expect: true
+print s2 < s1;  // expect: true
+print s2 > s1;  // expect: false
+
+print "app" < "apple";   // expect: true
+print "apple" > "app";   // expect: true
+print "app" <= "app";    // expect: true
+print "app" >= "app";    // expect: true
+print "app" < "app";     // expect: false
+print "app" > "app";     // expect: false
+
+print "" < "a";  // expect: true
+print "a" > "";  // expect: true
+print "" <= "";  // expect: true
+
+// Embedded NUL bytes participate in the comparison.
+print "a\0" < "a\0b";  // expect: true
+print "a\0b" > "a\0";  // expect: true
