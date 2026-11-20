@@ -1,0 +1,17 @@
+var original = "hello world";
+var basic = original.replace("world", "slox");
+
+print basic == "hello slox";    // expect: true
+print original == "hello world"; // expect: true
+
+print "foo bar foo bar foo".replace("foo", "baz") == "baz bar baz bar baz"; // expect: true
+print "one--two---three".replace("-", "") == "onetwothree";                 // expect: true
+print "abcdef".replace("xyz", "123") == "abcdef";                           // expect: true
+print "a b c".replace(" ", "---") == "a---b---c";                           // expect: true
+
+// Matches are non-overlapping, so "aaaaa" yields "bba", not "bbaa".
+print "aaaaa".replace("aa", "b") == "bba"; // expect: true
+print "banana".replace("ana", "X") == "bXna"; // expect: true
+
+print "hello".replace("", "x") == "hello";       // expect: true
+print "hello".replace("hello", "world") == "world"; // expect: true
