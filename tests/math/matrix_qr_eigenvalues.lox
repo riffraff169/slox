@@ -1,0 +1,34 @@
+require("matrix.lox");
+require("polynomial.lox");
+
+fun close(a, b) {
+  var diff = a - b;
+  if (diff < 0) diff = -diff;
+  return diff < 0.001;
+}
+
+var a = Matrix(2, 3, [1, 2, 3, 4, 5, 6]);
+var b = Matrix(3, 2, [7, 8, 9, 10, 11, 12]);
+var product = a.mul(b);
+
+print product.rows == 2 and product.cols == 2; // expect: true
+print product.get(0, 0) == 58;                 // expect: true
+print product.get(0, 1) == 64;                 // expect: true
+print product.get(1, 0) == 139;                // expect: true
+print product.get(1, 1) == 154;                // expect: true
+
+var poly = Polynomial([1, -6, 11, -6]);
+var roots = poly.companionMatrix().eigenvaluesQR(30);
+
+print roots.length() == 3; // expect: true
+
+var found1 = false;
+var found2 = false;
+var found3 = false;
+for (var i = 0; i < roots.length(); i += 1) {
+  if (close(roots[i], 1)) found1 = true;
+  if (close(roots[i], 2)) found2 = true;
+  if (close(roots[i], 3)) found3 = true;
+}
+
+print found1 and found2 and found3; // expect: true
