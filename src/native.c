@@ -222,10 +222,11 @@ Value evalNative(int argCount, Value* args) {
 }
 
 //= create_instance
-// Creates a new instance from a class name.
-// Does not run init()
+// Creates a new instance from a class name or class object, running init() when present.
 // Requires:
-//   String: class
+//   String|Class: class
+// Optional:
+//   Value: arguments passed to init()
 // Returns
 //   Instance: instance of class
 Value createInstanceNative(int argCount, Value* args) {
