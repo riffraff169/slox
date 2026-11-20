@@ -16,24 +16,25 @@ class User < Base {
 
 var u = User("Lance", "Architect");
 
-print u["name"] == u.name;             // expect: true
-print u["role"] == "Architect";        // expect: true
-print u["baseValue"] == "base";        // expect: true
+print u["name"];      // expect: Lance
+print u.name;         // expect: Lance
+print u["role"];      // expect: Architect
+print u["baseValue"]; // expect: base
 
 var key = "role";
-print u[key] == u.role;                // expect: true
+print u[key]; // expect: Architect
 
 u[key] = "Principal Architect";
-print u.role == "Principal Architect"; // expect: true
+print u.role; // expect: Principal Architect
 
 u["title"] = "Chief";
-print u.title == "Chief";              // expect: true
+print u.title; // expect: Chief
 
 u["baseValue"] = "updated";
-print u.baseValue == "updated";        // expect: true
+print u.baseValue; // expect: updated
 
-print u["missing"] == nil;             // expect: true
+print u["missing"]; // expect: nil
 
-print u["name"] == u.get_field("name"); // expect: true
+print u.get_field("name"); // expect: Lance
 u.set_field("role", "Lead");
-print u["role"] == "Lead";              // expect: true
+print u["role"]; // expect: Lead
