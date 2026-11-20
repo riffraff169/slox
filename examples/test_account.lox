@@ -1,0 +1,27 @@
+var Acc1 = program("examples/account.lox");
+
+var acc1 = Acc1();
+var acc2 = Acc1();
+
+print "--- Test 3: Setter Assignment Chaining ---";
+
+// Chain the assignments. Both should be set to 150,
+// and 'finalResult' must capture 150, NOT "ignored string" or nil.
+var finalResult = acc1.balance = acc2.balance = 150;
+
+print acc1.balance;  // expect: 150
+print acc2.balance;  // expect: 150
+print finalResult;   // expect: 150
+
+//print Account.ABC;
+
+var x = eval(File.load("examples/account2.lox"));
+
+print x;
+var acc3 = Account();
+var acc4 = Account();
+var finalResult = acc3.balance = acc4.balance = 150;
+print acc3.balance;  // expect: 150
+print acc4.balance;  // expect: 150
+print finalResult;   // expect: 150
+print Account.ABC;

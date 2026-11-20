@@ -1,0 +1,23 @@
+//System.trace(true);
+import "image";
+var img = Image.load("earthmap.jpg");
+
+if (img == nil) {
+  print "Error: Could not load earthmap.jpg";
+  exit(1);
+}
+
+print "P3";
+print img.width + " " + img.height;
+print "255";
+
+for (var y = 0; y < img.height; y = y + 1) {
+  for (var x = 0; x < img.width; x += 1) {
+    var pixel = img.get_pixel(x, y);
+    var r = pixel[0];
+    var g = pixel[1];
+    var b = pixel[2];
+
+    print r + " " + g + " " + b;
+  }
+}

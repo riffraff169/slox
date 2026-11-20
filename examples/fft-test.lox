@@ -1,0 +1,122 @@
+require("complex.lox");
+require("kittycanvas.lox");
+
+fun fft(buffer) {
+  var N = buffer.length();
+
+  if (N <= 1) return buffer;
+
+  var even = [];
+  var odd = [];
+
+  for (var i = 0; i < N; i += 1) {
+    if (i % 2 == 0) {
+      even.push(buffer[i]);
+    } else {
+      odd.push(buffer[i]);
+    }
+  }
+
+  var fft_even = fft(even);
+  var fft_odd = fft(odd);
+
+  var combined = [];
+  for (var k = 0; k < N; k += 1) combined.push(Complex(0, 0));
+
+  for (var k = 0; k < N / 2; k += 1) {
+    var angle = -2 * Math.PI * k / N;
+    // Euler's formula: e^(-1 * theta) = cos(theta) + i * sin(theta)
+    var twiddle = Complex(Math.cos(angle), Math.sin(angle));
+
+    var t = twiddle * fft_odd[k];
+
+    combined[k] = fft_even[k] + t;
+    combined[k + N / 2] = fft_even[k] - t;
+  }
+
+  return combined;
+}
+
+fun intensity_to_rgb(val) {
+  if (val < 0.0) val = 0.0;
+  if (val > 1.0) val = 1.0;
+
+  var r = 0;
+  var g = 0;
+  var b = 0;
+
+  if (val < 0.25) {
+    // dark blue -> blue/cyan
+    var t = val / 0.25;
+    r = 0;
+    g = Integer(t * 255);
+    b = Integer(128 + t * 127);
+  } else if (val < 0.50) {
+    // cyan -> green
+    var t = (val - 0.25) / 0.25;
+    r = 0;
+    g = 255;
+    b = Integer((1.0 - t) * 255);
+  } else if (val < 0.75) {
+    // green -> yello
+    var t = (val - 0.50) / 0.25;
+    r = Integer(t * 255);
+    g = 255;
+    b = 0;
+  } else {
+    // yellow -> red
+    var t = (val - 0.75) / 0.25;
+    r = 255;
+    g = Integer((1.0 - t) * 255);
+    b = 0;
+  }
+
+  return [r, g, b];
+}
+
+var N = 256;
+var sampleRate = 1000.0;
+var signal = [];
+
+// synthesize signal: 60 hz tone + 180 hz tone
+for (var i = 0; i < N; i += 1) {
+  var t = i / sampleRate;
+  var sample = Math.sin(2 * Math.PI * 60 * t) + 0.5 * Math.sin(2 * Math.PI * 180 * t);
+  signal.push(Complex(sample, 0));
+}
+
+// compute fft
+var spectrum = fft(signal);
+
+// extract magnitude spectrum up to nyquist frequency (N / 2)
+var magnitudes = [];
+for (var k = 0; k < N / 2; k += 1) {
+  var z = spectrum[k];
+  // calc magnitude |z| = sqrt(real^2 + image^2)
+  var mag = Math.sqrt(z.real * z.real + z.imag * z.imag) / (N / 2);
+  magnitudes.push(mag);
+}
+
+var width = 800;
+var height = 600;
+var canvas = KittyCanvas(width, height);
+
+
+var numBins = magnitudes.length();
+print "numBins: " + numBins;
+
+for (var k = 0; k < numBins - 1; k += 1) {
+  var px1 = Integer((k / numBins) * width);
+  var py1 = Integer(height - (magnitudes[k] / 1.5) * height);
+
+  var px2 = Integer(((k + 1) / numBins) * width);
+  var py2 = Integer(height - (magnitudes[k + 1] / 1.5) * height);
+
+  //print "px1: " + px1 + " py1: " + py1 + " px2: " + px2 + " py2: " + py2;
+
+  if (py1 >= 0 and py1 < height and py2 >= 0 and py2 < height) {
+    canvas.drawLine(px1, py1, px2, py2, 0, 255, 120);
+  }
+}
+
+canvas.render();

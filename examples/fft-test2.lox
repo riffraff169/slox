@@ -1,0 +1,145 @@
+require("complex.lox");
+require("kittycanvas.lox");
+
+fun fft(buffer) {
+  var N = buffer.length();
+
+  if (N <= 1) return buffer;
+
+  var even = [];
+  var odd = [];
+
+  for (var i = 0; i < N; i += 1) {
+    if (i % 2 == 0) {
+      even.push(buffer[i]);
+    } else {
+      odd.push(buffer[i]);
+    }
+  }
+
+  var fft_even = fft(even);
+  var fft_odd = fft(odd);
+
+  var combined = [];
+  for (var k = 0; k < N; k += 1) combined.push(Complex(0, 0));
+
+  for (var k = 0; k < N / 2; k += 1) {
+    var angle = -2 * Math.PI * k / N;
+    // Euler's formula: e^(-1 * theta) = cos(theta) + i * sin(theta)
+    var twiddle = Complex(Math.cos(angle), Math.sin(angle));
+
+    var t = twiddle * fft_odd[k];
+
+    combined[k] = fft_even[k] + t;
+    combined[k + N / 2] = fft_even[k] - t;
+  }
+
+  return combined;
+}
+
+fun intensity_to_rgb(val) {
+  if (val < 0.0) val = 0.0;
+  if (val > 1.0) val = 1.0;
+
+  var r = 0;
+  var g = 0;
+  var b = 0;
+
+  if (val < 0.25) {
+    // dark blue -> blue/cyan
+    var t = val / 0.25;
+    r = 0;
+    g = Integer(t * 255);
+    b = Integer(128 + t * 127);
+  } else if (val < 0.50) {
+    // cyan -> green
+    var t = (val - 0.25) / 0.25;
+    r = 0;
+    g = 255;
+    b = Integer((1.0 - t) * 255);
+  } else if (val < 0.75) {
+    // green -> yellow
+    var t = (val - 0.50) / 0.25;
+    r = Integer(t * 255);
+    g = 255;
+    b = 0;
+  } else {
+    // yellow -> red
+    var t = (val - 0.75) / 0.25;
+    r = 255;
+    g = Integer((1.0 - t) * 255);
+    b = 0;
+  }
+
+  return [r, g, b];
+}
+
+var width = 800;
+var height = 600;
+var canvas = KittyCanvas(width, height);
+
+var N = 256;
+var sampleRate = 1000.0;
+var totalFrames = width;
+
+var spectrogramData = [];
+
+for (var frame = 0; frame < totalFrames; frame += 1) {
+  // shift frequency over time (sweeping tone from 20hz to 400hz)
+  var currentFreq = 20.0 + (frame / totalFrames) * 380.0;
+
+  var window = [];
+  for (var i = 0; i < N; i += 1) {
+    // sweeping tone from 20 hz to 400 hz
+    var t = (frame * N + i) / sampleRate;
+
+    // primary sweeping tone + fixed 150 hz harmonic tone
+    var sample = Math.sin(2 * Math.PI * currentFreq * t) + 0.4 * Math.sin(2 * Math.PI * 150 * t);
+
+    // apply hann windowing to reduce spectral leakage across fft frames
+    var hannMultiplier = 0.5 * (1.0 - Math.cos((2 * Math.PI * i) / (N - 1)));
+    sample = sample * hannMultiplier;
+
+    window.push(Complex(sample, 0));
+  }
+
+  var spectrum = fft(window);
+
+  var frameMags = [];
+  for (var k = 0; k < N / 2; k += 1) {
+    var mag = spectrum[k].abs() / (N / 4.0);
+    frameMags.push(mag);
+  }
+  spectrogramData.push(frameMags);
+}
+
+var numFrames = spectrogramData.length();
+var numBins = N / 2;
+print "numBins: " + numBins;
+
+for (var x = 0; x < width; x += 1) {
+  // map horizontal pixel x to frame index
+  var frameIdx = Integer((x / width) * numFrames);
+  var mags = spectrogramData[frameIdx];
+
+  for (var k = 0; k < numBins; k += 1) {
+    var intensity = mags[k];
+
+    // get dynamic rgb colors
+    var rgb = intensity_to_rgb(intensity);
+
+    // map frequency bin k to vertical screen coordinate
+    var py = Integer(height - 1 - (k / numBins) * height);
+
+    // if using single-pixel or line blocks for filling height gaps
+    var pyNext = Integer(height - 1 - ((k + 1) / numBins) * height);
+
+    for (var y = pyNext; y <= py; y += 1) {
+      if (y >= 0 and y < height) {
+        canvas.setPixel(x, y, *rgb);
+      }
+    }
+  }
+}
+
+canvas.render();
