@@ -8,7 +8,7 @@ RPM packages split the shared Lox libraries, feature libraries, examples, and
 applications into subpackages. Curated applications are installed under
 `/usr/share/slox/apps` with prefixed commands: `slox-xxd`, `slox-elf-info`,
 `slox-sanitize`, `slox-image-viewer`, `slox-kitty-view`, `slox-plotcalc`,
-`slox-playlist-manager`, and `slox-docgen`. Examples remain in
+`slox-playlist-manager`, `slox-mdcat`, and `slox-docgen`. Examples remain in
 `/usr/share/slox/examples`.
 
 Several features have been added:

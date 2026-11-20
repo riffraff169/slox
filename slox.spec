@@ -29,7 +29,7 @@ Requires:   libffi
 Requires:   ca-certificates
 
 %global core_libs stdlib.lox mkdir_p.lox process_ext.lox stats.lox timer.lox
-%global shared_libs argparser.lox benchmark.lox color.lox complex.lox csv.lox docparser.lox docparser_main.lox elf.lox event.lox json.lox lexer.lox logger.lox markdown.lox matrix.lox mdcat.lox multiffi.lox polynomial.lox queues.lox readline.lox sfmt.lox signal-manager.lox sloxcolorizer.lox template.lox test_runner.lox uuid.lox
+%global shared_libs argparser.lox benchmark.lox color.lox complex.lox csv.lox docparser.lox docparser_main.lox elf.lox event.lox json.lox lexer.lox logger.lox markdown.lox matrix.lox multiffi.lox polynomial.lox queues.lox readline.lox sfmt.lox signal-manager.lox sloxcolorizer.lox template.lox test_runner.lox uuid.lox
 %global canvas_libs bmpparser.lox cairo.lox canvas.lox file_browser.lox image_view.lox kittycanvas.lox qrgen.lox x11.lox
 %global lsp_libs lsp.lox
 %global notcurses_libs notcurses.lox scrollbox.lox
@@ -261,6 +261,7 @@ _slox_wrapper slox-image-viewer %{_datadir}/slox/apps/image_viewer.lox
 _slox_wrapper slox-kitty-view %{_datadir}/slox/apps/kitty_view.lox
 _slox_wrapper slox-plotcalc %{_datadir}/slox/apps/plotcalc.lox
 _slox_wrapper slox-playlist-manager %{_datadir}/slox/apps/playlist_manager.lox
+_slox_wrapper slox-mdcat %{_datadir}/slox/apps/mdcat.lox
 _slox_wrapper slox-docgen %{_libdir}/slox/lib/docparser_main.lox
 
 mkdir -p %{buildroot}%{_datadir}/vim/vimfiles/ftdetect
@@ -304,7 +305,6 @@ rm -rf %{buildroot}
 %{_libdir}/slox/lib/logger.lox
 %{_libdir}/slox/lib/markdown.lox
 %{_libdir}/slox/lib/matrix.lox
-%{_libdir}/slox/lib/mdcat.lox
 %{_libdir}/slox/lib/multiffi.lox
 %{_libdir}/slox/lib/polynomial.lox
 %{_libdir}/slox/lib/queues.lox
@@ -341,6 +341,7 @@ rm -rf %{buildroot}
 %{_bindir}/slox-kitty-view
 %{_bindir}/slox-plotcalc
 %{_bindir}/slox-playlist-manager
+%{_bindir}/slox-mdcat
 %{_bindir}/slox-docgen
 %{_datadir}/slox/apps/
 

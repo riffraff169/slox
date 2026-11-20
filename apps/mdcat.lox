@@ -1,0 +1,81 @@
+require("argparser.lox");
+require("markdown.lox");
+
+fun wantsHelp(args) {
+  for (var i = 0; i < args.length(); i += 1) {
+    if (args[i] == "--") return false;
+    if (args[i] == "--help" or args[i] == "-h") return true;
+  }
+  return false;
+}
+
+fun readStdin() {
+  var lines = [];
+  while (true) {
+    var result = STDIN.readline();
+    if (!result) break;
+
+    var line = result.unwrap();
+    if (line == nil) break;
+
+    lines.push(line);
+  }
+  return lines.join("");
+}
+
+fun readMarkdown(path) {
+  if (path == "-") return readStdin();
+
+  var text = File.load(path);
+  if (text == nil) {
+    print "slox-mdcat: cannot read '" + path + "'";
+    return nil;
+  }
+  return text;
+}
+
+var parser = ArgParser("slox-mdcat", "Render Markdown as colored terminal text.");
+parser.addOption("width", "w", 80, "Width of horizontal rules");
+parser.addFlag("no-color", "n", "Disable ANSI colors and inline styling");
+
+if (wantsHelp(System.ARGS)) {
+  parser.printHelp();
+  exit(0);
+}
+
+var opts = parser.parse(System.ARGS);
+if (opts == nil) exit(1);
+
+var width = opts["width"];
+if (typeof(width) == "String") width = width.parse();
+
+if (width == nil) {
+  print "slox-mdcat: --width must be a positive integer.";
+  exit(1);
+}
+if (typeof(width) != "Integer" or width < 1) {
+  print "slox-mdcat: --width must be a positive integer.";
+  exit(1);
+}
+
+var printer = MarkdownPrinter(width, !opts["no-color"]);
+var failed = false;
+
+if (opts.args.length() == 0) {
+  var text = readStdin();
+  if (text == nil) {
+    exit(1);
+  }
+  print printer.render(text);
+} else {
+  for (var i = 0; i < opts.args.length(); i += 1) {
+    var text = readMarkdown(opts.args[i]);
+    if (text == nil) {
+      failed = true;
+      continue;
+    }
+    print printer.render(text);
+  }
+}
+
+if (failed) exit(1);
