@@ -107,7 +107,7 @@ class Matrix {
     // matrix mult A (m x n) * b (n x p) -> C (m x p)
     var res = Matrix.zeros(this.rows, other.cols);
     for (var r = 0; r < this.rows; r += 1) {
-      for (var c = 0; r < other.cols; c += 1) {
+      for (var c = 0; c < other.cols; c += 1) {
         var sum = 0;
         for (var k = 0; k < this.cols; k += 1) {
           sum = sum + (this.get(r, k) * other.get(k, c));
@@ -313,10 +313,16 @@ class Matrix {
   }
 
   //: eigenvaluesQR
-  // compute all real eigenvalues for n x n matrix using qr iteration. Broken
+  // Compute real eigenvalues for an n x n matrix using QR iteration.
   // Requires:
   //   Integer: maxIter
+  // Returns:
+  //   Array
   eigenvaluesQR(maxIter) {
+    if (this.rows != this.cols) {
+      throw Error("Matrix.eigenvaluesQR() requires a square matrix.");
+    }
+
     var A = Matrix.zeros(this.rows, this.cols);
     for (var i = 0; i < this.data.length(); i += 1) {
       A.data[i] = this.data[i];
@@ -326,14 +332,14 @@ class Matrix {
     for (var iter = 0; iter < maxIter; iter += 1) {
       var qr = A.qrDecompose();
       A = qr["R"].mul(qr["Q"]);
-
-      // extract diagonal elements (eigenvalues)
-      var evs = [0; this.rows];
-      for (var i = 0; i < this.rows; i += 1) {
-        evs[i] = A.data[i * this.rows + i];
-      }
-      return evs;
     }
+
+    // extract diagonal elements (eigenvalues)
+    var evs = [0; this.rows];
+    for (var i = 0; i < this.rows; i += 1) {
+      evs[i] = A.get(i, i);
+    }
+    return evs;
   }
 
   // op hooks
