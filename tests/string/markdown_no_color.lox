@@ -1,0 +1,9 @@
+require("markdown.lox");
+
+var plain = MarkdownPrinter(10, false).render("# Hi\n**bold**\n");
+print plain.find("\x1b[") == -1;      // expect: true
+print plain.find("==========") != -1; // expect: true
+print plain.find("**bold**") != -1;   // expect: true
+
+var colored = MarkdownPrinter(10, true).render("# Hi\n");
+print colored.find("\x1b[") != -1; // expect: true

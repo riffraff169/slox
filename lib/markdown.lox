@@ -9,8 +9,13 @@ try {
 //@ MarkdownPrinter
 // Convert markdown to strings with color
 class MarkdownPrinter {
-  init(width = 80) {
+  //: init
+  // Optional:
+  //   Integer: width
+  //   Bool: useColor
+  init(width = 80, useColor = true) {
     this.width = width;
+    this.useColor = useColor and use_color;
     this.reset();
   }
 
@@ -31,7 +36,7 @@ class MarkdownPrinter {
   //   String: template
   emit(template) {
     // Run template through Color.format to resolve tags like {bold}, {green}, {reset}
-    if (use_color)
+    if (this.useColor)
       this.lines.push(Color.format(template));
     else
       this.lines.push(template);
@@ -40,13 +45,13 @@ class MarkdownPrinter {
   // --- Inline Formatting Engine ---
   
   //: formatInline
-  // Wraps Markdown syntax (**bold**, *italic*, `code`) into Color format tags, if use_color is true
+  // Wraps Markdown syntax (**bold**, *italic*, `code`) into Color format tags, if colors are enabled
   // Requires:
   //   String: text
   // Returns:
   //   String
   formatInline(text) {
-    if (!use_color) {
+    if (!this.useColor) {
       return text;
     }
 
@@ -120,13 +125,13 @@ class MarkdownPrinter {
         this.codeLanguage = rawLine.slice(3).trim();
         var langLabel = this.codeLanguage != "" ? this.codeLanguage : "code";
         var header = "─── " + langLabel + " ───";
-        if (use_color)
+        if (this.useColor)
           this.emit("{dim}" + header + "{reset}");
         else
           this.emit(header);
       } else {
         this.inCodeBlock = false;
-        if (use_color)
+        if (this.useColor)
           this.emit("{dim}─────────────────{reset}");
         else
           this.emit("─────────────────");
@@ -136,7 +141,7 @@ class MarkdownPrinter {
 
     // Inside verbatim code block
     if (this.inCodeBlock) {
-      if (use_color)
+      if (this.useColor)
         this.emit("  {cyan}" + rawLine + "{reset}");
       else
         this.emit("  " + rawLine);
@@ -145,7 +150,7 @@ class MarkdownPrinter {
 
     // 2. Horizontal Rules (---, ***, ===)
     if (rawLine == "---" or rawLine == "***" or rawLine == "===") {
-      if (use_color)
+      if (this.useColor)
         this.emit("{green}" + "=" * this.width + "{reset}");
       else
         this.emit("=" * this.width);
@@ -164,7 +169,7 @@ class MarkdownPrinter {
 
       if (level == 1) {
         var rule = "=" * this.width;
-        if (use_color) {
+        if (this.useColor) {
           this.emit("{green}" + rule + "{reset}");
           this.emit("{bold}{blue}  " + formattedTitle + "{reset}");
           this.emit("{green}" + rule + "{reset}");
@@ -174,13 +179,13 @@ class MarkdownPrinter {
           this.emit(rule);
         }
       } else if (level == 2) {
-        if (use_color)
+        if (this.useColor)
           this.emit("{bold}{blue}┄┄ {reset}{bold}{yellow}" + formattedTitle + "{reset}");
         else
           this.emit("┄┄ " + formattedTitle);
       } else {
         var hashes = "#" * level;
-        if (use_color)
+        if (this.useColor)
           this.emit("{bold}{cyan}" + hashes + " " + formattedTitle + "{reset}");
         else
           this.emit(hashes + " " + formattedTitle);
@@ -198,7 +203,7 @@ class MarkdownPrinter {
     // 5. Blockquotes (> text)
     if (rawLine.slice(0, 2) == "> ") {
       var quoteText = rawLine.slice(2);
-      if (use_color)
+      if (this.useColor)
         this.emit("{dim}│ {reset}" + this.formatInline(quoteText));
       else
         this.emit("│ " + this.formatInline(quoteText));
@@ -207,7 +212,7 @@ class MarkdownPrinter {
 
     // 6. Key-Value Headers / Category Labels (e.g., "Required Arguments:")
     if (rawLine[rawLine.length() - 1] == ':' and !rawLine.contains(" ")) {
-      if (use_color)
+      if (this.useColor)
         this.emit("{bold}" + rawLine + "{reset}");
       else
         this.emit(rawLine);
