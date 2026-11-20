@@ -1,0 +1,37 @@
+require("matrix.lox");
+
+fun close(a, b) {
+  var diff = a - b;
+  if (diff < 0) diff = -diff;
+  return diff < 0.0001;
+}
+
+fun isEigenvector(matrix, lambda, vector) {
+  var left = matrix.mul(vector);
+  var right = vector.mul(lambda);
+  for (var i = 0; i < matrix.rows; i += 1) {
+    if (!close(left.get(i, 0), right.get(i, 0))) return false;
+  }
+  return true;
+}
+
+var A = Matrix(2, 2, [4, 1, 2, 3]);
+
+print A.det() == 10;  // expect: true
+print A.trace() == 7; // expect: true
+
+var eigen = A.eigen2x2();
+var values = eigen["values"];
+var vectors = eigen["vectors"];
+
+print close(values[0], 5) and close(values[1], 2); // expect: true
+print isEigenvector(A, values[0], vectors[0]);     // expect: true
+print isEigenvector(A, values[1], vectors[1]);     // expect: true
+
+var rotation = Matrix(2, 2, [0, -1, 1, 0]);
+var complexValues = rotation.eigen2x2();
+
+print complexValues.length() == 2; // expect: true
+print typeof(complexValues[0]) == "Complex" and typeof(complexValues[1]) == "Complex"; // expect: true
+print close(complexValues[0].real, 0) and close(complexValues[0].imag, 1);   // expect: true
+print close(complexValues[1].real, 0) and close(complexValues[1].imag, -1);  // expect: true
