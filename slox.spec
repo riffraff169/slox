@@ -184,7 +184,6 @@ mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_libdir}/slox/modules
 mkdir -p %{buildroot}%{_libdir}/slox/lib
 mkdir -p %{buildroot}%{_libdir}/slox/tests
-mkdir -p %{buildroot}%{_libdir}/slox/scripts
 mkdir -p %{buildroot}%{_datadir}/slox/examples
 mkdir -p %{buildroot}%{_datadir}/slox/apps
 mkdir -p %{buildroot}%{_docdir}/slox/
@@ -245,7 +244,6 @@ fi
 cp examples/* %{buildroot}%{_datadir}/slox/examples/
 cp apps/*.lox %{buildroot}%{_datadir}/slox/apps/
 cp -r tests/* %{buildroot}%{_libdir}/slox/tests/
-cp scripts/* %{buildroot}%{_libdir}/slox/scripts/
 cp docs/* %{buildroot}%{_docdir}/slox/
 
 _slox_wrapper() {
@@ -288,7 +286,6 @@ rm -rf %{buildroot}
 %{_libdir}/slox/lib/stats.lox
 %{_libdir}/slox/lib/timer.lox
 %{_libdir}/slox/tests/
-%{_libdir}/slox/scripts/
 %doc README.md
 %doc docs/*.md
 
@@ -380,6 +377,7 @@ rm -rf %{buildroot}
 %changelog
 * Thu  Nov 19 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.0-1
 - Merge pull request 'Split RPM packages by library, feature, app, and example roles' (#3) from fix/rpm-package-layout into master
+- Stop installing maintainer scripts in RPM packages
 
 * Wed  Nov 18 2026 Lance Dillon <riffraff169@yahoo.com> - 1.11.4-1
 - Split libraries, examples, apps, and feature packs into subpackages
