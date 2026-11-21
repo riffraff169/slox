@@ -1,0 +1,35 @@
+// Static methods live on the class, so instances cannot call them. Ordinary
+// methods can still be called on the class; when they are, `this` is the class.
+class Widget {
+  static onlyStatic() {
+    return "static result";
+  }
+
+  static staticThis() {
+    return String(this);
+  }
+
+  normalOnly() {
+    return "normal result";
+  }
+
+  normalThis() {
+    return String(this);
+  }
+}
+
+print "class_static=" + Widget.onlyStatic(); // expect: class_static=static result
+print "static_this=" + Widget.staticThis(); // expect: static_this=Widget
+
+var w = Widget();
+print "instance_normal=" + w.normalOnly(); // expect: instance_normal=normal result
+print "class_normal=" + Widget.normalOnly(); // expect: class_normal=normal result
+print "normal_this_on_class=" + Widget.normalThis(); // expect: normal_this_on_class=Widget
+print "normal_this_on_instance=" + w.normalThis(); // expect: normal_this_on_instance=Widget instance
+
+try {
+  w.onlyStatic();
+} catch (e) {
+  print "instance_static_error=" + e.message; // expect: instance_static_error=Undefined method 'onlyStatic'.
+}
+print "after_static_error"; // expect: after_static_error
