@@ -1,0 +1,86 @@
+// Static methods live on the class, so instances cannot call them. `this` in a
+// static method is the class: it can read class constants/fields and call class
+// methods, but not instance fields. Ordinary methods can also be called on the
+// class; when they are, `this` is the class.
+class Widget {
+  const LABEL = "class constant";
+
+  static onlyStatic() {
+    return "static result";
+  }
+
+  static staticThis() {
+    return String(this);
+  }
+
+  static readClassConstant() {
+    return this.LABEL;
+  }
+
+  static readClassField() {
+    return this.tag;
+  }
+
+  static readInstanceField() {
+    return this.instanceOnly;
+  }
+
+  static callNormal() {
+    return this.normalOnly();
+  }
+
+  static callStatic() {
+    return this.onlyStatic();
+  }
+
+  normalOnly() {
+    return "normal result";
+  }
+
+  normalThis() {
+    return String(this);
+  }
+}
+
+print "class_static=" + Widget.onlyStatic(); // expect: class_static=static result
+print "static_this=" + Widget.staticThis(); // expect: static_this=Widget
+
+Widget.set_field("tag", "class field");
+print "class_field_native=" + Widget.get_field("tag"); // expect: class_field_native=class field
+print "class_field_dot=" + Widget.tag; // expect: class_field_dot=class field
+print "static_class_constant=" + Widget.readClassConstant(); // expect: static_class_constant=class constant
+print "static_class_field=" + Widget.readClassField(); // expect: static_class_field=class field
+print "static_calls_normal=" + Widget.callNormal(); // expect: static_calls_normal=normal result
+print "static_calls_static=" + Widget.callStatic(); // expect: static_calls_static=static result
+
+try {
+  Widget.tag = "replacement";
+} catch (e) {
+  print "class_field_assign_error=" + e.message; // expect: class_field_assign_error=Cannot set property 'tag' on target.
+}
+
+var w = Widget();
+w.set_field("instanceOnly", "instance field");
+print "instance_normal=" + w.normalOnly(); // expect: instance_normal=normal result
+print "class_normal=" + Widget.normalOnly(); // expect: class_normal=normal result
+print "normal_this_on_class=" + Widget.normalThis(); // expect: normal_this_on_class=Widget
+print "normal_this_on_instance=" + w.normalThis(); // expect: normal_this_on_instance=Widget instance
+
+try {
+  print Widget.readInstanceField();
+} catch (e) {
+  print "static_instance_field_error=" + e.message; // expect: static_instance_field_error=Undefined property or method 'instanceOnly'.
+}
+
+try {
+  print w.tag;
+} catch (e) {
+  print "instance_class_field_error=" + e.message; // expect: instance_class_field_error=Undefined property or method 'tag'.
+}
+
+try {
+  w.onlyStatic();
+} catch (e) {
+  print "instance_static_error=" + e.message; // expect: instance_static_error=Undefined method 'onlyStatic'.
+}
+print "after_static_error"; // expect: after_static_error
