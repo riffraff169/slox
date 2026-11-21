@@ -410,8 +410,9 @@ The interpreter compiler parses Lox source files into bytecode execution units. 
 
 ### Variables & Storage
 * Local and global variable declarations: `var name = expression;`
+* Immutable local/global declarations: `const name = expression;`
 * Re-assignment: `name = new_value;`
-* Constants / Class constants: `Math.PI`
+* Built-in and user-defined class constants: `Math.PI`, or `ClassName.NAME` for a `const NAME = ...;` declared inside a class body.
 
 ### Binary Operators
 
@@ -551,6 +552,42 @@ processCalculation(10, 0);
   ```
 * Instance instantiation (`Dog("Buddy")`) and initializer (`init`).
 * Property/Field access (`obj.field = val`) and method invocation (`obj.method()`).
+* Class constants declared with `const NAME = value;` inside the class body:
+  ```lox
+  class Settings {
+    const VERSION = "1.0";
+  }
+
+  print Settings.VERSION; // 1.0
+  ```
+  Class constants are readable as `ClassName.NAME`, are visible on subclasses, and instances can also read them.
+* Static methods declared with `static name(...) { ... }`:
+  ```lox
+  class Counter {
+    const LABEL = "counter";
+
+    static describe() {
+      return this.LABEL + " class";
+    }
+
+    instanceMethod() {
+      return "instance";
+    }
+  }
+
+  print Counter.describe();       // counter class
+  print Counter.instanceMethod(); // instance
+  // Counter().describe();        // runtime error: Undefined method 'describe'.
+  ```
+  Static methods are stored on the class, so they are callable as `ClassName.method()` but not as `instance.method()`. Inside a static method, `this` is the class object: it can read class constants and class fields, and call static or ordinary methods on the class. Ordinary methods can also be called on the class; in that case `this` is the class rather than an instance.
+* Class fields are values attached to the class object with `Class.set_field(name, value)`:
+  ```lox
+  Counter.set_field("tag", "shared");
+  print Counter.get_field("tag"); // shared
+  print Counter.tag;              // shared
+  // Counter.tag = "new";         // runtime error: Cannot set property 'tag' on target.
+  ```
+  Class fields can be read with `Class.field` or `Class.get_field("field")`, but must be written with `set_field()`. Instances do not see class fields.
 * Class opening and dynamic native method binding.
 * Class re-opening to add new methods or redefine existing methods.
 
