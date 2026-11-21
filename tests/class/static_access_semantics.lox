@@ -46,10 +46,18 @@ print "class_static=" + Widget.onlyStatic(); // expect: class_static=static resu
 print "static_this=" + Widget.staticThis(); // expect: static_this=Widget
 
 Widget.set_field("tag", "class field");
+print "class_field_native=" + Widget.get_field("tag"); // expect: class_field_native=class field
+print "class_field_dot=" + Widget.tag; // expect: class_field_dot=class field
 print "static_class_constant=" + Widget.readClassConstant(); // expect: static_class_constant=class constant
 print "static_class_field=" + Widget.readClassField(); // expect: static_class_field=class field
 print "static_calls_normal=" + Widget.callNormal(); // expect: static_calls_normal=normal result
 print "static_calls_static=" + Widget.callStatic(); // expect: static_calls_static=static result
+
+try {
+  Widget.tag = "replacement";
+} catch (e) {
+  print "class_field_assign_error=" + e.message; // expect: class_field_assign_error=Cannot set property 'tag' on target.
+}
 
 var w = Widget();
 w.set_field("instanceOnly", "instance field");
