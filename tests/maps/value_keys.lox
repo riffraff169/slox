@@ -67,3 +67,13 @@ var mm = Map();
 mm[mut] = "before";
 mut.push(2);
 print mm[[1]]; // expect: nil
+
+// hashKey() exposes the same structural hash used for key lookup.
+print [1, 2].hashKey() == [1, 2].hashKey(); // expect: true
+print [1, 2].hashKey() == [1, 3].hashKey(); // expect: false
+print {"x": 1}.hashKey() == {"x": 1}.hashKey(); // expect: true
+print {"x": 1}.hashKey() == {"x": 2}.hashKey(); // expect: false
+print Set(1, 2).hashKey() == Set(2, 1).hashKey(); // expect: true
+print "abc".hashKey() == "abc".hashKey(); // expect: true
+print [1, 2].hash_key() == [1, 2].hashKey(); // expect: true
+print [1, 2].hashKey() >= 0; // expect: true
