@@ -6,6 +6,11 @@
 #include "value.h"
 #include "vm.h"
 
+#define MAX_KEY_COMPARE_DEPTH 64
+
+static bool valuesEqualStrictAtDepth(Value a, Value b,
+        Obj** pathA, Obj** pathB, int depth);
+
 void initValueArray(ValueArray* array) {
     array->values = NULL;
     array->capacity = 0;
@@ -71,7 +76,7 @@ Value valueToString(Value value) {
 
             // A to_string() that returns the receiver itself would recurse
             // forever; fall through to the default representation instead.
-            if (!valuesEqual(resultVal, value)) {
+            if (!valuesEqualIdentity(resultVal, value)) {
                 return valueToString(resultVal);
             }
         }
@@ -174,6 +179,29 @@ int compareStrings(const ObjString* a, const ObjString* b) {
     return a->length < b->length ? -1 : 1;
 }
 
+bool valuesEqualIdentity(Value a, Value b) {
+    if (a.type != b.type) return false;
+
+    switch (a.type) {
+        case VAL_BOOL:
+            return AS_BOOL(a) == AS_BOOL(b);
+        case VAL_NIL:
+            return true;
+        case VAL_INT:
+            return AS_INT(a) == AS_INT(b);
+        case VAL_FLOAT:
+            return AS_FLOAT(a) == AS_FLOAT(b);
+        case VAL_VEC3:
+            return (AS_VEC3(a).x == AS_VEC3(b).x) &&
+                (AS_VEC3(a).y == AS_VEC3(b).y) &&
+                (AS_VEC3(a).z == AS_VEC3(b).z);
+        case VAL_OBJ:
+            return AS_OBJ(a) == AS_OBJ(b);
+        default:
+            return false;
+    }
+}
+
 bool valuesEqual(Value a, Value b) {
     if (a.type != b.type) {
         // cross-type numeric equality coercion (eg 100 == 100.0)
@@ -197,16 +225,18 @@ bool valuesEqual(Value a, Value b) {
                 (AS_VEC3(a).y == AS_VEC3(b).y) &&
                 (AS_VEC3(a).z == AS_VEC3(b).z);
         case VAL_OBJ:
+            if ((IS_ARRAY(a) || IS_MAP(a) || IS_SET(a)) &&
+                (IS_ARRAY(b) || IS_MAP(b) || IS_SET(b)) &&
+                AS_OBJ(a)->type == AS_OBJ(b)->type) {
+                Obj* pathA[MAX_KEY_COMPARE_DEPTH];
+                Obj* pathB[MAX_KEY_COMPARE_DEPTH];
+                return valuesEqualStrictAtDepth(a, b, pathA, pathB, 0);
+            }
             return AS_OBJ(a) == AS_OBJ(b);
         default:
             return false;
     }
 }
-
-#define MAX_KEY_COMPARE_DEPTH 64
-
-static bool valuesEqualStrictAtDepth(Value a, Value b,
-        Obj** pathA, Obj** pathB, int depth);
 
 static int pathIndex(Obj** path, int depth, Obj* obj) {
     for (int i = 0; i < depth; i++) {

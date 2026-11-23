@@ -36,6 +36,7 @@ Value objectToStringNative(int argCount, Value* args);
 Value objectClassMethod(int argCount, Value* args);
 Value objectClassNameMethod(int argCount, Value* args);
 Value hashKeyNative(int argCount, Value* args);
+Value objectIsSameAsNative(int argCount, Value* args);
 Value objectFreezeNative(int argCount, Value* args);
 Value objectIsfrozenNative(int argCount, Value* args);
 Value requireNative(int argCount, Value* args);

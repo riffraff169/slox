@@ -58,8 +58,18 @@ var mutual = Map();
 mutual[left] = "mutual";
 print mutual[right]; // expect: mutual
 
-// Container equality itself stays identity-based.
-print [200] == [200]; // expect: false
+// == compares containers by value; is_same_as() checks identity.
+print [200] == [200]; // expect: true
+print [200] != [200]; // expect: false
+var same = [200];
+print same.is_same_as(same); // expect: true
+print same.is_same_as([200]); // expect: false
+
+var other = Map();
+other[[200]] = 400;
+print m == other; // expect: true
+print m.is_same_as(other); // expect: false
+print m.is_same_as(m); // expect: true
 
 // Mutating a key after insertion invalidates its hash; lookups then miss.
 var mut = [1];

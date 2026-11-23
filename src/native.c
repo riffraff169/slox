@@ -874,6 +874,23 @@ Value hashKeyNative(int argCount, Value* args) {
 }
 
 //@ Object
+//: is_same_as
+// Returns true if the receiver and argument are the same object. Unlike ==,
+// containers are not compared by contents. Scalars compare by type and value.
+// Requires:
+//   Value: other
+// Returns:
+//   Bool
+Value objectIsSameAsNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("is_same_as() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
+    return BOOL_VAL(valuesEqualIdentity(args[-1], args[0]));
+}
+
+//@ Object
 //: freeze
 // Freeze an object so it can't be modified
 // Returns:
@@ -1119,6 +1136,7 @@ Value inspectNative(int argCount, Value* args) {
     X("class", objectClassMethod) \
     X("class_name", objectClassNameMethod) \
     X("hash_key", hashKeyNative) \
+    X("is_same_as", objectIsSameAsNative) \
     X("freeze", objectFreezeNative) \
     X("is_frozen", objectIsfrozenNative)
 
