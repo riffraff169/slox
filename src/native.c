@@ -9994,18 +9994,26 @@ void initBufferClass() {
 //   message: String
 
 Value errorCallHandler(int argCount, Value* args) {
-    Value errorClassVal;
-    ObjString* className = copyString("Error", 5);
-    push(OBJ_VAL(className));
+    ObjClass* errorClass = NULL;
+    if (IS_CLASS(args[-1])) {
+        errorClass = AS_CLASS(args[-1]);
+    } else {
+        Value errorClassVal;
+        ObjString* className = copyString("Error", 5);
+        push(OBJ_VAL(className));
 
-    if (!tableGet(&vm.globals, className, &errorClassVal) || !IS_CLASS(errorClassVal)) {
-        runtimeError("Could not resolve 'Error' class.");
+        if (tableGet(&vm.globals, className, &errorClassVal) && IS_CLASS(errorClassVal)) {
+            errorClass = AS_CLASS(errorClassVal);
+        }
         pop(); // className
+    }
+
+    if (errorClass == NULL) {
+        runtimeError("Could not resolve 'Error' class.");
         return NIL_VAL;
     }
-    pop(); // className
 
-    ObjInstance* instance = newInstance(AS_CLASS(errorClassVal));
+    ObjInstance* instance = newInstance(errorClass);
     push(OBJ_VAL(instance));
     ObjString* messageStr = copyString("message", 7);
     push(OBJ_VAL(messageStr));
@@ -10022,9 +10030,25 @@ Value errorCallHandler(int argCount, Value* args) {
 void initErrorClass() {
     // 1. creates class + metaclass, handles superclass wiring, gc protection
     ObjClass* errorClass = defineBuiltinClass("Error", NULL, NULL, true);
+    vm.errorClass = errorClass;
 
     // 2. configure class specific handlers
     errorClass->callHandler = errorCallHandler;
+
+    // 3. builtin subtypes. They inherit Error so catch (Error e) keeps working.
+#define DEFINE_ERROR_SUBCLASS(field, name) \
+    (field) = defineBuiltinClass((name), errorClass, NULL, true); \
+    (field)->callHandler = errorCallHandler
+
+    DEFINE_ERROR_SUBCLASS(vm.typeErrorClass, "TypeError");
+    DEFINE_ERROR_SUBCLASS(vm.argumentErrorClass, "ArgumentError");
+    DEFINE_ERROR_SUBCLASS(vm.loadErrorClass, "LoadError");
+    DEFINE_ERROR_SUBCLASS(vm.regexErrorClass, "RegexError");
+    DEFINE_ERROR_SUBCLASS(vm.systemErrorClass, "SystemError");
+    DEFINE_ERROR_SUBCLASS(vm.syntaxErrorClass, "SyntaxError");
+    DEFINE_ERROR_SUBCLASS(vm.nameErrorClass, "NameError");
+
+#undef DEFINE_ERROR_SUBCLASS
 }
 
 Value nilClassCallHandler(int argCount, Value* args) {

@@ -556,6 +556,8 @@ processCalculation(10, 2);
 processCalculation(10, 0);
 ```
 
+`Error` is the base class for the builtin error types `ArgumentError`, `LoadError`, `NameError`, `RegexError`, `SyntaxError`, `SystemError`, and `TypeError`. All inherit from `Error`, so `catch (Error e)` catches them, while `catch (TypeError e)` catches only that subtype. User-defined errors can also subclass `Error`.
+
 ### Functions & Closures
 * Named function declaration:
   ```lox

@@ -551,19 +551,16 @@ static void clearTryBlock(TryBlock* block) {
     block->isExecutingFinally = false;
 }
 
-bool runtimeError(const char* format, ...) {
+static bool runtimeErrorV(ObjClass* explicitClass, const char* format, va_list args) {
     fflush(stdout);
 
-    va_list args;
-    va_start(args, format);
     char buffer[1024];
     vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
 
     if (vm.tryCount > 0) {
         // 1. capture stack trace before unwinding call frames
         //int savedFrameCount = vm.frameCount;
-        
+
         // 2. unwind frame count and stack top to try block boundary
         /*
         TryBlock block = vm.tryStack[--vm.tryCount];
@@ -601,18 +598,25 @@ bool runtimeError(const char* format, ...) {
         ObjString* errorMsg = copyString(buffer, (int)strlen(buffer));
         push(OBJ_VAL(errorMsg));
 
+        ObjClass* errorClass = explicitClass;
+
+        // 3. default to the global Error class when no specific class was supplied
+        if (errorClass == NULL) {
+            Value errorClassVal;
+            ObjString* errorClassName = copyString("Error", 5);
+            push(OBJ_VAL(errorClassName));
+
+            bool hasErrorClass = tableGet(&vm.globals, errorClassName, &errorClassVal);
+            pop(); // errorClassName
+
+            if (hasErrorClass && IS_CLASS(errorClassVal)) {
+                errorClass = AS_CLASS(errorClassVal);
+            }
+        }
+
         Value exceptionVal;
 
-        // 3. construct error object if class exists globally
-        Value errorClassVal;
-        ObjString* errorClassName = copyString("Error", 5);
-        push(OBJ_VAL(errorClassName));
-
-        bool hasErrorClass = tableGet(&vm.globals, errorClassName, &errorClassVal);
-        pop(); // errorClassName
-
-        if (hasErrorClass && IS_CLASS(errorClassVal)) {
-            ObjClass* errorClass = AS_CLASS(errorClassVal);
+        if (errorClass != NULL) {
             ObjInstance* errorInstance = newInstance(errorClass);
             push(OBJ_VAL(errorInstance));
 
@@ -674,6 +678,22 @@ bool runtimeError(const char* format, ...) {
 
     resetStack();
     return true;
+}
+
+bool runtimeError(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    bool result = runtimeErrorV(NULL, format, args);
+    va_end(args);
+    return result;
+}
+
+bool runtimeErrorTyped(ObjClass* errorClass, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    bool result = runtimeErrorV(errorClass, format, args);
+    va_end(args);
+    return result;
 }
 
 void defineGlobalConstant(const char* name, Value value) {
