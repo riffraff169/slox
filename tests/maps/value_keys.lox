@@ -68,12 +68,17 @@ mm[mut] = "before";
 mut.push(2);
 print mm[[1]]; // expect: nil
 
-// hashKey() exposes the same structural hash used for key lookup.
-print [1, 2].hashKey() == [1, 2].hashKey(); // expect: true
-print [1, 2].hashKey() == [1, 3].hashKey(); // expect: false
-print {"x": 1}.hashKey() == {"x": 1}.hashKey(); // expect: true
-print {"x": 1}.hashKey() == {"x": 2}.hashKey(); // expect: false
-print Set(1, 2).hashKey() == Set(2, 1).hashKey(); // expect: true
-print "abc".hashKey() == "abc".hashKey(); // expect: true
-print [1, 2].hash_key() == [1, 2].hashKey(); // expect: true
-print [1, 2].hashKey() >= 0; // expect: true
+// hash_key() exposes the same structural hash used for key lookup.
+print [1, 2].hash_key() == [1, 2].hash_key(); // expect: true
+print [1, 2].hash_key() == [1, 3].hash_key(); // expect: false
+print {"x": 1}.hash_key() == {"x": 1}.hash_key(); // expect: true
+print {"x": 1}.hash_key() == {"x": 2}.hash_key(); // expect: false
+print Set(1, 2).hash_key() == Set(2, 1).hash_key(); // expect: true
+print "abc".hash_key() == "abc".hash_key(); // expect: true
+print [1, 2].hash_key() >= 0; // expect: true
+
+// Any value can be hashed, including Map values and scalar results.
+var hm = Map();
+hm[[200]] = 400;
+print hm.hash_key() >= 0; // expect: true
+print hm[[200]].hash_key() >= 0; // expect: true

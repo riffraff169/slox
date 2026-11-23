@@ -59,7 +59,7 @@ The root class from which all objects inherit. Methods defined on `Object` can b
 * `to_string()`: Converts the object receiver to its string representation.
 * `class()`: Returns the Class object of the receiver. For a class receiver, returns its metaclass.
 * `class_name()`: Returns the string name of the receiver's class (e.g., `"Object"`, or `"DogMeta"` for `Dog.class_name()`).
-* `hashKey()`: Returns a non-negative integer hash of the receiver (alias: `hash_key()`). Arrays, Maps, and Sets hash by contents, so structurally equal containers return the same value; this is the same hash used for Map/Set key lookup. Strings hash by content, other objects by identity.
+* `hash_key()`: Returns a non-negative integer hash of the receiver. Arrays, Maps, and Sets hash by contents, so structurally equal containers return the same value; this is the same hash used for Map/Set key lookup. Strings hash by content, other objects by identity.
 * `freeze()`: Marks the class or instance as frozen, preventing subsequent field modifications.
 * `is_frozen()`: Returns `true` if the class or instance is frozen; otherwise `false`.
 * `isnumber()`: Receiver instance check returning `true` if receiver is a Number.

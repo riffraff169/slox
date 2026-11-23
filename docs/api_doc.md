@@ -3387,10 +3387,8 @@ Get the class of this object as a String. Shortcut for String(x.class())
 **Returns:**
   - `String`
 
-#### `Object.hashKey()`
+#### `Object.hash_key()`
 Returns a non-negative integer hash of the value. Arrays, Maps and Sets are hashed by contents, so structurally equal containers produce the same hash. Strings hash by content; other values hash by identity. This is the hash used for Map and Set key lookup.
-
-**Aliases:** `hash_key`
 
 **Returns:**
   - `Integer`

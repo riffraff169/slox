@@ -862,10 +862,10 @@ Value objectClassNameMethod(int argCount, Value* args) {
 }
 
 //@ Object
-//: hashKey
+//: hash_key
 // Returns the value's hash as a non-negative integer. Arrays, Maps and Sets
 // are hashed by contents, so structurally equal containers share a hash.
-// Other values use identity (or string content) hashing. Alias: hash_key.
+// Other values use identity (or string content) hashing.
 // Returns:
 //   Integer
 Value hashKeyNative(int argCount, Value* args) {
@@ -1118,7 +1118,6 @@ Value inspectNative(int argCount, Value* args) {
     X("to_string", objectToStringNative) \
     X("class", objectClassMethod) \
     X("class_name", objectClassNameMethod) \
-    X("hashKey", hashKeyNative) \
     X("hash_key", hashKeyNative) \
     X("freeze", objectFreezeNative) \
     X("is_frozen", objectIsfrozenNative)
