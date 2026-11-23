@@ -2849,6 +2849,8 @@ Error class for throwing errors and raising exceptions
 
 Builtin subclasses: `ArgumentError`, `LoadError`, `NameError`, `RegexError`, `SyntaxError`, `SystemError`, and `TypeError`. All inherit from `Error`, so `catch (Error e)` catches them, while `catch (TypeError e)` catches only that subtype. User-defined errors can also subclass `Error`.
 
+Internal runtime failures use these subclasses: wrong argument counts throw `ArgumentError`, wrong argument or operand types throw `TypeError`, and file/module loading failures throw `LoadError`. Other runtime failures still throw plain `Error`.
+
 **Required Arguments:**
   - `None`
 

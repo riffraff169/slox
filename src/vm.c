@@ -83,6 +83,17 @@
         frame = &vm.frames[vm.frameCount - 1]; \
     } while (false)
 
+#define RUNTIME_ERROR_TYPED(errorClass, ...) \
+    do { \
+        if (runtimeErrorTyped((errorClass), __VA_ARGS__)) { \
+            unwindFramesForError(); \
+            return INTERPRET_RUNTIME_ERROR; \
+        } \
+        frame = &vm.frames[vm.frameCount - 1]; \
+    } while (false)
+
+#define RUNTIME_LOAD_ERROR(...) RUNTIME_ERROR_TYPED(vm.loadErrorClass, __VA_ARGS__)
+
 VM vm;
 InterpretResult run();
 static void resetStack();
@@ -505,7 +516,7 @@ void* loadModule(const char* name) {
     // 1. open the shared library
     void* handle = locateAndLoadModule(name);
     if (!handle) {
-        runtimeError("Could not load module '%s': %s", name, dlerror());
+        LOAD_ERROR("Could not load module '%s': %s", name, dlerror());
         return NULL;
     }
 
@@ -522,7 +533,7 @@ void* loadModule(const char* name) {
     ModuleInitFn init = (ModuleInitFn)dlsym(handle, "lox_module_init");
 
     if (!init) {
-        runtimeError("Module '%s' is missing lox_module_init.", name);
+        LOAD_ERROR("Module '%s' is missing lox_module_init.", name);
         dlclose(handle);
         return NULL;
     }
@@ -781,12 +792,12 @@ static Value vec3InitNative(int argCount, Value* args) {
 
 static Value vec3DotNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("dot() expects 1 argument.");
+        ARG_ERROR("dot() expects 1 argument.");
         return NIL_VAL;
     }
 
     if (!IS_VEC3(args[0])) {
-        runtimeError("Argument must be a Vec3.");
+        TYPE_ERROR("Argument must be a Vec3.");
         return NIL_VAL;
     }
 
@@ -799,7 +810,7 @@ static Value vec3DotNative(int argCount, Value* args) {
 
 static Value vec3UnitNative(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("unit() expects 0 arguments.");
+        ARG_ERROR("unit() expects 0 arguments.");
         return NIL_VAL;
     }
     Vec3 a = AS_VEC3(args[-1]);
@@ -819,12 +830,12 @@ static Value vec3UnitNative(int argCount, Value* args) {
 
 static Value vec3CrossNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("cross() expects 1 Vec3 argument.");
+        ARG_ERROR("cross() expects 1 Vec3 argument.");
         return NIL_VAL;
     }
 
     if (!IS_VEC3(args[0])) {
-        runtimeError("Argument must be a Vec3.");
+        TYPE_ERROR("Argument must be a Vec3.");
         return NIL_VAL;
     }
 
@@ -839,7 +850,7 @@ static Value vec3CrossNative(int argCount, Value* args) {
 
 static Value vec3LengthNative(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("length() expects 0 arguments.");
+        ARG_ERROR("length() expects 0 arguments.");
         return NIL_VAL;
     }
 
@@ -850,7 +861,7 @@ static Value vec3LengthNative(int argCount, Value* args) {
 
 static Value vec3LengthSquaredNative(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("length_squared() expects 0 arguments.");
+        ARG_ERROR("length_squared() expects 0 arguments.");
         return NIL_VAL;
     }
 
@@ -870,11 +881,11 @@ static inline Value getCheckTarget(int argCount, Value* args) {
 
 Value vec3CallHandler(int argCount, Value* args) {
     if (argCount != 3) {
-        runtimeError("Vec3 construct expects 3 arguments.");
+        ARG_ERROR("Vec3 construct expects 3 arguments.");
         return NIL_VAL;
     }
     if (!IS_NUMERIC(args[0]) || !IS_NUMERIC(args[1]) || !IS_NUMERIC(args[2])) {
-        runtimeError("Vec3 arguments must be numbers.");
+        TYPE_ERROR("Vec3 arguments must be numbers.");
         return NIL_VAL;
     }
     Vec3 v = { valueToDouble(args[0]),
@@ -915,7 +926,7 @@ void initVec3Library() {
 
 Value classSuperclassMethod(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("Expected 0 arguments but got %d.", argCount);
+        ARG_ERROR("Expected 0 arguments but got %d.", argCount);
         return NIL_VAL;
     }
     Value receiver = args[-1];
@@ -1399,26 +1410,26 @@ Value setPropertySync(Value receiver, ObjString* name, Value value) {
 
 Value classAddMethodNative(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("add_method() expects 2 arguments (name, function).");
+        ARG_ERROR("add_method() expects 2 arguments (name, function).");
         return NIL_VAL;
     }
 
     // the receiver (args[-1] must be the Class object itself
     if (!IS_CLASS(args[-1])) {
-        runtimeError("add_method() can only be called on class objects.");
+        TYPE_ERROR("add_method() can only be called on class objects.");
         return NIL_VAL;
     }
 
     ObjClass* klass = AS_CLASS(args[-1]);
 
     if (!IS_STRING(args[0])) {
-        runtimeError("First argument to add_method() must be a string name.");
+        TYPE_ERROR("First argument to add_method() must be a string name.");
         return NIL_VAL;
     }
     ObjString* methodName = AS_STRING(args[0]);
 
     if (!IS_CLOSURE(args[1]) && !IS_NATIVE(args[1])) {
-        runtimeError("Second argument to add_method() must be a callable function.");
+        TYPE_ERROR("Second argument to add_method() must be a callable function.");
         return NIL_VAL;
     }
 
@@ -1438,13 +1449,13 @@ Value classNameNative(int argCount, Value* args) {
 
 Value atExitNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("at_exit() expects a callback for a parameter.");
+        ARG_ERROR("at_exit() expects a callback for a parameter.");
         return NIL_VAL;
     }
 
     Value hook = args[0];
     if (!IS_CLOSURE(hook) && !IS_NATIVE(hook) && !IS_BOUND_METHOD(hook)) {
-        runtimeError("at_exit() argument must be a callable.");
+        TYPE_ERROR("at_exit() argument must be a callable.");
         return NIL_VAL;
     }
 
@@ -1819,17 +1830,17 @@ bool vmCall(ObjClosure* closure, int argCount) {
     // check if the user passed fewer than the absolute minimum required args
     if (function->isVariadic) {
         if (argCount < function->minArity) {
-            runtimeError("Expected at least %d arguments but got %d.",
+            ARG_ERROR("Expected at least %d arguments but got %d.",
                     function->minArity, argCount);
             return false;
         }
     } else {
         if (argCount < function->minArity || argCount > function->arity) {
             if (function->minArity == function->arity) {
-                runtimeError("Expected %d arguments but got %d",
+                ARG_ERROR("Expected %d arguments but got %d",
                         function->arity, argCount);
             } else {
-                runtimeError("Expected between %d and %d arguments but got %d.",
+                ARG_ERROR("Expected between %d and %d arguments but got %d.",
                         function->minArity, function->arity, argCount);
             }
             return false;
@@ -1948,7 +1959,7 @@ bool callValue(Value callee, int argCount) {
                             return res;
                         }
                     } else if (argCount != 0) {
-                        runtimeError("Expect 0 arguments but got %d.", argCount);
+                        ARG_ERROR("Expect 0 arguments but got %d.", argCount);
                         return false;
                     }
                     
@@ -2021,7 +2032,7 @@ bool callValue(Value callee, int argCount) {
                 break;
         }
     }
-    runtimeError("Can only call functions and classes.");
+    TYPE_ERROR("Can only call functions and classes.");
     return false;
 }
 
@@ -2099,7 +2110,7 @@ bool invokeFromClass(ObjClass* klass, ObjString* name,
         if (closure->function->isfree) {
             int expectedArgs = closure->function->arity - 1;
             if (argCount != expectedArgs) {
-                runtimeError("Expected %d arguments but got %d.", expectedArgs, argCount);
+                ARG_ERROR("Expected %d arguments but got %d.", expectedArgs, argCount);
                 return false;
             }
 
@@ -2151,7 +2162,7 @@ bool invoke(ObjString* name, int argCount) {
                 if (closure->function->isfree) {
                     int expectedArgs = closure->function->arity - 1;
                     if (argCount != expectedArgs) {
-                        runtimeError("Expected %d arguments, but got %d.", expectedArgs, argCount);
+                        ARG_ERROR("Expected %d arguments, but got %d.", expectedArgs, argCount);
                         return false;
                     }
 
@@ -2166,9 +2177,9 @@ bool invoke(ObjString* name, int argCount) {
                     //if (argCount != closure->function->arity) {
                     if (argCount < closure->function->minArity || argCount > closure->function->arity) {
                         if (closure->function->minArity == closure->function->arity) {
-                            runtimeError("Expected %d arguments, but got %d.", closure->function->arity, argCount);
+                            ARG_ERROR("Expected %d arguments, but got %d.", closure->function->arity, argCount);
                         } else {
-                            runtimeError("Expected between %d and %d arguments, but got %d.",
+                            ARG_ERROR("Expected between %d and %d arguments, but got %d.",
                                     closure->function->minArity, closure->function->arity, argCount);
                         }
                         return false;
@@ -2185,7 +2196,7 @@ bool invoke(ObjString* name, int argCount) {
         return invokeFromClass(klass, name, argCount);
     }
 
-    runtimeError("Only instances and primitives have methods.");
+    TYPE_ERROR("Only instances and primitives have methods.");
     return false;
 
 }
@@ -2725,7 +2736,7 @@ InterpretResult run() {
             double a = valueToDouble(pop()) ; \
             push(valueType(a op b)); \
         } else { \
-            runtimeError("Operands must be floats or integers."); \
+            TYPE_ERROR("Operands must be floats or integers."); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
     } while (false)
@@ -2749,7 +2760,7 @@ InterpretResult run() {
                 return INTERPRET_RUNTIME_ERROR; \
             } \
         } else { \
-            runtimeError("Operands must be numbers or support overload."); \
+            TYPE_ERROR("Operands must be numbers or support overload."); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
     } while (false)
@@ -2757,7 +2768,7 @@ InterpretResult run() {
 #define BITWISE_BINARY_OP(op) \
     do { \
         if (!IS_INT(peek(0)) || !IS_INT(peek(1))) { \
-            runtimeError("Operands for bitwise operation must be integers."); \
+            TYPE_ERROR("Operands for bitwise operation must be integers."); \
             return INTERPRET_RUNTIME_ERROR; \
         } \
         int64_t b = AS_INT(pop()); \
@@ -3432,7 +3443,7 @@ InterpretResult run() {
             case OP_BITWISE_NOT:
                 {
                     if (!IS_INT(peek(0))) {
-                        runtimeError("Operand for '~' must be an integer.");
+                        TYPE_ERROR("Operand for '~' must be an integer.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
                     uint64_t a = AS_INT(pop());
@@ -3452,7 +3463,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(valueVal) && isExactInteger(AS_FLOAT(valueVal))) {
                         val = (int64_t)AS_FLOAT(valueVal);
                     } else {
-                        runtimeError("Left operand for '<<' must be an integer or exact float.");
+                        TYPE_ERROR("Left operand for '<<' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3461,7 +3472,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(amountVal) && isExactInteger(AS_FLOAT(amountVal))) {
                         amount = (int64_t)AS_FLOAT(amountVal);
                     } else {
-                        runtimeError("Right operand for '<<' must be an integer or exact float.");
+                        TYPE_ERROR("Right operand for '<<' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3489,7 +3500,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(valueVal) && isExactInteger(AS_FLOAT(valueVal))) {
                         val = (int64_t)AS_FLOAT(valueVal);
                     } else {
-                        runtimeError("Left operand for '>>' must be an integer or exact float.");
+                        TYPE_ERROR("Left operand for '>>' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3498,7 +3509,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(amountVal) && isExactInteger(AS_FLOAT(amountVal))) {
                         amount = (int64_t)AS_FLOAT(amountVal);
                     } else {
-                        runtimeError("Right operand for '>>' must be an integer or exact float.");
+                        TYPE_ERROR("Right operand for '>>' must be an integer or exact float.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3545,7 +3556,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(aVal) && isExactInteger(AS_FLOAT(aVal))) {
                         a = (int64_t)AS_FLOAT(aVal);
                     } else {
-                        runtimeError("Left operand causes precision loss or is not a valid integer.");
+                        TYPE_ERROR("Left operand causes precision loss or is not a valid integer.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3554,7 +3565,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(bVal) && isExactInteger(AS_FLOAT(bVal))) {
                         b = (int64_t)AS_FLOAT(bVal);
                     } else {
-                        runtimeError("Right operand causes precision loss or is not a valid integer.");
+                        TYPE_ERROR("Right operand causes precision loss or is not a valid integer.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3573,7 +3584,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(aVal) && isExactInteger(AS_FLOAT(aVal))) {
                         a = (int64_t)AS_FLOAT(aVal);
                     } else {
-                        runtimeError("Left operand causes precision loss or is not a valid integer.");
+                        TYPE_ERROR("Left operand causes precision loss or is not a valid integer.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -3582,7 +3593,7 @@ InterpretResult run() {
                     } else if (IS_FLOAT(bVal) && isExactInteger(AS_FLOAT(bVal))) {
                         b = (int64_t)AS_FLOAT(bVal);
                     } else {
-                        runtimeError("Right operand causes precision loss or is not a valid integer.");
+                        TYPE_ERROR("Right operand causes precision loss or is not a valid integer.");
                         return INTERPRET_RUNTIME_ERROR;
                     }
 
@@ -4211,7 +4222,9 @@ InterpretResult run() {
 
                     void* handle = loadModule(moduleName->chars);
                     if (handle == NULL) {
-                        RUNTIME_ERROR("Could not load module.");
+                        if (!vm.exceptionThrown) {
+                            RUNTIME_LOAD_ERROR("Could not load module.");
+                        }
                         break;
                     }
                     //tableSet(&vm.globals, moduleName, peek(0));

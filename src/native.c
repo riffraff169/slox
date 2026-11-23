@@ -172,12 +172,12 @@ Value chrNative(int argCount, Value* args) {
 //   String: str
 Value evalNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("eval() expects exactly 1 argument, got %d.", argCount);
+        ARG_ERROR("eval() expects exactly 1 argument, got %d.", argCount);
         return NIL_VAL;
     }
 
     if (!IS_STRING(args[0])) {
-        runtimeError("Argument to eval() must be a string.");
+        TYPE_ERROR("Argument to eval() must be a string.");
         return NIL_VAL;
     }
 
@@ -231,7 +231,7 @@ Value evalNative(int argCount, Value* args) {
 //   Instance: instance of class
 Value createInstanceNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("create_instance() requires at least a class name or class object.");
+        ARG_ERROR("create_instance() requires at least a class name or class object.");
         return NIL_VAL;
     }
 
@@ -242,14 +242,14 @@ Value createInstanceNative(int argCount, Value* args) {
         Value classVal;
         // look up class in globals
         if (!GET_GLOBAL(className, &classVal) || !IS_CLASS(classVal)) {
-            runtimeError("Class '%s' not found or is not a class.", className->chars);
+            TYPE_ERROR("Class '%s' not found or is not a class.", className->chars);
             return NIL_VAL;
         }
         klass = AS_CLASS(classVal);
     } else if (IS_CLASS(args[0])) {
         klass = AS_CLASS(args[0]);
     } else {
-        runtimeError("create_instance() first argument must be a string class name or a Class.");
+        TYPE_ERROR("create_instance() first argument must be a string class name or a Class.");
         return NIL_VAL;
     }
 
@@ -310,7 +310,7 @@ Value createInstanceNative(int argCount, Value* args) {
 //   Class: class value
 Value programNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("program() expects a string filename argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "program() expects a string filename argument.");
         return NIL_VAL;
     }
 
@@ -319,7 +319,7 @@ Value programNative(int argCount, Value* args) {
     char* source = locateAndReadLoxFile(filename->chars);
 
     if (source == NULL) {
-        runtimeError("Could not locate or read class file '%s'.", filename->chars);
+        LOAD_ERROR("Could not locate or read class file '%s'.", filename->chars);
         return NIL_VAL;
     }
 
@@ -359,7 +359,7 @@ Value programNative(int argCount, Value* args) {
     pop();
 
     if (!success) {
-        runtimeError("Compile error inside dynamic class '%s'.", filename->chars);
+        LOAD_ERROR("Compile error inside dynamic class '%s'.", filename->chars);
         return NIL_VAL;
     }
 
@@ -584,7 +584,7 @@ Value listFieldsNative(int argCount, Value* args) {
 //   Value: Value of field, or nil if wrong type of object or field doesn't exist
 Value getFieldNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("get_field() expects a string argument.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "get_field() expects a string argument.");
         return NIL_VAL;
     }
 
@@ -601,7 +601,7 @@ Value getFieldNative(int argCount, Value* args) {
             return value;
         }
     } else {
-        runtimeError("Only instance and classes can have fields.");
+        TYPE_ERROR("Only instance and classes can have fields.");
         return NIL_VAL;
     }
 
@@ -616,7 +616,7 @@ Value getFieldNative(int argCount, Value* args) {
 //   Value: val
 Value setFieldNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0])) {
-        runtimeError("set_field() expects string, value arguments.");
+        ARG_OR_TYPE_ERROR(argCount == 2, "set_field() expects string, value arguments.");
         return NIL_VAL;
     }
 
@@ -638,7 +638,7 @@ Value setFieldNative(int argCount, Value* args) {
     } else if (IS_CLASS(receiver)) {
         tableSet(&AS_CLASS(receiver)->fields, fieldName, value);
     } else {
-        runtimeError("Only instances and classes can have fields.");
+        TYPE_ERROR("Only instances and classes can have fields.");
         return NIL_VAL;
     }
     return value;
@@ -653,7 +653,7 @@ Value aliasNative(int argCount, Value* args) {
         : getClassForValue(args[-1]);
 
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("alias() must have 2 string arguments.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "alias() must have 2 string arguments.");
         return NIL_VAL;
     }
 
@@ -684,7 +684,7 @@ Value getMethodsNative(int argCount, Value* args) {
     bool recurse = true;
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
-            runtimeError("Recurse argument must be a boolean.");
+            TYPE_ERROR("Recurse argument must be a boolean.");
             return NIL_VAL;
         }
         recurse = AS_BOOL(args[0]);
@@ -698,7 +698,7 @@ Value getMethodsNative(int argCount, Value* args) {
     }
 
     if (targetClass == NULL) {
-        runtimeError("Cannot get methods of a non-object/non-class.");
+        TYPE_ERROR("Cannot get methods of a non-object/non-class.");
         return NIL_VAL;
     }
 
@@ -744,12 +744,12 @@ Value getMethodsNative(int argCount, Value* args) {
 //   Bool
 Value hasMethodNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("has_method() expects exactly 1 argument.");
+        ARG_ERROR("has_method() expects exactly 1 argument.");
         return BOOL_VAL(false);
     }
 
     if (!IS_STRING(args[0])) {
-        runtimeError("has_method() expects a string argument.");
+        TYPE_ERROR("has_method() expects a string argument.");
         return BOOL_VAL(false);
     }
 
@@ -787,7 +787,7 @@ Value getSuperclassNative(int argCount, Value* args) {
         : getClassForValue(receiver);
 
     if (klass == NULL) {
-        runtimeError("Cannot get superclass of a non-object type.");
+        TYPE_ERROR("Cannot get superclass of a non-object type.");
         return NIL_VAL;
     }
 
@@ -827,7 +827,7 @@ Value objectToStringNative(int argCount, Value* args) {
 //   Class
 Value objectClassMethod(int argCount, Value* args) {
     if (argCount != 0) {
-        runtimeError("Expected 0 arguments but got %d.", argCount);
+        ARG_ERROR("Expected 0 arguments but got %d.", argCount);
         return NIL_VAL;
     }
 
@@ -883,7 +883,7 @@ Value hashKeyNative(int argCount, Value* args) {
 //   Bool
 Value objectIsSameAsNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("is_same_as() expects exactly 1 argument.");
+        ARG_ERROR("is_same_as() expects exactly 1 argument.");
         return NIL_VAL;
     }
 
@@ -903,7 +903,7 @@ Value objectFreezeNative(int argCount, Value* args) {
     } else if (IS_INSTANCE(receiver)) {
         AS_INSTANCE(receiver)->isFrozen = true;
     } else {
-        runtimeError("Method .freeze() can only be called on classes or instances .");
+        TYPE_ERROR("Method .freeze() can only be called on classes or instances .");
         return NIL_VAL;
     }
 
@@ -923,7 +923,7 @@ Value objectIsfrozenNative(int argCount, Value* args) {
     } else if (IS_INSTANCE(receiver)) {
         return BOOL_VAL(AS_INSTANCE(receiver)->isFrozen);
     }
-    runtimeError("Method .is_frozen() can only be called on classes or instances .");
+    TYPE_ERROR("Method .is_frozen() can only be called on classes or instances .");
     return NIL_VAL;
 }
 
@@ -937,7 +937,7 @@ Value objectIsfrozenNative(int argCount, Value* args) {
 //   Bool: true if successful
 Value requireNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("require() expects a file path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "require() expects a file path string.");
         return NIL_VAL;
     }
 
@@ -946,7 +946,7 @@ Value requireNative(int argCount, Value* args) {
     bool reload = false;
     if (argCount >= 2) {
         if (!IS_BOOL(args[1])) {
-            runtimeError("Second argument to require() must be a boolean.");
+            TYPE_ERROR("Second argument to require() must be a boolean.");
             return NIL_VAL;
         }
         reload = AS_BOOL(args[1]);
@@ -959,7 +959,7 @@ Value requireNative(int argCount, Value* args) {
 
     char* source = locateAndReadLoxFile(path->chars);
     if (source == NULL) {
-        runtimeError("Could not open file '%s'.", path->chars);
+        LOAD_ERROR("Could not open file '%s'.", path->chars);
         return NIL_VAL;
     }
 
@@ -1048,7 +1048,7 @@ Value inspectNative(int argCount, Value* args) {
     }
 
     if (targetClass == NULL) {
-        runtimeError("Cannot inspect non-object/non-class.");
+        TYPE_ERROR("Cannot inspect non-object/non-class.");
         return NIL_VAL;
     }
 
@@ -1318,7 +1318,7 @@ Value stringRfindNative(int argCount, Value* args) {
     ObjString* haystack = AS_STRING(args[-1]);
 
     if (argCount < 1) {
-        runtimeError("rfind() requiress a string to search for.");
+        ARG_ERROR("rfind() requiress a string to search for.");
         return NIL_VAL;
     }
 
@@ -1462,7 +1462,7 @@ Value stringLenUTF8Native(int argCount, Value* args) {
 //   Array
 Value stringSplitNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("split() expects 1 argument.");
+        ARG_ERROR("split() expects 1 argument.");
         return NIL_VAL;
     }
 
@@ -1540,7 +1540,7 @@ Value stringSplitNative(int argCount, Value* args) {
         }
         return pop();
     }
-    runtimeError("split() expects a string or positive number arguments.");
+    TYPE_ERROR("split() expects a string or positive number arguments.");
     return NIL_VAL;
 }
 
@@ -1558,7 +1558,7 @@ Value stringSplitNative(int argCount, Value* args) {
 //   String: section of string
 Value stringSliceNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("slice() expects at least a start index.");
+        ARG_ERROR("slice() expects at least a start index.");
         return NIL_VAL;
     }
 
@@ -1568,7 +1568,7 @@ Value stringSliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         rawStart = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("slice() start index must be an integer.");
+        TYPE_ERROR("slice() start index must be an integer.");
         return NIL_VAL;
     }
 
@@ -1590,7 +1590,7 @@ Value stringSliceNative(int argCount, Value* args) {
         } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
             rawEnd = (int64_t)AS_FLOAT(args[1]);
         } else {
-            runtimeError("slice() end index must be an integer.");
+            TYPE_ERROR("slice() end index must be an integer.");
             return NIL_VAL;
         }
 
@@ -1631,7 +1631,7 @@ Value stringToarrayNative(int argCount, Value* args) {
 //   Array
 Value stringTokensNative(int argCount, Value* args) {
     if (argCount > 0) {
-        runtimeError("tokens() expects 0 arguments.");
+        ARG_ERROR("tokens() expects 0 arguments.");
         return NIL_VAL;
     }
 
@@ -1674,7 +1674,7 @@ Value stringTokensNative(int argCount, Value* args) {
 //   String: fillchar
 Value stringPadCenterNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[1])) {
-        runtimeError("pad_center() expects a width integer and a 1-character pad string.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "pad_center() expects a width integer and a 1-character pad string.");
         return NIL_VAL;
     }
 
@@ -1684,7 +1684,7 @@ Value stringPadCenterNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("pad_center() width must be an integer.");
+        TYPE_ERROR("pad_center() width must be an integer.");
         return NIL_VAL;
     }
 
@@ -1728,7 +1728,7 @@ Value stringPadCenterNative(int argCount, Value* args) {
 //   String: fillchar
 Value stringPadRightNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[1])) {
-        runtimeError("pad_right() expects a number and a 1-character pad string.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "pad_right() expects a number and a 1-character pad string.");
         return NIL_VAL;
     }
 
@@ -1738,7 +1738,7 @@ Value stringPadRightNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("pad_right() width must be an integer.");
+        TYPE_ERROR("pad_right() width must be an integer.");
         return NIL_VAL;
     }
 
@@ -1778,7 +1778,7 @@ Value stringPadRightNative(int argCount, Value* args) {
 //   String: fillchar
 Value stringPadLeftNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[1])) {
-        runtimeError("pad_left() expects a number and a 1-character pad string.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "pad_left() expects a number and a 1-character pad string.");
         return NIL_VAL;
     }
 
@@ -1788,7 +1788,7 @@ Value stringPadLeftNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         rawWidth = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("pad_left() width must be an integer.");
+        TYPE_ERROR("pad_left() width must be an integer.");
         return NIL_VAL;
     }
 
@@ -2074,7 +2074,7 @@ static bool setIteratorNext(SetIterator* it, uint8_t* out) {
 //   String
 Value stringReplaceNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("replace() expects two string arguments.");
+        ARG_OR_TYPE_ERROR(argCount == 2, "replace() expects two string arguments.");
         return NIL_VAL;
     }
 
@@ -2151,7 +2151,7 @@ Value stringReplaceNative(int argCount, Value* args) {
 //   String: set2
 Value stringTrNative(int argCount, Value* args) {
     if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("tr() expects two string arguments.");
+        ARG_OR_TYPE_ERROR(argCount == 2, "tr() expects two string arguments.");
         return NIL_VAL;
     }
 
@@ -2247,7 +2247,7 @@ void initStringClass() {
 //   Array: vals
 Value mapNativeConstructor(int argCount, Value* args) {
     if (argCount % 2 != 0) {
-        runtimeError("Map constructor requires an even number of key-value arguments.");
+        ARG_ERROR("Map constructor requires an even number of key-value arguments.");
         return NIL_VAL;
     }
     
@@ -2259,7 +2259,7 @@ Value mapNativeConstructor(int argCount, Value* args) {
         Value value = args[i+1];
 
         if (IS_NIL(key)) {
-            runtimeError("Map keys cannot be nil.");
+            TYPE_ERROR("Map keys cannot be nil.");
             pop();
             return NIL_VAL;
         }
@@ -2342,7 +2342,7 @@ Value mapRemoveNative(int argCount, Value* args) {
         }
         */
         if (IS_NIL(key)) {
-            runtimeError("Map keys cannot be nil.");
+            TYPE_ERROR("Map keys cannot be nil.");
             pop();
             return NIL_VAL;
         }
@@ -2372,7 +2372,7 @@ Value mapLenNative(int argCount, Value* args) {
 Value mapEachNative(int argCount, Value* args) {
     GC_SCOPE;
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Map.each() expects a closure argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Map.each() expects a closure argument.");
         return NIL_VAL;
     }
     Value closure = args[0];
@@ -2445,7 +2445,7 @@ Value setNativeConstructor(int argCount, Value* args) {
         Value key = args[i];
 
         if (IS_NIL(key)) {
-            runtimeError("Set keys cannot be nil.");
+            TYPE_ERROR("Set keys cannot be nil.");
             pop();
             return NIL_VAL;
         }
@@ -2461,7 +2461,7 @@ Value setNativeConstructor(int argCount, Value* args) {
 //   Set
 Value setAddNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("add() expects exactly 1 argument.");
+        ARG_ERROR("add() expects exactly 1 argument.");
         return NIL_VAL;
     }
 
@@ -2469,7 +2469,7 @@ Value setAddNative(int argCount, Value* args) {
     Value key = args[0];
 
     if (IS_NIL(key)) {
-        runtimeError("Cannot use nil as a key in a Set.");
+        TYPE_ERROR("Cannot use nil as a key in a Set.");
         return NIL_VAL;
     }
 
@@ -2514,7 +2514,7 @@ Value setCountNative(int argCount, Value* args) {
     Value key = args[0];
 
     if (IS_NIL(key)) {
-        runtimeError("Cannot use nil as a key in a Set.");
+        TYPE_ERROR("Cannot use nil as a key in a Set.");
         return NIL_VAL;
     }
 
@@ -2531,7 +2531,7 @@ Value setCountNative(int argCount, Value* args) {
 //   Value: removed key
 Value setRemoveNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("Expected 1 argument, but got %d.", argCount);
+        ARG_ERROR("Expected 1 argument, but got %d.", argCount);
         return NIL_VAL;
     }
 
@@ -2539,7 +2539,7 @@ Value setRemoveNative(int argCount, Value* args) {
     Value key = args[0];
 
     if (IS_NIL(key)) {
-        runtimeError("Cannot remove nil from a Set.");
+        TYPE_ERROR("Cannot remove nil from a Set.");
         return NIL_VAL;
     }
 
@@ -2554,7 +2554,7 @@ Value setRemoveNative(int argCount, Value* args) {
 //   Bool
 Value setHasNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("has() expects exactly 1 argument.");
+        ARG_ERROR("has() expects exactly 1 argument.");
         return NIL_VAL;
     }
 
@@ -2704,7 +2704,7 @@ void initSetClass() {
     } else if (argCount > 0 && IS_FLOAT(args[0])) { \
         outVar = AS_FLOAT(args[0]); \
     } else { \
-        runtimeError(funcName "() expects a numeric receiver or a numeric argument."); \
+        TYPE_ERROR(funcName "() expects a numeric receiver or a numeric argument."); \
         return NIL_VAL; \
     }
     */
@@ -2716,7 +2716,7 @@ void initSetClass() {
     } else if (argCount > 0 && IS_NUMERIC(args[0])) { \
         outVar = AS_NUMERIC(args[0]); \
     } else { \
-        runtimeError(funcName "() expects a numeric receiver or a numeric argument."); \
+        TYPE_ERROR(funcName "() expects a numeric receiver or a numeric argument."); \
         return NIL_VAL; \
     }
 
@@ -2776,7 +2776,7 @@ Value mathAbsNative(int argCount, Value* args) {
         return FLOAT_VAL(fabs(v));
     }
 
-    runtimeError("abs() expects a numeric receiver or a numeric argument.");
+    TYPE_ERROR("abs() expects a numeric receiver or a numeric argument.");
     return NIL_VAL;
 }
 
@@ -2820,7 +2820,7 @@ Value mathFloorNative(int argCount, Value* args) {
         }
     }
 
-    runtimeError("floor() expects a numeric receiver or argument.");
+    TYPE_ERROR("floor() expects a numeric receiver or argument.");
     return NIL_VAL;
 }
 
@@ -2864,7 +2864,7 @@ Value mathCeilNative(int argCount, Value* args) {
         }
     }
 
-    runtimeError("ceil() expects a numeric receiver or argument.");
+    TYPE_ERROR("ceil() expects a numeric receiver or argument.");
     return NIL_VAL;
 }
 
@@ -3000,7 +3000,7 @@ Value hexNative(int argCount, Value* args) {
     } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
         outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
-        runtimeError("hex() expects an integer or float with an exact integer value."); \
+        TYPE_ERROR("hex() expects an integer or float with an exact integer value."); \
         return NIL_VAL; \
     }
 
@@ -3020,7 +3020,7 @@ Value hexNative(int argCount, Value* args) {
     } else {
         // static call Math.hex(255) or Math.hex(255, 4, false)
         if (argCount < 1) {
-            runtimeError("hex() requires at least one numeric argument when called statically.");
+            ARG_ERROR("hex() requires at least one numeric argument when called statically.");
             return NIL_VAL;
         }
         EXTRACT_HEX_NUM(args[0], num);
@@ -3092,7 +3092,7 @@ Value octNative(int argCount, Value* args) {
     } else {
         // static call: Math.oct(64) or Math.oct(64, 3)
         if (argCount < 1) {
-            runtimeError("oct() requires at least one numeric argument when called statically.");
+            ARG_ERROR("oct() requires at least one numeric argument when called statically.");
             return NIL_VAL;
         }
         EXTRACT_OCT_NUM(args[0], num);
@@ -3159,7 +3159,7 @@ Value binNative(int argCount, Value* args) {
     } else {
         // static call: Math.bin(5) or Math.bin(5, 8))
         if (argCount < 1) {
-            runtimeError("bin() requires at least one numeric argument when called statically.");
+            ARG_ERROR("bin() requires at least one numeric argument when called statically.");
             return NIL_VAL;
         }
         EXTRACT_BIN_NUM(args[0], num);
@@ -3226,14 +3226,14 @@ Value bitTestNative(int argCount, Value* args) {
     } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
         outNum = (uint64_t)AS_FLOAT(val); \
     } else { \
-        runtimeError("Expected an integer number argument."); \
+        TYPE_ERROR("Expected an integer number argument."); \
         return NIL_VAL; \
     }
 
     if (IS_NUMERIC(args[-1])) {
         // instance / method call context: x.bit_test(bit)
         if (argCount < 1) {
-            runtimeError("bit_test requires a bit position argument.");
+            ARG_ERROR("bit_test requires a bit position argument.");
             return NIL_VAL;
         }
         EXTRACT_INT_VAL(args[-1], num);
@@ -3244,7 +3244,7 @@ Value bitTestNative(int argCount, Value* args) {
     } else {
         // static call: Math.bit_test(num, bit)
         if (argCount < 2) {
-            runtimeError("bit_test requires a target number and a bit position argument.");
+            ARG_ERROR("bit_test requires a target number and a bit position argument.");
             return NIL_VAL;
         }
         EXTRACT_INT_VAL(args[0], num);
@@ -3282,14 +3282,14 @@ Value mathMinNative(int argCount, Value* args) {
 
     if (IS_NUMERIC(args[-1])) {
         if (argCount < 1) {
-            runtimeError("min() requires a second numeric argument when called as a method.");
+            ARG_ERROR("min() requires a second numeric argument when called as a method.");
             return NIL_VAL;
         }
         a = args[-1];
         b = args[0];
     } else {
         if (argCount < 2) {
-            runtimeError("min() requires two numeric arguments when called statically.");
+            ARG_ERROR("min() requires two numeric arguments when called statically.");
             return NIL_VAL;
         }
         a = args[0];
@@ -3297,7 +3297,7 @@ Value mathMinNative(int argCount, Value* args) {
     }
 
     if (!IS_NUMERIC(a) || !IS_NUMERIC(b)) {
-        runtimeError("min() expects numeric arguments.");
+        TYPE_ERROR("min() expects numeric arguments.");
         return NIL_VAL;
     }
 
@@ -3334,14 +3334,14 @@ Value mathMaxNative(int argCount, Value* args) {
 
     if (IS_NUMERIC(args[-1])) {
         if (argCount < 1) {
-            runtimeError("max() requires a second numeric argument when called as a method.");
+            ARG_ERROR("max() requires a second numeric argument when called as a method.");
             return NIL_VAL;
         }
         a = args[-1];
         b = args[0];
     } else {
         if (argCount < 2) {
-            runtimeError("max() requires two numeric arguments when called statically.");
+            ARG_ERROR("max() requires two numeric arguments when called statically.");
             return NIL_VAL;
         }
         a = args[0];
@@ -3349,7 +3349,7 @@ Value mathMaxNative(int argCount, Value* args) {
     }
 
     if (!IS_NUMERIC(a) || !IS_NUMERIC(b)) {
-        runtimeError("max() expects numeric arguments.");
+        TYPE_ERROR("max() expects numeric arguments.");
         return NIL_VAL;
     }
 
@@ -3400,7 +3400,7 @@ Value mathParseNative(int argCount, Value* args) {
         }
     } else {
         if (argCount < 1 || !IS_STRING(args[0])) {
-            runtimeError("parse() expects a string target.");
+            ARG_OR_TYPE_ERROR(argCount >= 1, "parse() expects a string target.");
             return NIL_VAL;
         }
         strObj = AS_STRING(args[0]);
@@ -3470,7 +3470,7 @@ Value fromHexNative(int argCount, Value* args) {
         strObj = AS_STRING(args[-1]);
     } else {
         if (argCount != 1 || !IS_STRING(args[0])) {
-            runtimeError("from_hex() expects a string target.");
+            ARG_OR_TYPE_ERROR(argCount == 1, "from_hex() expects a string target.");
             return NIL_VAL;
         }
         strObj = AS_STRING(args[0]);
@@ -3510,7 +3510,7 @@ Value fromBinNative(int argCount, Value* args) {
         strObj = AS_STRING(args[-1]);
     } else {
         if (argCount < 1 || !IS_STRING(args[0])) {
-            runtimeError("from_bin() expects a string target.");
+            ARG_OR_TYPE_ERROR(argCount >= 1, "from_bin() expects a string target.");
             return NIL_VAL;
         }
         strObj = AS_STRING(args[0]);
@@ -3565,7 +3565,7 @@ Value mathRoundNative(int argCount, Value* args) {
         decimals = (int)AS_FLOAT(v); \
         hasDecimals = true; \
     } else { \
-        runtimeError("round() decimals argument must be an integer."); \
+        TYPE_ERROR("round() decimals argument must be an integer."); \
         return NIL_VAL; \
     }
 
@@ -3579,7 +3579,7 @@ Value mathRoundNative(int argCount, Value* args) {
         }
     } else {
         if (argCount < 1 || !IS_NUMERIC(args[0])) {
-            runtimeError("round() expects a numeric receiver or argument.");
+            ARG_OR_TYPE_ERROR(argCount >= 1, "round() expects a numeric receiver or argument.");
             return NIL_VAL;
         }
         val = AS_NUMERIC(args[0]);
@@ -3689,7 +3689,7 @@ Value toFloatNative(int argCount, Value* args) {
         return FLOAT_VAL(val);
     }
 
-    runtimeError("to_float() cannot convert given type.");
+    TYPE_ERROR("to_float() cannot convert given type.");
     return NIL_VAL;
 }
 
@@ -3752,20 +3752,20 @@ Value mathAtan2Native(int argCount, Value* args) {
     if (IS_NUMERIC(val)) { \
         outDbl = AS_NUMERIC(val); \
     } else { \
-        runtimeError("atan2() requires numeric arguments."); \
+        TYPE_ERROR("atan2() requires numeric arguments."); \
         return NIL_VAL; \
     }
        
     if (IS_NUMERIC(args[-1])) {
         if (argCount < 1) {
-            runtimeError("atan2() expects 1 argument when called as a method.");
+            ARG_ERROR("atan2() expects 1 argument when called as a method.");
             return NIL_VAL;
         }
         EXTRACT_DOUBLE(args[-1], y);
         EXTRACT_DOUBLE(args[0], x);
     } else {
         if (argCount < 2) {
-            runtimeError("atan2() expects two number arguments when called statically.");
+            ARG_ERROR("atan2() expects two number arguments when called statically.");
             return NIL_VAL;
         }
         EXTRACT_DOUBLE(args[0], y);
@@ -3856,7 +3856,7 @@ Value numberToFixedNative(int argCount, Value* args) {
     } else if (IS_FLOAT(v) && isExactInteger(AS_FLOAT(v))) { \
         decimals = (int)AS_FLOAT(v); \
     } else { \
-        runtimeError("to_fixed() decimals argument must be a number."); \
+        TYPE_ERROR("to_fixed() decimals argument must be a number."); \
         return NIL_VAL; \
     }
 
@@ -3868,13 +3868,13 @@ Value numberToFixedNative(int argCount, Value* args) {
         }
     } else {
         if (argCount < 1) {
-            runtimeError("to_fixed() expects at least 1 argument when called statically.");
+            ARG_ERROR("to_fixed() expects at least 1 argument when called statically.");
             return NIL_VAL;
         }
 
         Value target = args[0];
         if (!IS_NUMERIC(target)) {
-            runtimeError("to_fixed() target must be numeric.");
+            TYPE_ERROR("to_fixed() target must be numeric.");
             return NIL_VAL;
         }
         val = AS_NUMERIC(target);
@@ -3913,14 +3913,14 @@ Value numberToStringNative(int argCount, Value* args) {
         isInstanceCall = true;
     } else {
         if (argCount < 1) {
-            runtimeError("to_string() expects at least 1 argument when called statically.");
+            ARG_ERROR("to_string() expects at least 1 argument when called statically.");
             return NIL_VAL;
         }
         target = args[0];
     }
 
     if (!IS_NUMERIC(target)) {
-        runtimeError("to_string() target must be a number.");
+        TYPE_ERROR("to_string() target must be a number.");
         return NIL_VAL;
     }
 
@@ -4072,7 +4072,7 @@ Value arrayLenNative(int argCount, Value* args) {
 //   Array
 Value arrayMapNative(int argCount, Value* args) {
     if (argCount < 1 || !isCallable(args[0])) {
-        runtimeError("Expected a closure callback argument for map().");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Expected a closure callback argument for map().");
         return NIL_VAL;
     }
 
@@ -4143,7 +4143,7 @@ Value arrayIsEmptyNative(int argCount, Value* args) {
 //   Array
 Value arrayFilterNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a callback function argument for filter().");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Expected a callback function argument for filter().");
         return NIL_VAL;
     }
 
@@ -4198,7 +4198,7 @@ Value arrayReduceNative(int argCount, Value* args) {
     if (argCount == 1) {
         // case A: [1,2,3].reduce(callback)
         if (!IS_CLOSURE(args[0])) {
-            runtimeError("reduce() with 1 argument expects a callback function.");
+            TYPE_ERROR("reduce() with 1 argument expects a callback function.");
             return NIL_VAL;
         }
 
@@ -4213,14 +4213,14 @@ Value arrayReduceNative(int argCount, Value* args) {
     } else if (argCount >= 2) {
         // case B: [1,2,3].reduce(initialValue, callback)
         if (!IS_CLOSURE(args[1])) {
-            runtimeError("reduce() with 2 arguments expecats a callback function as the second argument.");
+            TYPE_ERROR("reduce() with 2 arguments expecats a callback function as the second argument.");
             return NIL_VAL;
         }
         acc = args[0];
         callback = args[1];
         startindex = 0;
     } else {
-        runtimeError("reduce() expects at least 1 argument (callback).");
+        ARG_ERROR("reduce() expects at least 1 argument (callback).");
         return NIL_VAL;
     }
 
@@ -4263,7 +4263,7 @@ Value arrayReduceNative(int argCount, Value* args) {
 //   String
 Value arrayJoinNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("join() expects 1 string argument (separator).");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "join() expects 1 string argument (separator).");
         return NIL_VAL;
     }
 
@@ -4361,7 +4361,7 @@ Value arrayEachNative(int argCount, Value* args) {
 //   Value: deleted item
 Value arraySwapDeleteNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Expected an index number to delete.");
+        ARG_ERROR("Expected an index number to delete.");
         return NIL_VAL;
     }
 
@@ -4374,7 +4374,7 @@ Value arraySwapDeleteNative(int argCount, Value* args) {
     } else if (IS_FLOAT(indexVal) && isExactInteger(AS_FLOAT(indexVal))) {
         index = (int64_t)AS_FLOAT(indexVal);
     } else {
-        runtimeError("swap_delete() index must be an integer.");
+        TYPE_ERROR("swap_delete() index must be an integer.");
         return NIL_VAL;
     }
 
@@ -4401,7 +4401,7 @@ Value arraySwapDeleteNative(int argCount, Value* args) {
 //   Array
 Value arrayDeleteAtNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Expected an index number to delete.");
+        ARG_ERROR("Expected an index number to delete.");
         return NIL_VAL;
     }
 
@@ -4414,7 +4414,7 @@ Value arrayDeleteAtNative(int argCount, Value* args) {
     } else if (IS_FLOAT(indexVal) && isExactInteger(AS_FLOAT(indexVal))) {
         index = (int64_t)AS_FLOAT(indexVal);
     } else {
-        runtimeError("delete_at() index must be an integer.");
+        TYPE_ERROR("delete_at() index must be an integer.");
         return NIL_VAL;
     }
 
@@ -4445,7 +4445,7 @@ Value arrayDeleteAtNative(int argCount, Value* args) {
 //   Integer
 Value arrayIndexOfNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Expected a value to search for.");
+        ARG_ERROR("Expected a value to search for.");
         return NIL_VAL;
     }
 
@@ -4471,7 +4471,7 @@ Value arrayIndexOfNative(int argCount, Value* args) {
 //   Integer: index
 Value arrayFindIndexNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a closure callback argument for find_index().");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Expected a closure callback argument for find_index().");
         return NIL_VAL;
     }
 
@@ -4517,7 +4517,7 @@ Value arrayFindIndexNative(int argCount, Value* args) {
 //   Value
 Value arrayFindNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_CLOSURE(args[0])) {
-        runtimeError("Expected a closure callback argument for find().");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Expected a closure callback argument for find().");
         return NIL_VAL;
     }
 
@@ -4562,7 +4562,7 @@ Value arrayFindNative(int argCount, Value* args) {
 //   Bool
 Value arrayHasNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Expected 1 argument for has().");
+        ARG_ERROR("Expected 1 argument for has().");
         return NIL_VAL;
     }
 
@@ -4598,7 +4598,7 @@ Value arraySliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(val) && isExactInteger(AS_FLOAT(val))) { \
         outIdx = (int64_t)AS_FLOAT(val); \
     } else { \
-        runtimeError("slice() index must be an integer."); \
+        TYPE_ERROR("slice() index must be an integer."); \
         return NIL_VAL; \
     }
 
@@ -4756,7 +4756,7 @@ Value arraySortNative(int argCount, Value* args) {
 //   Array
 Value arraySortSliceNative(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("sort_slice() expects start and end index arguments.");
+        ARG_ERROR("sort_slice() expects start and end index arguments.");
         return NIL_VAL;
     }
 
@@ -4770,7 +4770,7 @@ Value arraySortSliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         start = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("sort_slice() start index must be an integer.");
+        TYPE_ERROR("sort_slice() start index must be an integer.");
         return NIL_VAL;
     }
 
@@ -4779,7 +4779,7 @@ Value arraySortSliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         end = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("sort_slice() end index must be an integer.");
+        TYPE_ERROR("sort_slice() end index must be an integer.");
         return NIL_VAL;
     }
     if (start < 0 || end > array->count || start > end) {
@@ -4893,13 +4893,13 @@ Value arrayStringNative(int argCount, Value* args) {
             double dbl = AS_FLOAT(v);
             if (!isExactInteger(dbl)) {
                 FREE_ARRAY(uint8_t, buffer, count);
-                runtimeError("Byte value at index %d must be an integer.", i);
+                TYPE_ERROR("Byte value at index %d must be an integer.", i);
                 return NIL_VAL;
             }
             byteVal = (int64_t)dbl;
         } else {
             FREE_ARRAY(uint8_t, buffer, count);
-            runtimeError("Array contains non-numeric element at index %d.", i);
+            TYPE_ERROR("Array contains non-numeric element at index %d.", i);
             return NIL_VAL;
         }
 
@@ -5050,7 +5050,7 @@ void initArrayClass() {
 //   Value: errval
 Value resultNativeConstructor(int argCount, Value* args) {
     if (argCount < 1 || argCount > 3) {
-        runtimeError("Result() rexpects 1 to 3 arguments, got %d.", argCount);
+        ARG_ERROR("Result() rexpects 1 to 3 arguments, got %d.", argCount);
         return NIL_VAL;
     }
 
@@ -5076,7 +5076,7 @@ Value resultNativeConstructor(int argCount, Value* args) {
 Value resultUnwrapNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     if (instance->obj.klass != vm.resultClass) {
-        runtimeError("Method unwrap() expected a Result instance.");
+        TYPE_ERROR("Method unwrap() expected a Result instance.");
         return NIL_VAL;
     }
 
@@ -5111,7 +5111,7 @@ Value resultUnwrapNative(int argCount, Value* args) {
 Value resultUnwrapOrNative(int argCount, Value* args) {
     ObjInstance* instance = AS_INSTANCE(args[-1]);
     if (instance->obj.klass != vm.resultClass) {
-        runtimeError("Method unwrap_or() expected a Result instance.");
+        TYPE_ERROR("Method unwrap_or() expected a Result instance.");
         return NIL_VAL;
     }
 
@@ -5134,7 +5134,7 @@ Value resultUnwrapOrNative(int argCount, Value* args) {
 //   Value: val
 Value optionNativeConstructor(int argCount, Value* args) {
     if (argCount > 1) {
-        runtimeError("Option() expects at most 1 argument, got %d", argCount);
+        ARG_ERROR("Option() expects at most 1 argument, got %d", argCount);
         return NIL_VAL;
     }
 
@@ -5182,7 +5182,7 @@ Value optionUnwrapNative(int argCount, Value* args) {
 //   Value
 Value optionUnwrapOrNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("unwrap_or() requires a default value.");
+        ARG_ERROR("unwrap_or() requires a default value.");
         return NIL_VAL;
     }
 
@@ -5255,12 +5255,12 @@ void initResultAndOptionClass() {
 //   String: pattern
 Value regexNativeConstructor(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Regex constructor expects a pattern string.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "Regex constructor expects a pattern string.");
         return NIL_VAL;
     }
 
     if (!IS_CLASS(args[-1])) {
-        runtimeError("Constructor called on a non-class object.");
+        TYPE_ERROR("Constructor called on a non-class object.");
         return NIL_VAL;
     }
     ObjClass* klass = AS_CLASS(args[-1]);
@@ -5297,7 +5297,7 @@ Value regexNativeConstructor(int argCount, Value* args) {
 //   Bool
 Value regexTestNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("test() expects 1 string argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "test() expects 1 string argument.");
         return NIL_VAL;
     }
 
@@ -5328,7 +5328,7 @@ Value regexTestNative(int argCount, Value* args) {
 //   Array
 Value regexMatchNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("match() expects 1 string argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "match() expects 1 string argument.");
         return NIL_VAL;
     }
 
@@ -5448,7 +5448,7 @@ void fileDestructor(ObjInstance* inst) {
 //   Result: String
 Value fileLoadNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("File.load() expects a string path.");
+        ARG_ERROR("File.load() expects a string path.");
         return NIL_VAL;
     }
 
@@ -5458,7 +5458,7 @@ Value fileLoadNative(int argCount, Value* args) {
     } else if (argCount >= 2 && IS_STRING(args[1])) {
         pathValue = args[1];
     } else {
-        runtimeError("File.load() expects a string path.");
+        TYPE_ERROR("File.load() expects a string path.");
         return NIL_VAL;
     }
 
@@ -5518,7 +5518,7 @@ Value fileLoadNative(int argCount, Value* args) {
 //   Result: Bool
 Value fileSaveNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("File.save() expects (path, content).");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "File.save() expects (path, content).");
         return NIL_VAL;
     }
 
@@ -5576,13 +5576,13 @@ Value fileExistsNative(int argCount, Value* args) {
 //   Result: handle
 Value fileOpenNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
-        runtimeError("File.open() must be called as a class method.");
+        TYPE_ERROR("File.open() must be called as a class method.");
         return NIL_VAL;
     }
     ObjClass* fileClass = AS_CLASS(args[-1]);
 
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("File.open() expects at least a path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "File.open() expects at least a path string.");
         return NIL_VAL;
     }
 
@@ -5777,7 +5777,7 @@ Value fileWriteNative(int argCount, Value* args) {
     }
 
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("File.write() expects 1 string argument (data).");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "File.write() expects 1 string argument (data).");
         return NIL_VAL;
     }
 
@@ -5826,7 +5826,7 @@ Value fileSeekNative(int argCount, Value* args) {
     }
 
     if (argCount < 1) {
-        runtimeError("File.seek() requires at least 1 argument (offset).");
+        ARG_ERROR("File.seek() requires at least 1 argument (offset).");
         return NIL_VAL;
     }
 
@@ -5892,7 +5892,7 @@ Value fileTellNative(int argCount, Value* args) {
 //   File: stderr
 Value fileStderrNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
-        runtimeError("File.stderr() must be called as a class method.");
+        TYPE_ERROR("File.stderr() must be called as a class method.");
         return NIL_VAL;
     }
     ObjClass* fileClass = AS_CLASS(args[-1]);
@@ -5908,7 +5908,7 @@ Value fileStderrNative(int argCount, Value* args) {
 //   Result
 Value fileFlushNative(int argCount, Value* args) {
     if (!IS_INSTANCE(args[-1])) {
-        runtimeError("File.flush() must be called on a File instance.");
+        TYPE_ERROR("File.flush() must be called on a File instance.");
         return NIL_VAL;
     }
 
@@ -5938,7 +5938,7 @@ Value fileFlushNative(int argCount, Value* args) {
 //   Result: byteswritten
 Value fileCopyNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
-        runtimeError("File.copy() requires source and destination path strings.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "File.copy() requires source and destination path strings.");
         return NIL_VAL;
     }
 
@@ -6188,12 +6188,12 @@ void initFileLibrary() {
 //   Bool
 Value dirMkdirNative(int argCount, Value* args) {
     if (!IS_CLASS(args[-1])) {
-        runtimeError("Dir.mkdir() must be called as a class method.");
+        TYPE_ERROR("Dir.mkdir() must be called as a class method.");
         return NIL_VAL;
     }
 
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.mkdir() expects a path string as the first argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.mkdir() expects a path string as the first argument.");
         return NIL_VAL;
     }
 
@@ -6206,7 +6206,7 @@ Value dirMkdirNative(int argCount, Value* args) {
         } else if (IS_FLOAT(modeVal) && isExactInteger(AS_FLOAT(modeVal))) {
             mode = (mode_t)AS_FLOAT(modeVal);
         } else {
-            runtimeError("Dir.mkdir() mode argument must be an integer.");
+            TYPE_ERROR("Dir.mkdir() mode argument must be an integer.");
             return NIL_VAL;
         }
     }
@@ -6238,7 +6238,7 @@ Value dirListNative(int argCount, Value* args) {
         } else if (argCount >= 2 && IS_STRING(args[1])) {
             path = AS_CSTRING(args[1]);
         } else {
-            runtimeError("Dir.list() expects a directory path string.");
+            TYPE_ERROR("Dir.list() expects a directory path string.");
             return NIL_VAL;
         }
     }
@@ -6285,7 +6285,7 @@ Value dirListNative(int argCount, Value* args) {
 //   Bool
 Value dirChdirNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.chdir() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.chdir() expects a path string.");
         return NIL_VAL;
     }
 
@@ -6367,7 +6367,7 @@ Value dirGetcwdNative(int argCount, Value* args) {
 //   Nil
 Value dirRmdirNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.rmdir() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.rmdir() expects a path string.");
         return NIL_VAL;
     }
     const char* path = AS_CSTRING(args[0]);
@@ -6388,7 +6388,7 @@ Value dirRmdirNative(int argCount, Value* args) {
 //   Bool
 Value dirExistsNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.exists() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.exists() expects a path string.");
         return NIL_VAL;
     }
     const char* path = AS_CSTRING(args[0]);
@@ -6437,7 +6437,7 @@ Value dirTmpdirNative(int argCount, Value* args) {
 //   Result: String
 Value dirMkdtempNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.mkdtemp() expects a template path string ending in 'XXXXXX'.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.mkdtemp() expects a template path string ending in 'XXXXXX'.");
         return NIL_VAL;
     }
 
@@ -6474,7 +6474,7 @@ Value dirMkdtempNative(int argCount, Value* args) {
 //   Nil
 Value dirEachNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_CLOSURE(args[1])) {
-        runtimeError("Dir.each() expects (path, callback).");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "Dir.each() expects (path, callback).");
         return NIL_VAL;
     }
 
@@ -6532,7 +6532,7 @@ Value dirEachNative(int argCount, Value* args) {
 //   String: pattern
 Value dirGlobNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.glob() expects a pattern string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.glob() expects a pattern string.");
         return NIL_VAL;
     }
 
@@ -6574,7 +6574,7 @@ Value dirGlobNative(int argCount, Value* args) {
 //   Bool
 Value dirIsemptyNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.isempty() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Dir.isempty() expects a path string.");
         return NIL_VAL;
     }
 
@@ -6613,7 +6613,7 @@ Value dirIsemptyNative(int argCount, Value* args) {
 //   String
 Value dirBasenameNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.basename() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "Dir.basename() expects a path string.");
         return NIL_VAL;
     }
 
@@ -6637,7 +6637,7 @@ Value dirBasenameNative(int argCount, Value* args) {
 //   String
 Value dirDirnameNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.dirname() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "Dir.dirname() expects a path string.");
         return NIL_VAL;
     }
 
@@ -6660,7 +6660,7 @@ Value dirDirnameNative(int argCount, Value* args) {
 //   Bool
 Value dirIsdirNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.isdir() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "Dir.isdir() expects a path string.");
         return NIL_VAL;
     }
     const char* pathStr = AS_CSTRING(args[0]);
@@ -6682,7 +6682,7 @@ Value dirIsdirNative(int argCount, Value* args) {
 //   String
 Value dirRealpathNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("Dir.realpath() expects a path string.");
+        ARG_OR_TYPE_ERROR(argCount == 1, "Dir.realpath() expects a path string.");
         return NIL_VAL;
     }
 
@@ -6733,7 +6733,7 @@ void initDirLibrary(){
 //   Integer
 Value processRunStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Process.run() requires a string command argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Process.run() requires a string command argument.");
         return NIL_VAL;
     }
 
@@ -6769,7 +6769,7 @@ Value processRunStatic(int argCount, Value* args) {
 //   Result: String
 Value processCaptureStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Process.execute() requires a string command argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Process.execute() requires a string command argument.");
         return NIL_VAL;
     }
 
@@ -6865,7 +6865,7 @@ char* valueToCString(Value val) {
 //   Nil
 Value processExecStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("exec() expects a string path as the first argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "exec() expects a string path as the first argument.");
         return NIL_VAL;
     }
 
@@ -6874,7 +6874,7 @@ Value processExecStatic(int argCount, Value* args) {
     ObjArray* argsArray = NULL;
     if (argCount >= 2 && !IS_NIL(args[1])) {
         if (!IS_ARRAY(args[1])) {
-            runtimeError("Second argument to exec() must be an Array or nil.");
+            TYPE_ERROR("Second argument to exec() must be an Array or nil.");
             return NIL_VAL;
         }
         argsArray = AS_ARRAY(args[1]);
@@ -6901,7 +6901,7 @@ Value processExecStatic(int argCount, Value* args) {
                 free(argv[i]);
             }
             free(argv);
-            runtimeError("exec() third argument must be a Map or nil.");
+            TYPE_ERROR("exec() third argument must be a Map or nil.");
             return NIL_VAL;
         }
 
@@ -7109,7 +7109,7 @@ Value processCloseStatic(int argCount, Value* args) {
 //   Bool
 Value processSignalStatic(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Process.signal() expects (pid, signal).");
+        ARG_ERROR("Process.signal() expects (pid, signal).");
         return NIL_VAL;
     }
 
@@ -7117,7 +7117,7 @@ Value processSignalStatic(int argCount, Value* args) {
             (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0])))) ? 0 : 1;
 
     if (argCount < offset + 2) {
-        runtimeError("Process.signal() expects (pid, signal).");
+        ARG_ERROR("Process.signal() expects (pid, signal).");
         return NIL_VAL;
     }
 
@@ -7131,7 +7131,7 @@ Value processSignalStatic(int argCount, Value* args) {
     } else if (IS_FLOAT(pidVal) && isExactInteger(AS_FLOAT(pidVal))) {
         pid = (pid_t)AS_FLOAT(pidVal);
     } else {
-        runtimeError("Process.signal() pid argument must be an integer.");
+        TYPE_ERROR("Process.signal() pid argument must be an integer.");
         return NIL_VAL;
     }
 
@@ -7140,7 +7140,7 @@ Value processSignalStatic(int argCount, Value* args) {
     } else if (IS_FLOAT(sigVal) && isExactInteger(AS_FLOAT(sigVal))) {
         sig = (int)AS_FLOAT(sigVal);
     } else {
-        runtimeError("Process.signal() signal argument must be an integer.");
+        TYPE_ERROR("Process.signal() signal argument must be an integer.");
         return NIL_VAL;
     }
 
@@ -7163,7 +7163,7 @@ Value processSignalStatic(int argCount, Value* args) {
 //   Result: byteswritten
 Value processWriteStatic(int argCount, Value* args) {
     if (argCount < 2 || (!IS_INT(args[0]) && !IS_FLOAT(args[0])) || !IS_STRING(args[1])) {
-        runtimeError("Process.write() requires a numeric descriptor and a string message.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "Process.write() requires a numeric descriptor and a string message.");
         return NIL_VAL;
     }
 
@@ -7175,7 +7175,7 @@ Value processWriteStatic(int argCount, Value* args) {
     } else if (IS_FLOAT(fdVal) && isExactInteger(AS_FLOAT(fdVal))) {
         fd = (int)AS_FLOAT(fdVal);
     } else {
-        runtimeError("Process.write() file descriptor must be an integer.");
+        TYPE_ERROR("Process.write() file descriptor must be an integer.");
         return NIL_VAL;
     }
 
@@ -7201,7 +7201,7 @@ Value processWriteStatic(int argCount, Value* args) {
 //   File
 Value processPopenStatic(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Process.popen() requires a command.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Process.popen() requires a command.");
         return NIL_VAL;
     }
 
@@ -7300,7 +7300,7 @@ static void bufWriteBytes(ByteBuffer* buf, const uint8_t* src, int len) {
 //   String
 Value structPackNative(int argCount, Value* args) {
     if (argCount < 2 || !IS_STRING(args[0]) || !IS_ARRAY(args[1])) {
-        runtimeError("pack() expects format string and value array.");
+        ARG_OR_TYPE_ERROR(argCount >= 2, "pack() expects format string and value array.");
         return NIL_VAL;
     }
 
@@ -7318,7 +7318,7 @@ Value structPackNative(int argCount, Value* args) {
         p++;
     } else if (argCount >= 3) {
         if (!IS_BOOL(args[2])) {
-            runtimeError("Struct.pack() big-endian argument must be a boolean.");
+            TYPE_ERROR("Struct.pack() big-endian argument must be a boolean.");
             return NIL_VAL;
         }
         bigend = AS_BOOL(args[2]);
@@ -7365,7 +7365,7 @@ Value structPackNative(int argCount, Value* args) {
             Value val = array->values[valIndex++];
             if (!IS_STRING(val)) {
                 free(buf.bytes);
-                runtimeError("Expected string value for 's' specifier.");
+                TYPE_ERROR("Expected string value for 's' specifier.");
                 return NIL_VAL;
             }
 
@@ -7395,7 +7395,7 @@ Value structPackNative(int argCount, Value* args) {
             Value val = array->values[valIndex++];
             if (!IS_INT_OR_FLOAT(val)) {
                 free(buf.bytes);
-                runtimeError("Expected numeric value for '%c' specifier.", type);
+                TYPE_ERROR("Expected numeric value for '%c' specifier.", type);
                 return NIL_VAL;
             }
 
@@ -7532,17 +7532,17 @@ Value structPackNative(int argCount, Value* args) {
 //   String
 Value structUnpackNative(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Struct.unpack() expects at least 2 arguments (format string, data string).");
+        ARG_ERROR("Struct.unpack() expects at least 2 arguments (format string, data string).");
         return NIL_VAL;
     }
 
     if (!IS_STRING(args[0])) {
-        runtimeError("First argument to Struct.unpack() must be a format string.");
+        TYPE_ERROR("First argument to Struct.unpack() must be a format string.");
         return NIL_VAL;
     }
 
     if (!IS_STRING(args[1]) && !IS_BUFFER(args[1])) {
-        runtimeError("Second argument to Struct.unpack() must be a data string or buffer.");
+        TYPE_ERROR("Second argument to Struct.unpack() must be a data string or buffer.");
         return NIL_VAL;
     }
 
@@ -7570,7 +7570,7 @@ Value structUnpackNative(int argCount, Value* args) {
         f++;
     } else if (argCount >= 3) {
         if (!IS_BOOL(args[2])) {
-            runtimeError("Struct.unpack() big-endian argument must be a boolean.");
+            TYPE_ERROR("Struct.unpack() big-endian argument must be a boolean.");
             return NIL_VAL;
         }
         bigend = AS_BOOL(args[2]);
@@ -7788,7 +7788,7 @@ void initStructClass() {
 //   Number: val
 Value hgfGCNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("heap_growth_Factor() expects a numeric multiplier.");
+        ARG_ERROR("heap_growth_Factor() expects a numeric multiplier.");
         return NIL_VAL;
     }
 
@@ -7799,7 +7799,7 @@ Value hgfGCNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0])) {
         val = AS_FLOAT(args[0]);
     } else {
-        runtimeError("heap_growth_Factor() expects a numeric multiplier.");
+        TYPE_ERROR("heap_growth_Factor() expects a numeric multiplier.");
         return NIL_VAL;
     }
 
@@ -7819,7 +7819,7 @@ Value hgfGCNative(int argCount, Value* args) {
 //   Float
 Value get_hgfGCNative(int argCount, Value* args) {
     if (argCount > 1) {
-        runtimeError("get_growth_factor() takes 0 arguments.");
+        ARG_ERROR("get_growth_factor() takes 0 arguments.");
         return NIL_VAL;
     }
 
@@ -7835,7 +7835,7 @@ Value get_hgfGCNative(int argCount, Value* args) {
 //   Bool: previous
 Value gcSetlogNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_BOOL(args[0])) {
-        runtimeError("set_log() takes a boolean.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "set_log() takes a boolean.");
         return BOOL_VAL(vm.log_gc);
     }
 
@@ -7864,7 +7864,7 @@ Value gcGetlogNative(int argCount, Value* args) {
 //   Integer: bumpsize
 Value bumpsizeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("bump_size() expects a numeric byte size.");
+        ARG_ERROR("bump_size() expects a numeric byte size.");
         return NIL_VAL;
     }
 
@@ -7875,7 +7875,7 @@ Value bumpsizeGCNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         bumpBytes = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("bump_size() expects a numeric byte size.");
+        TYPE_ERROR("bump_size() expects a numeric byte size.");
         return NIL_VAL;
     }
 
@@ -7901,7 +7901,7 @@ Value bumpsizeGCNative(int argCount, Value* args) {
 //   Integer
 Value get_bumpsizeGCNative(int argCount, Value* args) {
     if (argCount > 1) {
-        runtimeError("get_bumpsize() takes 0 arguments.");
+        ARG_ERROR("get_bumpsize() takes 0 arguments.");
         return NIL_VAL;
     }
 
@@ -7917,7 +7917,7 @@ Value get_bumpsizeGCNative(int argCount, Value* args) {
 //   Integer
 Value stressmodeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
+        ARG_ERROR("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode.");
         return NIL_VAL;
     }
 
@@ -7928,7 +7928,7 @@ Value stressmodeGCNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         mode = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode."); 
+        TYPE_ERROR("stress_mode() expects an integer mode (GC.NormalMode, GC.StressMode, GC.DisabledMode.");
         return NIL_VAL;
     }
 
@@ -7949,7 +7949,7 @@ Value stressmodeGCNative(int argCount, Value* args) {
 //   Integer
 Value get_stressmodeGCNative(int argCount, Value* args) {
     if (argCount > 1) {
-        runtimeError("get_stressmode() takes 0 arguments.");
+        ARG_ERROR("get_stressmode() takes 0 arguments.");
         return NIL_VAL;
     }
 
@@ -7965,7 +7965,7 @@ Value get_stressmodeGCNative(int argCount, Value* args) {
 //   Integer: type
 Value typeGCNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult = Multipler.");
+        ARG_ERROR("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult = Multipler.");
         return NIL_VAL;
     }
 
@@ -7976,7 +7976,7 @@ Value typeGCNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         mode = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
+        TYPE_ERROR("type() expects an integer (GC.TypeLinear = Linear/Bump, GC.TypeMult Multipler.");
         return NIL_VAL;
     }
 
@@ -7996,7 +7996,7 @@ Value typeGCNative(int argCount, Value* args) {
 //   Integer
 Value get_typeGCNative(int argCount, Value* args) {
     if (argCount > 0) {
-        runtimeError("get_gctype() expects 0 arguments.");
+        ARG_ERROR("get_gctype() expects 0 arguments.");
         return NIL_VAL;
     }
     return INT_VAL(vm.gctype);
@@ -8161,12 +8161,12 @@ Value ioConnectNative(int argCount, Value* args) {
     clearLastError();
 
     if (argCount < 2) {
-        runtimeError("Connect expects at least 2 arguments: (ip, port).");
+        ARG_ERROR("Connect expects at least 2 arguments: (ip, port).");
         return errorResult("Connect expects at least 2 arguments: (ip, port).");
     }
 
     if (!IS_STRING(args[0])) {
-        runtimeError("Connect expects a string for the host argument.");
+        TYPE_ERROR("Connect expects a string for the host argument.");
         return errorResult("Invalid host argument type.");
     }
 
@@ -8176,12 +8176,12 @@ Value ioConnectNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         portVal = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("Connect expects an integer port.");
+        TYPE_ERROR("Connect expects an integer port.");
         return errorResult("Invalid port type.");
     }
 
     if (portVal < 0 || portVal > 65535) {
-        runtimeError("Port must be an integer between 0 and 65535.");
+        TYPE_ERROR("Port must be an integer between 0 and 65535.");
         return errorResult("Invalid port value.");
     }
     int port = (int)portVal;
@@ -8204,7 +8204,7 @@ Value ioConnectNative(int argCount, Value* args) {
         } else if (IS_FLOAT(args[2])) {
             timeoutVal = AS_FLOAT(args[2]);
         } else {
-            runtimeError("Timeout must be a numeric value.");
+            TYPE_ERROR("Timeout must be a numeric value.");
             return errorResult("Invalid timeout type.");
         }
 
@@ -8298,7 +8298,7 @@ Value ioConnectNative(int argCount, Value* args) {
 //   Result: bytessent
 Value ioSendNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("send() expects a string as the first argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "send() expects a string as the first argument.");
         return errorResult("%s", "send() expects a string as the first argument.");
     }
 
@@ -8333,7 +8333,7 @@ Value ioSendNative(int argCount, Value* args) {
 //   Result: data
 Value ioRecvNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("recv() expects a buffer size number as the first argument.");
+        ARG_ERROR("recv() expects a buffer size number as the first argument.");
         return errorResult("recv() expects a buffer size number as the first argument.");
     }
 
@@ -8343,7 +8343,7 @@ Value ioRecvNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         requestedLength = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("recv() expects a buffer size number as the first argument.");
+        TYPE_ERROR("recv() expects a buffer size number as the first argument.");
         return errorResult("recv() expects a buffer size number as the first argument.");
     }
 
@@ -8411,7 +8411,7 @@ Value ioRecvNative(int argCount, Value* args) {
 //   Result
 Value ioListenNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("listen() expects a port number as the first argument.");
+        ARG_ERROR("listen() expects a port number as the first argument.");
         return errorResult("listen() expects a port number as the first argument.");
     }
 
@@ -8421,7 +8421,7 @@ Value ioListenNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         portVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("listen() expects a port number as the first argument.");
+        TYPE_ERROR("listen() expects a port number as the first argument.");
         return errorResult("listen() expects a port number as the first argument.");
     }
 
@@ -8517,12 +8517,12 @@ Value ioAcceptNative(int argCount, Value* args) {
 //   Result
 Value ioBindNative(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("bind() expects an IP address string and a port number.");
+        ARG_ERROR("bind() expects an IP address string and a port number.");
         return errorResult("bind() expects an IP address string and a port number.");
     }
 
     if (!IS_STRING(args[0])) {
-        runtimeError("bind() expects an IP address string as the first argument.");
+        TYPE_ERROR("bind() expects an IP address string as the first argument.");
         return errorResult("bind() expects an IP address string as the first argument.");
     }
 
@@ -8532,7 +8532,7 @@ Value ioBindNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         portVal = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("bind() expects a port integer.");
+        TYPE_ERROR("bind() expects a port integer.");
         return errorResult("bind() expects a port integer.");
     }
 
@@ -8735,7 +8735,7 @@ Value ioPollNative(int argCount, Value* args) {
 // Set receive timeout
 Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
+        ARG_ERROR("set_recv_timeout() expects a timeout in milliseconds.");
         return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
     }
 
@@ -8745,7 +8745,7 @@ Value ioSetRecvTimeoutNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         requestedMs = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("set_recv_timeout() expects a timeout in milliseconds.");
+        TYPE_ERROR("set_recv_timeout() expects a timeout in milliseconds.");
         return errorResult("set_recv_timeout() expects a timeout in milliseconds.");
     }
 
@@ -8831,7 +8831,7 @@ void initIOClass() {
 //   Integer
 Value systemTimeNative(int argCount, Value* args) {
     if (argCount > 0) {
-        runtimeError("time() takes 0 arguments.");
+        ARG_ERROR("time() takes 0 arguments.");
         return NIL_VAL;
     }
 
@@ -8897,7 +8897,7 @@ Value systemExitNative(int argCount, Value* args) {
         } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
             rawCode = (int64_t)AS_FLOAT(args[0]);
         } else {
-            runtimeError("exit() expects an integer exit code.");
+            TYPE_ERROR("exit() expects an integer exit code.");
             return NIL_VAL;
         }
 
@@ -9064,7 +9064,7 @@ Value systemSetPrecisionNative(int argCount, Value* args) {
         } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
             precisionVal = (int64_t)AS_FLOAT(args[0]);
         } else {
-            runtimeError("set_precision() expects a number argument.");
+            TYPE_ERROR("set_precision() expects a number argument.");
             return NIL_VAL;
         }
 
@@ -9093,7 +9093,7 @@ Value systemSetNotationNative(int argCount, Value* args) {
         } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
             styleVal = (int64_t)AS_FLOAT(args[0]);
         } else {
-            runtimeError("set_notation() expects a number argument.");
+            TYPE_ERROR("set_notation() expects a number argument.");
             return NIL_VAL;
         }
 
@@ -9118,7 +9118,7 @@ Value systemSetNotationNative(int argCount, Value* args) {
 Value systemDebugPrintNative(int argCount, Value* args) {
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
-            runtimeError("debug_print() expects a boolean argument.");
+            TYPE_ERROR("debug_print() expects a boolean argument.");
             return NIL_VAL;
         }
         vm.debugPrintCode = AS_BOOL(args[0]);
@@ -9136,7 +9136,7 @@ Value systemDebugPrintNative(int argCount, Value* args) {
 Value systemTraceNative(int argCount, Value* args) {
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
-            runtimeError("trace() expects a boolean argument.");
+            TYPE_ERROR("trace() expects a boolean argument.");
         }
         vm.debugTraceExecution = AS_BOOL(args[0]);
     }
@@ -9146,7 +9146,7 @@ Value systemTraceNative(int argCount, Value* args) {
 Value systemStrictNative(int argCount, Value* args) {
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
-            runtimeError("strict() expects a boolean argument.");
+            TYPE_ERROR("strict() expects a boolean argument.");
             return NIL_VAL;
         }
         vm.strictMode = AS_BOOL(args[0]);
@@ -9157,7 +9157,7 @@ Value systemStrictNative(int argCount, Value* args) {
 Value systemWarnNative(int argCount, Value* args) {
     if (argCount > 0) {
         if (!IS_BOOL(args[0])) {
-            runtimeError("warn() expects a boolean argument.");
+            TYPE_ERROR("warn() expects a boolean argument.");
             return NIL_VAL;
         }
         vm.warnMode = AS_BOOL(args[0]);
@@ -9173,7 +9173,7 @@ Value systemWarnNative(int argCount, Value* args) {
 // Returns
 Value systemSleepNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("System.sleep() requires a numeric duration in seconds.");
+        ARG_ERROR("System.sleep() requires a numeric duration in seconds.");
         return NIL_VAL;
     }
 
@@ -9206,7 +9206,7 @@ Value systemSleepNative(int argCount, Value* args) {
 
         return NIL_VAL;
     } else {
-        runtimeError("System.sleep() requires a numeric duration in seconds.");
+        TYPE_ERROR("System.sleep() requires a numeric duration in seconds.");
         return NIL_VAL;
     }
 }
@@ -9488,7 +9488,7 @@ static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 //   String: encoded text
 Value base64EncodeNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Base64.encode() expects a string argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Base64.encode() expects a string argument.");
         return NIL_VAL;
     }
 
@@ -9550,7 +9550,7 @@ static const int b64_decode_table[256] = {
 //   String: decoded text
 Value base64DecodeNative(int argCount, Value* args) {
     if (argCount < 1 || !IS_STRING(args[0])) {
-        runtimeError("Base64.decode() expects a string argument.");
+        ARG_OR_TYPE_ERROR(argCount >= 1, "Base64.decode() expects a string argument.");
         return NIL_VAL;
     }
 
@@ -9654,7 +9654,7 @@ void initBase64Class() {
 //   Buffer: a buffer
 Value bufferAllocNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Buffer.alloc() expects a numeric size argument.");
+        ARG_ERROR("Buffer.alloc() expects a numeric size argument.");
         return NIL_VAL;
     }
 
@@ -9664,7 +9664,7 @@ Value bufferAllocNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         sizeVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.alloc() expects a numeric size argument.");
+        TYPE_ERROR("Buffer.alloc() expects a numeric size argument.");
         return NIL_VAL;
     }
 
@@ -9728,7 +9728,7 @@ Value bufferToArrayNative(int argCount, Value* args) {
 //  Buffer: new buffer
 Value bufferSliceNative(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Buffer.slice() expects an offset and a length.");
+        ARG_ERROR("Buffer.slice() expects an offset and a length.");
         return NIL_VAL;
     }
 
@@ -9741,7 +9741,7 @@ Value bufferSliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         offset = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.slice() expects an integer offset value.");
+        TYPE_ERROR("Buffer.slice() expects an integer offset value.");
         return NIL_VAL;
     }
 
@@ -9750,7 +9750,7 @@ Value bufferSliceNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         length = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("Buffer.slice() expects an integer length value.");
+        TYPE_ERROR("Buffer.slice() expects an integer length value.");
         return NIL_VAL;
     }
 
@@ -9771,7 +9771,7 @@ Value bufferSliceNative(int argCount, Value* args) {
 // Fill buffer with a value
 Value bufferFillNative(int argCount, Value* args) {
     if (argCount < 1) {
-        runtimeError("Buffer.fill() expects an integer byte value.");
+        ARG_ERROR("Buffer.fill() expects an integer byte value.");
         return NIL_VAL;
     }
 
@@ -9781,7 +9781,7 @@ Value bufferFillNative(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         fillVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.fill() expects an integer byte value.");
+        TYPE_ERROR("Buffer.fill() expects an integer byte value.");
         return NIL_VAL;
     }
 
@@ -9806,7 +9806,7 @@ Value bufferFillNative(int argCount, Value* args) {
 //
 Value bufferWriteUint32Native(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Buffer.writeUint32() expands an offset and a uint32 value.");
+        ARG_ERROR("Buffer.writeUint32() expands an offset and a uint32 value.");
         return NIL_VAL;
     }
 
@@ -9816,7 +9816,7 @@ Value bufferWriteUint32Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         offsetVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.writeUint64() expects an integer offset as the first argument.");
+        TYPE_ERROR("Buffer.writeUint64() expects an integer offset as the first argument.");
         return NIL_VAL;
     }
 
@@ -9831,7 +9831,7 @@ Value bufferWriteUint32Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         val = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("Buffer.writeUint64() expects an integer value as the second argument.");
+        TYPE_ERROR("Buffer.writeUint64() expects an integer value as the second argument.");
         return NIL_VAL;
     }
 
@@ -9857,7 +9857,7 @@ Value bufferWriteUint32Native(int argCount, Value* args) {
 //   Integer: next offset
 Value bufferWriteUint64Native(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Buffer.writeUint64() expands an offset and a uint64 value.");
+        ARG_ERROR("Buffer.writeUint64() expands an offset and a uint64 value.");
         return NIL_VAL;
     }
 
@@ -9867,7 +9867,7 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         offsetVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.writeUint64() expects an integer offset as the first argument.");
+        TYPE_ERROR("Buffer.writeUint64() expects an integer offset as the first argument.");
         return NIL_VAL;
     }
 
@@ -9882,7 +9882,7 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         val = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("Buffer.writeUint64() expects an integer value as the second argument.");
+        TYPE_ERROR("Buffer.writeUint64() expects an integer value as the second argument.");
         return NIL_VAL;
     }
 
@@ -9905,7 +9905,7 @@ Value bufferWriteUint64Native(int argCount, Value* args) {
 //   Integer: next offset
 Value bufferWriteUint8Native(int argCount, Value* args) {
     if (argCount < 2) {
-        runtimeError("Buffer.writeUint8() expects an offset and a byte value.");
+        ARG_ERROR("Buffer.writeUint8() expects an offset and a byte value.");
         return NIL_VAL;
     }
 
@@ -9915,7 +9915,7 @@ Value bufferWriteUint8Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[0]) && isExactInteger(AS_FLOAT(args[0]))) {
         offsetVal = (int64_t)AS_FLOAT(args[0]);
     } else {
-        runtimeError("Buffer.writeUint8() expects an integer offset as the first argument.");
+        TYPE_ERROR("Buffer.writeUint8() expects an integer offset as the first argument.");
         return NIL_VAL;
     }
 
@@ -9930,7 +9930,7 @@ Value bufferWriteUint8Native(int argCount, Value* args) {
     } else if (IS_FLOAT(args[1]) && isExactInteger(AS_FLOAT(args[1]))) {
         rawVal = (int64_t)AS_FLOAT(args[1]);
     } else {
-        runtimeError("Buffer.writeUint8() expects an integer byte value as the second argument.");
+        TYPE_ERROR("Buffer.writeUint8() expects an integer byte value as the second argument.");
         return NIL_VAL;
     }
 

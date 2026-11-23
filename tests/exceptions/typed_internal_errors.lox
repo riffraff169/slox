@@ -1,0 +1,68 @@
+// Internal runtime failures use the typed Error subclasses.
+
+// Type checks throw TypeError.
+try {
+  Math.abs("x");
+} catch (TypeError e) {
+  print e.class_name() + ": " + e.message; // expect: TypeError: abs() expects a numeric receiver or a numeric argument.
+}
+try {
+  Vec3("a", 1, 2);
+} catch (TypeError e) {
+  print e.class_name(); // expect: TypeError
+}
+
+// Argument-count checks throw ArgumentError.
+try {
+  "abc".tokens(1);
+} catch (ArgumentError e) {
+  print e.class_name() + ": " + e.message; // expect: ArgumentError: tokens() expects 0 arguments.
+}
+try {
+  Vec3(1, 2);
+} catch (ArgumentError e) {
+  print e.class_name(); // expect: ArgumentError
+}
+try {
+  require();
+} catch (ArgumentError e) {
+  print e.class_name(); // expect: ArgumentError
+}
+try {
+  require(123);
+} catch (TypeError e) {
+  print e.class_name(); // expect: TypeError
+}
+
+// Missing files throw LoadError.
+try {
+  require("__missing_step2_typed_errors_test__.lox");
+} catch (LoadError e) {
+  print e.class_name() + ": " + e.message; // expect: LoadError: Could not open file '__missing_step2_typed_errors_test__.lox'.
+}
+try {
+  import "__missing_step2_module__";
+} catch (LoadError e) {
+  print e.class_name(); // expect: LoadError
+}
+
+// Subclasses are still caught by Error.
+try {
+  Math.abs("x");
+} catch (Error e) {
+  print e.class_name(); // expect: TypeError
+}
+try {
+  require("__missing_step2_typed_errors_test__.lox");
+} catch (Error e) {
+  print e.class_name(); // expect: LoadError
+}
+
+// Sibling catches do not match.
+try {
+  Math.abs("x");
+} catch (ArgumentError e) {
+  print "wrong ArgumentError catch";
+} catch (Error e) {
+  print e.class_name(); // expect: TypeError
+}

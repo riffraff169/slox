@@ -232,6 +232,16 @@ bool runtimeErrorTyped(ObjClass* errorClass, const char* format, ...);
 #define SYNTAX_ERROR(...)  runtimeErrorTyped(vm.syntaxErrorClass, __VA_ARGS__)
 #define NAME_ERROR(...)    runtimeErrorTyped(vm.nameErrorClass, __VA_ARGS__)
 
+// Mixed guards validate both count and type. Report the matching subclass.
+#define ARG_OR_TYPE_ERROR(argCountOk, ...) \
+    do { \
+        if (argCountOk) { \
+            TYPE_ERROR(__VA_ARGS__); \
+        } else { \
+            ARG_ERROR(__VA_ARGS__); \
+        } \
+    } while (false)
+
 void initVM(int argc, const char* argv[], const char* env[]);
 void freeVM();
 bool vmCall(ObjClosure* closure, int argCount);

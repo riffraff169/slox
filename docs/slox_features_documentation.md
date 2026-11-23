@@ -558,6 +558,8 @@ processCalculation(10, 0);
 
 `Error` is the base class for the builtin error types `ArgumentError`, `LoadError`, `NameError`, `RegexError`, `SyntaxError`, `SystemError`, and `TypeError`. All inherit from `Error`, so `catch (Error e)` catches them, while `catch (TypeError e)` catches only that subtype. User-defined errors can also subclass `Error`.
 
+Internal runtime failures are reported with these subclasses: wrong argument counts throw `ArgumentError`, wrong argument or operand types throw `TypeError`, and file/module loading failures throw `LoadError`. Remaining runtime failures (for example, division by zero or out-of-range values) still throw plain `Error`.
+
 ### Functions & Closures
 * Named function declaration:
   ```lox
