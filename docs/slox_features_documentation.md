@@ -83,6 +83,8 @@ Provides built-in methods for text manipulation, formatting, and conversion.
 
 * `trim()`: Strips leading and trailing whitespace characters from the string and returns a new String.
 * `contains(substring)`: Returns `true` if `substring` (String) is contained within the string; otherwise `false`.
+* `starts_with(prefix)`: Returns `true` if the string begins with `prefix` (String); an empty prefix matches.
+* `ends_with(suffix)`: Returns `true` if the string ends with `suffix` (String); an empty suffix matches.
 * `find(substring)`: Returns the integer 0-based index of the first occurrence of `substring`, or `nil` if not found.
 * `to_upper()`: Returns a new String with all ASCII characters converted to uppercase.
 * `to_lower()`: Returns a new String with all ASCII characters converted to lowercase.
@@ -94,6 +96,8 @@ Provides built-in methods for text manipulation, formatting, and conversion.
 * `to_number()`: Parses string content into a Number float, or returns `0` if invalid.
 * `tokens()`: Splits the string by whitespace into an `Array` of non-empty token strings.
 * `format(...)`: Formats the string template using C-style specifiers (`%s` for string, `%d` for integer, `%f` for float, `%b` for boolean, `%%` for literal percent) with argument values provided.
+
+Prefix, suffix, and containment checks are case-sensitive and compare the stored bytes, so embedded NUL bytes are handled correctly.
 
 ---
 

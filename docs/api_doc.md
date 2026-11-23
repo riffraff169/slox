@@ -3424,6 +3424,26 @@ If actual position is needed, use find().
 **Returns:**
   - `Bool: true if it does`
 
+#### `String.starts_with(prefix)`
+Checks if a string starts with another string.
+An empty prefix always matches.
+
+**Required Arguments:**
+  - `String: prefix`
+
+**Returns:**
+  - `Bool: true if it does`
+
+#### `String.ends_with(suffix)`
+Checks if a string ends with another string.
+An empty suffix always matches.
+
+**Required Arguments:**
+  - `String: suffix`
+
+**Returns:**
+  - `Bool: true if it does`
+
 #### `String.find(needle)`
 Checks if a string contains another string, or a character.
 
