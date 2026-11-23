@@ -1,0 +1,42 @@
+// Interpolated expressions use the same value-to-string conversion as str()
+// and string concatenation, including custom to_string() methods.
+class Named {
+  init(name) {
+    this.name = name;
+  }
+
+  to_string() {
+    return "Named(" + this.name + ")";
+  }
+}
+
+class Plain {}
+class Bad {
+  to_string() {
+    throw "boom";
+  }
+}
+class Self {
+  to_string() {
+    return this;
+  }
+}
+
+var arr = [1, "two", true];
+var map = Map("a", 1);
+
+print "scalar=${42}|${1.5}|${true}|${nil}"; // expect: scalar=42|1.5|true|nil
+print "array=${arr}"; // expect: array=[1, "two", true]
+print "map=${map}"; // expect: map={"a": 1}
+print "custom=${Named("x")}"; // expect: custom=Named(x)
+print "plain=${Plain()}"; // expect: plain=Plain instance
+print "self=${Self()}"; // expect: self=Self instance
+print "call=${arr.len()}"; // expect: call=3
+print "multi=${arr[0]}|${arr[1]}|${arr[2]}"; // expect: multi=1|two|true
+
+try {
+  print "bad ${Bad()}";
+} catch (e) {
+  print "caught=" + String(e); // expect: caught=boom
+}
+print "after"; // expect: after
