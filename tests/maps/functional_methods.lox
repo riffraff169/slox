@@ -11,6 +11,13 @@ print m.reduce(0, fun(acc, k, v) { return acc + v; }); // expect: 3
 print m.reduce(fun(acc, k, v) { return acc + v; }); // expect: 3
 print Map().reduce(0, fun(acc, k, v) { return acc + v; }); // expect: 0
 
+// A callback is required; the one-argument form supplies it in the first slot.
+try {
+  m.reduce();
+} catch (Error e) {
+  print e.message; // expect: Expected between 1 and 2 arguments but got 0.
+}
+
 var keys = [];
 m.each_key(fun(k) { keys.push(k); });
 print keys.sort(); // expect: ["a", "b"]

@@ -215,15 +215,16 @@ class Map {
   }
 
   //: reduce
-  // Folds entries with callback(acc, key, value). With no initial value, the
-  // first entry's value becomes the accumulator.
-  // Optional:
-  //   Value: initial
+  // Folds entries with callback(acc, key, value). Called with one argument,
+  // that argument is the callback and the first entry's value becomes the
+  // accumulator.
   // Requires:
+  //   Value: initial
+  // Optional:
   //   Value: callback
   // Returns:
   //   Value
-  reduce(initial = nil, callback = nil) {
+  reduce(initial, callback = nil) {
     var hasInitial = true;
     if (callback == nil) {
       callback = initial;

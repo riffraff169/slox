@@ -3029,7 +3029,7 @@ Returns a new Map containing entries for which predicate(key, value) is truthy.
   - `Map`
 
 #### `Map.reduce([initial], callback)`
-Folds entries with callback(acc, key, value). With no initial value, the first entry's value becomes the accumulator.
+Folds entries with callback(acc, key, value). With no initial value, the first entry's value becomes the accumulator. A callback is required; in the one-argument form, it is passed as the first argument.
 
 **Optional Arguments:**
   - `Value: initial`
