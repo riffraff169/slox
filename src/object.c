@@ -176,7 +176,77 @@ static uint32_t hashDouble(double n) {
     return hashBytes((const uint8_t*)&n, sizeof(double));
 }
 
-uint32_t hashValue(Value value) {
+#define MAX_KEY_HASH_DEPTH 64
+
+static uint32_t hashValueAtDepth(Value value, Obj** path, int depth);
+
+static uint32_t mixHash(uint32_t a, uint32_t b) {
+    return (a ^ (b + 0x9e3779b9u + (a << 6) + (a >> 2))) * 16777619u;
+}
+
+static bool pathContains(Obj** path, int depth, Obj* obj) {
+    for (int i = 0; i < depth; i++) {
+        if (path[i] == obj) return true;
+    }
+    return false;
+}
+
+static uint32_t hashContainer(Value value, Obj** path, int depth) {
+    Obj* obj = AS_OBJ(value);
+
+    // A container encountered on the current path is a cycle. Contribute a
+    // fixed marker so equal cyclic shapes hash equally without recursing.
+    if (pathContains(path, depth, obj)) return 0x9e3779b9u;
+
+    // Bound recursion for extremely deep acyclic containers. The identity
+    // fallback keeps hashing consistent with the equality fallback.
+    if (depth >= MAX_KEY_HASH_DEPTH) {
+        uint64_t id = obj->id;
+        return hashBytes((const uint8_t*)&id, sizeof(uint64_t));
+    }
+
+    path[depth] = obj;
+    uint32_t hash;
+
+    if (IS_ARRAY(value)) {
+        ObjArray* array = AS_ARRAY(value);
+        hash = hashBytes((const uint8_t*)"array", 5);
+        hash = mixHash(hash, (uint32_t)array->count);
+        for (int i = 0; i < array->count; i++) {
+            hash = mixHash(hash, hashValueAtDepth(array->values[i], path, depth + 1));
+        }
+    } else {
+        // Map and Set entries are combined commutatively so insertion order
+        // does not affect the hash of an otherwise identical container.
+        ObjMap* map = IS_MAP(value) ? AS_MAP(value) : NULL;
+        ObjSet* set = map == NULL ? AS_SET(value) : NULL;
+        Table2* items = map == NULL ? &set->items : &map->items;
+
+        uint32_t entries = 0;
+        int count = 0;
+        for (int i = 0; i < items->capacity; i++) {
+            Entry2* entry = &items->entries[i];
+            if (IS_NIL(entry->key)) continue;
+            count++;
+
+            uint32_t keyHash = hashValueAtDepth(entry->key, path, depth + 1);
+            uint32_t valueHash = (map != NULL || set->isMultiset)
+                ? hashValueAtDepth(entry->value, path, depth + 1) : 0;
+            entries += mixHash(keyHash, valueHash);
+        }
+
+        hash = hashBytes((const uint8_t*)(map == NULL ? "set" : "map"), 3);
+        if (set != NULL) {
+            hash = mixHash(hash, set->isMultiset ? 1u : 0u);
+        }
+        hash = mixHash(hash, (uint32_t)count);
+        hash = mixHash(hash, entries);
+    }
+
+    return hash;
+}
+
+static uint32_t hashValueAtDepth(Value value, Obj** path, int depth) {
     switch (value.type) {
         case VAL_INT:
             {
@@ -191,6 +261,9 @@ uint32_t hashValue(Value value) {
                     return AS_STRING(value)->hash;
                 }
                 Obj* obj = AS_OBJ(value);
+                if (IS_ARRAY(value) || IS_MAP(value) || IS_SET(value)) {
+                    return hashContainer(value, path, depth);
+                }
                 uint64_t id = obj->id;
                 return hashBytes((const uint8_t*)&id, sizeof(uint64_t));
             }
@@ -214,6 +287,11 @@ uint32_t hashValue(Value value) {
 #endif
             return 0;
     }
+}
+
+uint32_t hashValue(Value value) {
+    Obj* path[MAX_KEY_HASH_DEPTH];
+    return hashValueAtDepth(value, path, 0);
 }
 
 ObjString* takeString(char* chars, int length) {

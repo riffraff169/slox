@@ -183,6 +183,8 @@ array.find(fun(a) { return a > 5; });
 
 Key-value associative hash maps supporting arbitrary value keys.
 
+Array, `Map`, and `Set` keys use **structural value semantics**: two separately created containers with the same contents hash equally and address the same entry, including nested containers and cycles. Do not mutate a container after using it as a key; its hash changes and later lookups may miss. Container `==` remains identity-based, so `[1, 2] == [1, 2]` is still `false` even though both work as the same key.
+
 ### Basic Usage
 ```lox
 // Creating a map
@@ -230,6 +232,8 @@ user.remove("active");
 ## Set Class
 
 Unordered collection of unique values or multi-set count values.
+
+Like Map keys, Array, `Map`, and `Set` members are compared by structure rather than identity, so `Set().add([1, 2])` followed by `has([1, 2])` is `true`. Mutating a container after adding it invalidates the lookup.
 
 ### Basic Usage
 ```lox

@@ -2889,6 +2889,8 @@ Constructor can take a list of values that are converted to key/value pairs. Mus
 even number.
 Map/Dictionary/Hash table of key/value entries.
 
+Array, Map, and Set keys use structural value semantics: containers with the same contents hash equally and address the same entry, including nested containers and cycles. Mutating a container after using it as a key changes its hash and may make later lookups miss. Container `==` is still identity-based.
+
 **Optional Arguments:**
   - `Array: vals`
 
@@ -3105,6 +3107,8 @@ at the beginning, or optional argument.
 ## Class: Set
 Special case of Map. Values are ignored, can keep a count of number
 of times key has been added.
+
+As with Map keys, Array, Map, and Set members are compared by structure rather than identity. Mutating a container after adding it to a Set invalidates the lookup.
 
 ### Methods
 

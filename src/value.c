@@ -203,7 +203,88 @@ bool valuesEqual(Value a, Value b) {
     }
 }
 
-bool valuesEqualStrict(Value a, Value b) {
+#define MAX_KEY_COMPARE_DEPTH 64
+
+static bool valuesEqualStrictAtDepth(Value a, Value b,
+        Obj** pathA, Obj** pathB, int depth);
+
+static int pathIndex(Obj** path, int depth, Obj* obj) {
+    for (int i = 0; i < depth; i++) {
+        if (path[i] == obj) return i;
+    }
+    return -1;
+}
+
+static bool tableEntriesMatch(Table2* a, Table2* b,
+        Obj** pathA, Obj** pathB, int depth) {
+    if (tableLiveCount2(a) != tableLiveCount2(b)) return false;
+
+    // Keys are unique within a table, so a match for every entry in A is a
+    // bijection. Comparing both key and value keeps maps and multisets honest.
+    for (int i = 0; i < a->capacity; i++) {
+        Entry2* entryA = &a->entries[i];
+        if (IS_NIL(entryA->key)) continue;
+
+        bool found = false;
+        for (int j = 0; j < b->capacity; j++) {
+            Entry2* entryB = &b->entries[j];
+            if (IS_NIL(entryB->key)) continue;
+            if (valuesEqualStrictAtDepth(entryA->key, entryB->key,
+                    pathA, pathB, depth) &&
+                valuesEqualStrictAtDepth(entryA->value, entryB->value,
+                    pathA, pathB, depth)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+static bool containersEqual(Value a, Value b,
+        Obj** pathA, Obj** pathB, int depth) {
+    Obj* objA = AS_OBJ(a);
+    Obj* objB = AS_OBJ(b);
+
+    // Coinductive cycle guard: a pair already being compared is assumed equal
+    // only if both sides revisit it at the same position in their paths.
+    int indexA = pathIndex(pathA, depth, objA);
+    int indexB = pathIndex(pathB, depth, objB);
+    if (indexA >= 0 || indexB >= 0) return indexA == indexB;
+
+    if (depth >= MAX_KEY_COMPARE_DEPTH) return objA == objB;
+
+    pathA[depth] = objA;
+    pathB[depth] = objB;
+
+    if (objA->type == OBJ_ARRAY) {
+        ObjArray* arrayA = AS_ARRAY(a);
+        ObjArray* arrayB = AS_ARRAY(b);
+        if (arrayA->count != arrayB->count) return false;
+        for (int i = 0; i < arrayA->count; i++) {
+            if (!valuesEqualStrictAtDepth(arrayA->values[i], arrayB->values[i],
+                    pathA, pathB, depth + 1)) return false;
+        }
+        return true;
+    }
+
+    if (objA->type == OBJ_SET) {
+        ObjSet* setA = AS_SET(a);
+        ObjSet* setB = AS_SET(b);
+        if (setA->isMultiset != setB->isMultiset) return false;
+        return tableEntriesMatch(&setA->items, &setB->items,
+                pathA, pathB, depth + 1);
+    }
+
+    ObjMap* mapA = AS_MAP(a);
+    ObjMap* mapB = AS_MAP(b);
+    return tableEntriesMatch(&mapA->items, &mapB->items,
+            pathA, pathB, depth + 1);
+}
+
+static bool valuesEqualStrictAtDepth(Value a, Value b,
+        Obj** pathA, Obj** pathB, int depth) {
     if (a.type != b.type) return false;
 
     switch (a.type) {
@@ -220,9 +301,20 @@ bool valuesEqualStrict(Value a, Value b) {
                 (AS_VEC3(a).y == AS_VEC3(b).y) &&
                 (AS_VEC3(a).z == AS_VEC3(b).z);
         case VAL_OBJ:
+            if ((IS_ARRAY(a) || IS_MAP(a) || IS_SET(a)) &&
+                (IS_ARRAY(b) || IS_MAP(b) || IS_SET(b)) &&
+                AS_OBJ(a)->type == AS_OBJ(b)->type) {
+                return containersEqual(a, b, pathA, pathB, depth);
+            }
             return AS_OBJ(a) == AS_OBJ(b);
         default:
             return false;
     }
+}
+
+bool valuesEqualStrict(Value a, Value b) {
+    Obj* pathA[MAX_KEY_COMPARE_DEPTH];
+    Obj* pathB[MAX_KEY_COMPARE_DEPTH];
+    return valuesEqualStrictAtDepth(a, b, pathA, pathB, 0);
 }
 
