@@ -184,6 +184,96 @@ class Map {
   iter() {
     return MapIterator(this);
   }
+
+  //: map
+  // Calls transform(key, value) for each entry and returns an Array of results.
+  // Map iteration follows hash-table order, not insertion order.
+  // Requires:
+  //   Value: transform
+  // Returns:
+  //   Array
+  map(transform) {
+    var result = [];
+    this.each(fun(k, v) {
+      result.push(transform(k, v));
+    });
+    return result;
+  }
+
+  //: filter
+  // Returns a new Map containing entries for which predicate(key, value) is truthy.
+  // Requires:
+  //   Value: predicate
+  // Returns:
+  //   Map
+  filter(predicate) {
+    var result = Map();
+    this.each(fun(k, v) {
+      if (predicate(k, v)) result[k] = v;
+    });
+    return result;
+  }
+
+  //: reduce
+  // Folds entries with callback(acc, key, value). With no initial value, the
+  // first entry's value becomes the accumulator.
+  // Optional:
+  //   Value: initial
+  // Requires:
+  //   Value: callback
+  // Returns:
+  //   Value
+  reduce(initial = nil, callback = nil) {
+    var hasInitial = true;
+    if (callback == nil) {
+      callback = initial;
+      hasInitial = false;
+    }
+
+    var acc = initial;
+    var first = true;
+    this.each(fun(k, v) {
+      if (!hasInitial and first) {
+        acc = v;
+      } else {
+        acc = callback(acc, k, v);
+      }
+      first = false;
+    });
+    return acc;
+  }
+
+  //: each_key
+  // Calls callback(key) for each entry. Returns this map.
+  // Requires:
+  //   Value: callback
+  // Returns:
+  //   Map
+  each_key(callback) {
+    this.each(fun(k, v) { callback(k); });
+    return this;
+  }
+
+  //: each_value
+  // Calls callback(value) for each entry. Returns this map.
+  // Requires:
+  //   Value: callback
+  // Returns:
+  //   Map
+  each_value(callback) {
+    this.each(fun(k, v) { callback(v); });
+    return this;
+  }
+
+  //: invert
+  // Returns a new Map with keys and values swapped.
+  // Returns:
+  //   Map
+  invert() {
+    var result = Map();
+    this.each(fun(k, v) { result[v] = k; });
+    return result;
+  }
 }
 
 //@ FieldIndex
@@ -878,6 +968,151 @@ class Array {
     }
 
     return [pass, fail];
+  }
+
+  //: all
+  // Returns true when every element satisfies predicate. With no predicate,
+  // tests the truthiness of the elements themselves. Alias: every.
+  // Optional:
+  //   Value: predicate
+  // Returns:
+  //   Bool
+  all(predicate = nil) {
+    if (predicate == nil) predicate = fun(x) { return x; };
+    for (var i = 0; i < this.length(); i = i + 1) {
+      if (!predicate(this[i])) return false;
+    }
+    return true;
+  }
+
+  //: every
+  // Alias for all().
+  every(predicate = nil) { return this.all(predicate); }
+
+  //: any
+  // Returns true when at least one element satisfies predicate. With no
+  // predicate, tests the truthiness of the elements themselves. Alias: some.
+  // Optional:
+  //   Value: predicate
+  // Returns:
+  //   Bool
+  any(predicate = nil) {
+    if (predicate == nil) predicate = fun(x) { return x; };
+    for (var i = 0; i < this.length(); i = i + 1) {
+      if (predicate(this[i])) return true;
+    }
+    return false;
+  }
+
+  //: some
+  // Alias for any().
+  some(predicate = nil) { return this.any(predicate); }
+
+  //: flat_map
+  // Maps each element, appending array results one level rather than nesting
+  // them. Non-array results are appended as-is.
+  // Requires:
+  //   Value: transform
+  // Returns:
+  //   Array
+  flat_map(transform) {
+    var result = [];
+    for (var i = 0; i < this.length(); i = i + 1) {
+      var mapped = transform(this[i]);
+      if (mapped != nil and mapped.class() == Array) {
+        for (var j = 0; j < mapped.length(); j = j + 1) {
+          result.push(mapped[j]);
+        }
+      } else {
+        result.push(mapped);
+      }
+    }
+    return result;
+  }
+
+  //: each_with_index
+  // Calls callback(element, index) for every element. Returns this array.
+  // Requires:
+  //   Value: callback
+  // Returns:
+  //   Array
+  each_with_index(callback) {
+    for (var i = 0; i < this.length(); i = i + 1) {
+      callback(this[i], i);
+    }
+    return this;
+  }
+
+  //: group_by
+  // Groups elements into a Map keyed by keyFn(element).
+  // Requires:
+  //   Value: keyFn
+  // Returns:
+  //   Map
+  group_by(keyFn) {
+    var result = Map();
+    for (var i = 0; i < this.length(); i = i + 1) {
+      var item = this[i];
+      var key = keyFn(item);
+      if (!result.has(key)) result[key] = [];
+      result[key].push(item);
+    }
+    return result;
+  }
+
+  //: uniq
+  // Returns a new Array with duplicate elements removed. Alias: unique.
+  // Returns:
+  //   Array
+  uniq() {
+    var result = [];
+    for (var i = 0; i < this.length(); i = i + 1) {
+      var item = this[i];
+      if (!result.has(item)) result.push(item);
+    }
+    return result;
+  }
+
+  //: unique
+  // Alias for uniq().
+  unique() { return this.uniq(); }
+
+  //: compact
+  // Returns a new Array with nil elements removed.
+  // Returns:
+  //   Array
+  compact() {
+    var result = [];
+    for (var i = 0; i < this.length(); i = i + 1) {
+      if (this[i] != nil) result.push(this[i]);
+    }
+    return result;
+  }
+
+  //: min
+  // Returns the smallest element using <, or nil for an empty array.
+  // Returns:
+  //   Value
+  min() {
+    if (this.length() == 0) return nil;
+    var best = this[0];
+    for (var i = 1; i < this.length(); i = i + 1) {
+      if (this[i] < best) best = this[i];
+    }
+    return best;
+  }
+
+  //: max
+  // Returns the largest element using >, or nil for an empty array.
+  // Returns:
+  //   Value
+  max() {
+    if (this.length() == 0) return nil;
+    var best = this[0];
+    for (var i = 1; i < this.length(); i = i + 1) {
+      if (this[i] > best) best = this[i];
+    }
+    return best;
   }
 }
 

@@ -2623,6 +2623,81 @@ Divide an array into first and rest. Combination of .first and .rest.
 **Returns:**
   - `Array`
 
+#### `Array.all([predicate])`
+Returns true when every element satisfies predicate. With no predicate, tests element truthiness.
+
+**Aliases:** `every`
+
+**Optional Arguments:**
+  - `Value: predicate`
+
+**Returns:**
+  - `Bool`
+
+#### `Array.any([predicate])`
+Returns true when at least one element satisfies predicate. With no predicate, tests element truthiness.
+
+**Aliases:** `some`
+
+**Optional Arguments:**
+  - `Value: predicate`
+
+**Returns:**
+  - `Bool`
+
+#### `Array.flat_map(transform)`
+Maps each element, appending array results one level rather than nesting them. Non-array results are appended as-is.
+
+**Required Arguments:**
+  - `Value: transform`
+
+**Returns:**
+  - `Array`
+
+#### `Array.each_with_index(callback)`
+Calls callback(element, index) for every element. Returns this array.
+
+**Required Arguments:**
+  - `Value: callback`
+
+**Returns:**
+  - `Array`
+
+#### `Array.group_by(keyFn)`
+Groups elements into a Map keyed by keyFn(element).
+
+**Required Arguments:**
+  - `Value: keyFn`
+
+**Returns:**
+  - `Map`
+
+#### `Array.uniq()`
+Returns a new Array with duplicate elements removed.
+
+**Aliases:** `unique`
+
+**Returns:**
+  - `Array`
+
+#### `Array.compact()`
+Returns a new Array with nil elements removed.
+
+**Returns:**
+  - `Array`
+
+#### `Array.min()`
+Returns the smallest element using <, or nil for an empty array.
+
+**Returns:**
+  - `Value`
+
+#### `Array.max()`
+Returns the largest element using >, or nil for an empty array.
+
+**Returns:**
+  - `Value`
+
 #### `Array.unwrap_or(default)`
 If ok, get okval, otherwise return default value.
 
@@ -2933,6 +3008,61 @@ Works on a copy of the map, so the map won't be modified by the callback.
 
 **Returns:**
   - `Nil`
+
+#### `Map.map(transform)`
+Calls transform(key, value) for each entry and returns an Array of results.
+Map iteration follows hash-table order, not insertion order.
+
+**Required Arguments:**
+  - `Value: transform`
+
+**Returns:**
+  - `Array`
+
+#### `Map.filter(predicate)`
+Returns a new Map containing entries for which predicate(key, value) is truthy.
+
+**Required Arguments:**
+  - `Value: predicate`
+
+**Returns:**
+  - `Map`
+
+#### `Map.reduce([initial], callback)`
+Folds entries with callback(acc, key, value). With no initial value, the first entry's value becomes the accumulator.
+
+**Optional Arguments:**
+  - `Value: initial`
+
+**Required Arguments:**
+  - `Value: callback`
+
+**Returns:**
+  - `Value`
+
+#### `Map.each_key(callback)`
+Calls callback(key) for each entry. Returns this map.
+
+**Required Arguments:**
+  - `Value: callback`
+
+**Returns:**
+  - `Map`
+
+#### `Map.each_value(callback)`
+Calls callback(value) for each entry. Returns this map.
+
+**Required Arguments:**
+  - `Value: callback`
+
+**Returns:**
+  - `Map`
+
+#### `Map.invert()`
+Returns a new Map with keys and values swapped.
+
+**Returns:**
+  - `Map`
 
 ---
 

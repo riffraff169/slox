@@ -174,6 +174,14 @@ var res = numbers.rest();
 * `first()`: Returns the first element of the array, or `nil` if empty.
 * `rest()`: Returns a new `Array` containing all elements except the first.
 * `split()`: Deconstructs array into a 2-element array containing `[first_element, rest_array]`.
+* `all([predicate])` / `every([predicate])`: Returns `true` when every element satisfies `predicate`; without a predicate, tests element truthiness.
+* `any([predicate])` / `some([predicate])`: Returns `true` when at least one element satisfies `predicate`; without a predicate, tests element truthiness.
+* `flat_map(transform)`: Maps each element, appending array results one level instead of nesting them.
+* `each_with_index(callback)`: Calls `callback(element, index)` for every element and returns the array.
+* `group_by(keyFn)`: Returns a `Map` of arrays grouped by `keyFn(element)`.
+* `uniq()` / `unique()`: Returns a new `Array` with duplicate elements removed.
+* `compact()`: Returns a new `Array` with `nil` elements removed.
+* `min()` / `max()`: Returns the smallest/largest element using `<`/`>`, or `nil` for an empty array.
 
 A callback can be either a function, or an anonymous/lambda function, as in:
 ```lox
@@ -228,6 +236,11 @@ user.remove("active");
 * `remove(k1, [k2, ...])`: Removes specified keys from the map and returns a new `Map` containing the deleted key-value pairs. Alias delete.
 * `len()`: Returns the total count of key-value pairs stored in the map.
 * `each(callback)`: Iterates through all map entries, passing `(key, value)` to the provided `callback` closure.
+* `map(transform)`: Calls `transform(key, value)` for each entry and returns an `Array` of results in hash-table order.
+* `filter(predicate)`: Returns a new `Map` with entries for which `predicate(key, value)` is truthy.
+* `reduce([initial], callback)`: Folds entries with `callback(acc, key, value)`. Without `initial`, the first entry's value is the accumulator.
+* `each_key(callback)` / `each_value(callback)`: Calls `callback(key)` or `callback(value)` for each entry and returns the map.
+* `invert()`: Returns a new `Map` with keys and values swapped.
 
 ---
 
