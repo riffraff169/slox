@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.12.2
+Version: 1.13.0
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -376,6 +376,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.13.0-1
+- Merge pull request 'Migrate load type errors' (#25) from migrate-load-type-errors into master
+
 * Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.2-1
 - Merge pull request 'Fix/value map keys' (#22) from fix/value-map-keys into master
 

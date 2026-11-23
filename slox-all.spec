@@ -1,5 +1,5 @@
 Name:           slox-all
-Version: 1.12.2
+Version: 1.13.0
 Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
@@ -37,6 +37,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.13.0-1
+- Merge pull request 'Migrate load type errors' (#25) from migrate-load-type-errors into master
+
 * Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.2-1
 - Merge pull request 'Fix/value map keys' (#22) from fix/value-map-keys into master
 
