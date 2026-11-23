@@ -1497,17 +1497,21 @@ static void interpolation(bool canAssign) {
 static void interpolation(bool canAssign) {
     string(false);
 
-    expression();
+    for (;;) {
+      expression();
+      emitByte(OP_STR);
+      emitByte(OP_ADD);
 
-    emitByte(OP_STR);
-    emitByte(OP_ADD);
+      if (!match(TOKEN_INTERPOLATION)) break;
 
-    if (match(TOKEN_INTERPOLATION)) {
-        interpolation(false);
-        emitByte(OP_ADD);
-    } else if (match(TOKEN_STRING)) {
-        string(false);
-        emitByte(OP_ADD);
+      // The token between '}' and '${' is the next literal segment.
+      string(false);
+      emitByte(OP_ADD);
+    }
+
+    if (match(TOKEN_STRING)) {
+      string(false);
+      emitByte(OP_ADD);
     }
 }
 

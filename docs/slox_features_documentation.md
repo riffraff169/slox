@@ -414,6 +414,16 @@ The interpreter compiler parses Lox source files into bytecode execution units. 
 * Re-assignment: `name = new_value;`
 * Built-in and user-defined class constants: `Math.PI`, or `ClassName.NAME` for a `const NAME = ...;` declared inside a class body.
 
+### String Interpolation
+Double-quoted strings can embed any Lox expression with `${...}`:
+```lox
+var name = "fred";
+print "this ${name} is";         // this fred is
+print "sum ${1 + 2 * 3} is";     // sum 7 is
+print "stats ${System.stats()}"; // maps and other objects are converted too
+```
+An interpolated result is converted using the same rules as `str()` and string concatenation, so numbers, booleans, `nil`, arrays, maps, and instances (including custom `to_string()` methods) all work. Use `\${` to print a literal `${`.
+
 ### Binary Operators
 
 | Operator | Category / Description               |

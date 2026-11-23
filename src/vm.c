@@ -2795,24 +2795,15 @@ InterpretResult run() {
                     Value value = peek(0);
                     if (IS_STRING(value)) break;
 
-                    char buffer[32];
-                    int length = 0;
-
-                    if (IS_FLOAT(value)) {
-                        length = snprintf(buffer, sizeof(buffer), "%g", AS_FLOAT(value));
-                    } else if (IS_INT(value)) {
-                        length = snprintf(buffer, sizeof(buffer), "%ld", AS_INT(value));
-                    } else if (IS_BOOL(value)) {
-                        length = snprintf(buffer, sizeof(buffer), AS_BOOL(value) ? "true" : "false");
-                    } else if (IS_NIL(value)) {
-                        length = snprintf(buffer, sizeof(buffer), "nil");
-                    } else {
-                        RUNTIME_ERROR("Cannot convert value to string.");
+                    Value stringValue = valueToString(value);
+                    if (!IS_STRING(stringValue)) {
+                        if (vm.frameCount == 0) return INTERPRET_RUNTIME_ERROR;
+                        frame = &vm.frames[vm.frameCount - 1];
                         break;
                     }
 
                     pop();
-                    push(OBJ_VAL(copyString(buffer, length)));
+                    push(stringValue);
                 }
                 break;
             case OP_NIL:
