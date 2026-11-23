@@ -862,6 +862,35 @@ Value objectClassNameMethod(int argCount, Value* args) {
 }
 
 //@ Object
+//: hash_key
+// Returns the value's hash as a non-negative integer. Arrays, Maps and Sets
+// are hashed by contents, so structurally equal containers share a hash.
+// Other values use identity (or string content) hashing.
+// Returns:
+//   Integer
+Value hashKeyNative(int argCount, Value* args) {
+    (void)argCount;
+    return INT_VAL((int64_t)hashValue(args[-1]));
+}
+
+//@ Object
+//: is_same_as
+// Returns true if the receiver and argument are the same object. Unlike ==,
+// containers are not compared by contents. Scalars compare by type and value.
+// Requires:
+//   Value: other
+// Returns:
+//   Bool
+Value objectIsSameAsNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("is_same_as() expects exactly 1 argument.");
+        return NIL_VAL;
+    }
+
+    return BOOL_VAL(valuesEqualIdentity(args[-1], args[0]));
+}
+
+//@ Object
 //: freeze
 // Freeze an object so it can't be modified
 // Returns:
@@ -1106,6 +1135,8 @@ Value inspectNative(int argCount, Value* args) {
     X("to_string", objectToStringNative) \
     X("class", objectClassMethod) \
     X("class_name", objectClassNameMethod) \
+    X("hash_key", hashKeyNative) \
+    X("is_same_as", objectIsSameAsNative) \
     X("freeze", objectFreezeNative) \
     X("is_frozen", objectIsfrozenNative)
 

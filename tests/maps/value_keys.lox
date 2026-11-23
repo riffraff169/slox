@@ -1,0 +1,94 @@
+// Maps and Sets use structural value semantics for array, Map and Set keys.
+// Scalar keys keep their existing strict-type behavior.
+var m = {};
+m[[200]] = 400;
+print m[[200]]; // expect: 400
+print m.has([200]); // expect: true
+print m; // expect: {[200]: 400}
+
+var nested = Map();
+nested[[1, [2, 3]]] = "deep";
+print nested[[1, [2, 3]]]; // expect: deep
+print nested[[1, [2, 4]]]; // expect: nil
+
+var mk = Map();
+mk[{"a": 1, "b": 2}] = "map key";
+print mk[{"a": 1, "b": 2}]; // expect: map key
+print mk[Map("b", 2, "a", 1)]; // expect: map key
+print mk[{"a": 1}]; // expect: nil
+
+var s = Set();
+s.add([200]);
+print s.has([200]); // expect: true
+print s.len(); // expect: 1
+
+var ms = Set();
+print ms.set_multiset(); // expect: true
+ms.add([1]);
+ms.add([1]);
+print ms[[1]]; // expect: 2
+print ms.has([1]); // expect: true
+
+// int and float keys remain distinct even though == coerces them.
+var nums = Map();
+nums[200] = "int";
+nums[200.0] = "float";
+print nums[200]; // expect: int
+print nums[200.0]; // expect: float
+
+// Rehashing and tombstones must not lose structurally equal keys.
+var big = Map();
+for (var i = 0; i < 50; i = i + 1) big[[i]] = i;
+big.remove([10]);
+big[[10]] = "again";
+print big[[37]]; // expect: 37
+print big[[10]]; // expect: again
+
+// Cyclic containers must not recurse forever.
+var self = [];
+self.push(self);
+var cm = Map();
+cm[self] = "cyclic";
+print cm[self]; // expect: cyclic
+var left = [];
+var right = [];
+left.push(right);
+right.push(left);
+var mutual = Map();
+mutual[left] = "mutual";
+print mutual[right]; // expect: mutual
+
+// == compares containers by value; is_same_as() checks identity.
+print [200] == [200]; // expect: true
+print [200] != [200]; // expect: false
+var same = [200];
+print same.is_same_as(same); // expect: true
+print same.is_same_as([200]); // expect: false
+
+var other = Map();
+other[[200]] = 400;
+print m == other; // expect: true
+print m.is_same_as(other); // expect: false
+print m.is_same_as(m); // expect: true
+
+// Mutating a key after insertion invalidates its hash; lookups then miss.
+var mut = [1];
+var mm = Map();
+mm[mut] = "before";
+mut.push(2);
+print mm[[1]]; // expect: nil
+
+// hash_key() exposes the same structural hash used for key lookup.
+print [1, 2].hash_key() == [1, 2].hash_key(); // expect: true
+print [1, 2].hash_key() == [1, 3].hash_key(); // expect: false
+print {"x": 1}.hash_key() == {"x": 1}.hash_key(); // expect: true
+print {"x": 1}.hash_key() == {"x": 2}.hash_key(); // expect: false
+print Set(1, 2).hash_key() == Set(2, 1).hash_key(); // expect: true
+print "abc".hash_key() == "abc".hash_key(); // expect: true
+print [1, 2].hash_key() >= 0; // expect: true
+
+// Any value can be hashed, including Map values and scalar results.
+var hm = Map();
+hm[[200]] = 400;
+print hm.hash_key() >= 0; // expect: true
+print hm[[200]].hash_key() >= 0; // expect: true

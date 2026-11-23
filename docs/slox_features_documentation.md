@@ -59,6 +59,8 @@ The root class from which all objects inherit. Methods defined on `Object` can b
 * `to_string()`: Converts the object receiver to its string representation.
 * `class()`: Returns the Class object of the receiver. For a class receiver, returns its metaclass.
 * `class_name()`: Returns the string name of the receiver's class (e.g., `"Object"`, or `"DogMeta"` for `Dog.class_name()`).
+* `hash_key()`: Returns a non-negative integer hash of the receiver. Arrays, Maps, and Sets hash by contents, so structurally equal containers return the same value; this is the same hash used for Map/Set key lookup. Strings hash by content, other objects by identity.
+* `is_same_as(other)`: Returns `true` only when receiver and `other` are the same object. Unlike `==`, container contents are not compared. Scalars compare by type and value.
 * `freeze()`: Marks the class or instance as frozen, preventing subsequent field modifications.
 * `is_frozen()`: Returns `true` if the class or instance is frozen; otherwise `false`.
 * `isnumber()`: Receiver instance check returning `true` if receiver is a Number.
@@ -183,6 +185,8 @@ array.find(fun(a) { return a > 5; });
 
 Key-value associative hash maps supporting arbitrary value keys.
 
+Array, `Map`, and `Set` keys use **structural value semantics**: two separately created containers with the same contents hash equally and address the same entry, including nested containers and cycles. `==` uses the same structural comparison for containers, so `[1, 2] == [1, 2]` is `true`; use `is_same_as()` when you need object identity. Do not mutate a container after using it as a key; its hash changes and later lookups may miss.
+
 ### Basic Usage
 ```lox
 // Creating a map
@@ -230,6 +234,8 @@ user.remove("active");
 ## Set Class
 
 Unordered collection of unique values or multi-set count values.
+
+Like Map keys, Array, `Map`, and `Set` members are compared by structure rather than identity, so `Set().add([1, 2])` followed by `has([1, 2])` is `true`. `==` also compares sets and other containers structurally; `is_same_as()` checks identity. Mutating a container after adding it invalidates the lookup.
 
 ### Basic Usage
 ```lox

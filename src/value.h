@@ -64,6 +64,7 @@ typedef struct {
 Value valueToString(Value value);
 int compareStrings(const ObjString* a, const ObjString* b);
 bool valuesEqual(Value a, Value b);
+bool valuesEqualIdentity(Value a, Value b);
 bool valuesEqualStrict(Value a, Value b);
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, Value value);

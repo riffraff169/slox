@@ -2889,6 +2889,8 @@ Constructor can take a list of values that are converted to key/value pairs. Mus
 even number.
 Map/Dictionary/Hash table of key/value entries.
 
+Array, Map, and Set keys use structural value semantics: containers with the same contents hash equally and address the same entry, including nested containers and cycles. `==` compares containers structurally too; use `is_same_as()` for object identity. Mutating a container after using it as a key changes its hash and may make later lookups miss.
+
 **Optional Arguments:**
   - `Array: vals`
 
@@ -3105,6 +3107,8 @@ at the beginning, or optional argument.
 ## Class: Set
 Special case of Map. Values are ignored, can keep a count of number
 of times key has been added.
+
+As with Map keys, Array, Map, and Set members are compared by structure rather than identity. Mutating a container after adding it to a Set invalidates the lookup.
 
 ### Methods
 
@@ -3382,6 +3386,21 @@ Get the class of this object as a String. Shortcut for String(x.class())
 
 **Returns:**
   - `String`
+
+#### `Object.hash_key()`
+Returns a non-negative integer hash of the value. Arrays, Maps and Sets are hashed by contents, so structurally equal containers produce the same hash. Strings hash by content; other values hash by identity. This is the hash used for Map and Set key lookup.
+
+**Returns:**
+  - `Integer`
+
+#### `Object.is_same_as(other)`
+Returns true only when the receiver and `other` are the same object. Unlike `==`, container contents are not compared. Scalars compare by type and value.
+
+**Required Arguments:**
+  - `Value: other`
+
+**Returns:**
+  - `Bool`
 
 #### `Object.freeze()`
 Freeze an object so it can't be modified
