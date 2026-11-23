@@ -900,9 +900,13 @@ Value classSuperclassMethod(int argCount, Value* args) {
     }
     Value receiver = args[-1];
 
-    ObjClass* klass = getClassForValue(receiver);
+    // A class receiver exposes its own inheritance chain. getClassForValue()
+    // maps every class value to Class, which would collapse Dog to Object.
+    ObjClass* klass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)
+        : getClassForValue(receiver);
 
-    if (klass->superclass == NULL) {
+    if (klass == NULL || klass->superclass == NULL) {
         return NIL_VAL;
     }
 
@@ -911,9 +915,10 @@ Value classSuperclassMethod(int argCount, Value* args) {
 
 Value objectClassNameNative(int argCount, Value* args) {
     Value receiver = args[-1];
-    ObjClass* klass = NULL;
+    ObjClass* klass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)->obj.klass
+        : getClassForValue(receiver);
 
-    klass = getClassForValue(receiver);
     if (klass != NULL) {
         return OBJ_VAL(klass->name);
     }

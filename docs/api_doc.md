@@ -3358,7 +3358,7 @@ Check whether this object has a method.
   - `Bool`
 
 #### `Object.superclass()`
-Get the superclass of this object.
+Get the superclass of this object. For a class receiver, returns that class's superclass; Object has no superclass and returns nil.
 
 **Aliases:** `get_superclass`
 
@@ -3372,7 +3372,7 @@ Returns a string representation of this object
   - `String`
 
 #### `Object.class()`
-Get the class of this object
+Get the class of this object. For a class receiver, returns its metaclass.
 
 **Returns:**
   - `Class`
