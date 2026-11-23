@@ -159,6 +159,14 @@ typedef struct {
     ObjClass* nativeFunctionMetaClass;
     ObjClass* vec3Class;
     ObjClass* vec3MetaClass;
+    ObjClass* errorClass;
+    ObjClass* typeErrorClass;
+    ObjClass* argumentErrorClass;
+    ObjClass* loadErrorClass;
+    ObjClass* regexErrorClass;
+    ObjClass* systemErrorClass;
+    ObjClass* syntaxErrorClass;
+    ObjClass* nameErrorClass;
 
     int nativeExitDepth;
     // Native currently executing. Natives called as methods cannot otherwise
@@ -214,6 +222,16 @@ extern VM vm;
 
 void defineNative(const char* name, NativeFn function);
 bool runtimeError(const char* format, ...);
+bool runtimeErrorTyped(ObjClass* errorClass, const char* format, ...);
+
+#define TYPE_ERROR(...)    runtimeErrorTyped(vm.typeErrorClass, __VA_ARGS__)
+#define ARG_ERROR(...)     runtimeErrorTyped(vm.argumentErrorClass, __VA_ARGS__)
+#define LOAD_ERROR(...)    runtimeErrorTyped(vm.loadErrorClass, __VA_ARGS__)
+#define REGEX_ERROR(...)   runtimeErrorTyped(vm.regexErrorClass, __VA_ARGS__)
+#define SYSTEM_ERROR(...)  runtimeErrorTyped(vm.systemErrorClass, __VA_ARGS__)
+#define SYNTAX_ERROR(...)  runtimeErrorTyped(vm.syntaxErrorClass, __VA_ARGS__)
+#define NAME_ERROR(...)    runtimeErrorTyped(vm.nameErrorClass, __VA_ARGS__)
+
 void initVM(int argc, const char* argv[], const char* env[]);
 void freeVM();
 bool vmCall(ObjClosure* closure, int argCount);
