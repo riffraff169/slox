@@ -1128,6 +1128,8 @@ void initCoreLibrary() {
 #define STRING_METHOD_LIST(X) \
     X("trim", stringTrimNative) \
     X("contains", stringContainsNative) \
+    X("starts_with", stringStartsWithNative) \
+    X("ends_with", stringEndsWithNative) \
     X("find", stringFindNative) \
     X("rfind", stringRfindNative) \
     X("to_upper", stringToUpperNative) \
@@ -1189,6 +1191,54 @@ Value stringContainsNative(int argCount, Value* args) {
 
     return BOOL_VAL(memmem(haystack->chars, haystack->length,
                            needle->chars, needle->length) != NULL);
+}
+
+//@ String
+//: starts_with
+// Checks if a string starts with another string.
+// An empty prefix always matches.
+// Requires:
+//   String: prefix
+// Returns:
+//   Bool: true if it does
+Value stringStartsWithNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjString* string = AS_STRING(args[-1]);
+    ObjString* prefix = AS_STRING(args[0]);
+
+    if (prefix->length > string->length) {
+        return BOOL_VAL(false);
+    }
+
+    return BOOL_VAL(memcmp(string->chars, prefix->chars,
+                           (size_t)prefix->length) == 0);
+}
+
+//@ String
+//: ends_with
+// Checks if a string ends with another string.
+// An empty suffix always matches.
+// Requires:
+//   String: suffix
+// Returns:
+//   Bool: true if it does
+Value stringEndsWithNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        return BOOL_VAL(false);
+    }
+
+    ObjString* string = AS_STRING(args[-1]);
+    ObjString* suffix = AS_STRING(args[0]);
+
+    if (suffix->length > string->length) {
+        return BOOL_VAL(false);
+    }
+
+    return BOOL_VAL(memcmp(string->chars + string->length - suffix->length,
+                           suffix->chars, (size_t)suffix->length) == 0);
 }
 
 //@ String

@@ -1,0 +1,21 @@
+// Prefix/suffix checks use the stored byte length, so embedded NUL bytes work.
+var s = "hello world";
+
+print s.starts_with("hello");       // expect: true
+print s.starts_with("world");       // expect: false
+print s.starts_with("");            // expect: true
+print s.starts_with("hello world!"); // expect: false
+print s.ends_with("world");         // expect: true
+print s.ends_with("hello");         // expect: false
+print s.ends_with("");              // expect: true
+print s.ends_with(" larger world"); // expect: false
+
+print "Hello".starts_with("hell");  // expect: false
+print "Hello".ends_with("ello");    // expect: true
+
+print "abc".starts_with(1);         // expect: false
+print "abc".ends_with(nil);         // expect: false
+
+var nul = "a\0b";
+print nul.starts_with("a\0");       // expect: true
+print nul.ends_with("\0b");         // expect: true
