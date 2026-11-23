@@ -472,10 +472,6 @@ An interpolated result is converted using the same rules as `str()` and string c
 ### Key Parser Highlights
 
 * **Right-Associativity (`**`)**: Parsed with `rule->precedence` so recursive calls consume right-hand expressions at the same precedence level, correctly evaluating `2 ** 3 ** 2` as `2 ** (3 ** 2)`.
-* **Logical Inversion Tricks**:
-  * `>=` is compiled as `!(a < b)` (`OP_LESS` + `OP_NOT`).
-  * `<=` is compiled as `!(a > b)` (`OP_GREATER` + `OP_NOT`).
-  * `!=` is compiled as `!(a == b)` (`OP_EQUAL` + `OP_NOT`).
 
 ### Control Flow
 * **If-Else Conditional**:
