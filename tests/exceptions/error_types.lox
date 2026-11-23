@@ -44,3 +44,12 @@ class MyError < Error {}
 try { throw MyError("mine"); } catch (Error e) {
   print e.class_name(); // expect: MyError
 }
+
+// User classes can extend an Error subclass and are caught as that subtype.
+class AnotherError < ArgumentError {}
+try { throw AnotherError("custom"); } catch (ArgumentError e) {
+  print e.class_name() + ":" + e.message; // expect: AnotherError:custom
+}
+try { throw AnotherError("base"); } catch (Error e) {
+  print e.class_name(); // expect: AnotherError
+}
