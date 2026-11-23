@@ -1,0 +1,33 @@
+// Functional helpers added in stdlib.lox on top of the native Map methods.
+var m = Map("a", 1, "b", 2);
+
+print m.map(fun(k, v) { return v * 2; }).sort(); // expect: [2, 4]
+print m.map(fun(k, v) { return k + String(v); }).sort(); // expect: ["a1", "b2"]
+
+print m.filter(fun(k, v) { return v > 1; }); // expect: {"b": 2}
+print m.filter(fun(k, v) { return false; }).len(); // expect: 0
+
+print m.reduce(0, fun(acc, k, v) { return acc + v; }); // expect: 3
+print m.reduce(fun(acc, k, v) { return acc + v; }); // expect: 3
+print Map().reduce(0, fun(acc, k, v) { return acc + v; }); // expect: 0
+
+// A callback is required; the one-argument form supplies it in the first slot.
+try {
+  m.reduce();
+} catch (Error e) {
+  print e.message; // expect: Expected between 1 and 2 arguments but got 0.
+}
+
+var keys = [];
+m.each_key(fun(k) { keys.push(k); });
+print keys.sort(); // expect: ["a", "b"]
+print m.each_key(fun(k) {}).len(); // expect: 2
+
+var values = [];
+m.each_value(fun(v) { values.push(v); });
+print values.sort(); // expect: [1, 2]
+
+var inverted = m.invert();
+print inverted[1]; // expect: a
+print inverted[2]; // expect: b
+print inverted.len(); // expect: 2
