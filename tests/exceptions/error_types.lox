@@ -31,12 +31,14 @@ try { throw TypeError("sibling"); } catch (NameError e) {
   print e.class_name(); // expect: TypeError
 }
 
-// Existing runtime errors and the Error constructor still use plain Error.
+// Explicit Error construction still uses plain Error.
 try { throw Error("plain"); } catch (Error e) {
   print e.class_name() + ":" + e.message; // expect: Error:plain
 }
+
+// Internal arity and type checks now throw subclasses that Error also catches.
 try { Map().each(); } catch (Error e) {
-  print e.class_name(); // expect: Error
+  print e.class_name(); // expect: ArgumentError
 }
 class MyError < Error {}
 try { throw MyError("mine"); } catch (Error e) {
