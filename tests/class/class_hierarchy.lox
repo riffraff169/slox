@@ -1,0 +1,26 @@
+// Class metadata exposes two inheritance chains:
+//   object classes:  Dog -> Animal -> Object -> nil
+//   metaclasses:     DogMeta -> AnimalMeta -> Class -> Object -> nil
+class Animal {}
+class Dog < Animal {}
+
+var d = Dog();
+
+print "instance.class=" + d.class().name(); // expect: instance.class=Dog
+print "instance.superclass=" + d.superclass().name(); // expect: instance.superclass=Animal
+print "animal.superclass=" + d.superclass().superclass().name(); // expect: animal.superclass=Object
+print "object.superclass=" + String(d.superclass().superclass().superclass()); // expect: object.superclass=nil
+
+print "class.superclass=" + Dog.superclass().name(); // expect: class.superclass=Animal
+print "class.get_superclass=" + Dog.get_superclass().name(); // expect: class.get_superclass=Animal
+print "Object.superclass=" + String(Object.superclass()); // expect: Object.superclass=nil
+
+var dogMeta = d.class().class();
+print "dogMeta=" + dogMeta.name(); // expect: dogMeta=DogMeta
+print "dogMeta.superclass=" + dogMeta.superclass().name(); // expect: dogMeta.superclass=AnimalMeta
+print "animalMeta.superclass=" + dogMeta.superclass().superclass().name(); // expect: animalMeta.superclass=Class
+print "Class.superclass=" + dogMeta.superclass().superclass().superclass().name(); // expect: Class.superclass=Object
+print "meta.root=" + String(dogMeta.superclass().superclass().superclass().superclass()); // expect: meta.root=nil
+
+print "Dog.class_name=" + Dog.class_name(); // expect: Dog.class_name=DogMeta
+print "d.class_name=" + d.class_name(); // expect: d.class_name=Dog

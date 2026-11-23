@@ -775,13 +775,16 @@ Value hasMethodNative(int argCount, Value* args) {
 
 //@ Object
 //: superclass
-// Get the superclass of this object.
+// Get the superclass of this object. For a class receiver, returns that
+// class's superclass; Object has no superclass and returns nil.
 // Alias: get_superclass
 // Returns:
 //   Class
 Value getSuperclassNative(int argCount, Value* args) {
     Value receiver = args[-1];
-    ObjClass* klass = getClassForValue(receiver);
+    ObjClass* klass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)
+        : getClassForValue(receiver);
 
     if (klass == NULL) {
         runtimeError("Cannot get superclass of a non-object type.");
@@ -819,7 +822,7 @@ Value objectToStringNative(int argCount, Value* args) {
 
 //@ Object
 //: class
-// Get the class of this object
+// Get the class of this object. For a class receiver, returns its metaclass.
 // Returns:
 //   Class
 Value objectClassMethod(int argCount, Value* args) {
@@ -829,7 +832,9 @@ Value objectClassMethod(int argCount, Value* args) {
     }
 
     Value receiver = args[-1];
-    ObjClass* klass = getClassForValue(receiver);
+    ObjClass* klass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)->obj.klass
+        : getClassForValue(receiver);
 
     if (klass == NULL) {
         return NIL_VAL;
@@ -844,8 +849,16 @@ Value objectClassMethod(int argCount, Value* args) {
 // Returns:
 //   String
 Value objectClassNameMethod(int argCount, Value* args) {
-    ObjInstance* instance = AS_INSTANCE(args[-1]);
-    return OBJ_VAL(instance->obj.klass->name);
+    Value receiver = args[-1];
+    ObjClass* klass = IS_CLASS(receiver)
+        ? AS_CLASS(receiver)->obj.klass
+        : getClassForValue(receiver);
+
+    if (klass == NULL) {
+        return NIL_VAL;
+    }
+
+    return OBJ_VAL(klass->name);
 }
 
 //@ Object

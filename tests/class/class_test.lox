@@ -2,7 +2,7 @@ class Class {
   inspect() {
     print "--- Class Metadata ---"; // expect: --- Class Metadata ---
     print "Name: " + this.name(); // expect: Name: Dog
-    print "Superclass: " + String(this.superclass()); // expect: Superclass: Object
+    print "Superclass: " + String(this.superclass()); // expect: Superclass: Animal
   }
 
   createInstance() {

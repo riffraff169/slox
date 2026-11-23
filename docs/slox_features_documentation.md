@@ -54,11 +54,11 @@ The root class from which all objects inherit. Methods defined on `Object` can b
 * `get_methods([recurse])`: Returns an `Array` of method name strings present on the target class. Accepts an optional boolean `recurse` (default `false`) to walk up the superclass inheritance chain.
 * `has_method(name)`: Returns `true` if the object's class or any of its superclasses implements method `name` (String).
 * `responds_to(name)`: Alias for `has_method(name)`.
-* `get_superclass()`: Returns the superclass object of the target receiver, or `nil` if none exists.
-* `superclass()`: Alias for `get_superclass()`.
+* `get_superclass()`: Returns the superclass object of the target receiver, or `nil` if none exists. For a class receiver, returns that class's own superclass.
+* `superclass()`: Alias for `get_superclass()`. `Object.superclass()` is `nil`.
 * `to_string()`: Converts the object receiver to its string representation.
-* `class()`: Returns the Class object of the receiver.
-* `class_name()`: Returns the string name of the receiver's class (e.g., `"Object"`).
+* `class()`: Returns the Class object of the receiver. For a class receiver, returns its metaclass.
+* `class_name()`: Returns the string name of the receiver's class (e.g., `"Object"`, or `"DogMeta"` for `Dog.class_name()`).
 * `freeze()`: Marks the class or instance as frozen, preventing subsequent field modifications.
 * `is_frozen()`: Returns `true` if the class or instance is frozen; otherwise `false`.
 * `isnumber()`: Receiver instance check returning `true` if receiver is a Number.
@@ -67,6 +67,13 @@ The root class from which all objects inherit. Methods defined on `Object` can b
 * `isnil()`: Receiver instance check returning `true` if receiver is `nil`.
 * `isclass()`: Receiver instance check returning `true` if receiver is a Class.
 * `isinstance()`: Receiver instance check returning `true` if receiver is a Class Instance.
+
+Class metadata exposes two separate chains. For a `Dog` instance `d`:
+
+* The object class hierarchy is `d.class() -> Dog -> Animal -> Object -> nil`, walked with `superclass()`.
+* The metaclass hierarchy is `d.class().class() -> DogMeta -> AnimalMeta -> Class -> Object -> nil`, also walked with `superclass()`.
+
+`class()` returns the immediate class of any receiver, so `Dog.class()` is `DogMeta` and `DogMeta.class()` is `ClassMeta`.
 
 ---
 
