@@ -1,5 +1,5 @@
 Name:           slox-all
-Version: 1.12.0
+Version: 1.12.1
 Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
@@ -37,6 +37,9 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.1-1
+- Merge pull request 'Make interpolation convert any value with valueToString' (#18) from fix/interpolation-value-conversion into master
+
 * Thu  Nov 19 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.0-1
 - Merge pull request 'Split RPM packages by library, feature, app, and example roles' (#3) from fix/rpm-package-layout into master
 

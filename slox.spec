@@ -8,7 +8,7 @@
 %bcond_without yaml
 
 Name:       slox
-Version: 1.12.0
+Version: 1.12.1
 Release: 1%{?dist}
 Summary:    The slox bytecode virtual machine and custom runtime
 
@@ -376,6 +376,9 @@ rm -rf %{buildroot}
 %{_datadir}/vim/vimfiles/syntax/lox.vim
 
 %changelog
+* Mon  Nov 23 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.1-1
+- Merge pull request 'Make interpolation convert any value with valueToString' (#18) from fix/interpolation-value-conversion into master
+
 * Thu  Nov 19 2026 Lance Dillon <riffraff169@yahoo.com> - 1.12.0-1
 - Merge pull request 'Split RPM packages by library, feature, app, and example roles' (#3) from fix/rpm-package-layout into master
 - Stop installing maintainer scripts in RPM packages
