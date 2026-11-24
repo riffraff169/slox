@@ -5,23 +5,23 @@ require("color.lox");
 // Optional:
 //   options
 class Logger {
+  const TRACE = 0;
+  const DEBUG = 1;
+  const INFO = 2;
+  const WARN = 3;
+  const ERROR = 4;
+  const FATAL = 5;
+  const OFF = 6;
+
   init(options = nil) {
     options = options ?? {};
 
-    this.min_level = options["level"] ?? this.INFO;
+    this.min_level = options["level"] ?? Logger.INFO;
     this.app_name = options["app_name"] ?? "";
     this.show_colors = options["colors"] ?? false;
     this.quiet = options["quiet"] ?? false; // force silence stdout when needed
     this.file_path = options["file"] ?? nil;
     this.fd = nil;
-
-    this.TRACE = 0;
-    this.DEBUG = 1;
-    this.INFO = 2;
-    this.WARN = 3;
-    this.ERROR = 4;
-    this.FATAL = 5;
-    this.OFF = 6;
 
     this.counts = {
       "TRACE": 0, "DEBUG": 0, "INFO": 0,
@@ -41,7 +41,7 @@ class Logger {
   // Set min level
   // Optional:
   //   Integer: level
-  set_level(level = 2) { // this.INFO
+  set_level(level = 2) { // Logger.INFO
     this.min_level = level;
   }
 
@@ -87,7 +87,9 @@ class Logger {
   // Optional:
   //   Integer: level
   //   String: color
-  register_tag(tag, level = this.INFO, color = "white") {
+  register_tag(tag, level = nil, color = "white") {
+    level = level ?? Logger.INFO;
+
     this.custom_tags[tag] = {
       "level": level,
       "color": color
@@ -156,12 +158,12 @@ class Logger {
     if (tag_info) return tag_info["color"];
 
     switch (level) {
-      case this.TRACE: return "cyan";
-      case this.DEBUG: return "blue";
-      case this.INFO:  return "green";
-      case this.WARN:  return "yellow";
-      case this.ERROR: return "red";
-      case this.FATAL: return "b_red";
+      case Logger.TRACE: return "cyan";
+      case Logger.DEBUG: return "blue";
+      case Logger.INFO:  return "green";
+      case Logger.WARN:  return "yellow";
+      case Logger.ERROR: return "red";
+      case Logger.FATAL: return "b_red";
       default: return "white";
     }
   }
@@ -172,42 +174,42 @@ class Logger {
   //   String: msg
   // Optional:
   //   String: ctx
-  trace(msg, ctx = nil) { this.dispatch("TRACE", this.TRACE, msg, ctx); }
+  trace(msg, ctx = nil) { this.dispatch("TRACE", Logger.TRACE, msg, ctx); }
   //: debug
   // Send a debug message
   // Requires:
   //   String: msg
   // Optional:
   //   String: ctx
-  debug(msg, ctx = nil) { this.dispatch("DEBUG", this.DEBUG, msg, ctx); }
+  debug(msg, ctx = nil) { this.dispatch("DEBUG", Logger.DEBUG, msg, ctx); }
   //: info
   // Send an info message
   // Requires:
   //   String: msg
   // Optional:
   //   String: ctx
-  info(msg, ctx = nil) { this.dispatch("INFO", this.INFO, msg, ctx); }
+  info(msg, ctx = nil) { this.dispatch("INFO", Logger.INFO, msg, ctx); }
   //: warn
   // Send a warn message
   // Requires:
   //   String: msg
   // Optional:
   //   String: ctx
-  warn(msg, ctx = nil) { this.dispatch("WARN", this.WARN, msg, ctx); }
+  warn(msg, ctx = nil) { this.dispatch("WARN", Logger.WARN, msg, ctx); }
   //: error
   // Send an error message
   // Requires:
   //   String: msg
   // Optional:
   //   String: ctx
-  error(msg, ctx = nil) { this.dispatch("ERROR", this.ERROR, msg, ctx); }
+  error(msg, ctx = nil) { this.dispatch("ERROR", Logger.ERROR, msg, ctx); }
   //: fatal
   // Send a fatal message
   // Requires:
   //   String: msg
   // Optional:
   //   String: ctx
-  fatal(msg, ctx = nil) { this.dispatch("FATAL", this.FATAL, msg, ctx); }
+  fatal(msg, ctx = nil) { this.dispatch("FATAL", Logger.FATAL, msg, ctx); }
 
   //: custom
   // Send a custom message
@@ -218,7 +220,7 @@ class Logger {
   //   String: ctx
   custom(tag, msg, ctx = nil) {
     var tag_info = this.custom_tags[tag];
-    var lvl = tag_info ? tag_info["level"] : this.INFO;
+    var lvl = tag_info ? tag_info["level"] : Logger.INFO;
     this.dispatch(tag, lvl, msg, ctx);
   }
 

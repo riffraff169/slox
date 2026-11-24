@@ -1,0 +1,39 @@
+require("logger.lox");
+
+var log = Logger({"quiet": true, "level": Logger.DEBUG});
+
+print Logger.TRACE; // expect: 0
+print Logger.DEBUG; // expect: 1
+print Logger.INFO; // expect: 2
+print Logger.WARN; // expect: 3
+print Logger.ERROR; // expect: 4
+print Logger.FATAL; // expect: 5
+print Logger.OFF; // expect: 6
+print log.min_level; // expect: 1
+
+log.trace("suppressed");
+log.debug("shown");
+log.info("shown");
+print log.counts["TRACE"]; // expect: 0
+print log.counts["DEBUG"]; // expect: 1
+print log.counts["INFO"]; // expect: 1
+
+log.register_tag("CUSTOM");
+print log.custom_tags["CUSTOM"]["level"]; // expect: 2
+print log.custom_tags["CUSTOM"]["color"]; // expect: white
+
+print log.get_color_for("NONE", Logger.TRACE); // expect: cyan
+print log.get_color_for("NONE", Logger.DEBUG); // expect: blue
+print log.get_color_for("NONE", Logger.INFO); // expect: green
+print log.get_color_for("NONE", Logger.WARN); // expect: yellow
+print log.get_color_for("NONE", Logger.ERROR); // expect: red
+print log.get_color_for("NONE", Logger.FATAL); // expect: b_red
+print log.get_color_for("NONE", Logger.OFF); // expect: white
+
+log.custom("CUSTOM", "suppressed");
+print log.counts["CUSTOM"]; // expect: 1
+
+log.set_level(Logger.ERROR);
+log.error("suppressed");
+print log.min_level; // expect: 4
+print log.error_count(); // expect: 1
