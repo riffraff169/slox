@@ -4,32 +4,32 @@
 // Color class for terminal ansi colors
 class Color {
   // Static ANSI Escape Codes
-  const ESC = chr(27);
+  const ESC = "\x1b";
 
-  const RESET     = chr(27) + "[0m";
-  const BOLD      = chr(27) + "[1m";
-  const DIM       = chr(27) + "[2m";
+  const RESET     = "\x1b[0m";
+  const BOLD      = "\x1b[1m";
+  const DIM       = "\x1b[2m";
 
   // Foreground Colors
-  const BLACK     = chr(27) + "[30m";
-  const RED       = chr(27) + "[31m";
-  const GREEN     = chr(27) + "[32m";
-  const YELLOW    = chr(27) + "[33m";
-  const BLUE      = chr(27) + "[34m";
-  const MAGENTA   = chr(27) + "[35m";
-  const CYAN      = chr(27) + "[36m";
-  const WHITE     = chr(27) + "[37m";
+  const BLACK     = "\x1b[30m";
+  const RED       = "\x1b[31m";
+  const GREEN     = "\x1b[32m";
+  const YELLOW    = "\x1b[33m";
+  const BLUE      = "\x1b[34m";
+  const MAGENTA   = "\x1b[35m";
+  const CYAN      = "\x1b[36m";
+  const WHITE     = "\x1b[37m";
 
   // Bright Foreground Colors
-  const BRIGHT_RED    = chr(27) + "[91m";
-  const BRIGHT_GREEN  = chr(27) + "[92m";
-  const BRIGHT_YELLOW = chr(27) + "[93m";
-  const BRIGHT_CYAN   = chr(27) + "[96m";
+  const BRIGHT_RED    = "\x1b[91m";
+  const BRIGHT_GREEN  = "\x1b[92m";
+  const BRIGHT_YELLOW = "\x1b[93m";
+  const BRIGHT_CYAN   = "\x1b[96m";
 
   // Background Colors
-  const BG_RED    = chr(27) + "[41m";
-  const BG_GREEN  = chr(27) + "[42m";
-  const BG_YELLOW = chr(27) + "[43m";
+  const BG_RED    = "\x1b[41m";
+  const BG_GREEN  = "\x1b[42m";
+  const BG_YELLOW = "\x1b[43m";
 
   // Map of template tag names to ANSI escape strings
   const CODES = {
@@ -102,7 +102,7 @@ class Color {
       mode = "48";
     }
 
-    return chr(27) + "[" + mode + ";5;" + index + "m";
+    return "\x1b[" + mode + ";5;" + index + "m";
   }
 
   //: makeColor
@@ -168,7 +168,7 @@ class Color {
       mode = "48"; // 48 = Background
     }
 
-    return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
+    return "\x1b[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
   }
 
   //: rgb
@@ -185,6 +185,6 @@ class Color {
     var mode = "38";
     if (isBg != nil and isBg)
       mode = "48";
-    return chr(27) + "[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
+    return "\x1b[" + mode + ";2;" + r + ";" + g + ";" + b + "m";
   }
 }
