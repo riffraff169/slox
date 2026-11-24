@@ -69,9 +69,10 @@ helper library for slox.
 %if %{with postgres}
 %package postgres
 Summary:        PostgreSQL database bindings for slox
-BuildRequires:  postgresql-devel
+BuildRequires:  libpq-devel
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 Requires:       %{name}-libs = %{version}-%{release}
+Requires:       libpq%{?_isa}
 
 %description postgres
 Provides the liblox_pg.so native C module and pg_ext.lox
