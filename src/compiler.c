@@ -86,7 +86,9 @@ typedef struct Compiler {
 
 typedef struct ClassCompiler {
     struct ClassCompiler* enclosing;
+    Token name;
     bool hasSuperclass;
+    Table constValues;
 } ClassCompiler;
 
 typedef struct {
@@ -995,7 +997,7 @@ static void character(bool canAssign) {
     emitConstant(INT_VAL((double)value));
 }
 
-static void integer(bool canAssign) {
+static int64_t integerLiteralValue() {
     const char* start = parser.previous.start;
     int length = parser.previous.length;
     int64_t value = 0;
@@ -1020,7 +1022,11 @@ static void integer(bool canAssign) {
         value = strtoll(start, NULL, 10);
     }
 
-    emitConstant(INT_VAL(value));
+    return value;
+}
+
+static void integer(bool canAssign) {
+    emitConstant(INT_VAL(integerLiteralValue()));
 }
 
 static void number(bool canAssign) {
@@ -1155,7 +1161,7 @@ static void rawstring(bool canAssign) {
     emitConstant(OBJ_VAL(copyString(source, length)));
 }
 
-static void string(bool canAssign) {
+static Value stringLiteralValue() {
     const char* source = parser.previous.start + 1;
     int length = parser.previous.length;
 
@@ -1234,8 +1240,13 @@ static void string(bool canAssign) {
     }
     buffer[j] = '\0';
 
-    emitConstant(OBJ_VAL(copyString(buffer, j)));
+    Value value = OBJ_VAL(copyString(buffer, j));
     free(buffer);
+    return value;
+}
+
+static void string(bool canAssign) {
+    emitConstant(stringLiteralValue());
 }
 
 bool isAssignmentToken() {
@@ -1664,32 +1675,93 @@ static void block() {
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
-static Value parseConstant() {
-    if (match(TOKEN_INT)) {
-        const  char* start = parser.previous.start;
-        int64_t val;
+#define DEFAULT_PARAM_ERROR "Default parameter must be a literal or a class constant declared earlier in the same class."
 
-        if (start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
-            val = (int64_t)strtoull(start, NULL, 16);
-        } else {
-            val = strtoll(start, NULL, 10);
-        }
-        return INT_VAL(val);
+static bool isLiteralConstantToken(TokenType type) {
+    switch (type) {
+        case TOKEN_INT:
+        case TOKEN_FLOAT:
+        case TOKEN_STRING:
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+        case TOKEN_NIL:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static Value parseLiteralValue() {
+    if (match(TOKEN_INT)) {
+        return INT_VAL(integerLiteralValue());
     } else if (match(TOKEN_FLOAT)) {
         return FLOAT_VAL(strtod(parser.previous.start, NULL));
     } else if (match(TOKEN_STRING)) {
-        return OBJ_VAL(copyString(parser.previous.start + 1,
-                    parser.previous.length - 2));
+        return stringLiteralValue();
     } else if (match(TOKEN_TRUE)) {
         return BOOL_VAL(true);
     } else if (match(TOKEN_FALSE)) {
         return BOOL_VAL(false);
     } else if (match(TOKEN_NIL)) {
         return NIL_VAL;
-    } else {
-        errorAtCurrent("Default parameter must be a constant (number, string, bool, or nil).");
+    }
+
+    errorAtCurrent(DEFAULT_PARAM_ERROR);
+    return NIL_VAL;
+}
+
+static bool lookupClassConstant(Token* name, Value* value) {
+    if (currentClass == NULL) return false;
+
+    ObjString* key = copyString(name->start, name->length);
+    push(OBJ_VAL(key));
+    bool found = tableGet(&currentClass->constValues, key, value);
+    pop();
+    return found;
+}
+
+static void recordClassConstantValue(Token* name, Value value) {
+    if (currentClass == NULL) return;
+
+    ObjString* key = copyString(name->start, name->length);
+    push(OBJ_VAL(key));
+    push(value);
+    tableSet(&currentClass->constValues, key, value);
+    pop();
+    pop();
+}
+
+static Value parseConstant() {
+    if (isLiteralConstantToken(parser.current.type)) {
+        return parseLiteralValue();
+    }
+
+    if (match(TOKEN_IDENTIFIER)) {
+        Token constantName = parser.previous;
+
+        if (match(TOKEN_DOT)) {
+            if (currentClass == NULL ||
+                    !identifiersEqual(&constantName, &currentClass->name)) {
+                errorAt(&constantName, DEFAULT_PARAM_ERROR);
+                return NIL_VAL;
+            }
+
+            if (!match(TOKEN_IDENTIFIER)) {
+                errorAtCurrent("Expect class constant name after '.'.");
+                return NIL_VAL;
+            }
+            constantName = parser.previous;
+        }
+
+        Value value;
+        if (lookupClassConstant(&constantName, &value)) return value;
+
+        errorAt(&constantName, DEFAULT_PARAM_ERROR);
         return NIL_VAL;
     }
+
+    errorAtCurrent(DEFAULT_PARAM_ERROR);
+    return NIL_VAL;
 }
 
 static void function(FunctionType type) {
@@ -1915,8 +1987,19 @@ static void classConstant() {
     // 2. expect the '=' assignment operator
     consume(TOKEN_EQUAL, "Expect '=' after class constant name.");
 
-    // 3. compile the expression value
-    expression();
+    // 3. compile the expression value. Literal values are also recorded for
+    //    use as compile-time method parameter defaults.
+    bool literalValue = isLiteralConstantToken(parser.current.type);
+    Value literal = NIL_VAL;
+
+    if (literalValue) {
+        literal = parseLiteralValue();
+        push(literal);
+        emitConstant(literal);
+        pop();
+    } else {
+        expression();
+    }
 
     // 4. expect the closing semicolon
     consume(TOKEN_SEMICOLON, "Expect ';' after class constant declaration.");
@@ -1929,6 +2012,10 @@ static void classConstant() {
         emitByte((uint8_t)(nameIndex & 0xff));
     } else {
         emitBytes(OP_DEFINE_CLASS_CONST, (uint8_t)nameIndex);
+    }
+
+    if (literalValue) {
+        recordClassConstantValue(&constantName, literal);
     }
 }
 
@@ -1951,7 +2038,9 @@ static void classDeclaration() {
 
     ClassCompiler classCompiler;
     classCompiler.hasSuperclass = false;
+    classCompiler.name = className;
     classCompiler.enclosing = currentClass;
+    initTable(&classCompiler.constValues);
     currentClass = &classCompiler;
 
     if (match(TOKEN_LESS)) {
@@ -1998,6 +2087,7 @@ static void classDeclaration() {
     }
 
     currentClass = currentClass->enclosing;
+    freeTable(&classCompiler.constValues);
 }
 
 static void funDeclaration() {
@@ -2725,7 +2815,9 @@ bool compileModuleAsClass(const char* source, ObjClass* klass) {
     // bind directly to our dynamically created class
     ClassCompiler classCompiler;
     classCompiler.hasSuperclass = false;
+    classCompiler.name = syntheticToken("");
     classCompiler.enclosing = currentClass;
+    initTable(&classCompiler.constValues);
     currentClass = &classCompiler;
 
 
@@ -2742,6 +2834,7 @@ bool compileModuleAsClass(const char* source, ObjClass* klass) {
         }
     }
     currentClass = classCompiler.enclosing;
+    freeTable(&classCompiler.constValues);
 
     return !parser.hadError;
 }
@@ -2879,7 +2972,9 @@ bool compileClassModule(const char* source, ObjClass* klass) {
 
     ClassCompiler classCompiler;
     classCompiler.hasSuperclass = false;
+    classCompiler.name = syntheticToken("");
     classCompiler.enclosing = currentClass;
+    initTable(&classCompiler.constValues);
     currentClass = &classCompiler;
 
     while (!check(TOKEN_EOF)) {
@@ -2889,7 +2984,8 @@ bool compileClassModule(const char* source, ObjClass* klass) {
     consume(TOKEN_EOF, "Expect end of file.");
 
     currentClass = classCompiler.enclosing;
-    
+    freeTable(&classCompiler.constValues);
+
     return !parser.hadError;
 }
 
@@ -2934,5 +3030,11 @@ void markCompilerRoots() {
     while (compiler != NULL) {
         markObject((Obj*)compiler->function);
         compiler = compiler->enclosing;
+    }
+
+    ClassCompiler* classCompiler = currentClass;
+    while (classCompiler != NULL) {
+        markTable(&classCompiler->constValues);
+        classCompiler = classCompiler->enclosing;
     }
 }
