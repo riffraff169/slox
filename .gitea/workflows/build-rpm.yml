@@ -4,22 +4,32 @@ on:
   push:
     tags:
       - 'v*'
-    #branches:
-    #  - master
   # Manual trigger for packaging-only rebuilds (e.g. Release changes)
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build Fedora ${{ matrix.release }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: "42"
+            image: "quay.io/fedora/fedora:42"
+          - release: "44"
+            image: "quay.io/fedora/fedora:44"
+          - release: "45"
+            image: "quay.io/fedora/fedora:45"
+
     container:
-      image: rpmbuild-env:latest
+      image: ${{ matrix.image }}
       volumes:
         - /opt/docker/repo/data:/src/rpm
 
     steps:
       - name: Install Git and Dependencies
-        run: dnf install -y git rpm-build rpmdevtools createrepo_c gobject-introspection-devel glib2-devel gtk4-devel notcurses-devel pcre2-devel postgresql-devel readline-devel sqlite-devel make gcc nodejs libyaml-devel
+        run: 'dnf -y install git rpm-build rpmdevtools createrepo_c gcc make nodejs ca-certificates pkgconfig gobject-introspection-devel glib2-devel gtk4-devel libpq-devel libyaml-devel notcurses-devel pcre2-devel readline-devel sqlite-devel'
 
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,14 +37,9 @@ jobs:
           submodules: recursive
 
       - name: Build RPM
-        run: |
-          rpmdev-setuptree
-          make dist
-          rpmbuild -ba slox.spec
-          rpmbuild -ba slox-all.spec
+        run: 'rpmdev-setuptree && make dist && rpmbuild -ba slox.spec && rpmbuild -ba slox-all.spec'
 
       - name: Publish and Update Repository
-        run: |
-          find ~/rpmbuild/RPMS/ -name "*.rpm" -exec cp -v {} /src/rpm/ \;
-          cd /src/rpm
-          createrepo_c --update .
+        env:
+          FEDORA_RELEASE: ${{ matrix.release }}
+        run: 'set -euo pipefail && DEST="/src/rpm/fedora/${FEDORA_RELEASE}/$(uname -m)" && mkdir -p "$DEST" && find ~/rpmbuild/RPMS/ -name "*.rpm" -exec cp -v {} "$DEST/" \; && createrepo_c --update "$DEST"'
