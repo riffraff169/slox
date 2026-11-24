@@ -1,5 +1,5 @@
 Name:           slox-all
-Version: 1.14.0
+Version: 1.15.0
 Release: 1%{?dist}
 Summary:        Metapackage for the complete Slox environment
 License:        MIT
@@ -37,6 +37,10 @@ editor plugins, standard libraries, and associated tools.
 # No files owned directly by metapackage
 
 %changelog
+* Tue  Nov 24 2026 Lance Dillon <riffraff169@yahoo.com> - 1.15.0-1
+- Merge pull request 'Use hex escapes for Color ANSI constants' (#32) from refactor/color-literal-constants into master
+- Merge pull request 'Build RPMs per Fedora release' (#33) from build/multi-release-rpm into master
+
 * Tue  Nov 24 2026 Lance Dillon <riffraff169@yahoo.com> - 1.14.0-1
 - Merge pull request 'Add class constants as parameter defaults' (#28) from add/class-constant-defaults into master
 - Merge pull request 'Fix kitty_view terminal size parsing' (#30) from fix/kitty-view-terminal-size into master
