@@ -4,6 +4,19 @@ The Gitea build workflow publishes one repository per Fedora release and
 architecture. Each job builds in a container running that Fedora release so the
 packages link against the matching system libraries.
 
+## Build images on the runner host
+
+The workflow uses local `rpmbuild-env:fc42`, `rpmbuild-env:fc44`, and
+`rpmbuild-env:fc45` images with all build requirements preinstalled. Build them
+once on the runner host, and again whenever the package list changes:
+
+```
+./scripts/build-rpm-images.sh
+```
+
+To rebuild only one release, pass its number, for example
+`./scripts/build-rpm-images.sh 42`.
+
 ## Server layout
 
 The runner mounts `/opt/docker/repo/data` at `/src/rpm` in every job. Published
