@@ -20,9 +20,9 @@ fun displayImage(filepath) {
   var termRows = 24;
   var termCols = 80;
   if (cleanSize.length() > 0)
-    termRows = Number(cleanSize[0]);
+    termRows = Integer(cleanSize[0]);
   if (cleanSize.length() > 1)
-    termCols =  Number(cleanSize[1]);
+    termCols = Integer(cleanSize[1]);
 
   var maxRows = termRows - 2;
   var maxCols = termCols - 1;
@@ -94,6 +94,8 @@ fun displayImage(filepath) {
 
 var parser = ArgParser("slox-kitty-view", "kitty protocol viewer");
 var opts = parser.parse(System.ARGS);
+
+if (opts == nil) System.exit(0);
 
 if (opts.args.length() < 1) {
   print "Usage: slox-kitty-view [options] <input_file>";
