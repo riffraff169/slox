@@ -1,0 +1,37 @@
+// Color's ANSI constants are string literals with hex escapes, so they keep
+// their exact runtime values while becoming compile-time literal constants.
+require("color.lox");
+
+print Color.ESC == chr(27); // expect: true
+
+print Color.RESET == chr(27) + "[0m"; // expect: true
+print Color.BOLD == chr(27) + "[1m"; // expect: true
+print Color.DIM == chr(27) + "[2m"; // expect: true
+
+print Color.BLACK == chr(27) + "[30m"; // expect: true
+print Color.RED == chr(27) + "[31m"; // expect: true
+print Color.GREEN == chr(27) + "[32m"; // expect: true
+print Color.YELLOW == chr(27) + "[33m"; // expect: true
+print Color.BLUE == chr(27) + "[34m"; // expect: true
+print Color.MAGENTA == chr(27) + "[35m"; // expect: true
+print Color.CYAN == chr(27) + "[36m"; // expect: true
+print Color.WHITE == chr(27) + "[37m"; // expect: true
+
+print Color.BRIGHT_RED == chr(27) + "[91m"; // expect: true
+print Color.BRIGHT_GREEN == chr(27) + "[92m"; // expect: true
+print Color.BRIGHT_YELLOW == chr(27) + "[93m"; // expect: true
+print Color.BRIGHT_CYAN == chr(27) + "[96m"; // expect: true
+
+print Color.BG_RED == chr(27) + "[41m"; // expect: true
+print Color.BG_GREEN == chr(27) + "[42m"; // expect: true
+print Color.BG_YELLOW == chr(27) + "[43m"; // expect: true
+
+print Color.CODES["reset"] == Color.RESET; // expect: true
+print Color.CODES["b_cyan"] == Color.BRIGHT_CYAN; // expect: true
+
+print Color.format("{red}hi") == chr(27) + "[31mhi" + chr(27) + "[0m"; // expect: true
+print Color.palette(5) == chr(27) + "[38;5;5m"; // expect: true
+print Color.palette(5, true) == chr(27) + "[48;5;5m"; // expect: true
+print Color.makeColor("#ff00bb") == chr(27) + "[38;2;255;0;187m"; // expect: true
+print Color.rgb(1, 2, 3) == chr(27) + "[38;2;1;2;3m"; // expect: true
+print Color.rgb(1, 2, 3, true) == chr(27) + "[48;2;1;2;3m"; // expect: true
