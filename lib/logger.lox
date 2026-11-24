@@ -41,7 +41,7 @@ class Logger {
   // Set min level
   // Optional:
   //   Integer: level
-  set_level(level = 2) { // Logger.INFO
+  set_level(level = Logger.INFO) {
     this.min_level = level;
   }
 
@@ -87,9 +87,7 @@ class Logger {
   // Optional:
   //   Integer: level
   //   String: color
-  register_tag(tag, level = nil, color = "white") {
-    level = level ?? Logger.INFO;
-
+  register_tag(tag, level = Logger.INFO, color = "white") {
     this.custom_tags[tag] = {
       "level": level,
       "color": color

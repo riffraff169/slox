@@ -1,0 +1,7 @@
+class Defaults {
+  read(value = Other.VALUE) {
+    print value;
+  }
+}
+
+// expect: [line 2] Error at 'Other': Default parameter must be a literal or a class constant declared earlier in the same class.

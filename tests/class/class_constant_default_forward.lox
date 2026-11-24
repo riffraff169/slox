@@ -1,0 +1,9 @@
+class Defaults {
+  read(value = LATER) {
+    print value;
+  }
+
+  const LATER = 1;
+}
+
+// expect: [line 2] Error at 'LATER': Default parameter must be a literal or a class constant declared earlier in the same class.

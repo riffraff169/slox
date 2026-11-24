@@ -1,0 +1,31 @@
+// Regression: compile-time class constant tables must stay rooted while
+// methods with constant defaults are compiled and closures are created.
+GC.stress_mode(GC.StressMode);
+
+eval("
+class Defaults {
+  const TEXT = \"fallback\";
+  const COUNT = 7;
+
+  init(name = TEXT) {
+    this.name = name;
+  }
+
+  describe(prefix = Defaults.TEXT, count = COUNT) {
+    print prefix;
+    print count;
+  }
+}
+
+var value = Defaults();
+print value.name;
+value.describe();
+value.describe(\"given\", 1);
+");
+
+GC.stress_mode(GC.NormalMode);
+// expect: fallback
+// expect: fallback
+// expect: 7
+// expect: given
+// expect: 1

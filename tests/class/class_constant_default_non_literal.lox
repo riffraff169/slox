@@ -1,0 +1,9 @@
+class Defaults {
+  const VALUE = chr(65);
+
+  read(value = VALUE) {
+    print value;
+  }
+}
+
+// expect: [line 4] Error at 'VALUE': Default parameter must be a literal or a class constant declared earlier in the same class.

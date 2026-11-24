@@ -569,6 +569,23 @@ Internal runtime failures are reported with these subclasses: wrong argument cou
   ```
 * Anonymous closures & lambdas: `var f = fun(x) { return x * 2; };`
 * First-class function passing, lexically scoped variable capturing.
+* Optional parameters with compile-time literal defaults:
+  ```lox
+  fun greet(name, greeting = "Hello") { print greeting + ", " + name; }
+  ```
+  Inside a class, methods and initializers can also use literal class constants
+  declared earlier in the same class body, either by bare name or as
+  `ClassName.NAME`:
+  ```lox
+  class Logger {
+    const INFO = 2;
+
+    set_level(level = Logger.INFO) { /* ... */ }
+  }
+  ```
+  Defaults are values, not expressions: `this`, `super`, getters, arbitrary
+  expressions, inherited constants, mixin constants, and forward references are
+  not supported.
 
 ### Classes & Object-Oriented Programming
 * Class declaration and inheritance:
@@ -600,7 +617,7 @@ Internal runtime failures are reported with these subclasses: wrong argument cou
 
   print Settings.VERSION; // 1.0
   ```
-  Class constants are readable as `ClassName.NAME`, are visible on subclasses, and instances can also read them.
+  Class constants are readable as `ClassName.NAME`, are visible on subclasses, and instances can also read them. Literal constants declared earlier in the class body can be used as method or initializer parameter defaults. Hex escapes are string literals, so `const RED = "\x1b[31m";` is a valid default. Computed constants such as `const RED = chr(27) + "[31m";` keep working as runtime values in method bodies, but are not valid defaults.
 * Static methods declared with `static name(...) { ... }`:
   ```lox
   class Counter {

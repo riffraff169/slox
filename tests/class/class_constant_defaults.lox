@@ -1,0 +1,77 @@
+// Literal class constants can be used as method parameter defaults, by bare
+// name or by ClassName.NAME. Hex escape strings are literals too. Computed
+// class constants still work as runtime constants, including Color's chr()
+// and concatenation based values.
+require("color.lox");
+
+class Defaults {
+  const INT = 7;
+  const TEXT = "fallback";
+  const FLAG = true;
+  const EMPTY = nil;
+  const HEX = 0x10;
+  const ESCAPED = "a\nb";
+  const ANSI_RED = "\x1b[31m";
+
+  init(name = TEXT, count = INT) {
+    this.name = name;
+    this.count = count;
+  }
+
+  show(name = INT, text = Defaults.TEXT, flag = FLAG, empty = EMPTY, hex = HEX) {
+    print name;
+    print text;
+    print flag;
+    print empty;
+    print hex;
+  }
+
+  escaped(text = ESCAPED) {
+    return text;
+  }
+
+  ansi(code = ANSI_RED) {
+    return code;
+  }
+
+  static staticDefault(count = INT) {
+    print count;
+  }
+}
+
+var d = Defaults();
+print d.name; // expect: fallback
+print d.count; // expect: 7
+
+d.show();
+// expect: 7
+// expect: fallback
+// expect: true
+// expect: nil
+// expect: 16
+
+d.show(1, "given", false, "set", 2);
+// expect: 1
+// expect: given
+// expect: false
+// expect: set
+// expect: 2
+
+Defaults.staticDefault(); // expect: 7
+Defaults.staticDefault(9); // expect: 9
+print d.escaped() == Defaults.ESCAPED; // expect: true
+print d.ansi() == chr(27) + "[31m"; // expect: true
+
+class Child < Defaults {}
+var c = Child();
+print c.name; // expect: fallback
+print c.count; // expect: 7
+c.show();
+// expect: 7
+// expect: fallback
+// expect: true
+// expect: nil
+// expect: 16
+
+print Color.RED == chr(27) + "[31m"; // expect: true
+print Color.CODES["reset"] == Color.RESET; // expect: true
