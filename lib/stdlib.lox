@@ -859,6 +859,50 @@ fun parseBinary(str) {
   return val;
 }
 
+//= parse_vars
+// Parse shell-style NAME=value lines from a string or an array into a Map.
+// Blank lines and lines starting with # are ignored. Lines without '=' are
+// ignored as well. A value surrounded by double quotes has one quote pair
+// removed.
+// Requires:
+//   String or Array: input
+// Returns:
+//   Map
+fun parse_vars(input) {
+  var result = Map();
+  if (input == nil) return result;
+
+  var lines = input;
+  if (isstring(input)) lines = input.split("\n");
+
+  for (var i = 0; i < lines.length(); i += 1) {
+    var line = lines[i];
+    if (line == nil) continue;
+
+    if (typeof(line) != "String") {
+      line = String(line);
+    } else {
+      line = line.trim();
+    }
+    if (line.length() == 0 or line[0] == '#') continue;
+
+    var eq = line.find("=");
+    if (eq <= 0) continue;
+
+    var key = line.slice(0, eq).trim();
+    var value = line.slice(eq + 1).trim();
+
+    if (value.length() >= 2 and
+        value[0] == '"' and value[value.length() - 1] == '"') {
+      value = value.slice(1, value.length() - 1);
+    }
+
+    if (key.length() > 0) result[key] = value;
+  }
+
+  return result;
+}
+
 //@ Struct
 class Struct {
   //: packNative

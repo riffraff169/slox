@@ -1,0 +1,18 @@
+var from_string = parse_vars("ID=fedora\nNAME=\"Fedora Linux\"\n# skipped\nBAD_LINE\nEQ=a=b\nEMPTY=\n  KEY = value  \n");
+
+print from_string["ID"]; // expect: fedora
+print from_string["NAME"]; // expect: Fedora Linux
+print from_string["EQ"]; // expect: a=b
+print "[" + from_string["EMPTY"] + "]"; // expect: []
+print from_string["KEY"]; // expect: value
+print from_string["BAD_LINE"]; // expect: nil
+
+var from_array = parse_vars(["X=10", "", "  # skipped  ", "Y=\"twenty\"", 5]);
+
+print from_array["X"]; // expect: 10
+print from_array["Y"]; // expect: twenty
+print from_array["MISSING"]; // expect: nil
+
+var from_nil = parse_vars(nil);
+
+print from_nil["MISSING"]; // expect: nil
