@@ -879,7 +879,8 @@ fun parse_vars(input) {
     var line = lines[i];
     if (line == nil) continue;
 
-    line = ("" + line).trim();
+    if (typeof(line) != "String") line = String(line);
+    line = line.trim();
     if (line.length() == 0 or line.starts_with("#")) continue;
 
     var eq = line.find("=");
