@@ -1,0 +1,19 @@
+require("timer.lox");
+
+var runs = 0;
+var timer = nil;
+
+fun schedule_next() {
+  timer = Timer.setTimeout(0, fun() {
+    timer.cancel();
+    runs = runs + 1;
+
+    if (runs < 3) {
+      schedule_next();
+    } else {
+      print runs; // expect: 3
+    }
+  });
+}
+
+schedule_next();

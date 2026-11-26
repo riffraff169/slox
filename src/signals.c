@@ -122,7 +122,7 @@ Value timerStartNative(int argCount, Value* args) {
 
     int slot = -1;
     for (int i = 0; i < MAX_TIMERS; i++) {
-        if (!timerMgr.entries[i].active) {
+        if (!timerMgr.entries[i].active && !timerMgr.entries[i].running) {
             slot = i;
             break;
         }
@@ -140,6 +140,7 @@ Value timerStartNative(int argCount, Value* args) {
     timerMgr.entries[slot].intervalMs = (intervalMs > 0) ? (uint64_t)intervalMs : 0;
     timerMgr.entries[slot].callback = callback;
     timerMgr.entries[slot].active = true;
+    timerMgr.entries[slot].running = false;
 
     return INT_VAL(id);
 }
@@ -164,7 +165,8 @@ Value timerStopNative(int argCount, Value* args) {
 
     int handle = (int)AS_INT(handleVal);
     for (int i = 0; i < MAX_TIMERS; i++) {
-        if (timerMgr.entries[i].active && timerMgr.entries[i].id == handle) {
+        if ((timerMgr.entries[i].active || timerMgr.entries[i].running) &&
+                timerMgr.entries[i].id == handle) {
             timerMgr.entries[i].active = false;
             return BOOL_VAL(true);
         }
@@ -238,13 +240,24 @@ void processTimers(void) {
     for (int i = 0; i < MAX_TIMERS; i++) {
         SloxTimer* t = &timerMgr.entries[i];
 
-        if (t->active && now >= t->fireAtMs) {
-            runTimerCallback(t->callback);
+        if (t->active && !t->running && now >= t->fireAtMs) {
+            int id = t->id;
+            uint64_t intervalMs = t->intervalMs;
+            Value callback = t->callback;
 
-            if (t->active && t->intervalMs > 0) {
-                t->fireAtMs = now + t->intervalMs;
+            // Keep the slot reserved but ineligible while the callback runs.
+            // This prevents a nested processTimers() call from firing the same
+            // timer again, and prevents a replacement timer from reusing it.
+            t->running = true;
+            runTimerCallback(callback);
+
+            if (t->active && t->id == id && intervalMs > 0) {
+                t->fireAtMs = getCurrentTimeMs() + intervalMs;
+                t->running = false;
             } else {
                 t->active = false;
+                t->running = false;
+                t->callback = NIL_VAL;
             }
 
             break;
@@ -264,7 +277,7 @@ void initTimerClass(void) {
 
 void markTimerRoots(void) {
     for (int i = 0; i < MAX_TIMERS; i++) {
-        if (timerMgr.entries[i].active) {
+        if (timerMgr.entries[i].active || timerMgr.entries[i].running) {
             markValue(timerMgr.entries[i].callback);
         }
     }
@@ -275,10 +288,11 @@ uint64_t getNextTimerDelayMs(void) {
     uint64_t minFire = UINT64_MAX;
 
     for (int i = 0; i < MAX_TIMERS; i++) {
-        if (timerMgr.entries[i].active) {
-            if (timerMgr.entries[i].fireAtMs <= now) return 0;
-            if (timerMgr.entries[i].fireAtMs < minFire) {
-                minFire = timerMgr.entries[i].fireAtMs;
+        SloxTimer* t = &timerMgr.entries[i];
+        if (t->active && !t->running) {
+            if (t->fireAtMs <= now) return 0;
+            if (t->fireAtMs < minFire) {
+                minFire = t->fireAtMs;
             }
         }
     }
@@ -288,7 +302,8 @@ uint64_t getNextTimerDelayMs(void) {
 
 bool hasActiveTimers(void) {
     for (int i = 0; i < MAX_TIMERS; i++) {
-        if (timerMgr.entries[i].active) return true;
+        SloxTimer* t = &timerMgr.entries[i];
+        if (t->active && !t->running) return true;
     }
     return false;
 }

@@ -1,0 +1,20 @@
+GC.stress_mode(GC.StressMode);
+require("timer.lox");
+
+var ticks = 0;
+var timer = nil;
+
+timer = Timer.setInterval(1, fun() {
+  ticks = ticks + 1;
+
+  var spins = 0;
+  while (spins < 50000) {
+    spins = spins + 1;
+  }
+
+  if (ticks >= 3) {
+    timer.cancel();
+    print ticks; // expect: 3
+    GC.stress_mode(GC.NormalMode);
+  }
+});

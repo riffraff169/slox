@@ -22,6 +22,7 @@ typedef struct {
     uint64_t intervalMs;
     Value callback;
     bool active;
+    bool running;
 } SloxTimer;
 
 typedef struct {

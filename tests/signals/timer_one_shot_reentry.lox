@@ -1,0 +1,14 @@
+require("timer.lox");
+
+var calls = 0;
+
+Timer.setTimeout(0, fun() {
+  calls = calls + 1;
+
+  var spins = 0;
+  while (spins < 50000) {
+    spins = spins + 1;
+  }
+
+  if (calls == 1) print calls; // expect: 1
+});
