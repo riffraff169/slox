@@ -879,9 +879,12 @@ fun parse_vars(input) {
     var line = lines[i];
     if (line == nil) continue;
 
-    if (typeof(line) != "String") line = String(line);
-    line = line.trim();
-    if (line.length() == 0 or line.starts_with("#")) continue;
+    if (typeof(line) != "String") {
+      line = String(line);
+    } else {
+      line = line.trim();
+    }
+    if (line.length() == 0 or line[0] == '#') continue;
 
     var eq = line.find("=");
     if (eq <= 0) continue;
@@ -890,7 +893,7 @@ fun parse_vars(input) {
     var value = line.slice(eq + 1).trim();
 
     if (value.length() >= 2 and
-        value.starts_with("\"") and value.ends_with("\"")) {
+        value[0] == '"' and value[value.length() - 1] == '"') {
       value = value.slice(1, value.length() - 1);
     }
 
